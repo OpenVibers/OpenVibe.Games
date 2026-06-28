@@ -1,0 +1,7 @@
+"LightmappedGeneric"
+{
+    "$basetexture" "debug/debugempty"
+    "$translucent" "1"
+    "%compileTrigger" "1"
+    "%compileNoDraw" "1"
+}

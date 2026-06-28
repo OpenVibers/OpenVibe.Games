@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenVibe: Source</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@700;900&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ── Custom titlebar ──────────────────────────────────────────────── -->
+<div class="titlebar" id="titlebar">
+  <div class="titlebar-logo">
+    <span class="logo-vibe">OPEN</span><span class="logo-source">VIBE</span>
+    <span class="titlebar-subtitle">: Source</span>
+  </div>
+  <div class="titlebar-drag"></div>
+  <div class="titlebar-controls">
+    <button class="tb-btn" id="btn-min" title="Minimise">─</button>
+    <button class="tb-btn" id="btn-max" title="Maximise">□</button>
+    <button class="tb-btn close" id="btn-close" title="Close">✕</button>
+  </div>
+</div>
+
+<!-- ── Status bar ───────────────────────────────────────────────────── -->
+<div class="statusbar">
+  <div class="status-dot" id="api-dot"></div>
+  <span id="api-label">Connecting…</span>
+  <span class="status-sep">|</span>
+  <span id="server-count">0 servers</span>
+  <span class="status-sep">|</span>
+  <span class="status-right" id="game-status-label">Game: idle</span>
+</div>
+
+<!-- ── Main layout ──────────────────────────────────────────────────── -->
+<div class="app-layout">
+
+  <!-- Sidebar nav -->
+  <nav class="sidebar">
+    <div class="nav-section-label">PLAY</div>
+    <button class="nav-btn active" data-tab="portal">
+      <span class="nav-icon">⬡</span> Portal
+    </button>
+    <button class="nav-btn" data-tab="servers">
+      <span class="nav-icon">◈</span> Servers
+    </button>
+
+    <div class="nav-section-label">PROFILE</div>
+    <button class="nav-btn" data-tab="leaderboard">
+      <span class="nav-icon">◆</span> Leaderboard
+    </button>
+    <button class="nav-btn" data-tab="inventory">
+      <span class="nav-icon">◉</span> Inventory
+    </button>
+    <button class="nav-btn" data-tab="shop">
+      <span class="nav-icon">◇</span> Shop
+    </button>
+
+    <div class="nav-section-label">SYSTEM</div>
+    <button class="nav-btn" data-tab="settings">
+      <span class="nav-icon">◎</span> Settings
+    </button>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-build">build 2026.06.28</div>
+      <div class="sidebar-domain">openvibe.games</div>
+    </div>
+  </nav>
+
+  <!-- Content area -->
+  <main class="content">
+
+    <!-- ── PORTAL TAB ──────────────────────────────────────────────── -->
+    <section class="tab-panel active" id="tab-portal">
+      <div class="portal-hero">
+        <h1 class="hero-title">WELCOME TO <em>OPENVIBE</em></h1>
+        <p class="hero-sub">Select a game mode to launch</p>
+      </div>
+
+      <div class="portal-grid">
+
+        <div class="portal-card card-hub" data-mode="hub">
+          <div class="card-glow"></div>
+          <div class="card-icon">🌐</div>
+          <div class="card-body">
+            <h2>Hub</h2>
+            <p>Social lobby · Shops · NPCs · Portals</p>
+            <div class="card-meta"><span class="players-tag" id="hub-players">⬤ loading…</span></div>
+          </div>
+          <button class="card-play-btn" data-mode="hub">PLAY</button>
+        </div>
+
+        <div class="portal-card card-ph" data-mode="prophunt">
+          <div class="card-glow"></div>
+          <div class="card-icon">🔍</div>
+          <div class="card-body">
+            <h2>Prop Hunt</h2>
+            <p>Disguise as props · Evade hunters</p>
+            <div class="card-meta"><span class="players-tag" id="ph-players">⬤ loading…</span></div>
+          </div>
+          <button class="card-play-btn" data-mode="prophunt">PLAY</button>
+        </div>
+
+        <div class="portal-card card-dr" data-mode="deathrun">
+          <div class="card-glow"></div>
+          <div class="card-icon">💀</div>
+          <div class="card-body">
+            <h2>Deathrun</h2>
+            <p>Runners vs traps · Survive to the end</p>
+            <div class="card-meta"><span class="players-tag" id="dr-players">⬤ loading…</span></div>
+          </div>
+          <button class="card-play-btn" data-mode="deathrun">PLAY</button>
+        </div>
+
+        <div class="portal-card card-fw" data-mode="fortwars">
+          <div class="card-glow"></div>
+          <div class="card-icon">🏰</div>
+          <div class="card-body">
+            <h2>Fort Wars</h2>
+            <p>Build forts · Battle with props</p>
+            <div class="card-meta"><span class="players-tag" id="fw-players">⬤ loading…</span></div>
+          </div>
+          <button class="card-play-btn" data-mode="fortwars">PLAY</button>
+        </div>
+
+        <div class="portal-card card-tt" data-mode="traitortown">
+          <div class="card-glow"></div>
+          <div class="card-icon">🕵️</div>
+          <div class="card-body">
+            <h2>Traitor Town</h2>
+            <p>Social deduction · Find the traitors</p>
+            <div class="card-meta"><span class="players-tag" id="tt-players">⬤ loading…</span></div>
+          </div>
+          <button class="card-play-btn" data-mode="traitortown">PLAY</button>
+        </div>
+
+      </div><!-- /portal-grid -->
+    </section>
+
+    <!-- ── SERVERS TAB ─────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-servers">
+      <div class="panel-header">
+        <h2>Server Browser</h2>
+        <button class="hdr-btn" id="refresh-servers">⟳ Refresh</button>
+      </div>
+      <table class="server-table">
+        <thead>
+          <tr>
+            <th>Name</th><th>Mode</th><th>Map</th><th>Players</th><th>Ping</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="server-tbody">
+          <tr><td colspan="6" class="loading-row">Loading servers…</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ── LEADERBOARD TAB ─────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-leaderboard">
+      <div class="panel-header">
+        <h2>Global Leaderboard</h2>
+        <span class="hdr-sub">Top players by XP</span>
+      </div>
+      <ol class="leaderboard-list" id="leaderboard-list">
+        <li class="loading-row">Loading…</li>
+      </ol>
+    </section>
+
+    <!-- ── INVENTORY TAB ──────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-inventory">
+      <div class="panel-header">
+        <h2>Your Inventory</h2>
+        <span class="hdr-sub">Owned cosmetics &amp; items</span>
+      </div>
+      <div class="inv-grid" id="inv-grid">
+        <div class="inv-empty">No items yet — visit the Shop to get started!</div>
+      </div>
+    </section>
+
+    <!-- ── SHOP TAB ───────────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-shop">
+      <div class="panel-header">
+        <h2>OpenVibe Shop</h2>
+        <span class="hdr-sub">Buy cosmetics with VibeCoins</span>
+      </div>
+      <div class="shop-categories">
+        <button class="cat-btn active" data-cat="all">All</button>
+        <button class="cat-btn" data-cat="model">Player Models</button>
+        <button class="cat-btn" data-cat="trail">Trails</button>
+        <button class="cat-btn" data-cat="particle">Particles</button>
+        <button class="cat-btn" data-cat="skin">Skins</button>
+      </div>
+      <div class="shop-grid" id="shop-grid">
+        <div class="shop-item">
+          <div class="item-icon">🤖</div>
+          <div class="item-name">Robot Model</div>
+          <div class="item-price">2,500 VC</div>
+          <button class="item-buy-btn">Buy</button>
+        </div>
+        <div class="shop-item">
+          <div class="item-icon">🌈</div>
+          <div class="item-name">Rainbow Trail</div>
+          <div class="item-price">1,000 VC</div>
+          <button class="item-buy-btn">Buy</button>
+        </div>
+        <div class="shop-item">
+          <div class="item-icon">⚡</div>
+          <div class="item-name">Lightning Aura</div>
+          <div class="item-price">3,000 VC</div>
+          <button class="item-buy-btn">Buy</button>
+        </div>
+        <div class="shop-item">
+          <div class="item-icon">💎</div>
+          <div class="item-name">Diamond Skin</div>
+          <div class="item-price">5,000 VC</div>
+          <button class="item-buy-btn">Buy</button>
+        </div>
+        <div class="shop-item">
+          <div class="item-icon">🔥</div>
+          <div class="item-name">Fire Trail</div>
+          <div class="item-price">1,500 VC</div>
+          <button class="item-buy-btn">Buy</button>
+        </div>
+        <div class="shop-item">
+          <div class="item-icon">👾</div>
+          <div class="item-name">Alien Model</div>
+          <div class="item-price">2,000 VC</div>
+          <button class="item-buy-btn">Buy</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SETTINGS TAB ───────────────────────────────────────────── -->
+    <section class="tab-panel" id="tab-settings">
+      <div class="panel-header">
+        <h2>Settings</h2>
+      </div>
+      <div class="settings-list">
+        <div class="setting-row">
+          <label>API Endpoint</label>
+          <input type="text" id="set-api" value="http://127.0.0.1:3000" />
+        </div>
+        <div class="setting-row">
+          <label>Game Mode</label>
+          <select id="set-launch-mode">
+            <option value="hub">Hub (port 27015)</option>
+            <option value="prophunt">Prop Hunt (port 27016)</option>
+            <option value="deathrun">Deathrun (port 27017)</option>
+            <option value="fortwars">Fort Wars (port 27018)</option>
+            <option value="traitortown">Traitor Town (port 27019)</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label>Launch Game</label>
+          <button class="settings-launch-btn" id="settings-launch">
+            Launch Selected Mode
+          </button>
+        </div>
+        <div class="setting-row">
+          <label>Backend Logs</label>
+          <button class="hdr-btn" id="open-api-logs">Open API Log</button>
+        </div>
+        <div class="setting-row">
+          <label>Version</label>
+          <span class="version-label">OpenVibe 2026.06.28 · Electron + Chromium embedded</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── Toast notification ──────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<!-- ── Launch overlay ──────────────────────────────────────────────── -->
+<div class="launch-overlay" id="launch-overlay">
+  <div class="launch-spinner"></div>
+  <div class="launch-label" id="launch-label">Launching…</div>
+  <button class="launch-cancel" id="launch-cancel">Cancel</button>
+</div>
+
+<script src="renderer.js"></script>
+</body>
+</html>

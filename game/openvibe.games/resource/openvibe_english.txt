@@ -1,0 +1,90 @@
+"lang"
+{
+    "Language"  "English"
+    "Tokens"
+    {
+        // Game title
+        "OPENVIBE_GAME_TITLE"       "OpenVibe: Source"
+        "OPENVIBE_DOMAIN"           "openvibe.games"
+
+        // Hub
+        "OV_HUB_WELCOME"            "Welcome to OpenVibe Hub! Step on a portal pad to join a game."
+        "OV_HUB_PORTAL_PROPHUNT"    "Prop Hunt Portal"
+        "OV_HUB_PORTAL_DEATHRUN"    "Deathrun Portal"
+        "OV_HUB_PORTAL_FORTWARS"    "Fort Wars Portal"
+        "OV_HUB_PORTAL_TRAITORTOWN" "Traitor Town Portal"
+        "OV_HUB_SHOP_NPC"           "Models Shop"
+        "OV_HUB_TRAILS_NPC"         "Trails Shop"
+        "OV_HUB_INVENTORY"          "Your Inventory"
+
+        // Shop
+        "OV_SHOP_TITLE"             "OpenVibe Shop"
+        "OV_SHOP_BALANCE"           "Balance: %coins% VibeCoins"
+        "OV_SHOP_BUY"               "Buy"
+        "OV_SHOP_EQUIP"             "Equip"
+        "OV_SHOP_OWNED"             "Owned"
+        "OV_SHOP_INSUFFICIENT"      "Not enough VibeCoins!"
+        "OV_SHOP_PURCHASED"         "Purchased: %item%"
+        "OV_SHOP_EQUIPPED"          "Now using: %item%"
+
+        // Currency
+        "OV_CURRENCY_NAME"          "VibeCoins"
+        "OV_CURRENCY_EARNED"        "+%amount% VibeCoins earned!"
+
+        // Round phases
+        "OV_PHASE_WAITING"          "Waiting for players…"
+        "OV_PHASE_STARTING"         "Round starting in %seconds%s…"
+        "OV_PHASE_ACTIVE"           "%seconds%s remaining"
+        "OV_PHASE_ENDED"            "Round over!"
+        "OV_MIN_PLAYERS"            "Need %min% players to start (%current% connected)"
+
+        // Prop Hunt
+        "OV_PH_TITLE"               "Prop Hunt"
+        "OV_PH_ROLE_HUNTER"         "You are a HUNTER — find and eliminate the props!"
+        "OV_PH_ROLE_PROP"           "You are a PROP — hide before the hunters are released!"
+        "OV_PH_HIDE_PHASE"          "Props are hiding — %seconds%s"
+        "OV_PH_HUNT_PHASE"          "Hunt has begun! %props% props remaining — %seconds%s"
+        "OV_PH_WIN_HUNTERS"         "Hunters win! All props eliminated."
+        "OV_PH_WIN_PROPS"           "Props win! Survived the hunt."
+
+        // Deathrun
+        "OV_DR_TITLE"               "Deathrun"
+        "OV_DR_ROLE_RUNNER"         "You are a RUNNER — reach the end!"
+        "OV_DR_ROLE_ACTIVATOR"      "You are the ACTIVATOR — stop the runners!"
+        "OV_DR_WIN_RUNNERS"         "Runners win! %finished% made it to the end."
+        "OV_DR_WIN_ACTIVATOR"       "Activator wins! All runners eliminated."
+
+        // Fort Wars
+        "OV_FW_TITLE"               "Fort Wars"
+        "OV_FW_TEAM_A"              "Red Team"
+        "OV_FW_TEAM_B"              "Blue Team"
+        "OV_FW_BUILD_PHASE"         "BUILD PHASE — %seconds%s | Fortify your base!"
+        "OV_FW_COMBAT_PHASE"        "COMBAT PHASE — %seconds%s | Eliminate the enemy!"
+        "OV_FW_WIN_A"               "Red Team wins!"
+        "OV_FW_WIN_B"               "Blue Team wins!"
+        "OV_FW_DRAW"                "Draw!"
+
+        // Traitor Town
+        "OV_TT_TITLE"               "Traitor Town"
+        "OV_TT_ROLE_INNOCENT"       "You are INNOCENT — find and eliminate the traitors!"
+        "OV_TT_ROLE_TRAITOR"        "You are a TRAITOR — eliminate all innocents without being caught!"
+        "OV_TT_ROLE_DETECTIVE"      "You are the DETECTIVE — investigate and protect the innocents!"
+        "OV_TT_WIN_INNOCENTS"       "Innocents win! All traitors eliminated."
+        "OV_TT_WIN_TRAITORS"        "Traitors win! All innocents eliminated."
+        "OV_TT_TRAITOR_REVEAL"      "Traitor: %name%"
+
+        // Item types
+        "OV_ITEM_TYPE_PLAYER_MODEL" "Player Model"
+        "OV_ITEM_TYPE_TRAIL"        "Trail"
+        "OV_ITEM_TYPE_NAMEPLATE"    "Nameplate"
+
+        // XP
+        "OV_XP_LABEL"               "XP"
+        "OV_XP_GAINED"              "+%xp% XP"
+
+        // Generic
+        "OV_LOADING"                "Connecting to server…"
+        "OV_DISCONNECT"             "Disconnected from server."
+        "OV_SERVER_FULL"            "Server is full. Try again shortly."
+    }
+}

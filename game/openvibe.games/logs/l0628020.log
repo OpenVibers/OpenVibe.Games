@@ -1,0 +1,6 @@
+L 06/28/2026 - 13:31:53: Log file started (file "logs/L0628020.log") (game "/home/workstation/src/openvibe-source/game/openvibe.games") (version "0")
+L 06/28/2026 - 13:31:53: server_cvar: "mp_teamplay" "1"
+L 06/28/2026 - 13:31:53: server_cvar: "mp_timelimit" "20"
+L 06/28/2026 - 13:31:53: Initializing Steam libraries for LAN server
+L 06/28/2026 - 13:31:53: No account token specified; logging into anonymous game server account.  (Use sv_setsteamaccount to login to a persistent account.)
+L 06/28/2026 - 13:31:53: Log file closed.

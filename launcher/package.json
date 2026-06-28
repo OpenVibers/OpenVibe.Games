@@ -1,0 +1,19 @@
+{
+  "name": "openvibe-launcher",
+  "version": "1.0.0",
+  "description": "OpenVibe: Source — Electron launcher with embedded Chromium menu",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "ELECTRON_IS_DEV=1 electron ."
+  },
+  "keywords": [],
+  "author": "OpenVibe",
+  "license": "MIT",
+  "dependencies": {
+    "electron-is-dev": "^2.0.0"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5"
+  }
+}

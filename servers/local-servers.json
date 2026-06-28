@@ -1,0 +1,47 @@
+[
+  {
+    "serverId": "local-hub-27015",
+    "serverSecret": "dev-secret",
+    "mode": "hub",
+    "mapName": "ov_hub",
+    "publicHost": "127.0.0.1",
+    "port": 27015,
+    "maxPlayers": 48
+  },
+  {
+    "serverId": "local-prophunt-27016",
+    "serverSecret": "dev-secret",
+    "mode": "prophunt",
+    "mapName": "ph_openvibe_dev",
+    "publicHost": "127.0.0.1",
+    "port": 27016,
+    "maxPlayers": 24
+  },
+  {
+    "serverId": "local-deathrun-27017",
+    "serverSecret": "dev-secret",
+    "mode": "deathrun",
+    "mapName": "dr_openvibe_dev",
+    "publicHost": "127.0.0.1",
+    "port": 27017,
+    "maxPlayers": 24
+  },
+  {
+    "serverId": "local-fortwars-27018",
+    "serverSecret": "dev-secret",
+    "mode": "fortwars",
+    "mapName": "fw_openvibe_dev",
+    "publicHost": "127.0.0.1",
+    "port": 27018,
+    "maxPlayers": 32
+  },
+  {
+    "serverId": "local-traitortown-27019",
+    "serverSecret": "dev-secret",
+    "mode": "traitortown",
+    "mapName": "tt_openvibe_dev",
+    "publicHost": "127.0.0.1",
+    "port": 27019,
+    "maxPlayers": 24
+  }
+]

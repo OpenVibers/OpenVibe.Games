@@ -1,0 +1,20 @@
+backend/node_modules/
+backend/dist/
+backend/.env
+
+hammer/vmf/*.log
+hammer/vmf/*.prt
+hammer/vmf/*.lin
+hammer/vmf/*.vmx
+hammer/vmf/*.bsp
+
+*.core
+core
+debug.log
+steam_appid.txt
+
+.DS_Store
+
+# node_modules are tracked via package-lock.json; exclude the installed version to reduce repo size
+launcher/node_modules/
+backend/node_modules/

@@ -1,0 +1,49 @@
+"GameInfo"
+{
+	game		"OpenVibe: Source"
+	title		"OpenVibe: Source"
+	title2		"openvibe.games"
+	type		multiplayer_only
+	nomodels	0
+	nohimodel	1
+	nocrosshair	1
+
+	FileSystem
+	{
+		SteamAppId		243750
+
+		SearchPaths
+		{
+			// User customizations first
+			game+mod		|gameinfo_path|custom/*
+
+			// Our mod content
+			game+mod		|gameinfo_path|.
+			mod+mod_write+default_write_path	|gameinfo_path|.
+
+			// HL2MP base content
+			game+mod		hl2mp/hl2mp_pak.vpk
+
+			// HL2 base content
+			game			|all_source_engine_paths|hl2/hl2_textures.vpk
+			game			|all_source_engine_paths|hl2/hl2_sound_vo_english.vpk
+			game			|all_source_engine_paths|hl2/hl2_sound_misc.vpk
+			game+vgui		|all_source_engine_paths|hl2/hl2_misc.vpk
+			platform+vgui	|all_source_engine_paths|platform/platform_misc.vpk
+
+			// Game write paths
+			game+game_write		|gameinfo_path|.
+
+			// Gamebin - explicitly point to our bin directory
+			gamebin			|gameinfo_path|bin
+
+			// Fallback loose files
+			game			|all_source_engine_paths|hl2mp
+			game			|all_source_engine_paths|hl2
+			platform		|all_source_engine_paths|platform
+
+			// Downloads from servers
+			game+download	|gameinfo_path|download
+		}
+	}
+}
