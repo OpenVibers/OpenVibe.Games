@@ -1,0 +1,126 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ v*.*.* ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Backend tests and build
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: openvibe_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: backend
+      run: npm ci
+    
+    - name: Run linter
+      working-directory: backend
+      run: npm run lint --if-present || true
+    
+    - name: Build
+      working-directory: backend
+      run: npm run build
+    
+    - name: Run tests
+      working-directory: backend
+      env:
+        DATABASE_URL: postgresql://postgres:postgres@localhost:5432/openvibe_test
+      run: npm test
+
+  # Launcher (Electron) build
+  launcher:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: launcher/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: launcher
+      run: npm ci
+    
+    - name: Run linter
+      working-directory: launcher
+      run: npm run lint --if-present || true
+
+  # Docker build (on tags)
+  docker:
+    needs: [ backend, launcher ]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract version
+      id: version
+      run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+    
+    - name: Build and push backend
+      uses: docker/build-push-action@v4
+      with:
+        context: ./backend
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}/api:${{ steps.version.outputs.tag }}
+          ghcr.io/${{ github.repository }}/api:latest
+
+  # Release creation (on tags)
+  release:
+    needs: [ backend, launcher ]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    permissions:
+      contents: write
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Create GitHub Release
+      uses: ncipollo/release-action@v1
+      with:
+        generateReleaseNotes: true
+        draft: false
+        prerelease: false
