@@ -137,12 +137,14 @@ ipcMain.handle('game:launch', (_e, { ip, port }) => {
 
 ipcMain.handle('game:launch-direct', (_e, mode) => {
   // Look up the mode's port from local server list
+  // Use 127.0.1.1 (workstation hostname) instead of 127.0.0.1 since that's where
+  // the Source engine binds the server when resolving localhost via /etc/hosts
   const serverMap = {
-    hub: { ip: '127.0.0.1', port: 27015 },
-    prophunt: { ip: '127.0.0.1', port: 27016 },
-    deathrun: { ip: '127.0.0.1', port: 27017 },
-    fortwars: { ip: '127.0.0.1', port: 27018 },
-    traitortown: { ip: '127.0.0.1', port: 27019 },
+    hub: { ip: '127.0.1.1', port: 27015 },
+    prophunt: { ip: '127.0.1.1', port: 27016 },
+    deathrun: { ip: '127.0.1.1', port: 27017 },
+    fortwars: { ip: '127.0.1.1', port: 27018 },
+    traitortown: { ip: '127.0.1.1', port: 27019 },
   };
   const srv = serverMap[mode] || serverMap.hub;
   return launchGame(srv.ip, srv.port);
