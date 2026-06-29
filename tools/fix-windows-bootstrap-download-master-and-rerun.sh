@@ -6,6 +6,7 @@ cd "$ROOT"
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 REPO="${OPENVIBE_REPO:-$(git remote get-url origin | sed -E 's#.*github.com[:/]([^/]+/[^/.]+)(\.git)?#\1#')}"
+REPO="${REPO%.git}"
 WORKFLOW="windows-source-sdk-dlls.yml"
 
 echo "[openvibe] fix Windows bootstrap: use Valve master zip/download fallback"

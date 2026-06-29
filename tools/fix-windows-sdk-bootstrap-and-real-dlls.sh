@@ -5,6 +5,7 @@ ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
 cd "$ROOT"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 REPO="${OPENVIBE_GITHUB_REPO:-OpenVibers/OpenVibe.Games}"
+REPO="${REPO%.git}"
 WORKFLOW="windows-source-sdk-dlls.yml"
 
 echo "[openvibe] fix Windows SDK bootstrap + real DLL artifact validation"

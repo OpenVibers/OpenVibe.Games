@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
 REPO="${OPENVIBE_REPO:-OpenVibers/OpenVibe.Games}"
+REPO="${REPO%.git}"
 WORKFLOW="${OPENVIBE_WINDOWS_WORKFLOW:-windows-source-sdk-dlls.yml}"
 BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
 LOG_DIR="$ROOT/artifacts/windows-workflow-debug"

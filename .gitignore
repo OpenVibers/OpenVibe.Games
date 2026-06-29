@@ -39,3 +39,9 @@ backend/node_modules/
 *.bak.*
 tools/*.bak.*
 engine/source-sdk-2013/src/game/shared/openvibe/third_party/quickjs/build/
+
+# OpenVibe local/generated build diagnostics
+artifacts/
+_deps/
+*.tmp
+*.log

@@ -1,57 +1,87 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+say() { echo "[openvibe] $*"; }
+warn() { echo "[openvibe warn] $*" >&2; }
 ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
 cd "$ROOT"
-REPO="${OPENVIBE_GITHUB_REPO:-OpenVibers/OpenVibe.Games}"
-WORKFLOW="${OPENVIBE_WINDOWS_WORKFLOW:-windows-source-sdk-dlls.yml}"
+WORKFLOW="${OPENVIBE_WORKFLOW:-windows-source-sdk-dlls.yml}"
+BRANCH="${OPENVIBE_BRANCH:-$(git rev-parse --abbrev-ref HEAD)}"
+REPO="${OPENVIBE_REPO:-$(tools/openvibe-gh-repo.sh)}"
 RUN_ID="${1:-}"
 
 if ! command -v gh >/dev/null 2>&1; then
-  echo "[openvibe] missing gh. Install with: sudo apt install gh" >&2
+  echo "GitHub CLI gh is missing. Install/auth it first: sudo apt install gh && gh auth login" >&2
   exit 1
 fi
 
 if [[ -z "$RUN_ID" ]]; then
-  RUN_ID="$(gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$(git rev-parse --abbrev-ref HEAD)" --limit 1 --json databaseId --jq '.[0].databaseId')"
+  RUN_ID="$(gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId')"
+fi
+if [[ -z "$RUN_ID" || "$RUN_ID" == "null" ]]; then
+  echo "Could not find a workflow run for $REPO $WORKFLOW on $BRANCH" >&2
+  exit 1
 fi
 
-OUT="$ROOT/artifacts/windows-workflow-debug/run-$RUN_ID-artifacts"
+OUT="$ROOT/artifacts/windows-workflow-debug/run-${RUN_ID}-artifacts"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
-echo "[openvibe] run=$RUN_ID"
-echo "[openvibe] downloading logs/artifacts into $OUT"
+say "repo=$REPO"
+say "run=$RUN_ID"
+say "downloading logs/artifacts into $OUT"
 
-gh run view "$RUN_ID" --repo "$REPO" --log > "$OUT/full-run.log" || true
-gh run download "$RUN_ID" --repo "$REPO" --dir "$OUT" || true
+gh run view "$RUN_ID" --repo "$REPO" --log > "$OUT/full-run.log" 2>&1 || true
+gh run download "$RUN_ID" --repo "$REPO" --dir "$OUT" >/dev/null 2>&1 || true
+find "$OUT" -type f | sort > "$OUT/file-list.txt"
 
-find "$OUT" -maxdepth 3 -type f | sort > "$OUT/file-list.txt"
-
-echo
-echo "[openvibe] likely errors:"
-grep -RniE "error MSB|fatal error|undefined reference|unresolved external|LNK[0-9]+|C[0-9]{4}:|throw |Missing:|not found|could not|failed|No Visual Studio solution|No patched" "$OUT" | tail -n 120 || true
-
-echo
-echo "[openvibe] artifact files:"
-sed -n '1,160p' "$OUT/file-list.txt"
-
-DLLDIR="$OUT/openvibe-windows-dlls"
-if [[ -f "$DLLDIR/client.dll" && -f "$DLLDIR/server.dll" ]]; then
-  if strings "$DLLDIR/client.dll" | grep -Eq 'ov_join|ov_menu|OpenVibe'; then
-    mkdir -p game/openvibe.games/bin
-    cp -f "$DLLDIR/client.dll" game/openvibe.games/bin/client.dll
-    cp -f "$DLLDIR/server.dll" game/openvibe.games/bin/server.dll
-    echo "[openvibe] installed patched Windows DLLs"
-    tools/verify-openvibe-dll-content.sh || true
-  else
-    echo "[openvibe] refused to install DLL artifact because client.dll lacks OpenVibe strings" >&2
-    exit 2
-  fi
-else
-  echo "[openvibe] no DLL artifact available yet" >&2
-  exit 3
+say "likely errors:"
+if ! grep -RInE "error |error:|fatal:|failed|Exception|No patched|MSB[0-9]+|LNK[0-9]+|C[0-9]{4}" "$OUT" | head -n 80; then
+  warn "no obvious errors found in downloaded logs"
 fi
 
+say "artifact files:"
+cat "$OUT/file-list.txt"
 
-# Extra bootstrap tails for current Windows workflow debugging.
+CLIENT=""
+SERVER=""
+while IFS= read -r f; do
+  case "$(basename "$f")" in
+    client.dll) CLIENT="$f" ;;
+    server.dll) SERVER="$f" ;;
+  esac
+done < <(find "$OUT" -type f \( -iname 'client.dll' -o -iname 'server.dll' \) | sort)
+
+if [[ -n "$CLIENT" && -n "$SERVER" ]]; then
+  say "candidate client=$CLIENT"
+  say "candidate server=$SERVER"
+  if strings "$CLIENT" | grep -Eq 'ov_join|ov_menu|OpenVibe'; then
+    mkdir -p game/openvibe.games/bin
+    cp -f "$CLIENT" game/openvibe.games/bin/client.dll
+    cp -f "$SERVER" game/openvibe.games/bin/server.dll
+    say "installed patched Windows DLLs"
+    if [[ -x tools/verify-openvibe-dll-content.sh ]]; then
+      tools/verify-openvibe-dll-content.sh || true
+    else
+      strings game/openvibe.games/bin/client.dll | grep -E 'ov_join|ov_menu|OpenVibe' | head || true
+    fi
+    exit 0
+  else
+    warn "DLLs were present but do not contain OpenVibe strings; not installing stale/stock DLLs"
+  fi
+else
+  warn "no client.dll/server.dll artifact available yet"
+fi
+
+say "next useful tails:"
+for f in \
+  "$OUT/full-run.log" \
+  "$OUT/openvibe-windows-build-debug/bootstrap-source-sdk-2013.log" \
+  "$OUT/openvibe-windows-build-debug/bootstrap-curl-master-zip.log" \
+  "$OUT/openvibe-windows-build-debug/bootstrap-git-clone-master.log" \
+  "$OUT/openvibe-windows-build-debug/build-sdk-windows.log"; do
+  if [[ -f "$f" ]]; then
+    echo "----- $f -----"
+    tail -n 80 "$f" || true
+  fi
+done
+exit 2

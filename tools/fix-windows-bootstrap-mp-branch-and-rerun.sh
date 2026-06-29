@@ -7,6 +7,7 @@ cd "$ROOT"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 REPO="${OPENVIBE_GITHUB_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)}"
 REPO="${REPO:-OpenVibers/OpenVibe.Games}"
+REPO="${REPO%.git}"
 WORKFLOW="windows-source-sdk-dlls.yml"
 
 say(){ printf '[openvibe] %s\n' "$*"; }

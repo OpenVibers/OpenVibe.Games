@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
 BRANCH="${OPENVIBE_BRANCH:-$(git -C "$ROOT" branch --show-current 2>/dev/null || true)}"
+REPO="${REPO%.git}"
 WORKFLOW="${OPENVIBE_WINDOWS_WORKFLOW:-windows-source-sdk-dlls.yml}"
 ARTIFACT_DIR="$ROOT/.tmp/windows-dll-artifacts"
 MOD_BIN="$ROOT/game/openvibe.games/bin"
