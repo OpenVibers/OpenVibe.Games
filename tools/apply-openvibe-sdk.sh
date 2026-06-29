@@ -21,7 +21,13 @@ copy_tree() {
   local src="$1"
   local dst="$2"
   mkdir -p "$dst"
-  rsync -a --delete "$src/" "$dst/"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$src/" "$dst/"
+  else
+    rm -rf "$dst"
+    mkdir -p "$dst"
+    cp -R "$src"/. "$dst"/
+  fi
   echo "[openvibe-sdk] copied tree ${dst#$SDK/}"
 }
 
