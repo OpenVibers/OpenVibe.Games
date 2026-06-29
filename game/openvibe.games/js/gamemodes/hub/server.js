@@ -38,6 +38,17 @@ const GM = {
     return undefined;
   },
 
+  ConsoleCommand(text) {
+    OV.log(`Hub ConsoleCommand: ${text}`);
+
+    if (text === "smoke") {
+      OV.broadcast("OpenVibe embedded JS smoke test passed.");
+      return false;
+    }
+
+    return undefined;
+  },
+
   Think() {}
 };
 

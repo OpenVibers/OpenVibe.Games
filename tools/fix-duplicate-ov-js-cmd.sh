@@ -1,3 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
+SDK="${OPENVIBE_SDK:-$ROOT/engine/source-sdk-2013}"
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+cd "$ROOT"
+
+backup_file() {
+  local file="$1"
+  [[ -f "$file" ]] && cp "$file" "$file.bak.$STAMP"
+}
+
+echo "[openvibe] fixing duplicate ov_js_cmd and canonicalizing embedded JS server bridge"
+
+mkdir -p sdk/openvibe/server/hl2mp
+
+backup_file sdk/openvibe/server/hl2mp/openvibe_js_server.cpp
+backup_file sdk/openvibe/server/hl2mp/openvibe_server.cpp
+
+cat > sdk/openvibe/server/hl2mp/openvibe_js_server.cpp <<'CPP'
 #include "cbase.h"
 #include "hl2mp_player.h"
 #include "openvibe_js_server.h"
@@ -265,3 +287,155 @@ static ConCommand ov_js_cmd(
     "Send a ConsoleCommand event into the embedded OpenVibe JavaScript runtime.",
     FCVAR_GAMEDLL
 );
+CPP
+
+echo "[openvibe] canonical openvibe_js_server.cpp written"
+
+echo "[openvibe] removing stale legacy Node bridge remnants from openvibe_server.cpp"
+
+python3 <<'PY'
+from pathlib import Path
+import re
+
+p = Path("sdk/openvibe/server/hl2mp/openvibe_server.cpp")
+s = p.read_text()
+
+# Remove legacy COpenVibeJsBridge class, if present.
+s = re.sub(
+    r'\n// ={10,}\n// OpenVibe\.JS - Scripting Engine C\+\+ Bridge\n// ={10,}\n\nclass COpenVibeJsBridge\b.*?\nstatic COpenVibeJsBridge g_OpenVibeJsBridge;\n',
+    '\n',
+    s,
+    flags=re.S,
+)
+
+# More tolerant fallback if banner text differs.
+s = re.sub(
+    r'\nclass COpenVibeJsBridge\b.*?\nstatic COpenVibeJsBridge g_OpenVibeJsBridge;\n',
+    '\n',
+    s,
+    flags=re.S,
+)
+
+# Remove old Node-bridge ov_js_cmd command if it survived.
+s = re.sub(
+    r'\nstatic void OV_JsCmd_f\s*\([^)]*\)\s*\{.*?\n\}\n\nstatic ConCommand ov_js_cmd\s*\(.*?\);\n',
+    '\n',
+    s,
+    flags=re.S,
+)
+
+# Remove obvious unused Node/socket includes from our tracked patch file.
+for inc in [
+    '#include <thread>\n',
+    '#include <mutex>\n',
+    '#include <queue>\n',
+    '#include <string>\n',
+    '#include <sstream>\n',
+    '#include <sys/socket.h>\n',
+    '#include <sys/un.h>\n',
+    '#include <unistd.h>\n',
+]:
+    s = s.replace(inc, '')
+
+# Ensure embedded JS include exists.
+if '#include "openvibe_js_server.h"' not in s:
+    s = re.sub(
+        r'(#include\s+"hl2mp_player\.h"\s*\n)',
+        r'\1#include "openvibe_js_server.h"\n',
+        s,
+        count=1,
+    )
+
+p.write_text(s)
+PY
+
+echo "[openvibe] removing duplicate ov_js_cmd from already-applied SDK file if present"
+
+SDK_SERVER_JS="$SDK/src/game/server/hl2mp/openvibe_js_server.cpp"
+if [[ -f "$SDK_SERVER_JS" ]]; then
+  cp "$SDK_SERVER_JS" "$SDK_SERVER_JS.bak.$STAMP"
+  cp sdk/openvibe/server/hl2mp/openvibe_js_server.cpp "$SDK_SERVER_JS"
+fi
+
+echo "[openvibe] ensure JS ConsoleCommand handlers are present"
+
+mkdir -p game/openvibe.games/js/gamemodes/base game/openvibe.games/js/gamemodes/hub
+
+python3 <<'PY'
+from pathlib import Path
+
+def ensure_console_handler(path: str, marker: str, handler_src: str):
+    p = Path(path)
+    s = p.read_text() if p.exists() else "const GM = {\n};\n\ngamemode.set(GM);\n"
+    if marker in s:
+        return
+    idx = s.rfind("};")
+    if idx == -1:
+        s += "\n" + handler_src + "\n"
+    else:
+        before = s[:idx].rstrip()
+        after = s[idx:]
+        if before.endswith("{"):
+            before = before + "\n" + handler_src.strip()
+        else:
+            before = before + ",\n\n" + handler_src.strip()
+        s = before + "\n" + after
+    p.write_text(s)
+
+ensure_console_handler(
+    "game/openvibe.games/js/gamemodes/base/server.js",
+    "Base ConsoleCommand",
+    '''ConsoleCommand(text) {
+    OV.log(`Base ConsoleCommand: ${text}`);
+  }'''
+)
+
+ensure_console_handler(
+    "game/openvibe.games/js/gamemodes/hub/server.js",
+    "Hub ConsoleCommand",
+    '''ConsoleCommand(text) {
+    OV.log(`Hub ConsoleCommand: ${text}`);
+    if (text === "smoke") {
+      OV.broadcast("Embedded JS smoke command worked.");
+    }
+  }'''
+)
+PY
+
+echo "[openvibe] apply SDK patch"
+tools/apply-openvibe-sdk.sh
+
+echo "[openvibe] verify only one ov_js_cmd exists in SDK copied source"
+grep -n "ConCommand ov_js_cmd" "$SDK/src/game/server/hl2mp/openvibe_js_server.cpp" || true
+count="$(grep -c "ConCommand ov_js_cmd" "$SDK/src/game/server/hl2mp/openvibe_js_server.cpp" || true)"
+if [[ "$count" != "1" ]]; then
+  echo "[openvibe] ERROR: expected exactly one ov_js_cmd, got $count" >&2
+  exit 1
+fi
+
+echo "[openvibe] build SDK"
+tools/build-sdk-linux.sh 2>&1 | tee "$HOME/ov-build.log"
+
+echo "[openvibe] setup OpenVibe bin"
+if [[ -x tools/setup-openvibe-bin.sh ]]; then
+  tools/setup-openvibe-bin.sh
+else
+  echo "[openvibe] WARNING: tools/setup-openvibe-bin.sh not found/executable; skipping"
+fi
+
+echo
+echo "[openvibe] phase build complete."
+echo
+echo "Next runtime test:"
+echo "  OPENVIBE_SRCDS_MAP_DELAY=3 tools/dev-up.sh"
+echo
+echo "Server console tests:"
+echo "  ov_js_status"
+echo "  ov_js_fire Initialize"
+echo "  ov_js_cmd smoke"
+echo
+echo "Client tests:"
+echo "  connect 127.0.0.1:27015"
+echo "  say !js"
+echo "  say !hp"
+echo "  say !players"

@@ -6,6 +6,10 @@ const GM = {
     OV.log("Base Initialize fired");
   },
 
+  MapInitialize(mapName) {
+    OV.log(`Base MapInitialize: ${mapName}`);
+  },
+
   PlayerInitialSpawn(ply) {
     ply.chat("Welcome to OpenVibe: Source.");
   },
@@ -20,7 +24,16 @@ const GM = {
     return undefined;
   },
 
-  Think() {}
+  ConsoleCommand(text) {
+    OV.log(`ConsoleCommand: ${text}`);
+    return undefined;
+  },
+
+  Think() {},
+
+ConsoleCommand(text) {
+    OV.log(`Base ConsoleCommand: ${text}`);
+  }
 };
 
 gamemode.set(GM);

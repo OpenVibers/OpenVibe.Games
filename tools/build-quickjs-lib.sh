@@ -16,7 +16,7 @@ fi
 
 mkdir -p "$SDK_QJS"
 
-# Exclude build/ so rsync does not delete our .o/.a output dir.
+# Exclude build/ so rsync does not delete object/library output.
 rsync -a --delete --exclude='build/' "$SRC_QJS/" "$SDK_QJS/"
 
 mkdir -p "$OUT"
