@@ -1,10 +1,24 @@
 # Windows Source SDK bootstrap
 
-The GitHub Actions Windows runner does not have Alex's local `engine/source-sdk-2013` checkout. The workflow bootstraps it by cloning ValveSoftware/source-sdk-2013.
+The Windows GitHub Actions runner is fresh and does not have Alex's local `engine/source-sdk-2013` checkout.
 
-Important detail: the Source SDK 2013 multiplayer code is normally on the `mp` branch, not necessarily in a `mp/` directory on the default branch. The bootstrap script now supports both layouts:
+The workflow bootstraps Valve's public Source SDK 2013 repository into:
 
-- `source-sdk-2013` checked out directly on the `mp` branch, with `src/...` at repo root
-- older/mirrored layout with `mp/src/...`
+```text
+engine/source-sdk-2013
+```
 
-The workflow should not upload or install stock/stale DLLs. A DLL artifact is considered useful only when `client.dll` contains OpenVibe command strings such as `ov_join`, `ov_menu`, or `OpenVibe`.
+The expected SDK layout is:
+
+```text
+engine/source-sdk-2013/src/game/client/hl2mp
+engine/source-sdk-2013/src/game/server/hl2mp
+```
+
+The bootstrap intentionally downloads the default/master zip first:
+
+```text
+https://codeload.github.com/ValveSoftware/source-sdk-2013/zip/refs/heads/master
+```
+
+This avoids brittle branch assumptions and avoids GitHub Actions `git` auth/header issues. A git clone fallback is still present for debugging.

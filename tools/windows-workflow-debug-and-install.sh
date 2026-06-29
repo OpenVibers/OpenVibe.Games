@@ -52,3 +52,6 @@ else
   echo "[openvibe] no DLL artifact available yet" >&2
   exit 3
 fi
+
+
+# Extra bootstrap tails for current Windows workflow debugging.
