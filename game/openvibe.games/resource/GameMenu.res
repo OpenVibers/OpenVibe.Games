@@ -2,53 +2,89 @@
 {
     "1"
     {
-        "label" "OpenVibe.Games Menu"
-        "command" "engine openvibe_menu"
+        "label" "OpenVibe Main Menu"
+        "command" "engine ov_menu_main"
         "OnlyInGame" "0"
     }
     "2"
     {
-        "label" "Enter Hub"
-        "command" "engine connect 127.0.0.1:27015"
+        "label" "Server Browser"
+        "command" "engine ov_menu_servers"
         "OnlyInGame" "0"
     }
     "3"
-    {
-        "label" "Prop Hunt"
-        "command" "engine connect 127.0.0.1:27016"
-        "OnlyInGame" "0"
-    }
-    "4"
-    {
-        "label" "Deathrun"
-        "command" "engine connect 127.0.0.1:27017"
-        "OnlyInGame" "0"
-    }
-    "5"
-    {
-        "label" "Fort Wars"
-        "command" "engine connect 127.0.0.1:27018"
-        "OnlyInGame" "0"
-    }
-    "6"
-    {
-        "label" "Traitor Town"
-        "command" "engine connect 127.0.0.1:27019"
-        "OnlyInGame" "0"
-    }
-    "7"
     {
         "label" ""
         "command" ""
         "OnlyInGame" "0"
     }
+    "4"
+    {
+        "label" "Enter Hub"
+        "command" "engine ov_join hub"
+        "OnlyInGame" "0"
+    }
+    "5"
+    {
+        "label" "Prop Hunt"
+        "command" "engine ov_join prophunt"
+        "OnlyInGame" "0"
+    }
+    "6"
+    {
+        "label" "Deathrun"
+        "command" "engine ov_join deathrun"
+        "OnlyInGame" "0"
+    }
+    "7"
+    {
+        "label" "Fort Wars"
+        "command" "engine ov_join fortwars"
+        "OnlyInGame" "0"
+    }
     "8"
+    {
+        "label" "Traitor Town"
+        "command" "engine ov_join traitortown"
+        "OnlyInGame" "0"
+    }
+    "9"
+    {
+        "label" ""
+        "command" ""
+        "OnlyInGame" "0"
+    }
+    "10"
+    {
+        "label" "Inventory"
+        "command" "engine ov_menu_inventory"
+        "OnlyInGame" "0"
+    }
+    "11"
+    {
+        "label" "Shop"
+        "command" "engine ov_menu_shop"
+        "OnlyInGame" "0"
+    }
+    "12"
+    {
+        "label" "Settings"
+        "command" "engine ov_menu_settings"
+        "OnlyInGame" "0"
+    }
+    "13"
+    {
+        "label" ""
+        "command" ""
+        "OnlyInGame" "0"
+    }
+    "14"
     {
         "label" "Options"
         "command" "OpenOptionsDialog"
         "OnlyInGame" "0"
     }
-    "9"
+    "15"
     {
         "label" "Quit"
         "command" "Quit"

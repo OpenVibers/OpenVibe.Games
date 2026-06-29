@@ -7,6 +7,7 @@
 //   OpenVibe API for production authentication.
 // - ov_open_url: small convenience command for opening openvibe.games.
 // - clientside ov_* wrappers that forward dev/test commands to the server.
+// - clientside ov_* wrappers that forward dev/test commands to the server.
 
 #include "cbase.h"
 #include "cdll_client_int.h"

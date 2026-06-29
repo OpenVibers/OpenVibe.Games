@@ -61,6 +61,16 @@ function apiPost(urlPath, body) {
   });
 }
 
+
+function clientUiUrl(route = 'portal', extraParams = {}) {
+  const params = new URLSearchParams({
+    electron: '1',
+    shell: 'electron',
+    ...extraParams,
+  });
+  return `http://127.0.0.1:${CLIENT_UI_PORT}/client/?${params.toString()}#${encodeURIComponent(route)}`;
+}
+
 function waitForHttp(url, timeoutMs = 5000) {
   const started = Date.now();
   return new Promise((resolve) => {
@@ -227,6 +237,11 @@ ipcMain.handle('game:status', () => ({
 
 ipcMain.on('open-url', (_e, url) => shell.openExternal(url));
 
+ipcMain.on('ui:set-route', (_e, route) => {
+  const safe = ['portal', 'servers', 'leaderboard', 'inventory', 'shop', 'settings'].includes(route) ? route : 'portal';
+  mainWindow?.webContents.send('ui:set-route', safe);
+});
+
 // ── Window creation ────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -246,7 +261,16 @@ function createWindow() {
     show: false,
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  const root = path.resolve(__dirname, '..');
+  ensureClientUiServer(root).then((ok) => {
+    if (mainWindow?.isDestroyed()) return;
+
+    if (ok) {
+      mainWindow.loadURL(clientUiUrl('portal'));
+    } else {
+      mainWindow.loadFile(path.join(__dirname, 'index.html'));
+    }
+  });
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();

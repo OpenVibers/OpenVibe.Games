@@ -22,7 +22,7 @@ using namespace vgui;
 
 static ConVar ov_menu_url(
 	"ov_menu_url",
-	"http://127.0.0.1:5173/client/?embedded=1",
+	"http://127.0.0.1:5173/client/?embedded=1&shell=source#portal",
 	FCVAR_ARCHIVE,
 	"OpenVibe HTML menu URL." );
 
@@ -371,3 +371,84 @@ static ConCommand ov_menu_js_cmd(
 	OV_MenuJS_f,
 	"Run JavaScript in the OpenVibe embedded HTML menu.",
 	FCVAR_CLIENTDLL );
+
+// OPENVIBE_UNIFIED_UI_ROUTE_COMMANDS_BEGIN
+static void OV_OpenMenuRoute( const char *pszRoute )
+{
+	char szBase[512];
+	Q_strncpy( szBase, ov_menu_url.GetString(), sizeof( szBase ) );
+
+	for ( int i = 0; szBase[i]; ++i )
+	{
+		if ( szBase[i] == '#' )
+		{
+			szBase[i] = '\0';
+			break;
+		}
+	}
+
+	const char *pszSafeRoute =
+		( pszRoute && pszRoute[0] ) ? pszRoute : "portal";
+
+	char szURL[768];
+	Q_snprintf( szURL, sizeof( szURL ), "%s#%s", szBase, pszSafeRoute );
+
+	OV_GetHTMLMenu()->Open( szURL );
+}
+
+static void OV_MenuMain_f( const CCommand &args ) { OV_OpenMenuRoute( "portal" ); }
+static void OV_MenuServers_f( const CCommand &args ) { OV_OpenMenuRoute( "servers" ); }
+static void OV_MenuLeaderboard_f( const CCommand &args ) { OV_OpenMenuRoute( "leaderboard" ); }
+static void OV_MenuInventory_f( const CCommand &args ) { OV_OpenMenuRoute( "inventory" ); }
+static void OV_MenuShop_f( const CCommand &args ) { OV_OpenMenuRoute( "shop" ); }
+static void OV_MenuSettings_f( const CCommand &args ) { OV_OpenMenuRoute( "settings" ); }
+
+static ConCommand ov_ui_cmd(
+	"ov_ui",
+	OV_MenuMain_f,
+	"Open the synced OpenVibe HTML UI.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_main_menu_cmd(
+	"ov_main_menu",
+	OV_MenuMain_f,
+	"Open the custom OpenVibe main menu.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_main_cmd(
+	"ov_menu_main",
+	OV_MenuMain_f,
+	"Open the OpenVibe portal route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_servers_cmd(
+	"ov_menu_servers",
+	OV_MenuServers_f,
+	"Open the OpenVibe server browser route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_leaderboard_cmd(
+	"ov_menu_leaderboard",
+	OV_MenuLeaderboard_f,
+	"Open the OpenVibe leaderboard route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_inventory_cmd(
+	"ov_menu_inventory",
+	OV_MenuInventory_f,
+	"Open the OpenVibe inventory route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_shop_cmd(
+	"ov_menu_shop",
+	OV_MenuShop_f,
+	"Open the OpenVibe shop route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_settings_route_cmd(
+	"ov_menu_settings",
+	OV_MenuSettings_f,
+	"Open the OpenVibe settings route.",
+	FCVAR_CLIENTDLL );
+// OPENVIBE_UNIFIED_UI_ROUTE_COMMANDS_END
+

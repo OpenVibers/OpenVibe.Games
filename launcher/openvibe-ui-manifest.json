@@ -1,0 +1,21 @@
+{
+  "name": "OpenVibe Unified Shell",
+  "version": "2026.06.28-ui-sync",
+  "origin": "openvibe.games",
+  "defaultRoute": "portal",
+  "routes": [
+    { "id": "portal", "label": "Portal", "kind": "play" },
+    { "id": "servers", "label": "Servers", "kind": "play" },
+    { "id": "leaderboard", "label": "Leaderboard", "kind": "profile" },
+    { "id": "inventory", "label": "Inventory", "kind": "profile" },
+    { "id": "shop", "label": "Shop", "kind": "profile" },
+    { "id": "settings", "label": "Settings", "kind": "system" }
+  ],
+  "modes": {
+    "hub": { "label": "Hub", "port": 27015 },
+    "prophunt": { "label": "Prop Hunt", "port": 27016 },
+    "deathrun": { "label": "Deathrun", "port": 27017 },
+    "fortwars": { "label": "Fort Wars", "port": 27018 },
+    "traitortown": { "label": "Traitor Town", "port": 27019 }
+  }
+}
