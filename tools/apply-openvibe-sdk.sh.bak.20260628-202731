@@ -215,20 +215,3 @@ if ! grep -q 'libquickjs_openvibe.a' "$SERVER_VPC"; then
   perl -0pi -e 's/(\$File\s+"hl2mp\\openvibe_js_server\.cpp"\n)/$1\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe.a"\n/s' "$SERVER_VPC"
   echo "[openvibe-sdk] linked QuickJS static library"
 fi
-
-
-# OPENVIBE_REMOVE_DIRECT_QUICKJS_C
-if [[ -f "$SERVER_VPC" ]]; then
-  perl -0pi -e '
-    s/^.*quickjs\\quickjs\.c.*\n//mg;
-    s/^.*quickjs\\libregexp\.c.*\n//mg;
-    s/^.*quickjs\\libunicode\.c.*\n//mg;
-    s/^.*quickjs\\cutils\.c.*\n//mg;
-    s/^.*quickjs\\dtoa\.c.*\n//mg;
-    s/^.*quickjs\\libbf\.c.*\n//mg;
-  ' "$SERVER_VPC"
-
-  if ! grep -q 'libquickjs_openvibe.a' "$SERVER_VPC"; then
-    perl -0pi -e 's/(\$File\s+"hl2mp\\openvibe_js_server\.cpp"\n)/$1\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe.a"\n/s' "$SERVER_VPC"
-  fi
-fi

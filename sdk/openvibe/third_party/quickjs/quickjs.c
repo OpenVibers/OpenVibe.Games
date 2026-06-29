@@ -1,3 +1,20 @@
+#ifndef OPENVIBE_QUICKJS_STRICT_C_SHIM
+#define OPENVIBE_QUICKJS_STRICT_C_SHIM
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
+#ifndef CONFIG_VERSION
+#define CONFIG_VERSION "openvibe"
+#endif
+
+#if defined(__GNUC__) && !defined(__cplusplus) && defined(__STRICT_ANSI__) && !defined(asm)
+#define asm __asm__
+#endif
+
+#endif
+
 /*
  * QuickJS Javascript Engine
  *

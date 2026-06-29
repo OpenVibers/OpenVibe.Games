@@ -7,8 +7,7 @@ TMP="${TMPDIR:-/tmp}/openvibe-quickjs-vendor"
 
 rm -rf "$TMP"
 
-git clone --depth 1 https://github.com/bellard/quickjs.git "$TMP" || \
-git clone --depth 1 https://github.com/quickjs-ng/quickjs.git "$TMP"
+git clone --depth 1 https://github.com/bellard/quickjs.git "$TMP"
 
 rm -rf "$DEST"
 mkdir -p "$DEST"
