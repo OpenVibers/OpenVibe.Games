@@ -1,3 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
+BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
+cd "$ROOT"
+
+echo "[openvibe] fix QuickJS MSVC sys/time.h shim + rerun Windows DLL workflow"
+echo "[openvibe] root=$ROOT"
+echo "[openvibe] branch=${BRANCH:-unknown}"
+
+mkdir -p tools docs
+
+cat > tools/build-quickjs-lib-windows.ps1 <<'PS1'
 $ErrorActionPreference = 'Stop'
 
 $Root = if ($env:OPENVIBE_ROOT) { (Resolve-Path $env:OPENVIBE_ROOT).Path } else { (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
@@ -126,3 +140,60 @@ if ($LASTEXITCODE -ne 0) { throw "lib.exe failed" }
 if (!(Test-Path $outLib)) { throw "lib.exe did not produce $outLib" }
 
 Say "built $outLib"
+PS1
+
+cat > docs/WINDOWS_QUICKJS_MSVC.md <<'MD'
+# Windows QuickJS MSVC Build Note
+
+The vendored QuickJS C source includes POSIX `<sys/time.h>`, which MSVC does not provide. The Windows QuickJS build helper now generates a tiny compatibility include directory at build time:
+
+```text
+engine/source-sdk-2013/src/game/shared/openvibe/third_party/quickjs/build/compat/include/sys/time.h
+```
+
+That shim defines `struct timeval` and `gettimeofday()` using `GetSystemTimeAsFileTime()`, then passes the compatibility include directory to `cl.exe` before compiling QuickJS.
+
+This keeps Linux builds unchanged while allowing the Windows GitHub Actions runner to produce `libquickjs_openvibe.lib` for `client.dll` / `server.dll` builds.
+MD
+
+# Keep local generated diagnostics out of future commits.
+if [[ -f .gitignore ]]; then
+  grep -qxF 'artifacts/' .gitignore || echo 'artifacts/' >> .gitignore
+  grep -qxF '_deps/' .gitignore || echo '_deps/' >> .gitignore
+  grep -qxF 'engine/source-sdk-2013/' .gitignore || echo 'engine/source-sdk-2013/' >> .gitignore
+else
+  cat > .gitignore <<'GI'
+artifacts/
+_deps/
+engine/source-sdk-2013/
+GI
+fi
+
+# Avoid staging downloaded workflow diagnostics again.
+git rm -r --cached artifacts >/dev/null 2>&1 || true
+
+git add .gitignore docs/WINDOWS_QUICKJS_MSVC.md tools/build-quickjs-lib-windows.ps1 "$0" 2>/dev/null || \
+  git add .gitignore docs/WINDOWS_QUICKJS_MSVC.md tools/build-quickjs-lib-windows.ps1
+
+echo "[openvibe] git diff summary"
+git diff --cached --stat || true
+
+if ! git diff --cached --quiet; then
+  git commit -m "Fix QuickJS MSVC compatibility build"
+  git push
+else
+  echo "[openvibe] no changes to commit"
+fi
+
+if [[ -x tools/trigger-windows-dll-build-clean.sh ]]; then
+  echo "[openvibe] triggering clean Windows DLL build"
+  tools/trigger-windows-dll-build-clean.sh
+else
+  REPO="$(git remote get-url origin | sed -E 's#^git@github.com:##; s#^https://github.com/##; s#\.git$##')"
+  echo "[openvibe] triggering workflow repo=$REPO"
+  gh workflow run windows-source-sdk-dlls.yml --repo "$REPO" --ref "${BRANCH:-codex/openvibe-next-steps}"
+  sleep 5
+  gh run list --repo "$REPO" --workflow windows-source-sdk-dlls.yml --limit 3
+fi
+
+echo "[openvibe] done"
