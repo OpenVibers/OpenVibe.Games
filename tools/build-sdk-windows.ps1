@@ -17,6 +17,31 @@ function Require($p, $msg) {
   if (!(Test-Path $p)) { throw "$msg`nMissing: $p" }
 }
 
+function Ensure-PythonOnPath {
+  $pyCmd = Get-Command python.exe -ErrorAction SilentlyContinue
+  if (-not $pyCmd) { $pyCmd = Get-Command python -ErrorAction SilentlyContinue }
+  if ($pyCmd) {
+    Say "python=$($pyCmd.Source)"
+    try { & $pyCmd.Source --version 2>&1 | Tee-Object -FilePath (Join-Path $LogDir "python-version.txt") | Out-Null } catch {}
+    return
+  }
+
+  $pyLauncher = Get-Command py.exe -ErrorAction SilentlyContinue
+  if ($pyLauncher) {
+    $shimDir = Join-Path $Root "_tools/python-shim"
+    New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+    $shim = Join-Path $shimDir "python.bat"
+    "@echo off`r`npy -3 %*`r`n" | Set-Content -Encoding ascii $shim
+    $env:PATH = "$shimDir;$env:PATH"
+    Say "python shim=$shim"
+    & python --version 2>&1 | Tee-Object -FilePath (Join-Path $LogDir "python-version.txt") | Out-Null
+    return
+  }
+
+  throw "python was not found on PATH and py.exe was not found. Add actions/setup-python before the build step."
+}
+
+
 function Find-VcVars64 {
   $candidates = @(
     "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
@@ -53,6 +78,8 @@ Say "cl.exe already available"
 where.exe cl | Out-File (Join-Path $LogDir "where-cl.txt")
 where.exe msbuild | Out-File (Join-Path $LogDir "where-msbuild.txt")
 where.exe lib | Out-File (Join-Path $LogDir "where-lib.txt")
+Ensure-PythonOnPath
+
 
 # Apply OpenVibe source files using Git Bash when available. Skip Linux QuickJS build on Windows.
 $bash = (Get-Command bash -ErrorAction SilentlyContinue)
@@ -197,6 +224,67 @@ function Invoke-MSBuildProject([System.IO.FileInfo]$proj, [string]$label) {
   return $false
 }
 
+
+function Find-ProjectByPattern([string]$pattern) {
+  return @(Get-ChildItem -Path $Src -Recurse -File -Filter $pattern -ErrorAction SilentlyContinue |
+    Sort-Object @{ Expression = { if ($_.FullName -match "\\(mathlib|tier1|raytrace|vgui2|fgdlib)\\") { 0 } else { 1 } } }, FullName)
+}
+
+function Copy-LibIfNeeded([string]$libName, [string]$destDir) {
+  New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+  $dest = Join-Path $destDir $libName
+  if (Test-Path $dest) { return }
+  $found = Get-ChildItem -Path $Sdk -Recurse -File -Filter $libName -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -notmatch "artifacts|windows-build-debug|_deps" } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+  if ($found) {
+    Say "copying fallback lib $($found.FullName) -> $dest"
+    Copy-Item $found.FullName $dest -Force
+  }
+}
+
+function Build-SourceSdkDependencyProjects {
+  Say "building Source SDK dependency libraries before HL2MP client/server"
+
+  $patterns = @(
+    "tier1*_win64.vcxproj",
+    "mathlib*_win64.vcxproj",
+    "raytrace*_win64.vcxproj",
+    "vgui_controls*_win64.vcxproj",
+    "matsys_controls*_win64.vcxproj",
+    "fgdlib*_win64.vcxproj"
+  )
+
+  $projects = @()
+  foreach ($pat in $patterns) {
+    $projects += Find-ProjectByPattern $pat
+  }
+  $projects = @($projects | Sort-Object FullName -Unique)
+
+  "=== dependency projects ===" | Out-File (Join-Path $LogDir "dependency-projects.txt")
+  $projects | Select-Object FullName,Length,LastWriteTime | Format-List | Out-File (Join-Path $LogDir "dependency-projects.txt") -Append
+
+  foreach ($dep in $projects) {
+    $label = "dep-$($dep.BaseName -replace '[^A-Za-z0-9]+','_')"
+    [void](Invoke-MSBuildProject $dep $label)
+  }
+
+  $publicX64 = Join-Path $Src "lib/public/x64"
+  Copy-LibIfNeeded "mathlib.lib" $publicX64
+  Copy-LibIfNeeded "tier1.lib" $publicX64
+  Copy-LibIfNeeded "raytrace.lib" $publicX64
+  Copy-LibIfNeeded "vgui_controls.lib" $publicX64
+  Copy-LibIfNeeded "matsys_controls.lib" $publicX64
+
+  "=== public x64 libs after deps ===" | Out-File (Join-Path $LogDir "public-x64-libs-after-deps.txt")
+  if (Test-Path $publicX64) {
+    Get-ChildItem -Path $publicX64 -File -ErrorAction SilentlyContinue |
+      Select-Object FullName,Length,LastWriteTime |
+      Format-List | Out-File (Join-Path $LogDir "public-x64-libs-after-deps.txt") -Append
+  }
+}
+
 # Generate projects if no relevant vcxproj files exist yet.
 $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
 $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
@@ -238,6 +326,8 @@ $serverProject = $serverProjects |
               @{ Expression = { if ($_.Name -match '^server') { 0 } else { 1 } } },
               FullName |
   Select-Object -First 1
+
+Build-SourceSdkDependencyProjects
 
 $beforeBuild = Get-Date
 
