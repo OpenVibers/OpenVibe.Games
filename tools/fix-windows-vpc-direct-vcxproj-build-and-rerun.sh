@@ -1,3 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
+cd "$ROOT"
+
+BRANCH="$(git branch --show-current)"
+echo "[openvibe] fix Windows build: VPC generated extensionless solution / direct vcxproj build"
+echo "[openvibe] root=$ROOT"
+echo "[openvibe] branch=$BRANCH"
+
+mkdir -p tools docs
+
+cat > tools/build-sdk-windows.ps1 <<'PS1'
 param(
   [switch]$InDevShell
 )
@@ -288,3 +302,34 @@ Copy-Item $client.FullName (Join-Path $OutBin "client.dll") -Force
 Copy-Item $server.FullName (Join-Path $OutBin "server.dll") -Force
 
 Say "done"
+PS1
+
+cat > docs/WINDOWS_VPC_DIRECT_PROJECT_BUILD.md <<'EOF'
+# Windows VPC direct project build
+
+Valve's `createallprojects.bat` runs VPC and is expected to emit `everything.sln`, but on the hosted runner VPC logged an extensionless `everything` solution while still generating the actual HL2MP `.vcxproj` files.
+
+The Windows build now treats the solution as optional and builds the generated HL2MP client/server projects directly:
+
+- `client*_hl2mp*.vcxproj`
+- `server*_hl2mp*.vcxproj`
+
+It also records generated projects and DLL locations in `artifacts/windows-build-debug`.
+EOF
+
+echo "[openvibe] git diff summary"
+git diff --stat -- tools/build-sdk-windows.ps1 docs/WINDOWS_VPC_DIRECT_PROJECT_BUILD.md || true
+
+git add tools/build-sdk-windows.ps1 docs/WINDOWS_VPC_DIRECT_PROJECT_BUILD.md "$0"
+if ! git diff --cached --quiet; then
+  git commit -m "Build Windows Source SDK HL2MP projects directly"
+fi
+
+git push origin "$BRANCH"
+
+echo "[openvibe] triggering clean Windows DLL build"
+if [[ -x tools/trigger-windows-dll-build-clean.sh ]]; then
+  tools/trigger-windows-dll-build-clean.sh
+else
+  tools/gh-windows-build-and-install.sh
+fi
