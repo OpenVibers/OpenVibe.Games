@@ -69,19 +69,21 @@ npm run build
 npm test
 ```
 
-Current result: TypeScript build passes and 9 tests pass.
+Current result: TypeScript build passes and 11 tests pass.
 
 ## Maps And SRCDS
 
-The VMF generator now emits portal commands using `ov_join`:
+The VMF generator currently emits direct local connects for the Proton fallback:
 
 ```text
-ov_join hub
-ov_join prophunt
-ov_join deathrun
-ov_join fortwars
-ov_join traitortown
+connect 127.0.0.1:27015
+connect 127.0.0.2:27016
+connect 127.0.0.3:27017
+connect 127.0.0.4:27018
+connect 127.0.0.5:27019
 ```
+
+Set `OPENVIBE_USE_OV_JOIN=1` while regenerating VMFs to bake authenticated `ov_join <mode>` commands.
 
 Compiled and smoke-tested BSPs:
 

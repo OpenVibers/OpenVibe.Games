@@ -87,7 +87,7 @@ VScript cannot make HTTP requests directly.  The sidecar bridges the gap:
 
 ## C++ Travel Flow
 
-Portal pads now call `ov_join <mode>` instead of hardcoded `connect` commands:
+The authenticated travel flow is implemented for rebuilt OpenVibe client DLLs:
 
 ```text
 1. Player steps on portal pad.
@@ -98,6 +98,8 @@ Portal pads now call `ov_join <mode>` instead of hardcoded `connect` commands:
 6. Destination server reads the token after player activation.
 7. Server C++ validates the token with `/v1/travel/validate`.
 ```
+
+The checked-in dev BSPs currently use direct local `connect` commands as a Proton fallback. Regenerate VMFs with `OPENVIBE_USE_OV_JOIN=1` to bake the authenticated path into portal pads.
 
 ## GameDLL Feature Hooks
 

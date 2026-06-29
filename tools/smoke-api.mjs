@@ -38,7 +38,7 @@ const server = await post("/v1/servers/register", {
   serverSecret,
   mode: "prophunt",
   mapName: "ph_openvibe_dev",
-  publicHost: "127.0.0.1",
+  publicHost: "127.0.0.2",
   port: 27016,
   maxPlayers: 24,
 });

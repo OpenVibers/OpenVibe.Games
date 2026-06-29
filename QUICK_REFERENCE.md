@@ -67,15 +67,17 @@ node tools/generate-dev-vmfs.mjs
 tools/compile-dev-maps-wine.sh
 ```
 
-Portal pads currently emit:
+Portal pads currently emit direct local connects for the Proton fallback:
 
 ```text
-ov_join hub
-ov_join prophunt
-ov_join deathrun
-ov_join fortwars
-ov_join traitortown
+connect 127.0.0.1:27015
+connect 127.0.0.2:27016
+connect 127.0.0.3:27017
+connect 127.0.0.4:27018
+connect 127.0.0.5:27019
 ```
+
+Set `OPENVIBE_USE_OV_JOIN=1` before regenerating VMFs to bake authenticated `ov_join <mode>` portal commands for a rebuilt custom client DLL.
 
 ## Client / Server Commands
 
@@ -95,6 +97,7 @@ ov_join traitortown
 curl -s http://127.0.0.1:3000/health | jq
 curl -s http://127.0.0.1:3000/v1/servers | jq
 curl -s http://127.0.0.1:3000/v1/assets/manifest | jq
+curl -s http://127.0.0.1:3000/metrics
 ```
 
 Travel request:
@@ -126,6 +129,13 @@ STEAM_WEB_API_KEY
 STEAM_APP_ID
 OPENVIBE_ADMIN_SECRET
 OPENVIBE_CDN_BASE_URL
+```
+
+## Backup
+
+```bash
+cd ~/src/openvibe-source
+tools/backup-postgres.sh
 ```
 
 ## Common Fixes

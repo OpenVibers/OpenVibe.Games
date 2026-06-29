@@ -17,8 +17,11 @@ game/openvibe.games/demoheader.tmp
 game/openvibe.games/download/
 game/openvibe.games/downloadlists/
 game/openvibe.games/logs/
-game/openvibe.games/materials/vgui/
+game/openvibe.games/materials/vgui/*
+!game/openvibe.games/materials/vgui/gfx/
+!game/openvibe.games/materials/vgui/gfx/**
 game/openvibe.games/cfg/settings.scr
+backups/
 
 *.core
 core

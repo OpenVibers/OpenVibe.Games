@@ -2,38 +2,38 @@
 {
     "1"
     {
-        "label" "OpenVibe Hub"
-        "command" "engine openvibe_menu"
+        "label" "OpenVibe.Games"
+        "command" "engine echo OpenVibe.Games"
         "OnlyInGame" "0"
     }
     "2"
     {
         "label" "Enter Hub"
-        "command" "engine ov_join hub"
+        "command" "engine connect 127.0.0.1:27015"
         "OnlyInGame" "0"
     }
     "3"
     {
         "label" "Prop Hunt"
-        "command" "engine ov_join prophunt"
+        "command" "engine connect 127.0.0.2:27016"
         "OnlyInGame" "0"
     }
     "4"
     {
         "label" "Deathrun"
-        "command" "engine ov_join deathrun"
+        "command" "engine connect 127.0.0.3:27017"
         "OnlyInGame" "0"
     }
     "5"
     {
         "label" "Fort Wars"
-        "command" "engine ov_join fortwars"
+        "command" "engine connect 127.0.0.4:27018"
         "OnlyInGame" "0"
     }
     "6"
     {
         "label" "Traitor Town"
-        "command" "engine ov_join traitortown"
+        "command" "engine connect 127.0.0.5:27019"
         "OnlyInGame" "0"
     }
     "7"

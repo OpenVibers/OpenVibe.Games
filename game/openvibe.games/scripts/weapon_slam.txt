@@ -1,0 +1,25 @@
+WeaponData
+{
+    "printname"             "#HL2_SLAM"
+    "viewmodel"             "models/weapons/v_slam.mdl"
+    "playermodel"           "models/weapons/w_slam.mdl"
+    "anim_prefix"           "slam"
+    "bucket"                "4"
+    "bucket_position"       "1"
+
+    "clip_size"             "-1"
+    "clip2_size"            "-1"
+    "default_clip"          "1"
+    "default_clip2"         "-1"
+
+    "primary_ammo"          "slam"
+    "secondary_ammo"        "None"
+    "weight"                "5"
+    "item_flags"            "18"
+
+    SoundData
+    {
+        "single_shot"       "Weapon_SLAM.SatchelThrow"
+        "special1"          "Weapon_SLAM.SatchelDetonate"
+    }
+}

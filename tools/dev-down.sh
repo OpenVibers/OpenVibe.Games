@@ -25,7 +25,7 @@ done
 kill_matching() {
   local signal="$1"
   local pattern="$2"
-  pgrep -f "$pattern" 2>/dev/null | while read -r pid; do
+  (pgrep -f "$pattern" 2>/dev/null || true) | while read -r pid; do
     if [[ "$pid" != "$$" ]]; then
       kill "-$signal" "$pid" 2>/dev/null || true
     fi

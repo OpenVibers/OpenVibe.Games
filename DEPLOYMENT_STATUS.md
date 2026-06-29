@@ -8,14 +8,14 @@
 - Backend API starts and responds on `http://127.0.0.1:3000`.
 - PostgreSQL dev database starts through the repo tooling.
 - Five SRCDS shards boot:
-  - Hub: `ov_hub` on `27015`
-  - Prop Hunt: `ph_openvibe_dev` on `27016`
-  - Deathrun: `dr_openvibe_dev` on `27017`
-  - Fort Wars: `fw_openvibe_dev` on `27018`
-  - Traitor Town: `tt_openvibe_dev` on `27019`
+  - Hub: `ov_hub` on `127.0.0.1:27015`
+  - Prop Hunt: `ph_openvibe_dev` on `127.0.0.2:27016`
+  - Deathrun: `dr_openvibe_dev` on `127.0.0.3:27017`
+  - Fort Wars: `fw_openvibe_dev` on `127.0.0.4:27018`
+  - Traitor Town: `tt_openvibe_dev` on `127.0.0.5:27019`
 - Sidecars register and heartbeat those servers with the backend.
 - Travel requests return live local connect targets for every mode.
-- Maps use `ov_join <mode>` portal commands instead of hardcoded connects.
+- Maps use direct local connect commands for the current Proton client fallback; regenerate with `OPENVIBE_USE_OV_JOIN=1` after rebuilding/loading the custom OpenVibe client DLL.
 
 ## Implemented Pieces
 
@@ -32,6 +32,9 @@
 | Steam auth | Implemented route | Requires real `STEAM_WEB_API_KEY` and `STEAM_APP_ID` for production. |
 | CDN manifest | Implemented route | Requires real hosted storage under `openvibe.games` for production content. |
 | Production infra | Scaffolded | Docker Compose, Docker Swarm, Kubernetes, nginx CDN config. |
+| Parties/friend invites | Implemented | Create party, invite, accept, capacity-aware party travel. |
+| Moderation/audit | Implemented | Admin audit event write/list routes. |
+| Metrics/backups | Implemented | `/metrics` endpoint and `tools/backup-postgres.sh`. |
 
 ## Verified
 
@@ -41,7 +44,7 @@ npm run build
 npm test
 ```
 
-Result: TypeScript build passed, 9 tests passed.
+Result: TypeScript build passed, 11 tests passed.
 
 ```bash
 cd ~/src/openvibe-source
@@ -81,6 +84,6 @@ Before public deployment:
 - Configure real Steam app identity and `STEAM_WEB_API_KEY`.
 - Host cosmetic assets under the `openvibe.games` CDN path.
 - Set real production secrets for API, Redis, PostgreSQL, and admin routes.
-- Add backups, metrics, health checks, log shipping, and deployment secret management.
+- Add alert routing, log shipping, deployment secret management, and regular restore drills.
 - Expand each game mode from prototype rules into full production gameplay.
 - Add moderation/admin UI and anti-abuse controls.

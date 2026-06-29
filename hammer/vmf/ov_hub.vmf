@@ -1026,7 +1026,6 @@ world
     "angles" "0 0 0"
     "model" "models/Humans/Group03/male_07.mdl"
     "solid" "0"
-    "DefaultAnim" "idle_all_01"
   }
   entity
   {
@@ -1037,7 +1036,6 @@ world
     "angles" "0 0 0"
     "model" "models/Humans/Group03/male_07.mdl"
     "solid" "0"
-    "DefaultAnim" "idle_all_01"
   }
   entity
   {
@@ -1080,7 +1078,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_prophunt,Command,ov_join prophunt,0,-1"
+      "OnStartTouch" "cmd_join_prophunt,Command,connect 127.0.0.2:27016,0,-1"
     }
     solid
     {
@@ -1178,7 +1176,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_deathrun,Command,ov_join deathrun,0,-1"
+      "OnStartTouch" "cmd_join_deathrun,Command,connect 127.0.0.3:27017,0,-1"
     }
     solid
     {
@@ -1276,7 +1274,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_fortwars,Command,ov_join fortwars,0,-1"
+      "OnStartTouch" "cmd_join_fortwars,Command,connect 127.0.0.4:27018,0,-1"
     }
     solid
     {
@@ -1374,7 +1372,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_traitortown,Command,ov_join traitortown,0,-1"
+      "OnStartTouch" "cmd_join_traitortown,Command,connect 127.0.0.5:27019,0,-1"
     }
     solid
     {

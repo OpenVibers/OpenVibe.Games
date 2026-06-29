@@ -5,13 +5,20 @@ import { OpenVibeRepository } from "./domain.js";
 import {
   authDevSchema,
   authSteamSchema,
+  acceptPartyInviteSchema,
+  auditEventSchema,
+  auditQuerySchema,
   buyItemSchema,
+  createPartySchema,
   equipItemSchema,
+  getPartyQuerySchema,
   getMeQuerySchema,
   heartbeatSchema,
   leaderboardQuerySchema,
   listServersQuerySchema,
   matchEndSchema,
+  partyInviteSchema,
+  partyTravelSchema,
   registerServerSchema,
   travelRequestSchema,
   upsertShopItemSchema,
@@ -226,6 +233,35 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return reservation;
   });
 
+  app.post("/v1/parties", async (request) => {
+    const body = createPartySchema.parse(request.body);
+    return options.repository.createParty(body);
+  });
+
+  app.get("/v1/parties", async (request, reply) => {
+    const query = getPartyQuerySchema.parse(request.query);
+    const party = await options.repository.getParty(query.partyId);
+    if (!party) return reply.code(404).send({ error: "party_not_found" });
+    return party;
+  });
+
+  app.post("/v1/parties/invite", async (request) => {
+    const body = partyInviteSchema.parse(request.body);
+    return options.repository.inviteToParty(body);
+  });
+
+  app.post("/v1/parties/invite/accept", async (request) => {
+    const body = acceptPartyInviteSchema.parse(request.body);
+    return options.repository.acceptPartyInvite(body);
+  });
+
+  app.post("/v1/parties/travel", async (request, reply) => {
+    const body = partyTravelSchema.parse(request.body);
+    const reservation = await options.repository.reservePartyTravel(body);
+    if (!reservation) return reply.code(404).send({ error: "no_server_with_party_capacity" });
+    return reservation;
+  });
+
   app.post("/v1/travel/validate", async (request) => {
     const body = validateJoinTokenSchema.parse(request.body);
     return options.repository.validateJoinToken(body);
@@ -255,6 +291,34 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (!requireAdmin(request, reply)) return;
     const body = upsertShopItemSchema.parse(request.body);
     return options.repository.upsertShopItem(body);
+  });
+
+  app.post("/v1/admin/audit/events", async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const body = auditEventSchema.parse(request.body);
+    return options.repository.recordAuditEvent(body);
+  });
+
+  app.get("/v1/admin/audit/events", async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const query = auditQuerySchema.parse(request.query);
+    return { events: await options.repository.listAuditEvents(query) };
+  });
+
+  app.get("/metrics", async (_request, reply) => {
+    const servers = await options.repository.listServers();
+    const open = servers.filter((server) => server.state === "open").length;
+    const players = servers.reduce((sum, server) => sum + server.playerCount, 0);
+    reply.type("text/plain; version=0.0.4");
+    return [
+      "# HELP openvibe_servers_open Number of open OpenVibe Source servers.",
+      "# TYPE openvibe_servers_open gauge",
+      `openvibe_servers_open ${open}`,
+      "# HELP openvibe_players_online Current players reported by live servers.",
+      "# TYPE openvibe_players_online gauge",
+      `openvibe_players_online ${players}`,
+      "",
+    ].join("\n");
   });
 
   app.addHook("onClose", async () => {

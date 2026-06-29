@@ -56,6 +56,31 @@ export const travelRequestSchema = z.object({
   mode,
 });
 
+export const createPartySchema = z.object({
+  leaderSteamId: steamId,
+});
+
+export const partyInviteSchema = z.object({
+  partyId: z.string().min(8).max(64),
+  invitedBySteamId: steamId,
+  invitedSteamId: steamId,
+});
+
+export const acceptPartyInviteSchema = z.object({
+  inviteId: z.string().min(8).max(64),
+  steamId,
+});
+
+export const getPartyQuerySchema = z.object({
+  partyId: z.string().min(8).max(64),
+});
+
+export const partyTravelSchema = z.object({
+  partyId: z.string().min(8).max(64),
+  leaderSteamId: steamId,
+  mode,
+});
+
 export const validateJoinTokenSchema = z.object({
   token: z.string().min(16).max(128),
   steamId,
@@ -86,4 +111,15 @@ export const upsertShopItemSchema = z.object({
   assetPath: z.string().min(1).max(255),
   price: z.number().int().min(0).max(100_000),
   enabled: z.boolean().default(true),
+});
+
+export const auditEventSchema = z.object({
+  actorSteamId: steamId,
+  action: z.string().trim().min(1).max(80),
+  targetSteamId: steamId.optional(),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const auditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
 });

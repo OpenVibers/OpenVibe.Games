@@ -46,13 +46,13 @@ openvibe-source/
 
 ## Game Modes
 
-| Mode | Map | Port | Join command |
-| --- | --- | ---: | --- |
-| Hub | `ov_hub` | 27015 | `ov_join hub` |
-| Prop Hunt | `ph_openvibe_dev` | 27016 | `ov_join prophunt` |
-| Deathrun | `dr_openvibe_dev` | 27017 | `ov_join deathrun` |
-| Fort Wars | `fw_openvibe_dev` | 27018 | `ov_join fortwars` |
-| Traitor Town | `tt_openvibe_dev` | 27019 | `ov_join traitortown` |
+| Mode | Map | Local target | Authenticated command |
+| --- | --- | --- | --- |
+| Hub | `ov_hub` | `127.0.0.1:27015` | `ov_join hub` |
+| Prop Hunt | `ph_openvibe_dev` | `127.0.0.2:27016` | `ov_join prophunt` |
+| Deathrun | `dr_openvibe_dev` | `127.0.0.3:27017` | `ov_join deathrun` |
+| Fort Wars | `fw_openvibe_dev` | `127.0.0.4:27018` | `ov_join fortwars` |
+| Traitor Town | `tt_openvibe_dev` | `127.0.0.5:27019` | `ov_join traitortown` |
 
 ## Build And Test
 
@@ -91,7 +91,7 @@ tools/dev-down.sh
 ## Verified On June 28, 2026
 
 - Backend TypeScript build passed.
-- Backend Vitest suite passed: 9 tests.
+- Backend Vitest suite passed: 11 tests.
 - Source SDK 2013 Linux64 build passed with OpenVibe C++ patch applied.
 - SRCDS smoke test passed for all five maps.
 - Full dev stack registered all five servers and returned valid travel targets for every mode.

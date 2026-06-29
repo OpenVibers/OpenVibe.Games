@@ -311,4 +311,88 @@ describe("OpenVibe API vertical slice", () => {
     expect(res.statusCode).toBe(403);
     await app.close();
   });
+
+  it("supports party invites and capacity-aware party travel", async () => {
+    const app = await testApp();
+    const friendSteamId = "76561198000000003";
+
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Party Leader" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: friendSteamId, displayName: "Party Friend" } });
+
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "party-prophunt-1", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27016, maxPlayers: 1 } });
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "party-prophunt-2", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27026, maxPlayers: 4 } });
+
+    const partyRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties",
+      payload: { leaderSteamId: steamId },
+    });
+    expect(partyRes.statusCode).toBe(200);
+    const party = partyRes.json();
+
+    const inviteRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/invite",
+      payload: { partyId: party.partyId, invitedBySteamId: steamId, invitedSteamId: friendSteamId },
+    });
+    expect(inviteRes.statusCode).toBe(200);
+
+    const acceptRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/invite/accept",
+      payload: { inviteId: inviteRes.json().inviteId, steamId: friendSteamId },
+    });
+    expect(acceptRes.json().members).toHaveLength(2);
+
+    const travelRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/travel",
+      payload: { partyId: party.partyId, leaderSteamId: steamId, mode: "prophunt" },
+    });
+    expect(travelRes.statusCode).toBe(200);
+    expect(travelRes.json().serverId).toBe("party-prophunt-2");
+    expect(travelRes.json().reservations).toHaveLength(2);
+
+    await app.close();
+  });
+
+  it("records and lists admin audit events", async () => {
+    const adminSecret = "test-admin-secret";
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      adminSecret,
+    });
+    await app.ready();
+
+    const event = await app.inject({
+      method: "POST",
+      url: "/v1/admin/audit/events",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        actorSteamId: steamId,
+        action: "moderation.note",
+        targetSteamId: "76561198000000004",
+        reason: "Testing moderation audit trail.",
+      },
+    });
+    expect(event.statusCode).toBe(200);
+    expect(event.json().action).toBe("moderation.note");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/admin/audit/events?limit=10",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().events).toHaveLength(1);
+
+    await app.close();
+  });
 });

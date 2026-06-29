@@ -82,6 +82,45 @@ export interface TravelReservation {
   expiresAt: string;
 }
 
+export interface PartyMember {
+  steamId: string;
+  displayName: string;
+  leader: boolean;
+  joinedAt: string;
+}
+
+export interface Party {
+  partyId: string;
+  leaderSteamId: string;
+  members: PartyMember[];
+}
+
+export interface PartyInvite {
+  inviteId: string;
+  partyId: string;
+  invitedSteamId: string;
+  invitedBySteamId: string;
+  status: "pending" | "accepted" | "declined" | "expired";
+  expiresAt: string;
+}
+
+export interface PartyTravelReservation {
+  partyId: string;
+  mode: GameMode;
+  serverId: string;
+  connect: string;
+  reservations: TravelReservation[];
+}
+
+export interface AuditEvent {
+  auditId: string;
+  actorSteamId: string;
+  action: string;
+  targetSteamId: string | null;
+  reason: string;
+  createdAt: string;
+}
+
 export interface JoinTokenValidation {
   valid: boolean;
   serverId?: string;
@@ -120,6 +159,19 @@ export interface OpenVibeRepository {
   heartbeat(input: HeartbeatInput): Promise<GameServer | null>;
   listServers(mode?: GameMode): Promise<GameServer[]>;
   reserveTravel(input: { steamId: string; mode: GameMode }): Promise<TravelReservation | null>;
+  createParty(input: { leaderSteamId: string }): Promise<Party>;
+  inviteToParty(input: {
+    partyId: string;
+    invitedBySteamId: string;
+    invitedSteamId: string;
+  }): Promise<PartyInvite>;
+  acceptPartyInvite(input: { inviteId: string; steamId: string }): Promise<Party>;
+  getParty(partyId: string): Promise<Party | null>;
+  reservePartyTravel(input: {
+    partyId: string;
+    leaderSteamId: string;
+    mode: GameMode;
+  }): Promise<PartyTravelReservation | null>;
   validateJoinToken(input: {
     token: string;
     steamId: string;
@@ -128,4 +180,11 @@ export interface OpenVibeRepository {
   recordMatchReward(input: MatchRewardInput): Promise<PlayerProfile | null>;
   getLeaderboard(options: { limit: number; mode?: GameMode }): Promise<LeaderboardEntry[]>;
   upsertShopItem(input: UpsertShopItemInput): Promise<ShopItem>;
+  recordAuditEvent(input: {
+    actorSteamId: string;
+    action: string;
+    targetSteamId?: string | null;
+    reason: string;
+  }): Promise<AuditEvent>;
+  listAuditEvents(options: { limit: number }): Promise<AuditEvent[]>;
 }

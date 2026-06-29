@@ -45,4 +45,5 @@ exec "$GE_PROTON/proton" waitforexitandrun \
     "$HL2_EXE" \
     -game "$GAME_DIR" \
     -console -dev -novid -sw -w 1280 -h 720 \
+    -port 27115 -clientport 27105 \
     $CONNECT_ARGS

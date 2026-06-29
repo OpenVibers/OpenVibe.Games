@@ -24,14 +24,15 @@ Implemented and tested locally:
 - **Prop Hunt C++ disguise command** - `ov_prophunt_disguise <model>` swaps the player to an allowlisted prop model; `ov_prophunt_reset_disguise` restores the player model.
 - **Fort Wars C++ placement command** - `ov_fortwars_spawn <crate|barrel|fence|plate|concrete>` spawns allowlisted physics props during the build phase.
 - **VScript game logic** - Squirrel scripts for hub, Prop Hunt, Deathrun, Fort Wars, and Traitor Town prototypes.
-- **Portal maps** - generated VMFs and compiled BSPs use `ov_join` portals for hub/minigame travel.
+- **Portal maps** - generated VMFs and compiled BSPs use direct local connects for the current Proton fallback; set `OPENVIBE_USE_OV_JOIN=1` when generating maps for a rebuilt custom client DLL.
 - **Sidecars** - tail SRCDS logs and bridge `[OV]` events to the backend API.
 - **Production infra skeleton** - Docker Compose, Docker Swarm stack, and Kubernetes manifests for API, PostgreSQL, Redis, and CDN/static assets.
+- **Hardening routes** - party invites, capacity-aware party travel, moderation/audit events, Prometheus-style metrics, and backup tooling.
 
 Verified locally on June 28, 2026:
 
 - `backend`: TypeScript build passes.
-- `backend`: 9 Vitest tests pass.
+- `backend`: 11 Vitest tests pass.
 - Source SDK 2013 Linux64 build passes with the OpenVibe C++ patch applied.
 - SRCDS smoke test passes for all five maps: `ov_hub`, `ph_openvibe_dev`, `dr_openvibe_dev`, `fw_openvibe_dev`, `tt_openvibe_dev`.
 - Full dev stack registers all five servers and returns travel targets for hub, Prop Hunt, Deathrun, Fort Wars, and Traitor Town.
@@ -154,7 +155,7 @@ Source client
   -> Steam auth ticket or dev auth
   -> OpenVibe.Games API
   -> Hub SRCDS
-  -> ov_join portal pads
+  -> portal pads
   -> Minigame SRCDS shards
 
 OpenVibe.Games API
@@ -164,6 +165,8 @@ OpenVibe.Games API
 ```
 
 Gameplay remains Source-style authoritative SRCDS instances. The MMO-style part is the shared OpenVibe.Games account, inventory, currency, travel, and server orchestration layer.
+
+Local Proton builds use direct portal connects so the maps work even when the Windows client DLL has not been rebuilt. The authenticated C++ travel path is still available by regenerating maps with `OPENVIBE_USE_OV_JOIN=1`.
 
 ## API Endpoints
 
@@ -183,8 +186,16 @@ Gameplay remains Source-style authoritative SRCDS instances. The MMO-style part 
 | `GET` | `/v1/servers` | List live servers |
 | `POST` | `/v1/travel/request` | Reserve travel token |
 | `POST` | `/v1/travel/validate` | Consume travel token |
+| `POST` | `/v1/parties` | Create party |
+| `GET` | `/v1/parties?partyId=` | Get party members |
+| `POST` | `/v1/parties/invite` | Invite friend to party |
+| `POST` | `/v1/parties/invite/accept` | Accept party invite |
+| `POST` | `/v1/parties/travel` | Reserve one server for the whole party |
 | `POST` | `/v1/matches/end` | Record match result + reward |
 | `POST` | `/v1/admin/shop/items` | Admin: upsert shop item |
+| `POST` | `/v1/admin/audit/events` | Admin: record moderation/audit event |
+| `GET` | `/v1/admin/audit/events` | Admin: list audit events |
+| `GET` | `/metrics` | Prometheus-style service metrics |
 
 ## Production Configuration
 
@@ -204,6 +215,13 @@ Infrastructure templates live in:
 - `infra/kubernetes/openvibe.yaml`
 - `infra/cdn/nginx.conf`
 
+Local database backups:
+
+```bash
+cd ~/src/openvibe-source
+tools/backup-postgres.sh
+```
+
 ## Remaining Work
 
 The foundation is running. The next real work is content and hardening:
@@ -211,6 +229,5 @@ The foundation is running. The next real work is content and hardening:
 - Replace dev models/trails with real OpenVibe cosmetic assets.
 - Add real hosted CDN storage behind `openvibe.games`.
 - Wire Steam production credentials and app identity.
-- Add party travel, friend invites, and reservation capacity checks.
 - Expand Prop Hunt, Deathrun, Fort Wars, and Traitor Town into full game rules.
-- Add admin moderation, audit views, metrics, backups, and deployment secrets management.
+- Add full admin web views, alert routing, and deployment secrets management.
