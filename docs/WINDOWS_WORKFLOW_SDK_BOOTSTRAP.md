@@ -1,23 +1,10 @@
-# Windows DLL workflow bootstrap
+# Windows Source SDK bootstrap
 
-The Windows GitHub Actions runner does not have the local `engine/source-sdk-2013` checkout that exists on the Linux workstation.
+The GitHub Actions Windows runner does not have Alex's local `engine/source-sdk-2013` checkout. The workflow bootstraps it by cloning ValveSoftware/source-sdk-2013.
 
-The workflow now bootstraps Valve's Source SDK 2013 multiplayer tree into:
+Important detail: the Source SDK 2013 multiplayer code is normally on the `mp` branch, not necessarily in a `mp/` directory on the default branch. The bootstrap script now supports both layouts:
 
-```text
-engine/source-sdk-2013
-```
+- `source-sdk-2013` checked out directly on the `mp` branch, with `src/...` at repo root
+- older/mirrored layout with `mp/src/...`
 
-Then it applies the OpenVibe SDK patch, skips the Linux QuickJS static-library build, builds QuickJS with MSVC, generates Visual Studio projects, builds `client.dll/server.dll`, and only uploads DLLs when `client.dll` contains OpenVibe command strings such as `ov_join`, `ov_menu`, or `OpenVibe`.
-
-Use:
-
-```bash
-tools/gh-windows-build-and-install.sh
-```
-
-or debug the latest run with:
-
-```bash
-tools/windows-workflow-debug-and-install.sh
-```
+The workflow should not upload or install stock/stale DLLs. A DLL artifact is considered useful only when `client.dll` contains OpenVibe command strings such as `ov_join`, `ov_menu`, or `OpenVibe`.
