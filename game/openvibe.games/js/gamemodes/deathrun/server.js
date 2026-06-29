@@ -1,24 +1,18 @@
-const GM = {
-  mode: "deathrun",
-  name: "OpenVibe Deathrun",
-
-  Initialize() {
-    OV.log("Deathrun Initialize fired");
-  },
-
-  PlayerInitialSpawn(ply) {
-    ply.chat("Deathrun: survive the traps and reach the finish.");
-  },
-
-  PlayerSay(ply, text) {
-    if (text === "!finish") {
-      ply.chat("Deathrun finish test.");
-      OV.reward(ply, 50, 100, "deathrun_finish");
+(function () {
+  function registerCommands() {
+    if (!globalThis.command) return;
+    command.add("dr_status", "Show Deathrun status", function ({ ply, reply }) {
+      reply(ply, `Deathrun JS online. map=${OV.getMapName()} players=${OV.players().length}`);
       return false;
-    }
-
-    return undefined;
+    });
   }
-};
 
-gamemode.set(GM);
+  const DeathrunGM = {
+    mode: "deathrun",
+    name: "OpenVibe Deathrun",
+    Initialize() { OV.log("Deathrun Initialize fired"); registerCommands(); },
+    PlayerInitialSpawn(ply) { ply.chat("Deathrun JS loaded. Try !dr_status"); },
+    Think() {}
+  };
+  gamemode.set(DeathrunGM);
+})();

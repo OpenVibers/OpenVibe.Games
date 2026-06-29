@@ -1,55 +1,67 @@
-const GM = {
-  mode: "hub",
-  name: "OpenVibe Hub",
+(function () {
+  function registerHubCommands() {
+    if (!globalThis.command) return;
 
-  Initialize() {
-    OV.log("Hub Initialize fired");
-  },
-
-  MapInitialize(mapName) {
-    OV.log(`Map initialized: ${mapName}`);
-  },
-
-  PlayerInitialSpawn(ply) {
-    ply.chat("Welcome to OpenVibe: Source JS runtime.");
-    OV.broadcast(`${ply.name()} joined the hub.`);
-  },
-
-  PlayerSpawn(ply) {
-    ply.chat("PlayerSpawn hook fired.");
-  },
-
-  PlayerSay(ply, text) {
-    if (text === "!js") {
-      ply.chat("JavaScript hooks are working.");
+    command.add("js", "Confirm JavaScript hooks are working", function ({ ply, reply }) {
+      reply(ply, "JavaScript hooks are working.");
       return false;
-    }
+    });
 
-    if (text === "!hp") {
-      ply.chat(`Health: ${ply.health()}`);
+    command.add("hp", "Show current health", function ({ ply, reply }) {
+      if (!ply) return false;
+      reply(ply, `Health: ${ply.health()}`);
       return false;
-    }
+    });
 
-    if (text === "!players") {
-      ply.chat(`Players online: ${OV.players().length}`);
+    command.add("players", "Show player count", function ({ ply, reply }) {
+      reply(ply, `Players online: ${OV.players().length}`);
       return false;
-    }
+    });
 
-    return undefined;
-  },
-
-  ConsoleCommand(text) {
-    OV.log(`Hub ConsoleCommand: ${text}`);
-
-    if (text === "smoke") {
-      OV.broadcast("OpenVibe embedded JS smoke test passed.");
+    command.add("where", "Show current mode and map", function ({ ply, reply }) {
+      reply(ply, `Mode=${OV.getMode()} map=${OV.getMapName()}`);
       return false;
-    }
+    });
 
-    return undefined;
-  },
+    command.add("hub_status", "Broadcast hub status", function ({ ply, reply }) {
+      reply(ply, `Hub OK. mode=${OV.getMode()} map=${OV.getMapName()} players=${OV.players().length}`);
+      return false;
+    });
+  }
 
-  Think() {}
-};
+  const HubServerGM = {
+    mode: "hub",
+    name: "OpenVibe Hub",
 
-gamemode.set(GM);
+    Initialize() {
+      OV.log("Hub Initialize fired");
+      registerHubCommands();
+    },
+
+    MapInitialize(mapName) {
+      OV.log(`Hub MapInitialize: ${mapName}`);
+    },
+
+    PlayerInitialSpawn(ply) {
+      ply.chat("Welcome to OpenVibe: Source JS runtime.");
+      OV.broadcast(`${ply.name()} joined the hub.`);
+    },
+
+    PlayerSpawn(ply) {
+      ply.chat("PlayerSpawn hook fired.");
+    },
+
+    PlayerSay(_ply, _text) {
+      return undefined;
+    },
+
+    ConsoleCommand(text) {
+      OV.log(`Hub ConsoleCommand fallback: ${text}`);
+      return undefined;
+    },
+
+    Think() {}
+  };
+
+  gamemode.set(HubServerGM);
+})();

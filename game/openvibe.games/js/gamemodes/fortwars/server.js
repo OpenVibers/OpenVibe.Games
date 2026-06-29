@@ -1,29 +1,25 @@
-const allowed = new Set(["crate", "barrel", "pallet", "fence", "sheet"]);
-
-const GM = {
-  mode: "fortwars",
-  name: "OpenVibe Fort Wars",
-
-  Initialize() {
-    OV.log("Fort Wars Initialize fired");
-  },
-
-  PlayerInitialSpawn(ply) {
-    ply.chat("Fort Wars: build first, fight second.");
-  },
-
-  PlayerSay(ply, text) {
-    if (!text.startsWith("!build ")) return undefined;
-
-    const part = text.slice(7).trim();
-    if (!allowed.has(part)) {
-      ply.chat("Allowed: crate, barrel, pallet, fence, sheet");
+(function () {
+  function registerCommands() {
+    if (!globalThis.command) return;
+    command.add("fw_status", "Show Fort Wars status", function ({ ply, reply }) {
+      reply(ply, `Fort Wars JS online. map=${OV.getMapName()} players=${OV.players().length}`);
       return false;
-    }
-
-    ply.runCommand(`ov_fortwars_spawn ${part}`);
-    return false;
+    });
+    command.add("build", "Spawn an allowlisted Fort Wars prop", function ({ args, ply, reply }) {
+      const choice = args[0] || "crate";
+      if (!ply) return false;
+      ply.runCommand(`ov_fortwars_spawn ${choice}`);
+      reply(ply, `Trying Fort Wars prop: ${choice}`);
+      return false;
+    });
   }
-};
 
-gamemode.set(GM);
+  const FortWarsGM = {
+    mode: "fortwars",
+    name: "OpenVibe Fort Wars",
+    Initialize() { OV.log("Fort Wars Initialize fired"); registerCommands(); },
+    PlayerInitialSpawn(ply) { ply.chat("Fort Wars JS loaded. Try !fw_status or !build crate"); },
+    Think() {}
+  };
+  gamemode.set(FortWarsGM);
+})();

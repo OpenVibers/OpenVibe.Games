@@ -1,36 +1,25 @@
-const props = ["crate", "barrel", "chair", "bucket"];
-
-function randomProp() {
-  return props[Math.floor(Math.random() * props.length)];
-}
-
-const GM = {
-  mode: "prophunt",
-  name: "OpenVibe Prop Hunt",
-
-  Initialize() {
-    OV.log("Prop Hunt Initialize fired");
-  },
-
-  PlayerInitialSpawn(ply) {
-    ply.chat("Prop Hunt: hide as props or hunt them down.");
-  },
-
-  PlayerSay(ply, text) {
-    if (text === "!prop") {
-      ply.runCommand(`ov_prophunt_disguise ${randomProp()}`);
+(function () {
+  function registerCommands() {
+    if (!globalThis.command) return;
+    command.add("ph_status", "Show Prop Hunt status", function ({ ply, reply }) {
+      reply(ply, `Prop Hunt JS online. map=${OV.getMapName()} players=${OV.players().length}`);
       return false;
-    }
-
-    if (text.startsWith("!prop ")) {
-      ply.runCommand(`ov_prophunt_disguise ${text.slice(6).trim()}`);
+    });
+    command.add("disguise", "Disguise as an allowlisted prop", function ({ args, ply, reply }) {
+      const choice = args[0] || "crate";
+      if (!ply) return false;
+      ply.runCommand(`ov_prophunt_disguise ${choice}`);
+      reply(ply, `Trying prop disguise: ${choice}`);
       return false;
-    }
+    });
+  }
 
-    return undefined;
-  },
-
-  Think() {}
-};
-
-gamemode.set(GM);
+  const PropHuntGM = {
+    mode: "prophunt",
+    name: "OpenVibe Prop Hunt",
+    Initialize() { OV.log("Prop Hunt Initialize fired"); registerCommands(); },
+    PlayerInitialSpawn(ply) { ply.chat("Prop Hunt JS loaded. Try !ph_status or !disguise crate"); },
+    Think() {}
+  };
+  gamemode.set(PropHuntGM);
+})();

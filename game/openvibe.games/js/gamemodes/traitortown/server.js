@@ -1,30 +1,18 @@
-const roles = new Map();
-
-const GM = {
-  mode: "traitortown",
-  name: "OpenVibe Traitor Town",
-
-  Initialize() {
-    OV.log("Traitor Town Initialize fired");
-  },
-
-  PlayerInitialSpawn(ply) {
-    ply.chat("Traitor Town: find the traitors before they find you.");
-    roles.set(ply.userId(), "innocent");
-  },
-
-  PlayerSay(ply, text) {
-    if (text === "!role") {
-      ply.chat(`Your role: ${roles.get(ply.userId()) || "none"}`);
+(function () {
+  function registerCommands() {
+    if (!globalThis.command) return;
+    command.add("ttt_status", "Show Traitor Town status", function ({ ply, reply }) {
+      reply(ply, `Traitor Town JS online. map=${OV.getMapName()} players=${OV.players().length}`);
       return false;
-    }
-
-    return undefined;
-  },
-
-  PlayerDeath(victim, attacker) {
-    OV.broadcast(`${victim.name()} died.`);
+    });
   }
-};
 
-gamemode.set(GM);
+  const TraitorTownGM = {
+    mode: "traitortown",
+    name: "OpenVibe Traitor Town",
+    Initialize() { OV.log("Traitor Town Initialize fired"); registerCommands(); },
+    PlayerInitialSpawn(ply) { ply.chat("Traitor Town JS loaded. Try !ttt_status"); },
+    Think() {}
+  };
+  gamemode.set(TraitorTownGM);
+})();

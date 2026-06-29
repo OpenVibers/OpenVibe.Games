@@ -1,39 +1,25 @@
-const GM = {
-  mode: "base",
-  name: "OpenVibe Base",
+(function () {
+  const BaseServerGM = {
+    mode: "base",
+    name: "OpenVibe Base",
 
-  Initialize() {
-    OV.log("Base Initialize fired");
-  },
+    Initialize() {
+      OV.log("Base Initialize fired");
+    },
 
-  MapInitialize(mapName) {
-    OV.log(`Base MapInitialize: ${mapName}`);
-  },
+    MapInitialize(mapName) {
+      OV.log(`Base MapInitialize: ${mapName}`);
+    },
 
-  PlayerInitialSpawn(ply) {
-    ply.chat("Welcome to OpenVibe: Source.");
-  },
+    PlayerInitialSpawn(ply) {
+      ply.chat("Welcome to OpenVibe: Source.");
+    },
 
-  PlayerSpawn(_ply) {},
+    PlayerSpawn(_ply) {},
+    PlayerDeath(_victim, _attacker) {},
+    PlayerDisconnected(_ply) {},
+    Think() {}
+  };
 
-  PlayerDeath(_victim, _attacker) {},
-
-  PlayerDisconnected(_ply) {},
-
-  PlayerSay(_ply, _text) {
-    return undefined;
-  },
-
-  ConsoleCommand(text) {
-    OV.log(`ConsoleCommand: ${text}`);
-    return undefined;
-  },
-
-  Think() {},
-
-ConsoleCommand(text) {
-    OV.log(`Base ConsoleCommand: ${text}`);
-  }
-};
-
-gamemode.set(GM);
+  gamemode.set(BaseServerGM);
+})();

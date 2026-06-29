@@ -128,6 +128,12 @@ bool COpenVibeJSRuntime::LoadCoreFiles()
     if (!LoadFile("js/bridge.js"))
         return false;
 
+    if (!LoadFile("js/core/command.js"))
+        return false;
+
+    if (!LoadFile("js/core/timer.js"))
+        return false;
+
     return true;
 }
 
