@@ -101,6 +101,7 @@ exit /b %ERRORLEVEL%
 
   # Put the shim first so custom build steps that literally run `python` find it.
   $env:PATH = "$shimDir;$pyDir;$env:PATH"
+  $script:OpenVibePythonCommand = $bat
   "selected python=$py" | Out-File $log -Append
   "shimDir=$shimDir" | Out-File $log -Append
   "updated PATH=$env:PATH" | Out-File $log -Append
@@ -145,6 +146,7 @@ where.exe cl | Out-File (Join-Path $LogDir "where-cl.txt")
 where.exe msbuild | Out-File (Join-Path $LogDir "where-msbuild.txt")
 where.exe lib | Out-File (Join-Path $LogDir "where-lib.txt")
 Ensure-PythonOnPath
+Ensure-PythonCommandForMSBuild
 
 
 # Apply OpenVibe source files using Git Bash when available. Skip Linux QuickJS build on Windows.
@@ -266,6 +268,45 @@ function Sort-PreferredConfigs($pairs, [string]$projName) {
   }
   return @($preferred)
 }
+
+
+function Patch-GeneratedPythonCustomBuildCommands {
+  if (-not $script:OpenVibePythonCommand -or !(Test-Path $script:OpenVibePythonCommand)) {
+    Ensure-PythonCommandForMSBuild
+  }
+
+  $py = $script:OpenVibePythonCommand
+  Say "patching generated vcxproj python custom build commands to $py"
+  $patchLog = Join-Path $LogDir "python-vcxproj-patches.txt"
+  "python command=$py" | Out-File $patchLog
+
+  $projects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*.vcxproj" -ErrorAction SilentlyContinue)
+  foreach ($proj in $projects) {
+    $text = Get-Content -Raw $proj.FullName
+    $before = $text
+
+    # XML command bodies can contain python at line start, after XML tags, or after &&.
+    # Replace only executable tokens, preserving surrounding whitespace/tags.
+    $text = [regex]::Replace($text, '(?im)(^|[>`r`n])([ `t]*)python(\.exe)?([ `t]+)', {
+      param($m)
+      return $m.Groups[1].Value + $m.Groups[2].Value + '"' + $py + '"' + $m.Groups[4].Value
+    })
+    $text = [regex]::Replace($text, '(?i)(&amp;&amp;[ `t]*)python(\.exe)?([ `t]+)', {
+      param($m)
+      return $m.Groups[1].Value + '"' + $py + '"' + $m.Groups[3].Value
+    })
+    $text = [regex]::Replace($text, '(?i)(&&[ `t]*)python(\.exe)?([ `t]+)', {
+      param($m)
+      return $m.Groups[1].Value + '"' + $py + '"' + $m.Groups[3].Value
+    })
+
+    if ($text -ne $before) {
+      Set-Content -Encoding utf8 -Path $proj.FullName -Value $text
+      "patched $($proj.FullName)" | Out-File $patchLog -Append
+    }
+  }
+}
+
 
 function Invoke-MSBuildProject([System.IO.FileInfo]$proj, [string]$label) {
   Say "building $label project=$($proj.FullName)"
@@ -392,6 +433,8 @@ $serverProject = $serverProjects |
               @{ Expression = { if ($_.Name -match '^server') { 0 } else { 1 } } },
               FullName |
   Select-Object -First 1
+
+Patch-GeneratedPythonCustomBuildCommands
 
 Build-SourceSdkDependencyProjects
 
