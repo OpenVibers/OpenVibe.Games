@@ -33,3 +33,9 @@ steam_appid.txt
 # node_modules are tracked via package-lock.json; exclude the installed version to reduce repo size
 launcher/node_modules/
 backend/node_modules/
+
+# OpenVibe local/generated build junk
+.tmp/
+*.bak.*
+tools/*.bak.*
+engine/source-sdk-2013/src/game/shared/openvibe/third_party/quickjs/build/

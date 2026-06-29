@@ -207,17 +207,10 @@ QJS_SHIM
 
 patch_openvibe_quickjs_after_apply
 
-echo "[openvibe-sdk] Source SDK OpenVibe patch applied"
 
-
-# Link prebuilt QuickJS C static library. QuickJS must be compiled as C, not C++.
-if ! grep -q 'libquickjs_openvibe.a' "$SERVER_VPC"; then
-  perl -0pi -e 's/(\$File\s+"hl2mp\\openvibe_js_server\.cpp"\n)/$1\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe.a"\n/s' "$SERVER_VPC"
-  echo "[openvibe-sdk] linked QuickJS static library"
-fi
-
-
-# OPENVIBE_REMOVE_DIRECT_QUICKJS_C
+# OPENVIBE_FIX_QUICKJS_LINK_FINAL_V2
+# QuickJS is C, so do not compile its .c files through Source SDK/VPC C++.
+# We build libquickjs_openvibe.a with cc and link it as a library.
 if [[ -f "$SERVER_VPC" ]]; then
   perl -0pi -e '
     s/^.*quickjs\\quickjs\.c.*\n//mg;
@@ -228,7 +221,20 @@ if [[ -f "$SERVER_VPC" ]]; then
     s/^.*quickjs\\libbf\.c.*\n//mg;
   ' "$SERVER_VPC"
 
-  if ! grep -q 'libquickjs_openvibe.a' "$SERVER_VPC"; then
-    perl -0pi -e 's/(\$File\s+"hl2mp\\openvibe_js_server\.cpp"\n)/$1\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe.a"\n/s' "$SERVER_VPC"
-  fi
+  perl -0pi -e 's/^.*libquickjs_openvibe(?:\.a)?".*\n//mg' "$SERVER_VPC"
+
+  perl -0pi -e 's/(\$File\s+"hl2mp\\openvibe_js_server\.cpp"\n)/$1\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s' "$SERVER_VPC"
+
+  echo "[openvibe-sdk] linked QuickJS static library"
 fi
+
+echo "[openvibe-sdk] Source SDK OpenVibe patch applied"
+
+
+# Link prebuilt QuickJS C static library. QuickJS must be compiled as C, not C++.
+if ! grep -q 'libquickjs_openvibe' "$SERVER_VPC"; then
+  perl -0pi -e 's/(\$File\s+"hl2mp\\openvibe_js_server\.cpp"\n)/$1\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s' "$SERVER_VPC"
+  echo "[openvibe-sdk] linked QuickJS static library"
+fi
+
+
