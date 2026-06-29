@@ -632,6 +632,145 @@ function Build-SourceSdkDependencyProjects {
   }
 }
 
+# OPENVIBE_RESOLVE_WIN32_PUBLIC_LIB_DEPS
+# Dynamically resolves all .lib references in the client/server vcxproj AdditionalDependencies
+# and ensures every non-system lib is present in $PublicLibDir before the final link.
+# This eliminates the one-at-a-time "missing lib" pattern: instead of hardcoding a list,
+# we read what the linker will actually ask for and proactively satisfy every dependency.
+function Resolve-OpenVibeWin32PublicLibDependencies {
+  param(
+    [System.IO.FileInfo[]]$Projects,
+    [string]$PublicLibDir
+  )
+
+  $log = Join-Path $LogDir "resolve-win32-public-lib-deps.txt"
+  "=== Resolve-OpenVibeWin32PublicLibDependencies ===" | Out-File $log
+  "publicLibDir=$PublicLibDir" | Out-File $log -Append
+  "targetArch=$script:OpenVibeTargetArch" | Out-File $log -Append
+  "projects:" | Out-File $log -Append
+  $Projects | ForEach-Object { "  $($_.FullName)" | Out-File $log -Append }
+
+  # Windows/CRT system libs that we never build or copy from the SDK.
+  $systemLibs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($lib in @(
+    'kernel32.lib','user32.lib','gdi32.lib','winspool.lib','comdlg32.lib',
+    'advapi32.lib','shell32.lib','ole32.lib','oleaut32.lib','uuid.lib',
+    'odbc32.lib','odbccp32.lib','winmm.lib','ws2_32.lib','dbghelp.lib',
+    'psapi.lib','comctl32.lib','shlwapi.lib','imm32.lib','version.lib',
+    'Rpcrt4.lib','opengl32.lib','legacy_stdio_definitions.lib',
+    'libcmt.lib','libcmtd.lib','msvcrt.lib','msvcrtd.lib',
+    'libcpmt.lib','libcpmtd.lib','libc.lib','msvcprt.lib','msvcprtd.lib',
+    'setupapi.lib','dxguid.lib','dinput8.lib','d3d9.lib','d3dx9.lib',
+    'Strmiids.lib','delayimp.lib','ntdll.lib','wldap32.lib','crypt32.lib'
+  )) { [void]$systemLibs.Add($lib) }
+
+  # Collect every .lib name mentioned in <AdditionalDependencies> across all
+  # configurations in all provided project files.
+  $neededLibs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($proj in $Projects) {
+    $text = Get-Content -Raw $proj.FullName
+    $rxDeps = [regex]::Matches($text, '<AdditionalDependencies>([^<]+)</AdditionalDependencies>')
+    foreach ($m in $rxDeps) {
+      foreach ($tok in ($m.Groups[1].Value -split ';')) {
+        $tok = $tok.Trim()
+        # Skip MSBuild variables, empty tokens, non-.lib entries
+        if ($tok -eq '' -or $tok -notmatch '\.lib$' -or $tok -match '^\$\(') { continue }
+        # Normalise to bare filename (handles paths like ..\..\lib\public\foo.lib)
+        $leaf = [System.IO.Path]::GetFileName($tok.TrimStart('\', '/', '.'))
+        if ($leaf -and -not $systemLibs.Contains($leaf)) {
+          [void]$neededLibs.Add($leaf)
+        }
+      }
+    }
+  }
+
+  "needed libs ($($neededLibs.Count)):" | Out-File $log -Append
+  $neededLibs | Sort-Object | ForEach-Object { "  $_" | Out-File $log -Append }
+  Say "Resolve-OpenVibeWin32PublicLibDependencies: $($neededLibs.Count) SDK lib(s) referenced"
+
+  New-Item -ItemType Directory -Force -Path $PublicLibDir | Out-Null
+
+  # Find the best arch-matching copy of a lib anywhere in the SDK tree.
+  function Find-LibInSdkTree([string]$libName) {
+    return Get-ChildItem -Path $Sdk -Recurse -File -Filter $libName -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -notmatch "artifacts|windows-build-debug|_deps|openvibe\.games" } |
+      Sort-Object @{
+        Expression = {
+          # For x86 target: deprioritise x64 paths so we never copy a 64-bit .lib
+          if ($script:OpenVibeTargetArch -eq "x86") {
+            if ($_.FullName -match '\\x64\\|/x64/|\\win64\\|/win64/') { 100 } else { 0 }
+          } else {
+            if ($_.FullName -match '\\x64\\|/x64/|\\win64\\|/win64/') { 0 } else { 100 }
+          }
+        }
+      }, @{ Expression = { $_.LastWriteTime }; Descending = $true } |
+      Select-Object -First 1
+  }
+
+  $builtProjects = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  $stillMissing = [System.Collections.Generic.List[string]]::new()
+
+  foreach ($libName in ($neededLibs | Sort-Object)) {
+    $dest = Join-Path $PublicLibDir $libName
+    if (Test-Path $dest) {
+      "[present] $libName" | Out-File $log -Append
+      continue
+    }
+
+    # Pass 1: look for the lib in the SDK tree (may have been built by Build-SourceSdkDependencyProjects
+    # or pre-shipped in the SDK).
+    $found = Find-LibInSdkTree $libName
+    if ($found) {
+      Say "copying $libName <- $($found.FullName)"
+      Copy-Item $found.FullName $dest -Force
+      "[copied] $libName <- $($found.FullName)" | Out-File $log -Append
+      continue
+    }
+
+    # Pass 2: try to find and build the vcxproj whose base name matches the lib.
+    $libBase = [System.IO.Path]::GetFileNameWithoutExtension($libName)
+    $depProjs = @(Find-ProjectByPattern "$libBase*.vcxproj" |
+      Where-Object { $_.FullName -notmatch "hl2mp|game[/\\]client|game[/\\]server|openvibe_client|openvibe_server" } |
+      Where-Object { -not $builtProjects.Contains($_.FullName) })
+
+    if ($depProjs.Count -gt 0) {
+      $depProj = $depProjs[0]
+      Say "building $($depProj.Name) to provide $libName"
+      [void]$builtProjects.Add($depProj.FullName)
+      [void](Invoke-MSBuildProject $depProj "dep-$libBase")
+
+      # Search again after the build.
+      $found = Find-LibInSdkTree $libName
+      if ($found) {
+        Say "copying built $libName <- $($found.FullName)"
+        Copy-Item $found.FullName $dest -Force
+        "[built+copied] $libName <- $($found.FullName)" | Out-File $log -Append
+        continue
+      }
+      "[warn-after-build] $libName not found after building $($depProj.Name)" | Out-File $log -Append
+      Say "WARNING: $libName not found after building $($depProj.Name)"
+    } else {
+      "[no-vcxproj] $libName - no matching project; may be pre-built or external" | Out-File $log -Append
+    }
+
+    [void]$stillMissing.Add($libName)
+  }
+
+  if ($stillMissing.Count -gt 0) {
+    "=== unresolved libs ===" | Out-File $log -Append
+    $stillMissing | ForEach-Object { "  [MISSING] $_" | Out-File $log -Append }
+    Say "WARNING: $($stillMissing.Count) lib(s) could not be resolved: $($stillMissing -join ', ')"
+    Say "The linker will report LNK1104 for these. Check resolve-win32-public-lib-deps.txt."
+  } else {
+    Say "all referenced SDK libs are present in $PublicLibDir"
+  }
+
+  "=== public lib dir after resolve ===" | Out-File $log -Append
+  Get-ChildItem -Path $PublicLibDir -File -ErrorAction SilentlyContinue |
+    Select-Object Name, Length, LastWriteTime |
+    Format-Table -AutoSize | Out-File $log -Append
+}
+
 # Generate projects if no relevant vcxproj files exist yet.
 $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
 $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
@@ -698,11 +837,20 @@ Patch-GeneratedPythonCustomBuildCommands
 Ensure-ServerNutHeaders
 Build-SourceSdkDependencyProjects
 
+# After the static dependency build pass, run the dynamic resolver so that every
+# .lib referenced in the client/server vcxproj AdditionalDependencies is present
+# in lib/public before the final link step. This prevents one-at-a-time LNK1104
+# failures when VPC generates projects that reference libs not in the static list.
+# OPENVIBE_RESOLVE_WIN32_PUBLIC_LIB_DEPS_CALL
+$resolvePublicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
+Resolve-OpenVibeWin32PublicLibDependencies -Projects @($clientProject, $serverProject) -PublicLibDir $resolvePublicLibDir
+
 # OPENVIBE_WIN32_PRE_CLIENT_LINK_LIB_AUDIT
 $publicLibDirAudit = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
 "=== public lib dir before client link ===" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt")
 "target arch=$script:OpenVibeTargetArch" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
 "dir=$publicLibDirAudit" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+# Spot-check known required libs
 foreach ($lib in @("bitmap.lib","choreoobjects.lib","tier1.lib","tier2.lib","mathlib.lib","raytrace.lib","dmxloader.lib","dmserializers.lib","datamodel.lib","particles.lib","appframework.lib","vgui_controls.lib","vgui_surfacelib.lib","matsys_controls.lib")) {
   $lp = Join-Path $publicLibDirAudit $lib
   if (Test-Path $lp) {
@@ -711,6 +859,16 @@ foreach ($lib in @("bitmap.lib","choreoobjects.lib","tier1.lib","tier2.lib","mat
   } else {
     "[miss] $lib" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
   }
+}
+# Full directory listing - all .lib files present (resolver output feeds into this)
+"=== all libs in public dir ===" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+if (Test-Path $publicLibDirAudit) {
+  Get-ChildItem -Path $publicLibDirAudit -File -Filter "*.lib" -ErrorAction SilentlyContinue |
+    Sort-Object Name |
+    Select-Object Name, Length, LastWriteTime |
+    Format-Table -AutoSize | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+} else {
+  "[dir missing] $publicLibDirAudit" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
 }
 
 $beforeBuild = Get-Date
