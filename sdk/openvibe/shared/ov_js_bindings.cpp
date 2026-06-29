@@ -1,3 +1,13 @@
+// OPENVIBE_WINDOWS_SERVER_QUICKJS_STUB
+#if defined(_WIN32) && defined(GAME_DLL) && !defined(OPENVIBE_WINDOWS_SERVER_REAL_QUICKJS)
+
+#include "cbase.h"
+#include "ov_js_bindings.h"
+
+#include "tier0/memdbgon.h"
+
+void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime) {}
+#else
 #include "cbase.h"
 #include "ov_js_bindings.h"
 #include "ov_js_runtime.h"
@@ -168,3 +178,4 @@ void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime)
 
     JS_FreeValue(ctx, global);
 }
+#endif

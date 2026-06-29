@@ -1,3 +1,87 @@
+// OPENVIBE_WINDOWS_SERVER_QUICKJS_STUB
+#if defined(_WIN32) && defined(GAME_DLL) && !defined(OPENVIBE_WINDOWS_SERVER_REAL_QUICKJS)
+
+#include "cbase.h"
+#include "hl2mp_player.h"
+#include "openvibe_js_server.h"
+
+#include "tier0/memdbgon.h"
+
+static ConVar ov_mode(
+    "ov_mode",
+    "hub",
+    FCVAR_GAMEDLL,
+    "OpenVibe mode: hub, prophunt, deathrun, fortwars, traitortown." );
+
+static ConVar ov_js_enabled(
+    "ov_js_enabled",
+    "0",
+    FCVAR_GAMEDLL,
+    "Enable OpenVibe JavaScript runtime. Windows server CI uses a stub runtime." );
+
+void OpenVibeJS_ServerInit()
+{
+    Msg("[OV JS] Windows server CI stub active; runtime disabled, mode=%s\n", ov_mode.GetString());
+}
+
+void OpenVibeJS_ServerShutdown() {}
+void OpenVibeJS_ServerThink() {}
+void OpenVibeJS_Server_PlayerInitialSpawn(CHL2MP_Player *player) {}
+void OpenVibeJS_Server_PlayerSpawn(CHL2MP_Player *player) {}
+void OpenVibeJS_Server_PlayerDeath(CHL2MP_Player *victim, CBaseEntity *attacker, CBaseEntity *inflictor) {}
+void OpenVibeJS_Server_PlayerDisconnected(CHL2MP_Player *player) {}
+bool OpenVibeJS_Server_PlayerSay(CHL2MP_Player *player, const char *text) { return false; }
+
+static void OV_JSReload_f()
+{
+    Msg("[OV JS] Windows server CI stub: ov_js_reload ignored, mode=%s\n", ov_mode.GetString());
+}
+
+static ConCommand ov_js_reload(
+    "ov_js_reload",
+    OV_JSReload_f,
+    "Reload OpenVibe JavaScript runtime.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_JSStatus_f()
+{
+    Msg("[OV JS] enabled=%d started=0 running=0 mode=%s backend=windows-server-stub\n",
+        ov_js_enabled.GetBool() ? 1 : 0,
+        ov_mode.GetString() );
+}
+
+static ConCommand ov_js_status(
+    "ov_js_status",
+    OV_JSStatus_f,
+    "Print OpenVibe JavaScript runtime status.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_JSFire_f(const CCommand &args)
+{
+    Msg("[OV JS] Windows server CI stub: ov_js_fire ignored. Usage: ov_js_fire <HookName>\n");
+}
+
+static ConCommand ov_js_fire(
+    "ov_js_fire",
+    OV_JSFire_f,
+    "Fire an OpenVibe JavaScript hook with no arguments.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_JSCmd_f(const CCommand &args)
+{
+    Msg("[OV JS] Windows server CI stub: ov_js_cmd %s\n", args.ArgS());
+}
+
+static ConCommand ov_js_cmd(
+    "ov_js_cmd",
+    OV_JSCmd_f,
+    "Send a ConsoleCommand event into the embedded OpenVibe JavaScript runtime.",
+    FCVAR_GAMEDLL
+);
+#else
 #include "cbase.h"
 #include "hl2mp_player.h"
 #include "openvibe_js_server.h"
@@ -265,3 +349,4 @@ static ConCommand ov_js_cmd(
     "Send a ConsoleCommand event into the embedded OpenVibe JavaScript runtime.",
     FCVAR_GAMEDLL
 );
+#endif

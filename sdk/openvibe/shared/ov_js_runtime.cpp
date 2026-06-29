@@ -1,3 +1,33 @@
+// OPENVIBE_WINDOWS_SERVER_QUICKJS_STUB
+#if defined(_WIN32) && defined(GAME_DLL) && !defined(OPENVIBE_WINDOWS_SERVER_REAL_QUICKJS)
+
+#include "cbase.h"
+#include "ov_js_runtime.h"
+
+#include "tier0/memdbgon.h"
+
+COpenVibeJSRuntime::COpenVibeJSRuntime() {}
+COpenVibeJSRuntime::~COpenVibeJSRuntime() { Shutdown(); }
+
+bool COpenVibeJSRuntime::Init(bool bServerRealm, const char *pszMode)
+{
+    m_bServerRealm = bServerRealm;
+    Q_strncpy(m_szMode, pszMode && pszMode[0] ? pszMode : "hub", sizeof(m_szMode));
+    Msg("[OV JS] Windows server CI stub runtime active for mode '%s'\n", m_szMode);
+    return false;
+}
+
+void COpenVibeJSRuntime::Shutdown() {}
+bool COpenVibeJSRuntime::LoadFile(const char *pszPath) { return false; }
+bool COpenVibeJSRuntime::Eval(const char *pszCode, const char *pszFilename) { return false; }
+JSValue COpenVibeJSRuntime::CallHookRaw(const char *pszHookName, int argc, JSValueConst *argv) { return JS_UNDEFINED; }
+void COpenVibeJSRuntime::CallHookVoid(const char *pszHookName, int argc, JSValueConst *argv) {}
+bool COpenVibeJSRuntime::CallHookBool(const char *pszHookName, bool *pOut, int argc, JSValueConst *argv)
+{
+    if (pOut) *pOut = false;
+    return false;
+}
+#else
 #include "cbase.h"
 #include "filesystem.h"
 #include "ov_js_runtime.h"
@@ -232,3 +262,4 @@ void COpenVibeJSRuntime::PrintException(const char *pszWhere)
 
     JS_FreeValue(m_pCtx, exception);
 }
+#endif

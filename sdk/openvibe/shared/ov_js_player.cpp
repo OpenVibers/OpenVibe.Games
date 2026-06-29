@@ -1,3 +1,17 @@
+// OPENVIBE_WINDOWS_SERVER_QUICKJS_STUB
+#if defined(_WIN32) && defined(GAME_DLL) && !defined(OPENVIBE_WINDOWS_SERVER_REAL_QUICKJS)
+
+#include "cbase.h"
+#include "ov_js_player.h"
+#include "hl2mp_player.h"
+
+#include "tier0/memdbgon.h"
+
+void OVJS_RegisterPlayerClass(JSContext *ctx) {}
+JSValue OVJS_NewPlayer(JSContext *ctx, CHL2MP_Player *player) { return JS_NULL; }
+CHL2MP_Player *OVJS_ResolvePlayerByUserId(int userId) { return nullptr; }
+CHL2MP_Player *OVJS_GetPlayerFromThis(JSContext *ctx, JSValueConst thisVal) { return nullptr; }
+#else
 #include "cbase.h"
 #include "hl2mp_player.h"
 #include "player.h"
@@ -208,3 +222,4 @@ JSValue OVJS_NewPlayer(JSContext *ctx, CHL2MP_Player *player)
     JS_SetOpaque(obj, handle);
     return obj;
 }
+#endif
