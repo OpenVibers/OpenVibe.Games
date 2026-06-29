@@ -89,6 +89,7 @@ function Ensure-PythonCommandForMSBuild {
   }
 
   $pyDir = Split-Path -Parent $py
+  $script:OpenVibePythonExe = $py
   $bat = Join-Path $shimDir "python.bat"
   $cmdFile = Join-Path $shimDir "python.cmd"
   $batContent = @"
@@ -98,6 +99,7 @@ exit /b %ERRORLEVEL%
 "@
   Set-Content -Encoding ascii -Path $bat -Value $batContent
   Set-Content -Encoding ascii -Path $cmdFile -Value $batContent
+  $script:OpenVibePythonShim = $bat
 
   # Put the shim first so custom build steps that literally run `python` find it.
   $env:PATH = "$shimDir;$pyDir;$env:PATH"
@@ -107,6 +109,97 @@ exit /b %ERRORLEVEL%
   "updated PATH=$env:PATH" | Out-File $log -Append
   & $py --version 2>&1 | Tee-Object -FilePath $log -Append
   & cmd.exe /d /s /c "where python" 2>&1 | Tee-Object -FilePath $log -Append
+}
+
+
+
+# OPENVIBE_FIX_QJS_CPP_AND_NUT_HEADERS
+function Patch-QuickJsHeaderForMsvcCpp {
+  $header = Join-Path $Sdk "src/game/shared/openvibe/third_party/quickjs/quickjs.h"
+  if (!(Test-Path $header)) {
+    Say "QuickJS header not present yet, skipping C++ compatibility patch: $header"
+    return
+  }
+
+  $log = Join-Path $LogDir "quickjs-cpp-header-patch.txt"
+  "header=$header" | Out-File $log
+  $q = Get-Content -Raw $header
+  $orig = $q
+
+  $mkvalOld = '#define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .uint64 = (uint32_t)(val) }, tag }'
+  $mkvalNew = @'
+#if defined(__cplusplus)
+static inline JSValue JS_MKVAL_CPP(int tag, uint32_t val) { JSValue v; v.u.uint64 = (uint32_t)val; v.tag = tag; return v; }
+#define JS_MKVAL(tag, val) JS_MKVAL_CPP((tag), (uint32_t)(val))
+#else
+#define JS_MKVAL(tag, val) (JSValue){ (JSValueUnion){ .uint64 = (uint32_t)(val) }, tag }
+#endif
+'@
+  $q = $q.Replace($mkvalOld, $mkvalNew)
+
+  $mkptrOld = '#define JS_MKPTR(tag, p) (JSValue){ (JSValueUnion){ .ptr = p }, tag }'
+  $mkptrNew = @'
+#if defined(__cplusplus)
+static inline JSValue JS_MKPTR_CPP(int tag, void *p) { JSValue v; v.u.ptr = p; v.tag = tag; return v; }
+#define JS_MKPTR(tag, p) JS_MKPTR_CPP((tag), (void *)(p))
+#else
+#define JS_MKPTR(tag, p) (JSValue){ (JSValueUnion){ .ptr = p }, tag }
+#endif
+'@
+  $q = $q.Replace($mkptrOld, $mkptrNew)
+
+  $nanOld = '#define JS_NAN (JSValue){ .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }'
+  $nanNew = @'
+#if defined(__cplusplus)
+static inline JSValue JS_NAN_CPP(void) { JSValue v; v.u.float64 = JS_FLOAT64_NAN; v.tag = JS_TAG_FLOAT64; return v; }
+#define JS_NAN JS_NAN_CPP()
+#else
+#define JS_NAN (JSValue){ .u.float64 = JS_FLOAT64_NAN, JS_TAG_FLOAT64 }
+#endif
+'@
+  $q = $q.Replace($nanOld, $nanNew)
+
+  $q = $q.Replace('    JSCFunctionType ft = { .generic_magic = func };', '    JSCFunctionType ft; memset(&ft, 0, sizeof(ft)); ft.generic_magic = func;')
+
+  if ($q -ne $orig) {
+    Set-Content -Encoding ascii -Path $header -Value $q
+    "patched=1" | Out-File $log -Append
+    Say "patched QuickJS header for MSVC C++ compound literal/designated initializer compatibility"
+  } else {
+    "patched=0" | Out-File $log -Append
+    Say "QuickJS header C++ patch made no changes"
+  }
+}
+
+function Ensure-ServerNutHeaders {
+  $serverDir = Join-Path $Src "game/server"
+  $textToArray = Join-Path $Src "devtools/bin/texttoarray.py"
+  $log = Join-Path $LogDir "server-nut-headers.txt"
+  "serverDir=$serverDir" | Out-File $log
+  "textToArray=$textToArray" | Out-File $log -Append
+  "pythonExe=$script:OpenVibePythonExe" | Out-File $log -Append
+  "pythonShim=$script:OpenVibePythonShim" | Out-File $log -Append
+
+  if (!(Test-Path $textToArray)) {
+    throw "Missing Source SDK texttoarray.py at $textToArray"
+  }
+  if (-not $script:OpenVibePythonExe -or !(Test-Path $script:OpenVibePythonExe)) {
+    throw "Python exe was not captured for nut header generation. Check python-version.txt."
+  }
+
+  foreach ($name in @("spawn_helper", "vscript_server")) {
+    $input = Join-Path $serverDir "$name.nut"
+    $out = Join-Path $serverDir "${name}_nut.h"
+    if (!(Test-Path $input)) {
+      "missing input $input" | Out-File $log -Append
+      continue
+    }
+    Say "generating $out from $input"
+    & $script:OpenVibePythonExe $textToArray $input "g_Script_$name" | Set-Content -Encoding ascii -Path $out
+    if ($LASTEXITCODE -ne 0) { throw "texttoarray.py failed for $input" }
+    if (!(Test-Path $out)) { throw "Expected generated nut header was not created: $out" }
+    "generated $out" | Out-File $log -Append
+  }
 }
 
 function Find-VcVars64 {
@@ -170,6 +263,8 @@ if (Test-Path (Join-Path $Root "tools/build-quickjs-lib-windows.ps1")) {
 } else {
   Say "no build-quickjs-lib-windows.ps1 found; continuing"
 }
+
+Patch-QuickJsHeaderForMsvcCpp
 
 Set-Location $Src
 
@@ -321,7 +416,7 @@ function Invoke-MSBuildProject([System.IO.FileInfo]$proj, [string]$label) {
     $platSafe = ($p.Platform -replace '[^A-Za-z0-9]+','_')
     $log = Join-Path $LogDir "msbuild-$label-$cfgSafe-$platSafe.log"
     Say "msbuild $label cfg=$($p.Configuration) platform=$($p.Platform)"
-    & msbuild $proj.FullName /m /p:Configuration="$($p.Configuration)" /p:Platform="$($p.Platform)" /t:Build /v:minimal /nologo 2>&1 | Tee-Object -FilePath $log
+    & msbuild $proj.FullName /m /p:Configuration="$($p.Configuration)" /p:Platform="$($p.Platform)" /t:Build /v:minimal /nologo 2>&1 | Tee-Object -FilePath $log | Out-Host
     if ($LASTEXITCODE -eq 0) {
       Say "built $label with cfg=$($p.Configuration) platform=$($p.Platform)"
       return $true
@@ -436,6 +531,7 @@ $serverProject = $serverProjects |
 
 Patch-GeneratedPythonCustomBuildCommands
 
+Ensure-ServerNutHeaders
 Build-SourceSdkDependencyProjects
 
 $beforeBuild = Get-Date
