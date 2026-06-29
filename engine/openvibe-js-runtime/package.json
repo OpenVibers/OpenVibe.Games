@@ -1,0 +1,29 @@
+{
+  "name": "openvibe-js-runtime",
+  "version": "1.0.0",
+  "description": "OpenVibe.JS - JavaScript gamemode engine for OpenVibe: Source",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node test.js",
+    "start": "node index.js",
+    "dev": "node -e \"const {runtime} = require('./index'); runtime.initialize(); runtime.startGamemode('hub');\"",
+    "reload": "node -e \"const {runtime} = require('./index'); runtime.initialize(); runtime.reloadGamemode('hub');\""
+  },
+  "keywords": [
+    "openvibe",
+    "source-engine",
+    "gamemode",
+    "scripting",
+    "javascript",
+    "hooks",
+    "events"
+  ],
+  "author": "OpenVibe Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
