@@ -19,13 +19,13 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 function Say($m) { Write-Host "[openvibe-win] $m" }
 
 # OPENVIBE_PROTON_WIN32_DLL_TARGET
-$script:OpenVibeTargetArch = if ($env:OPENVIBE_WINDOWS_TARGET_ARCH) { $env:OPENVIBE_WINDOWS_TARGET_ARCH.ToLowerInvariant() } else { "x86" }
+$script:OpenVibeTargetArch = if ($env:OPENVIBE_WINDOWS_TARGET_ARCH) { ([string]$env:OPENVIBE_WINDOWS_TARGET_ARCH).Trim().ToLowerInvariant() } else { "x86" }
 if ($script:OpenVibeTargetArch -notin @("x86", "x64")) {
   throw "OPENVIBE_WINDOWS_TARGET_ARCH must be x86 or x64, got '$script:OpenVibeTargetArch'"
 }
 # OPENVIBE_TARGET_ARCH_NORMALIZE_AFTER_VALIDATE
-$script:TargetArch = ([string]$script:TargetArch).Trim()
-$env:OPENVIBE_WINDOWS_TARGET_ARCH = $script:TargetArch
+$script:OpenVibeTargetArch = ([string]$script:OpenVibeTargetArch).Trim().ToLowerInvariant()
+$env:OPENVIBE_WINDOWS_TARGET_ARCH = $script:OpenVibeTargetArch
 
 Write-Host "[openvibe-win] target arch=$script:OpenVibeTargetArch"
 function Require($p, $msg) {
@@ -418,6 +418,57 @@ function Sort-PreferredConfigs($pairs, [string]$projName) {
 }
 
 
+
+
+# OPENVIBE_FORCE_WIN32_FROM_VPC_WIN64_PROJECTS
+function Convert-GeneratedVcxprojsToWin32 {
+  if ($script:OpenVibeTargetArch -ne "x86") { return }
+
+  $log = Join-Path $LogDir "win32-vcxproj-conversion.txt"
+  "target=x86" | Out-File $log
+  Say "converting VPC-generated vcxproj files from x64/win64 metadata to Win32"
+
+  $projects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*.vcxproj" -ErrorAction SilentlyContinue)
+  foreach ($proj in $projects) {
+    $text = Get-Content -Raw $proj.FullName
+    $before = $text
+
+    # Convert project configuration/platform names. VPC on current hosted runners emits win64 project files
+    # even from an x86 VS shell, so build the same project bodies as Win32.
+    $text = $text -replace '\|x64', '|Win32'
+    $text = $text -replace '\|Win64', '|Win32'
+    $text = $text -replace '<Platform>x64</Platform>', '<Platform>Win32</Platform>'
+    $text = $text -replace '<Platform>Win64</Platform>', '<Platform>Win32</Platform>'
+    $text = $text -replace '<PlatformTarget>x64</PlatformTarget>', '<PlatformTarget>x86</PlatformTarget>'
+    $text = $text -replace '<PlatformTarget>Win64</PlatformTarget>', '<PlatformTarget>x86</PlatformTarget>'
+    $text = $text -replace '<TargetMachine>MachineX64</TargetMachine>', '<TargetMachine>MachineX86</TargetMachine>'
+    $text = $text -replace 'MachineX64', 'MachineX86'
+
+    # Remove 64-bit preprocessor defines baked into the generated project and add the 32-bit one.
+    foreach ($def in @('PLATFORM_64BITS','WIN64','_WIN64','COMPILER_MSVC64')) {
+      $text = $text -replace (";" + [regex]::Escape($def) + ";"), ";"
+      $text = $text -replace ("(^|>)" + [regex]::Escape($def) + ";"), '$1'
+      $text = $text -replace (";" + [regex]::Escape($def) + "(<|$)"), '$1'
+    }
+    $text = [regex]::Replace($text, '<PreprocessorDefinitions>(?![^<]*COMPILER_MSVC32)', '<PreprocessorDefinitions>COMPILER_MSVC32;')
+    $text = $text -replace ';;+', ';'
+
+    # Make x86 link against the normal public lib folder, not lib/public/x64.
+    $text = $text -replace '\\lib\\public\\x64', '\lib\public'
+    $text = $text -replace '/lib/public/x64', '/lib/public'
+
+    # Avoid Win32 warnings-as-errors while we are building modern VS2022 against old Source SDK code.
+    $text = $text -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>'
+    $text = $text -replace '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', '<TreatWarningsAsErrors>false</TreatWarningsAsErrors>'
+    $text = $text -replace '<TreatWarningAsError>Yes \(/WX\)</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>'
+
+    if ($text -ne $before) {
+      Set-Content -Encoding utf8 -Path $proj.FullName -Value $text
+      "converted $($proj.FullName)" | Out-File $log -Append
+    }
+  }
+}
+
 function Patch-GeneratedPythonCustomBuildCommands {
   if (-not $script:OpenVibePythonCommand -or !(Test-Path $script:OpenVibePythonCommand)) {
     Ensure-PythonCommandForMSBuild
@@ -469,7 +520,12 @@ function Invoke-MSBuildProject([System.IO.FileInfo]$proj, [string]$label) {
     $platSafe = ($p.Platform -replace '[^A-Za-z0-9]+','_')
     $log = Join-Path $LogDir "msbuild-$label-$cfgSafe-$platSafe.log"
     Say "msbuild $label cfg=$($p.Configuration) platform=$($p.Platform)"
-    & msbuild $proj.FullName /m /p:Configuration="$($p.Configuration)" /p:Platform="$($p.Platform)" /t:Build /v:minimal /nologo 2>&1 | Tee-Object -FilePath $log | Out-Host
+    $extraProps = @()
+    if ($script:OpenVibeTargetArch -eq "x86") {
+      $extraProps += "/p:TreatWarningsAsErrors=false"
+      $extraProps += "/p:PlatformTarget=x86"
+    }
+    & msbuild $proj.FullName /m /p:Configuration="$($p.Configuration)" /p:Platform="$($p.Platform)" @extraProps /t:Build /v:minimal /nologo 2>&1 | Tee-Object -FilePath $log | Out-Host
     if ($LASTEXITCODE -eq 0) {
       Say "built $label with cfg=$($p.Configuration) platform=$($p.Platform)"
       return $true
@@ -548,6 +604,13 @@ $solutions = Normalize-Solutions
 if ($clientProjects.Count -eq 0 -or $serverProjects.Count -eq 0) {
   Run-ProjectGenerator
   $solutions = Normalize-Solutions
+  $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
+  $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
+}
+
+
+if ($script:OpenVibeTargetArch -eq "x86") {
+  Convert-GeneratedVcxprojsToWin32
   $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
   $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
 }
