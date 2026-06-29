@@ -4,107 +4,86 @@ $Root = if ($env:OPENVIBE_ROOT) { (Resolve-Path $env:OPENVIBE_ROOT).Path } else 
 $Sdk = if ($env:OPENVIBE_SDK) { $env:OPENVIBE_SDK } else { Join-Path $Root 'engine/source-sdk-2013' }
 $Src = Join-Path $Sdk 'src'
 $Deps = Join-Path $Root '_deps'
+$Checkout = Join-Path $Deps 'source-sdk-2013-upstream'
 $LogDir = Join-Path $Root 'artifacts/windows-build-debug'
-New-Item -ItemType Directory -Force -Path $Deps, $LogDir | Out-Null
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 function Say($m) { Write-Host "[openvibe-sdk-bootstrap] $m" }
-function Dump-Dir($path, $outName) {
+function WriteTree($path, $name) {
   try {
     if (Test-Path $path) {
-      Get-ChildItem -Force $path | Select-Object Mode,Length,Name | Format-Table -AutoSize | Out-File (Join-Path $LogDir $outName)
+      "=== $path ===" | Out-File (Join-Path $LogDir $name)
+      Get-ChildItem -Force $path | Select-Object Mode,Length,Name,FullName | Format-Table -AutoSize | Out-File (Join-Path $LogDir $name) -Append
     } else {
-      "[missing] $path" | Out-File (Join-Path $LogDir $outName)
+      "[missing] $path" | Out-File (Join-Path $LogDir $name)
     }
   } catch {
-    "dump failed: $($_.Exception.Message)" | Out-File (Join-Path $LogDir $outName)
+    "[tree failed] $path $($_.Exception.Message)" | Out-File (Join-Path $LogDir $name)
   }
 }
-function Assert-UsableSdk($prefix) {
-  if ((Test-Path (Join-Path $Src 'game/client/hl2mp')) -and (Test-Path (Join-Path $Src 'game/server/hl2mp'))) {
-    Say "$prefix SDK tree looks usable"
-    return $true
-  }
-  return $false
+function HasHl2mp($root) {
+  $src = Join-Path $root 'src'
+  return ((Test-Path (Join-Path $src 'game/client/hl2mp')) -and (Test-Path (Join-Path $src 'game/server/hl2mp')))
 }
-function Copy-SdkRoot($sourceRoot) {
-  Say "copying SDK root $sourceRoot -> $Sdk"
+function CopyLayout($fromRoot, $label) {
+  Say "using Valve SDK layout: $label -> $Sdk"
   if (Test-Path $Sdk) { Remove-Item -Recurse -Force $Sdk }
   New-Item -ItemType Directory -Force -Path $Sdk | Out-Null
-  Copy-Item -Path (Join-Path $sourceRoot '*') -Destination $Sdk -Recurse -Force
-  Dump-Dir $Sdk 'sdk-root-after-copy.txt'
-  if (!(Assert-UsableSdk 'copied')) {
-    throw "Copied SDK is missing expected HL2MP folders under $Src"
+  Get-ChildItem -Force $fromRoot | Where-Object { $_.Name -ne '.git' } | ForEach-Object {
+    Copy-Item $_.FullName -Destination $Sdk -Recurse -Force
   }
+  if (-not (HasHl2mp $Sdk)) {
+    WriteTree $Sdk 'sdk-root-after-copy.txt'
+    throw "Copied SDK layout is missing expected src/game/client/hl2mp and src/game/server/hl2mp folders"
+  }
+  Say "SDK bootstrapped successfully"
 }
 
 Say "root=$Root"
 Say "sdk=$Sdk"
 Say "deps=$Deps"
+Say "checkout=$Checkout"
+WriteTree $Root 'repo-root-before-bootstrap.txt'
+WriteTree $Deps 'deps-before-bootstrap.txt'
 
-if (Assert-UsableSdk 'existing') { exit 0 }
-
-# ValveSoftware/source-sdk-2013 currently uses the default/master layout with src/ at the repository root.
-# Do not assume an mp branch or mp/src folder. Downloading the zip avoids git/extraheader/auth weirdness on Actions runners.
-$zip = Join-Path $Deps 'source-sdk-2013-master.zip'
-$extractParent = Join-Path $Deps 'source-sdk-2013-zip'
-$zipRoot = Join-Path $extractParent 'source-sdk-2013-master'
-$zipUrl = 'https://codeload.github.com/ValveSoftware/source-sdk-2013/zip/refs/heads/master'
-
-$zipOk = $false
-try {
-  Say "downloading Valve SDK master zip from $zipUrl"
-  if (Test-Path $zip) { Remove-Item -Force $zip }
-  if (Test-Path $extractParent) { Remove-Item -Recurse -Force $extractParent }
-  New-Item -ItemType Directory -Force -Path $extractParent | Out-Null
-
-  if (Get-Command curl.exe -ErrorAction SilentlyContinue) {
-    & curl.exe -L --retry 4 --retry-delay 3 --connect-timeout 30 -o $zip $zipUrl 2>&1 | Tee-Object -FilePath (Join-Path $LogDir 'bootstrap-curl-master-zip.log')
-    if ($LASTEXITCODE -ne 0) { throw "curl.exe failed with exit code $LASTEXITCODE" }
-  } else {
-    Invoke-WebRequest -Uri $zipUrl -OutFile $zip -UseBasicParsing 2>&1 | Tee-Object -FilePath (Join-Path $LogDir 'bootstrap-iwr-master-zip.log')
-  }
-
-  $zipInfo = Get-Item $zip
-  Say "zip bytes=$($zipInfo.Length)"
-  if ($zipInfo.Length -lt 1000000) { throw "downloaded zip is suspiciously small" }
-
-  Expand-Archive -Path $zip -DestinationPath $extractParent -Force
-  Dump-Dir $extractParent 'zip-extract-parent.txt'
-  Dump-Dir $zipRoot 'zip-root.txt'
-
-  if (Test-Path (Join-Path $zipRoot 'src/game/client/hl2mp')) {
-    Copy-SdkRoot $zipRoot
-    $zipOk = $true
-  } else {
-    throw "zip did not contain expected src/game/client/hl2mp at $zipRoot"
-  }
-} catch {
-  Say "zip bootstrap failed: $($_.Exception.Message)"
-  $_ | Out-String | Out-File (Join-Path $LogDir 'bootstrap-zip-exception.txt')
+if (HasHl2mp $Sdk) {
+  Say "existing SDK tree looks usable"
+  exit 0
 }
 
-if ($zipOk) { Say 'SDK bootstrapped successfully from zip'; exit 0 }
-
-# Last-resort git fallback. Clear possible GitHub Actions extraheaders and force public HTTPS.
-$gitRepo = Join-Path $Deps 'source-sdk-2013-git'
-try {
-  Say "trying git clone fallback"
-  git config --global --unset-all http.https://github.com/.extraheader 2>$null
-  git config --global --unset-all http.https://github.com/ValveSoftware/source-sdk-2013.extraheader 2>$null
-  if (Test-Path $gitRepo) { Remove-Item -Recurse -Force $gitRepo }
-  & git -c http.https://github.com/.extraheader= clone --depth 1 --single-branch https://github.com/ValveSoftware/source-sdk-2013.git $gitRepo 2>&1 | Tee-Object -FilePath (Join-Path $LogDir 'bootstrap-git-clone-master.log')
-  if ($LASTEXITCODE -ne 0) { throw "git clone failed with exit code $LASTEXITCODE" }
-  Dump-Dir $gitRepo 'git-root.txt'
-  if (Test-Path (Join-Path $gitRepo 'src/game/client/hl2mp')) {
-    Copy-SdkRoot $gitRepo
-    Say 'SDK bootstrapped successfully from git'
+# Preferred path: GitHub Actions checks out ValveSoftware/source-sdk-2013 into _deps/source-sdk-2013-upstream.
+# This avoids flaky codeload/curl behavior and avoids git credential leakage from the OpenVibe checkout.
+$candidates = @(
+  @{ Root = $Checkout; Label = 'upstream root/src' },
+  @{ Root = (Join-Path $Checkout 'mp'); Label = 'upstream mp/src' },
+  @{ Root = (Join-Path $Checkout 'sp'); Label = 'upstream sp/src' }
+)
+foreach ($c in $candidates) {
+  if ((Test-Path $c.Root) -and (HasHl2mp $c.Root)) {
+    CopyLayout $c.Root $c.Label
     exit 0
   }
-  throw "git clone did not contain src/game/client/hl2mp"
-} catch {
-  Say "git bootstrap failed: $($_.Exception.Message)"
-  $_ | Out-String | Out-File (Join-Path $LogDir 'bootstrap-git-exception.txt')
 }
 
-Dump-Dir $Deps 'deps-after-bootstrap-failure.txt'
-throw "Could not bootstrap ValveSoftware/source-sdk-2013. Check openvibe-windows-build-debug artifact, especially bootstrap-curl-master-zip.log, bootstrap-zip-exception.txt, and bootstrap-git-clone-master.log."
+# Emergency fallback only: try a clean public clone with credentials explicitly disabled.
+# The workflow should normally never reach this if the actions/checkout step worked.
+Say "actions checkout layout was not found; trying emergency public git clone fallback"
+$Fallback = Join-Path $Deps 'source-sdk-2013-git-fallback'
+if (Test-Path $Fallback) { Remove-Item -Recurse -Force $Fallback }
+New-Item -ItemType Directory -Force -Path $Deps | Out-Null
+$cloneLog = Join-Path $LogDir 'bootstrap-git-clone-fallback.log'
+& git -c http.https://github.com/.extraheader= clone --depth 1 https://github.com/ValveSoftware/source-sdk-2013.git $Fallback 2>&1 | Tee-Object -FilePath $cloneLog
+if ($LASTEXITCODE -ne 0) {
+  WriteTree $Deps 'deps-after-bootstrap-failure.txt'
+  throw "Could not clone ValveSoftware/source-sdk-2013. Check $cloneLog"
+}
+
+foreach ($root in @($Fallback, (Join-Path $Fallback 'mp'), (Join-Path $Fallback 'sp'))) {
+  if ((Test-Path $root) -and (HasHl2mp $root)) {
+    CopyLayout $root "git fallback $root"
+    exit 0
+  }
+}
+
+WriteTree $Fallback 'fallback-root-after-clone.txt'
+throw "ValveSoftware/source-sdk-2013 was fetched, but no usable HL2MP src layout was found."

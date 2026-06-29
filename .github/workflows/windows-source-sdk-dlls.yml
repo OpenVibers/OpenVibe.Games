@@ -60,6 +60,15 @@ jobs:
           Get-ChildItem -Force | Select-Object Mode,Length,Name | Tee-Object -FilePath artifacts/windows-build-debug/repo-root-before-build.txt
           if (Test-Path engine) { Get-ChildItem -Force engine | Select-Object Mode,Length,Name | Tee-Object -FilePath artifacts/windows-build-debug/engine-before-build.txt } else { Write-Host "[miss] engine directory" }
 
+
+      - name: Checkout Valve Source SDK 2013
+        uses: actions/checkout@v4
+        with:
+          repository: ValveSoftware/source-sdk-2013
+          path: _deps/source-sdk-2013-upstream
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Bootstrap Source SDK 2013
         run: |
           $ErrorActionPreference = 'Stop'

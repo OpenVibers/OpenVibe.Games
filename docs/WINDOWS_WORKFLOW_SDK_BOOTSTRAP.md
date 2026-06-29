@@ -1,24 +1,17 @@
 # Windows Source SDK bootstrap
 
-The Windows GitHub Actions runner is fresh and does not have Alex's local `engine/source-sdk-2013` checkout.
+The Windows DLL workflow uses a two-checkout model:
 
-The workflow bootstraps Valve's public Source SDK 2013 repository into:
+1. Checkout this OpenVibe repository.
+2. Checkout `ValveSoftware/source-sdk-2013` into `_deps/source-sdk-2013-upstream`.
+3. Normalize the Valve SDK layout into `engine/source-sdk-2013`.
+4. Apply OpenVibe SDK patches.
+5. Build `client.dll` and `server.dll` with MSBuild.
 
-```text
-engine/source-sdk-2013
-```
+The bootstrap script accepts these upstream layouts:
 
-The expected SDK layout is:
+- `_deps/source-sdk-2013-upstream/src/...`
+- `_deps/source-sdk-2013-upstream/mp/src/...`
+- `_deps/source-sdk-2013-upstream/sp/src/...`
 
-```text
-engine/source-sdk-2013/src/game/client/hl2mp
-engine/source-sdk-2013/src/game/server/hl2mp
-```
-
-The bootstrap intentionally downloads the default/master zip first:
-
-```text
-https://codeload.github.com/ValveSoftware/source-sdk-2013/zip/refs/heads/master
-```
-
-This avoids brittle branch assumptions and avoids GitHub Actions `git` auth/header issues. A git clone fallback is still present for debugging.
+Diagnostics are uploaded under the `openvibe-windows-build-debug` artifact.
