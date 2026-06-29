@@ -32,3 +32,11 @@ if [[ -f "$win_bin/client.dll" ]]; then
 else
   echo "[openvibe] Proton Windows hl2.exe will NOT have in-game ov_* client commands until client.dll exists."
 fi
+
+echo
+echo "[openvibe] Deep DLL content check:"
+if [[ -x "${OPENVIBE_ROOT:-$HOME/src/openvibe-source}/tools/verify-openvibe-dll-content.sh" ]]; then
+  "${OPENVIBE_ROOT:-$HOME/src/openvibe-source}/tools/verify-openvibe-dll-content.sh" || true
+else
+  echo "tools/verify-openvibe-dll-content.sh missing"
+fi
