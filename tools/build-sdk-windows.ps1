@@ -565,10 +565,19 @@ function Copy-LibIfNeeded([string]$libName, [string]$destDir) {
 function Build-SourceSdkDependencyProjects {
   Say "building Source SDK dependency libraries before HL2MP client/server"
 
+  # OPENVIBE_WIN32_PUBLIC_CLIENT_LIB_DEPS
   $patterns = @(
     "tier1*.vcxproj",
     "mathlib*.vcxproj",
     "bitmap*.vcxproj",
+    "choreoobjects*.vcxproj",
+    "tier2*.vcxproj",
+    "dmxloader*.vcxproj",
+    "dmserializers*.vcxproj",
+    "datamodel*.vcxproj",
+    "particles*.vcxproj",
+    "appframework*.vcxproj",
+    "vgui_surfacelib*.vcxproj",
     "raytrace*.vcxproj",
     "vgui_controls*.vcxproj",
     "matsys_controls*.vcxproj",
@@ -591,7 +600,25 @@ function Build-SourceSdkDependencyProjects {
 
   $publicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
   Copy-LibIfNeeded "mathlib.lib" $publicLibDir
-  Copy-LibIfNeeded "bitmap.lib" $publicLibDir
+  # OPENVIBE_WIN32_COPY_PUBLIC_CLIENT_LIBS
+  foreach ($lib in @(
+    "tier1.lib",
+    "tier2.lib",
+    "mathlib.lib",
+    "raytrace.lib",
+    "bitmap.lib",
+    "choreoobjects.lib",
+    "dmxloader.lib",
+    "dmserializers.lib",
+    "datamodel.lib",
+    "particles.lib",
+    "appframework.lib",
+    "vgui_controls.lib",
+    "vgui_surfacelib.lib",
+    "matsys_controls.lib"
+  )) {
+    Copy-LibIfNeeded $lib $publicLibDir
+  }
   Copy-LibIfNeeded "tier1.lib" $publicLibDir
   Copy-LibIfNeeded "raytrace.lib" $publicLibDir
   Copy-LibIfNeeded "vgui_controls.lib" $publicLibDir
@@ -670,6 +697,21 @@ Patch-GeneratedPythonCustomBuildCommands
 
 Ensure-ServerNutHeaders
 Build-SourceSdkDependencyProjects
+
+# OPENVIBE_WIN32_PRE_CLIENT_LINK_LIB_AUDIT
+$publicLibDirAudit = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
+"=== public lib dir before client link ===" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt")
+"target arch=$script:OpenVibeTargetArch" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+"dir=$publicLibDirAudit" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+foreach ($lib in @("bitmap.lib","choreoobjects.lib","tier1.lib","tier2.lib","mathlib.lib","raytrace.lib","dmxloader.lib","dmserializers.lib","datamodel.lib","particles.lib","appframework.lib","vgui_controls.lib","vgui_surfacelib.lib","matsys_controls.lib")) {
+  $lp = Join-Path $publicLibDirAudit $lib
+  if (Test-Path $lp) {
+    $item = Get-Item $lp
+    "[ok] $lib $($item.Length) $($item.LastWriteTime)" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+  } else {
+    "[miss] $lib" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
+  }
+}
 
 $beforeBuild = Get-Date
 
