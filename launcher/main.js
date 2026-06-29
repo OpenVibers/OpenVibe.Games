@@ -18,6 +18,67 @@ let gameProcess = null;
 let uiServerProcess = null;
 let appIsQuitting = false;
 
+
+const GAME_WINDOW_TITLE = process.env.OPENVIBE_GAME_WINDOW_TITLE || 'OpenVibe: Source';
+const GAME_READY_TIMEOUT_MS = Number(process.env.OPENVIBE_GAME_WINDOW_READY_TIMEOUT_MS || 45000);
+const GAME_STABLE_MS = Number(process.env.OPENVIBE_GAME_WINDOW_STABLE_MS || 8000);
+const HIDE_LAUNCHER_ON_GAME_READY = process.env.OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY === '1';
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function emitLaunchPhase(phase, message, extra = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('game-launch-phase', { phase, message, ...extra });
+  }
+}
+
+function safeExec(command) {
+  try {
+    return execSync(command, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  } catch {
+    return '';
+  }
+}
+
+function findGameWindowId() {
+  // Linux desktop helper. If xdotool is not installed, the launcher simply stays visible.
+  const escaped = GAME_WINDOW_TITLE.replace(/"/g, '\\"');
+  const out = safeExec(`xdotool search --name "${escaped}" 2>/dev/null | tail -n 1`);
+  return out || null;
+}
+
+function focusGameWindow() {
+  const win = findGameWindowId();
+  if (!win) return false;
+  safeExec(`xdotool windowactivate ${win} 2>/dev/null || true`);
+  return true;
+}
+
+async function waitForGameWindowReady(timeoutMs = GAME_READY_TIMEOUT_MS) {
+  const started = Date.now();
+  let firstSeen = 0;
+
+  while (Date.now() - started < timeoutMs) {
+    const win = findGameWindowId();
+    if (win) {
+      if (!firstSeen) {
+        firstSeen = Date.now();
+        emitLaunchPhase('window-found', 'Source window found. Waiting for it to stop thrashing before switching focus...', { windowId: win });
+      }
+
+      if (Date.now() - firstSeen >= GAME_STABLE_MS) {
+        return { ready: true, windowId: win, reason: 'window-stable' };
+      }
+    }
+
+    await sleep(500);
+  }
+
+  return { ready: false, windowId: findGameWindowId(), reason: 'timeout' };
+}
+
 // ── API helper ────────────────────────────────────────────────────────────────
 function apiGet(urlPath) {
   return new Promise((resolve, reject) => {
@@ -179,10 +240,45 @@ async function launchGame(serverIp, serverPort) {
     mainWindow?.focus();
   });
 
+  emitLaunchPhase(
+    'spawned',
+    'Source has started. OpenVibe will keep this launcher visible until the game window is detected and stable.'
+  );
   mainWindow?.webContents.send('game-started', gameProcess.pid);
-  setTimeout(() => {
-    if (gameProcess && mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-  }, 750);
+
+  waitForGameWindowReady().then((state) => {
+    if (!gameProcess) return;
+
+    if (state.ready) {
+      emitLaunchPhase(
+        'ready',
+        HIDE_LAUNCHER_ON_GAME_READY
+          ? 'Source window looks ready. Focusing game and hiding launcher.'
+          : 'Source window looks ready. Launcher will stay open so you are not stuck behind a frozen loading screen.',
+        state
+      );
+      focusGameWindow();
+
+      if (HIDE_LAUNCHER_ON_GAME_READY) {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+      } else {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    } else {
+      emitLaunchPhase(
+        'slow',
+        'Source is taking longer than expected. The launcher is staying visible; use Focus Game when the window appears.',
+        state
+      );
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
+  });
 
   // Detach so the game keeps running if Electron is closed
   gameProcess.unref();
@@ -234,6 +330,19 @@ ipcMain.handle('game:status', () => ({
   running: gameProcess !== null,
   pid: gameProcess?.pid ?? null,
 }));
+
+
+ipcMain.handle('game:focus', async () => {
+  return focusGameWindow();
+});
+
+ipcMain.handle('launcher:show', async () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+  return true;
+});
 
 ipcMain.on('open-url', (_e, url) => shell.openExternal(url));
 

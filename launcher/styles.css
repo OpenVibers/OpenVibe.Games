@@ -753,3 +753,21 @@ html.embedded .portal-card {
 html.embedded .hero-sub {
   color: #8aa0b8;
 }
+
+
+/* OpenVibe launch guard */
+.launch-help {
+  margin-top: 10px;
+  max-width: 620px;
+  color: rgba(220, 235, 255, 0.78);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+.launch-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}

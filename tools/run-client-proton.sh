@@ -28,6 +28,7 @@ if [ -n "$1" ] && [ -n "$2" ]; then
 fi
 
 echo "Launching OpenVibe: Source..."
+echo "NOTE: Proton Windows hl2.exe will not load Linux client.so; Electron launcher remains the reliable custom UI."
 echo "  Game: $GAME_DIR"
 echo "  Proton: $GE_PROTON"
 [ -n "$CONNECT_ARGS" ] && echo "  Connect: $CONNECT_ARGS"
@@ -44,6 +45,6 @@ export DXVK_ASYNC=1
 exec "$GE_PROTON/proton" waitforexitandrun \
     "$HL2_EXE" \
     -game "$GAME_DIR" \
-    -console -dev -novid -sw -w 1280 -h 720 \
-    -port 27115 -clientport 27105 \
+    -console -condebug -dev -novid -sw -w 1280 -h 720 \
+    -port 27115 -clientport 27105 +con_enable 1 +developer 1 \
     $CONNECT_ARGS

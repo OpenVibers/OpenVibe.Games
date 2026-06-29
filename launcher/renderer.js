@@ -58,6 +58,7 @@ const Bridge = {
     return true;
   },
   gameStatus: () => isElectron ? window.OV.gameStatus() : Promise.resolve({ running: true, pid: null }),
+  focusGame: () => isElectron ? window.OV.focusGame() : Promise.resolve(false),
   close: () => {
     if (isElectron) window.OV.close();
     else window.location.href = 'openvibe://close';
@@ -109,6 +110,11 @@ const launchLabel   = document.getElementById('launch-label');
 
 document.getElementById('launch-cancel')?.addEventListener('click', () => {
   launchOverlay.classList.remove('show');
+});
+
+document.getElementById('launch-focus-game')?.addEventListener('click', async () => {
+  const ok = await Bridge.focusGame();
+  toast(ok ? 'Focused Source window.' : 'Source window not found yet.', !ok);
 });
 
 function showLaunchOverlay(msg) {
@@ -165,6 +171,21 @@ document.getElementById('settings-launch')?.addEventListener('click', () => {
 if (isElectron) {
   window.OV.onGameStart?.(() => {
     updateGameStatus(true);
+  });
+  window.OV.onLaunchPhase?.((info) => {
+    const label = document.getElementById('launch-label');
+    const help = document.getElementById('launch-help');
+    if (label && info?.message) label.textContent = info.message;
+    if (help) {
+      if (info?.phase === 'ready') {
+        help.textContent = 'The game window is available. Because the Proton client may not load the custom client DLL, keep this launcher open as the reliable OpenVibe UI.';
+      } else if (info?.phase === 'slow') {
+        help.textContent = 'The game may still be loading or frozen. The launcher is staying visible so you can retry, focus the game, or inspect logs.';
+      } else {
+        help.textContent = 'OpenVibe is waiting for the Source window to appear and stabilize before switching focus.';
+      }
+    }
+    launchOverlay?.classList.add('show');
   });
   window.OV.onGameExit((code) => {
     hideLaunchOverlay();
