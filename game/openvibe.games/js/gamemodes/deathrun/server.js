@@ -7,12 +7,17 @@
     });
   }
 
-  const DeathrunGM = {
+  const GM = {
     mode: "deathrun",
     name: "OpenVibe Deathrun",
     Initialize() { OV.log("Deathrun Initialize fired"); registerCommands(); },
     PlayerInitialSpawn(ply) { ply.chat("Deathrun JS loaded. Try !dr_status"); },
     Think() {}
   };
-  gamemode.set(DeathrunGM);
+
+  hook.Add("PlayerSpawn", "OpenVibeDeathrunSpawnTip", function (ply) {
+    ply.chat("Reach the end. Avoid traps. Trust nothing.");
+  });
+
+  gamemode.set(GM);
 })();

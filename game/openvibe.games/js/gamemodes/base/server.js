@@ -1,5 +1,5 @@
 (function () {
-  const BaseServerGM = {
+  const GM = {
     mode: "base",
     name: "OpenVibe Base",
 
@@ -16,10 +16,20 @@
     },
 
     PlayerSpawn(_ply) {},
+
     PlayerDeath(_victim, _attacker) {},
-    PlayerDisconnected(_ply) {},
+
+    PlayerDisconnected(ply) {
+      if (ply && typeof OV.log === "function") OV.log(`${ply.name()} disconnected.`);
+    },
+
+    PlayerSay(_ply, _text) {
+      return undefined;
+    },
+
     Think() {}
   };
 
-  gamemode.set(BaseServerGM);
+  gamemode.setBase(GM);
+  gamemode.set(GM, { base: true });
 })();

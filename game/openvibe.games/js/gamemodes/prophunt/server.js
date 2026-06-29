@@ -14,12 +14,16 @@
     });
   }
 
-  const PropHuntGM = {
+  const GM = {
     mode: "prophunt",
     name: "OpenVibe Prop Hunt",
     Initialize() { OV.log("Prop Hunt Initialize fired"); registerCommands(); },
     PlayerInitialSpawn(ply) { ply.chat("Prop Hunt JS loaded. Try !ph_status or !disguise crate"); },
     Think() {}
   };
-  gamemode.set(PropHuntGM);
+  hook.Add("PlayerSpawn", "OpenVibePropHuntSpawnTip", function (ply) {
+    ply.chat("Blend in. Use !disguise crate, !disguise barrel, or !disguise chair.");
+  });
+
+  gamemode.set(GM);
 })();

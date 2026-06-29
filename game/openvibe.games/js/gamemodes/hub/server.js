@@ -29,7 +29,7 @@
     });
   }
 
-  const HubServerGM = {
+  const GM = {
     mode: "hub",
     name: "OpenVibe Hub",
 
@@ -63,5 +63,5 @@
     Think() {}
   };
 
-  gamemode.set(HubServerGM);
+  gamemode.set(GM);
 })();

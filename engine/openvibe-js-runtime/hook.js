@@ -3,9 +3,9 @@
  * Similar to Garry's Mod Lua hooks but for JavaScript
  * 
  * Usage:
- *   hook.on('PlayerSpawn', 'myhandler', (player) => { console.log(player.name + ' spawned'); });
- *   hook.emit('PlayerSpawn', player);
- *   hook.off('PlayerSpawn', 'myhandler');
+ *   hook.Add('PlayerSpawn', 'myhandler', (player) => { console.log(player.name + ' spawned'); });
+ *   hook.Run('PlayerSpawn', player);
+ *   hook.Remove('PlayerSpawn', 'myhandler');
  */
 
 class HookSystem {
@@ -29,6 +29,10 @@ class HookSystem {
     console.log(`[Hook] Registered: ${hookName} (${id})`);
   }
 
+  Add(hookName, id, callback) {
+    return this.on(hookName, id, callback);
+  }
+
   /**
    * Unregister a hook callback
    * @param {string} hookName - Event name
@@ -41,11 +45,15 @@ class HookSystem {
     }
   }
 
+  Remove(hookName, id) {
+    return this.off(hookName, id);
+  }
+
   /**
    * Emit an event, calling all registered hooks
    * @param {string} hookName - Event name
    * @param {...any} args - Arguments to pass to handlers
-   * @returns {boolean|any} - Return value from handlers (stops on first truthy)
+   * @returns {boolean|any} - First defined return value from handlers
    */
   emit(hookName, ...args) {
     if (!this.hooks.has(hookName)) {
@@ -53,20 +61,33 @@ class HookSystem {
     }
 
     const handlers = this.hooks.get(hookName);
-    let result = null;
-
     for (const [id, callback] of handlers) {
       try {
         const ret = callback(...args);
-        if (ret !== undefined && ret !== null) {
-          result = ret; // Allow chaining return values
+        if (ret !== undefined) {
+          return ret;
         }
       } catch (err) {
         console.error(`[Hook] Error in ${hookName} (${id}):`, err.message);
       }
     }
 
-    return result;
+    return undefined;
+  }
+
+  Run(hookName, ...args) {
+    return this.emit(hookName, ...args);
+  }
+
+  Call(hookName, gamemode, ...args) {
+    const result = this.emit(hookName, ...args);
+    if (result !== undefined) return result;
+
+    if (gamemode && typeof gamemode[hookName] === 'function') {
+      return gamemode[hookName](...args);
+    }
+
+    return undefined;
   }
 
   /**
@@ -106,6 +127,16 @@ class HookSystem {
    */
   getHooks(hookName) {
     return this.hooks.get(hookName) || new Map();
+  }
+
+  GetTable(hookName) {
+    if (hookName) return Array.from(this.getHooks(hookName).keys());
+
+    const out = {};
+    for (const [name, handlers] of this.hooks.entries()) {
+      out[name] = Array.from(handlers.keys());
+    }
+    return out;
   }
 
   /**

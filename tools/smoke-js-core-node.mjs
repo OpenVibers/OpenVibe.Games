@@ -58,6 +58,18 @@ context.gamemode.call("Initialize");
 context.gamemode.call("MapInitialize", "ov_hub");
 context.gamemode.call("PlayerInitialSpawn", player());
 
+context.hook.Add("OpenVibeSmoke", "first", () => undefined);
+context.hook.Add("OpenVibeSmoke", "second", () => "hook-result");
+context.GM.OpenVibeSmoke = () => "gm-result";
+if (context.hook.Run("OpenVibeSmoke") !== "hook-result") {
+  throw new Error("hook.Run did not return first defined hook result");
+}
+
+context.hook.Remove("OpenVibeSmoke", "second");
+if (context.hook.Run("OpenVibeSmoke") !== "gm-result") {
+  throw new Error("hook.Run did not fall back to GM method");
+}
+
 const blocked = context.gamemode.call("PlayerSay", player(), "!js");
 if (blocked !== false) throw new Error("!js did not block default chat");
 
@@ -70,6 +82,7 @@ context.gamemode.call("Think");
 if (!messages.some((line) => line.includes("JavaScript hooks are working"))) throw new Error("missing !js response");
 if (!messages.some((line) => line.includes("OpenVibe embedded JS smoke test passed"))) throw new Error("missing smoke response");
 if (!messages.some((line) => line.includes("OpenVibe JS timer smoke fired"))) throw new Error("missing timer smoke response");
+if (context.GAMEMODE.mode !== "hub") throw new Error("GAMEMODE global was not published");
 
 console.log(messages.join("\n"));
 console.log("[openvibe-smoke] JS command/timer smoke passed");

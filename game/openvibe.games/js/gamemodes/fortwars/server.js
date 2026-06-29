@@ -14,12 +14,17 @@
     });
   }
 
-  const FortWarsGM = {
+  const GM = {
     mode: "fortwars",
     name: "OpenVibe Fort Wars",
     Initialize() { OV.log("Fort Wars Initialize fired"); registerCommands(); },
     PlayerInitialSpawn(ply) { ply.chat("Fort Wars JS loaded. Try !fw_status or !build crate"); },
     Think() {}
   };
-  gamemode.set(FortWarsGM);
+
+  hook.Add("PlayerSpawn", "OpenVibeFortWarsSpawnTip", function (ply) {
+    ply.chat("Build phase: use !build crate, !build pallet, or !build fence.");
+  });
+
+  gamemode.set(GM);
 })();
