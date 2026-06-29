@@ -359,3 +359,20 @@ async function init() {
 }
 
 init();
+
+
+// Launcher-aware Source startup status. This keeps Electron useful while Proton
+// shows the default Source loading window and before a native client DLL exists.
+if (isElectron && window.OV.onLaunchState) {
+  window.OV.onLaunchState((state) => {
+    const label = document.getElementById('launch-label');
+    const sub = document.getElementById('launch-sub');
+    if (label && state?.message) label.textContent = state.message;
+    if (sub) {
+      sub.textContent = state?.phase === 'ready'
+        ? 'Game window is ready. Use Focus Game Window, or keep Electron open as the custom menu.'
+        : 'Electron remains open so you are not left staring at a frozen/default Source loading screen.';
+    }
+    if (state?.phase && state.phase !== 'idle') launchOverlay?.classList.add('show');
+  });
+}

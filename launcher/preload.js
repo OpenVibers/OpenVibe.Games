@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('OV', {
 
   // Events from main → renderer
   onGameStart: (cb) => ipcRenderer.on('game-started', (_e, pid) => cb(pid)),
+  onLaunchState: (cb) => ipcRenderer.on('launch-state', (_e, state) => cb(state)),
   onLaunchPhase: (cb) => ipcRenderer.on('game-launch-phase', (_e, info) => cb(info)),
   onGameExit: (cb) => ipcRenderer.on('game-exited', (_e, code) => cb(code)),
   onRoute:    (cb) => ipcRenderer.on('ui:set-route', (_e, route) => cb(route)),

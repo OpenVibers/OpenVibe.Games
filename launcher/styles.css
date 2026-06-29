@@ -771,3 +771,26 @@ html.embedded .hero-sub {
   flex-wrap: wrap;
   margin-top: 18px;
 }
+
+/* OpenVibe launcher-aware Source loading UX */
+.launch-focus {
+  margin-top: 10px;
+  border: 1px solid rgba(0, 216, 255, 0.55);
+  background: rgba(0, 216, 255, 0.14);
+  color: #eaf8ff;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.launch-focus:hover {
+  background: rgba(0, 216, 255, 0.22);
+}
+.launch-sub {
+  margin-top: 10px;
+  max-width: 560px;
+  color: rgba(230, 236, 255, 0.76);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}

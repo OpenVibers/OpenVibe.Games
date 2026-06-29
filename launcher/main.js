@@ -18,6 +18,63 @@ let gameProcess = null;
 let uiServerProcess = null;
 let appIsQuitting = false;
 
+let lastLaunchState = { phase: 'idle', message: 'Ready', pid: null };
+
+function broadcastLaunchState(state) {
+  lastLaunchState = { ...lastLaunchState, ...state, at: Date.now() };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('launch-state', lastLaunchState);
+  }
+}
+
+function sourceWindowVisible() {
+  try {
+    const out = execSync('wmctrl -lx 2>/dev/null || true', { encoding: 'utf8' });
+    return /OpenVibe: Source|Source SDK Base 2013|hl2\.exe|hl2/i.test(out);
+  } catch {
+    return false;
+  }
+}
+
+function focusSourceWindow() {
+  const commands = [
+    "wmctrl -a 'OpenVibe: Source'",
+    "wmctrl -a 'Source SDK Base 2013'",
+    "wmctrl -a 'hl2.exe'",
+  ];
+  for (const cmd of commands) {
+    try {
+      execSync(cmd, { stdio: 'ignore' });
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+function waitForStableSourceWindow(timeoutMs = 60000) {
+  const started = Date.now();
+  let stableTicks = 0;
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (sourceWindowVisible()) stableTicks += 1;
+      else stableTicks = 0;
+
+      broadcastLaunchState({
+        phase: stableTicks > 0 ? 'window-detected' : 'starting',
+        message: stableTicks > 0
+          ? `Source window detected (${stableTicks}/5 stable checks)...`
+          : 'Starting Source through Proton...',
+      });
+
+      if (stableTicks >= 5) return resolve(true);
+      if (Date.now() - started >= timeoutMs) return resolve(false);
+      setTimeout(tick, 1000);
+    };
+    tick();
+  });
+}
+
+
 
 const GAME_WINDOW_TITLE = process.env.OPENVIBE_GAME_WINDOW_TITLE || 'OpenVibe: Source';
 const GAME_READY_TIMEOUT_MS = Number(process.env.OPENVIBE_GAME_WINDOW_READY_TIMEOUT_MS || 45000);

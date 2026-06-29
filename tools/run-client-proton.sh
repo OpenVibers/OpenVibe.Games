@@ -40,6 +40,7 @@ export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_PATH"
 export STEAM_COMPAT_DATA_PATH="$STEAM_COMPAT_DATA"
 export SteamAppId=243750
 export PROTON_LOG=0
+export OPENVIBE_PROTON_FALLBACK=1
 export DXVK_ASYNC=1
 
 exec "$GE_PROTON/proton" waitforexitandrun \
