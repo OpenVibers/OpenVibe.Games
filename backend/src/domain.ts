@@ -246,6 +246,7 @@ export interface OpenVibeRepository {
   // Script packages
   listScriptPackages(): Promise<ScriptPackage[]>;
   getScriptPackage(packageId: string): Promise<ScriptPackage | null>;
+  listScriptPackageFiles(packageId: string): Promise<ScriptPackageFile[]>;
   upsertScriptPackage(input: UpsertScriptPackageInput): Promise<ScriptPackage>;
   upsertScriptPackageFile(input: UpsertScriptPackageFileInput): Promise<ScriptPackageFile>;
   setScriptPackageEnabled(packageId: string, enabled: boolean): Promise<ScriptPackage | null>;

@@ -706,6 +706,17 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     return mapScriptPackage(result.rows[0]);
   }
 
+  async listScriptPackageFiles(packageId: string): Promise<ScriptPackageFile[]> {
+    const result = await this.pool.query(
+      `SELECT package_id, path, sha256, size_bytes, realm, content, created_at
+       FROM script_package_files
+       WHERE package_id = $1
+       ORDER BY path`,
+      [packageId],
+    );
+    return result.rows.map(mapScriptPackageFile);
+  }
+
   async upsertScriptPackageFile(input: UpsertScriptPackageFileInput): Promise<ScriptPackageFile> {
     const result = await this.pool.query(
       `

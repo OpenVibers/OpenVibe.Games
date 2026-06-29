@@ -320,6 +320,13 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     return pkg;
   });
 
+  app.get("/v1/scripts/packages/:packageId/files", async (request, reply) => {
+    const { packageId } = packageIdParamSchema.parse(request.params);
+    const pkg = await options.repository.getScriptPackage(packageId);
+    if (!pkg) return reply.code(404).send({ error: "not_found" });
+    return { files: await options.repository.listScriptPackageFiles(packageId) };
+  });
+
   app.post("/v1/admin/scripts/packages", async (request, reply) => {
     if (!requireAdmin(request, reply)) return;
     const body = upsertScriptPackageSchema.parse(request.body);

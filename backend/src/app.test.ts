@@ -395,4 +395,147 @@ describe("OpenVibe API vertical slice", () => {
 
     await app.close();
   });
+
+  it("script packages: create, list, get, upload files, enable/disable, and 404 on missing", async () => {
+    const adminSecret = "test-admin-secret";
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      adminSecret,
+    });
+    await app.ready();
+
+    // List returns empty initially
+    const empty = await app.inject({ method: "GET", url: "/v1/scripts/packages" });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json().packages).toHaveLength(0);
+
+    // GET unknown package returns 404
+    const miss = await app.inject({ method: "GET", url: "/v1/scripts/packages/no-such-pkg" });
+    expect(miss.statusCode).toBe(404);
+
+    // GET files for unknown package returns 404
+    const missFils = await app.inject({
+      method: "GET",
+      url: "/v1/scripts/packages/no-such-pkg/files",
+    });
+    expect(missFils.statusCode).toBe(404);
+
+    // Admin: create a package
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        packageId: "test-gamemode",
+        packageType: "gamemode",
+        displayName: "Test Gamemode",
+        description: "A test gamemode package.",
+        version: "1.0.0",
+      },
+    });
+    expect(create.statusCode).toBe(200);
+    expect(create.json().packageId).toBe("test-gamemode");
+    expect(create.json().enabled).toBe(false);
+
+    // List now returns the package
+    const listed = await app.inject({ method: "GET", url: "/v1/scripts/packages" });
+    expect(listed.json().packages).toHaveLength(1);
+
+    // GET by id works
+    const got = await app.inject({ method: "GET", url: "/v1/scripts/packages/test-gamemode" });
+    expect(got.statusCode).toBe(200);
+    expect(got.json().displayName).toBe("Test Gamemode");
+
+    // Files list is empty before upload
+    const emptyFiles = await app.inject({
+      method: "GET",
+      url: "/v1/scripts/packages/test-gamemode/files",
+    });
+    expect(emptyFiles.statusCode).toBe(200);
+    expect(emptyFiles.json().files).toHaveLength(0);
+
+    // Upload a file with wrong admin secret fails
+    const badUpload = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/files",
+      headers: { "x-admin-secret": "wrong" },
+      payload: {
+        path: "gamemodes/test/server.js",
+        sha256: "abc123",
+        sizeBytes: 42,
+        realm: "server",
+        content: "OV.log('hello');",
+      },
+    });
+    expect(badUpload.statusCode).toBe(403);
+
+    // Upload a file to unknown package returns 404
+    const unknownPkg = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/no-such-pkg/files",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        path: "gamemodes/test/server.js",
+        sha256: "a".repeat(64),
+        sizeBytes: 42,
+        realm: "server",
+        content: "OV.log('hello');",
+      },
+    });
+    expect(unknownPkg.statusCode).toBe(404);
+
+    // Upload a file successfully
+    const upload = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/files",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        path: "gamemodes/test/server.js",
+        sha256: "a".repeat(64),
+        sizeBytes: 42,
+        realm: "server",
+        content: "OV.log('hello');",
+      },
+    });
+    expect(upload.statusCode).toBe(200);
+    expect(upload.json().path).toBe("gamemodes/test/server.js");
+    expect(upload.json().realm).toBe("server");
+
+    // Files list now has the uploaded file
+    const withFile = await app.inject({
+      method: "GET",
+      url: "/v1/scripts/packages/test-gamemode/files",
+    });
+    expect(withFile.json().files).toHaveLength(1);
+    expect(withFile.json().files[0].sha256).toBe("a".repeat(64));
+
+    // Enable the package
+    const enabled = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/enable",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json().enabled).toBe(true);
+
+    // Disable the package
+    const disabled = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/disable",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().enabled).toBe(false);
+
+    // Enable/disable on unknown package returns 404
+    const enableMiss = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/no-such-pkg/enable",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(enableMiss.statusCode).toBe(404);
+
+    await app.close();
+  });
 });

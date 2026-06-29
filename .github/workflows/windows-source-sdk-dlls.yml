@@ -10,6 +10,7 @@ on:
   push:
     branches:
       - codex/openvibe-next-steps
+      - copilot/continue-windows-dll-work
     paths:
       - ".github/workflows/windows-source-sdk-dlls.yml"
       - "tools/bootstrap-source-sdk-2013-windows.ps1"

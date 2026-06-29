@@ -496,6 +496,10 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
     return { ...pkg };
   }
 
+  async listScriptPackageFiles(packageId: string): Promise<ScriptPackageFile[]> {
+    return (this.scriptPackageFiles.get(packageId) ?? []).map((f) => ({ ...f }));
+  }
+
   async upsertScriptPackageFile(input: UpsertScriptPackageFileInput): Promise<ScriptPackageFile> {
     const now = new Date().toISOString();
     const file: ScriptPackageFile = { ...input, createdAt: now };

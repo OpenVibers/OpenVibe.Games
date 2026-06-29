@@ -41,6 +41,7 @@ openvibe-source/
 | Prop Hunt disguise | Implemented | `ov_prophunt_disguise`, `ov_prophunt_reset_disguise` |
 | Fort Wars placement | Implemented | `ov_fortwars_spawn` |
 | VScript game modes | Implemented prototypes | `game/openvibe.games/scripts/vscripts/ov_*.nut` |
+| Script packages API | Implemented | `GET /v1/scripts/packages`, `GET /v1/scripts/packages/:id`, `GET /v1/scripts/packages/:id/files`, admin upsert/enable/disable routes |
 | Maps | Compiled | `game/openvibe.games/maps/*.bsp` |
 | Production infra | Scaffolded | `infra/docker-compose.yml`, `infra/production/docker-stack.yml`, `infra/kubernetes/openvibe.yaml` |
 
@@ -88,10 +89,10 @@ node tools/smoke-api.mjs
 tools/dev-down.sh
 ```
 
-## Verified On June 28, 2026
+## Verified On June 29, 2026
 
 - Backend TypeScript build passed.
-- Backend Vitest suite passed: 11 tests.
+- Backend Vitest suite passed: 12 tests.
 - Source SDK 2013 Linux64 build passed with OpenVibe C++ patch applied.
 - SRCDS smoke test passed for all five maps.
 - Full dev stack registered all five servers and returned valid travel targets for every mode.
