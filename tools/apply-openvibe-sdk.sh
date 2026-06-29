@@ -53,7 +53,9 @@ copy_file "$ROOT/sdk/openvibe/server/hl2mp/openvibe_js_server.cpp" \
 copy_tree "$ROOT/sdk/openvibe/third_party/quickjs" \
   "$SDK/src/game/shared/openvibe/third_party/quickjs"
 
-"$ROOT/tools/build-quickjs-lib.sh"
+if [[ "${OPENVIBE_SKIP_QJS_BUILD:-0}" != "1" ]]; then
+  "$ROOT/tools/build-quickjs-lib.sh"
+fi
 
 CLIENT_VPC="$SDK/src/game/client/client_hl2mp.vpc"
 SERVER_VPC="$SDK/src/game/server/server_hl2mp.vpc"

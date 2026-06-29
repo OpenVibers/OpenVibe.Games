@@ -9,6 +9,7 @@ GE_PROTON="$STEAM_PATH/compatibilitytools.d/GE-Proton10-34"
 STEAM_COMPAT_DATA="$STEAM_PATH/steamapps/compatdata/243750"
 HL2_EXE="/mnt/data-f/SteamLibrary/steamapps/common/Source SDK Base 2013 Multiplayer/hl2.exe"
 GAME_DIR="/home/workstation/src/openvibe-source/game/openvibe.games"
+CLIENT_DLL="$GAME_DIR/bin/client.dll"
 
 # Check dependencies
 if [ ! -f "$HL2_EXE" ]; then

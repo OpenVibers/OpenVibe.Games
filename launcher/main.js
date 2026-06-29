@@ -247,37 +247,33 @@ async function ensureClientUiServer(root) {
 // ── Game launch ────────────────────────────────────────────────────────────────
 async function launchGame(serverIp, serverPort) {
   const root = path.resolve(__dirname, '..');
-  const mod = path.join(root, 'game/openvibe.games');
-
-  // Prefer the Proton-based launcher (Windows hl2.exe via GE-Proton)
-  const protonScript = path.join(root, 'tools/run-client-proton.sh');
-  const steamRoot = process.env.HOME + '/.steam/steam';
-  const hl2Exe = '/mnt/data-f/SteamLibrary/steamapps/common/Source SDK Base 2013 Multiplayer/hl2.exe';
-
-  const hasProton = fs.existsSync(path.join(steamRoot, 'compatibilitytools.d/GE-Proton10-34/proton'));
-  const hasHl2 = fs.existsSync(hl2Exe);
-
-  if (!hasProton || !hasHl2) {
-    dialog.showErrorBox('Game Not Found',
-      !hasHl2
-        ? `hl2.exe not found at:\n${hl2Exe}`
-        : 'GE-Proton10-34 not found.\nInstall it via ProtonUp-Qt or manually.');
-    return false;
-  }
 
   const uiReady = await ensureClientUiServer(root);
   if (!uiReady) {
     dialog.showErrorBox('OpenVibe Menu Server Failed',
-      `Could not start http://127.0.0.1:${CLIENT_UI_PORT}/client for the in-game HTML menu.`);
+      `Could not start http://127.0.0.1:${CLIENT_UI_PORT}/client for the launcher/in-game HTML menu.`);
     return false;
   }
 
-  // Build arguments to pass through the shell script
   const scriptArgs = serverIp && serverPort ? [serverIp, String(serverPort)] : [];
+  const isWin = process.platform === 'win32';
+  const launcherScript = isWin
+    ? path.join(root, 'tools', 'run-client-windows.ps1')
+    : path.join(root, 'tools', 'run-client-auto.sh');
 
-  console.log('[launcher] spawning via Proton:', protonScript, scriptArgs.join(' '));
+  if (!fs.existsSync(launcherScript)) {
+    dialog.showErrorBox('OpenVibe Launcher Script Missing', `Could not find:\n${launcherScript}`);
+    return false;
+  }
 
-  gameProcess = spawn('bash', [protonScript, ...scriptArgs], {
+  const command = isWin ? 'powershell.exe' : 'bash';
+  const args = isWin
+    ? ['-ExecutionPolicy', 'Bypass', '-File', launcherScript, ...scriptArgs]
+    : [launcherScript, ...scriptArgs];
+
+  console.log('[launcher] spawning client:', command, args.join(' '));
+
+  gameProcess = spawn(command, args, {
     cwd: root,
     detached: true,
     env: {
@@ -297,49 +293,17 @@ async function launchGame(serverIp, serverPort) {
     mainWindow?.focus();
   });
 
-  emitLaunchPhase(
-    'spawned',
-    'Source has started. OpenVibe will keep this launcher visible until the game window is detected and stable.'
-  );
   mainWindow?.webContents.send('game-started', gameProcess.pid);
 
-  waitForGameWindowReady().then((state) => {
-    if (!gameProcess) return;
+  // Keep Electron visible by default so users are not dumped behind a frozen Source loading window.
+  // Advanced: set OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY=1 to hide after a conservative delay.
+  if (process.env.OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY === '1') {
+    setTimeout(() => {
+      if (gameProcess && mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+    }, Number(process.env.OPENVIBE_GAME_READY_HIDE_DELAY_MS || 12000));
+  }
 
-    if (state.ready) {
-      emitLaunchPhase(
-        'ready',
-        HIDE_LAUNCHER_ON_GAME_READY
-          ? 'Source window looks ready. Focusing game and hiding launcher.'
-          : 'Source window looks ready. Launcher will stay open so you are not stuck behind a frozen loading screen.',
-        state
-      );
-      focusGameWindow();
-
-      if (HIDE_LAUNCHER_ON_GAME_READY) {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-      } else {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.show();
-          mainWindow.focus();
-        }
-      }
-    } else {
-      emitLaunchPhase(
-        'slow',
-        'Source is taking longer than expected. The launcher is staying visible; use Focus Game when the window appears.',
-        state
-      );
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.show();
-        mainWindow.focus();
-      }
-    }
-  });
-
-  // Detach so the game keeps running if Electron is closed
   gameProcess.unref();
-
   return true;
 }
 

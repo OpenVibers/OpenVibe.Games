@@ -3,12 +3,14 @@ set -euo pipefail
 
 ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
 TF2_SRCDS="${OPENVIBE_SRCDS:-$HOME/srcds/tf2}"
-MOD_BIN="$ROOT/game/openvibe.games/bin/linux64"
-SDK_HL2MP_BIN="$ROOT/engine/source-sdk-2013/game/mod_hl2mp/bin/linux64"
+MOD_BIN="$ROOT/game/openvibe.games/bin"
+MOD_LINUX_BIN="$MOD_BIN/linux64"
+SDK_HL2MP_LINUX_BIN="$ROOT/engine/source-sdk-2013/game/mod_hl2mp/bin/linux64"
 SDK_LIB_BIN="$ROOT/engine/source-sdk-2013/src/lib/public/linux64"
 TF2_BIN="$TF2_SRCDS/bin/linux64"
+SDK_HL2MP_WIN_BIN="$ROOT/engine/source-sdk-2013/game/mod_hl2mp/bin"
 
-mkdir -p "$MOD_BIN"
+mkdir -p "$MOD_LINUX_BIN" "$MOD_BIN"
 
 require_file() {
   if [[ ! -f "$1" ]]; then
@@ -17,28 +19,80 @@ require_file() {
   fi
 }
 
-require_file "$SDK_HL2MP_BIN/client.so"
-require_file "$SDK_HL2MP_BIN/server.so"
-require_file "$SDK_HL2MP_BIN/game_shader_generic_example.so"
+link_if_exists() {
+  local src="$1" dst="$2"
+  if [[ -f "$src" ]]; then
+    ln -sfn "$src" "$dst"
+    echo "[openvibe] linked ${dst#$ROOT/} -> $src"
+  fi
+}
+
+copy_if_exists() {
+  local src="$1" dst="$2"
+  if [[ -f "$src" ]]; then
+    install -D -m 0644 "$src" "$dst"
+    echo "[openvibe] copied ${dst#$ROOT/}"
+    return 0
+  fi
+  return 1
+}
+
+# Linux native / Linux dedicated server modules.
+require_file "$SDK_HL2MP_LINUX_BIN/client.so"
+require_file "$SDK_HL2MP_LINUX_BIN/server.so"
+require_file "$SDK_HL2MP_LINUX_BIN/game_shader_generic_example.so"
 require_file "$SDK_LIB_BIN/libtier0.so"
 require_file "$SDK_LIB_BIN/libvstdlib.so"
 require_file "$SDK_LIB_BIN/libsteam_api.so"
-require_file "$TF2_BIN/soundemittersystem_srv.so"
-require_file "$TF2_BIN/shaderapiempty_srv.so"
 
-ln -sfn "$SDK_HL2MP_BIN/client.so" "$MOD_BIN/client.so"
-ln -sfn client.so "$MOD_BIN/client_srv.so"
-ln -sfn "$SDK_HL2MP_BIN/server.so" "$MOD_BIN/server.so"
-ln -sfn server.so "$MOD_BIN/server_srv.so"
-ln -sfn "$SDK_HL2MP_BIN/game_shader_generic_example.so" "$MOD_BIN/game_shader_generic_example_srv.so"
+ln -sfn "$SDK_HL2MP_LINUX_BIN/client.so" "$MOD_LINUX_BIN/client.so"
+ln -sfn client.so "$MOD_LINUX_BIN/client_srv.so"
+ln -sfn "$SDK_HL2MP_LINUX_BIN/server.so" "$MOD_LINUX_BIN/server.so"
+ln -sfn server.so "$MOD_LINUX_BIN/server_srv.so"
+ln -sfn "$SDK_HL2MP_LINUX_BIN/game_shader_generic_example.so" "$MOD_LINUX_BIN/game_shader_generic_example_srv.so"
+ln -sfn "$SDK_LIB_BIN/libtier0.so" "$MOD_LINUX_BIN/libtier0.so"
+ln -sfn "$SDK_LIB_BIN/libvstdlib.so" "$MOD_LINUX_BIN/libvstdlib.so"
+ln -sfn "$SDK_LIB_BIN/libsteam_api.so" "$MOD_LINUX_BIN/libsteam_api.so"
 
-ln -sfn "$SDK_LIB_BIN/libtier0.so" "$MOD_BIN/libtier0.so"
-ln -sfn "$SDK_LIB_BIN/libvstdlib.so" "$MOD_BIN/libvstdlib.so"
-ln -sfn "$SDK_LIB_BIN/libsteam_api.so" "$MOD_BIN/libsteam_api.so"
+if [[ -d "$TF2_BIN" ]]; then
+  for module in soundemittersystem scenefilecache datacache materialsystem studiorender vphysics vscript replay shaderapiempty; do
+    if [[ -f "$TF2_BIN/${module}_srv.so" ]]; then
+      ln -sfn "$TF2_BIN/${module}_srv.so" "$MOD_LINUX_BIN/${module}.so"
+    fi
+  done
+fi
 
-for module in soundemittersystem scenefilecache datacache materialsystem studiorender vphysics vscript replay shaderapiempty; do
-  require_file "$TF2_BIN/${module}_srv.so"
-  ln -sfn "$TF2_BIN/${module}_srv.so" "$MOD_BIN/${module}.so"
+echo "[openvibe] linux bin/linux64 compatibility links ready"
+
+# Windows/Proton modules. These are optional on Linux until a Windows build has run.
+win_client_candidates=(
+  "$SDK_HL2MP_WIN_BIN/client.dll"
+  "$SDK_HL2MP_WIN_BIN/win32/client.dll"
+  "$ROOT/engine/source-sdk-2013/src/game/client/Release_hl2mp/client.dll"
+  "$ROOT/engine/source-sdk-2013/src/game/client/Release/client.dll"
+)
+win_server_candidates=(
+  "$SDK_HL2MP_WIN_BIN/server.dll"
+  "$SDK_HL2MP_WIN_BIN/win32/server.dll"
+  "$ROOT/engine/source-sdk-2013/src/game/server/Release_hl2mp/server.dll"
+  "$ROOT/engine/source-sdk-2013/src/game/server/Release/server.dll"
+)
+
+for src in "${win_client_candidates[@]}"; do
+  if copy_if_exists "$src" "$MOD_BIN/client.dll"; then break; fi
+done
+for src in "${win_server_candidates[@]}"; do
+  if copy_if_exists "$src" "$MOD_BIN/server.dll"; then break; fi
 done
 
-echo "[openvibe] bin/linux64 compatibility links ready"
+if [[ -f "$MOD_BIN/client.dll" ]]; then
+  echo "[openvibe] Windows/Proton client.dll present"
+else
+  echo "[openvibe] Windows/Proton client.dll not present yet; build on Windows to enable Proton in-game client DLL commands"
+fi
+
+if [[ -f "$MOD_BIN/server.dll" ]]; then
+  echo "[openvibe] Windows server.dll present"
+else
+  echo "[openvibe] Windows server.dll not present yet"
+fi
