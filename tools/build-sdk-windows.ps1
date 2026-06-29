@@ -1,91 +1,132 @@
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = "Stop"
 
-$Root = if ($env:OPENVIBE_ROOT) { $env:OPENVIBE_ROOT } else { Join-Path $HOME 'src/openvibe-source' }
-$Sdk = if ($env:OPENVIBE_SDK) { $env:OPENVIBE_SDK } else { Join-Path $Root 'engine/source-sdk-2013' }
+$Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$Sdk = Join-Path $Root "engine/source-sdk-2013"
+$Src = Join-Path $Sdk "src"
+$Mod = Join-Path $Root "game/openvibe.games"
+$OutBin = Join-Path $Mod "bin"
+$Qjs = Join-Path $Src "game/shared/openvibe/third_party/quickjs"
+$LogDir = Join-Path $Root "artifacts/windows-build-debug"
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
-Write-Host "[openvibe-win] root=$Root"
-Write-Host "[openvibe-win] sdk=$Sdk"
+function Say($m) { Write-Host "[openvibe-win] $m" }
+function Require($p, $msg) {
+  if (!(Test-Path $p)) { throw "$msg`nMissing: $p" }
+}
 
-if (!(Test-Path (Join-Path $Sdk 'src'))) { throw "Source SDK not found at $Sdk" }
+Say "root=$Root"
+Say "sdk=$Sdk"
+Say "src=$Src"
+Require $Src "Source SDK checkout is missing from this runner. The workflow must have engine/source-sdk-2013 available in the repository/submodule before Windows DLLs can build."
 
-# Apply OpenVibe SDK copy/patches through Git Bash, but skip Linux QuickJS .a build.
-$bash = Get-Command bash.exe -ErrorAction SilentlyContinue
+# Apply OpenVibe source files using Git Bash when available. This reuses the Linux patcher on Windows runners.
+$bash = (Get-Command bash -ErrorAction SilentlyContinue)
 if ($bash) {
-  $rootForBash = $Root
-  try {
-    $rootForBash = (& $bash.Source -lc "cygpath -u '$Root'" 2>$null).Trim()
-  } catch {}
-  Write-Host "[openvibe-win] applying SDK patch through bash at $rootForBash"
-  & $bash.Source -lc "cd '$rootForBash' && OPENVIBE_SKIP_QJS_BUILD=1 ./tools/apply-openvibe-sdk.sh"
-  if ($LASTEXITCODE -ne 0) { throw "apply-openvibe-sdk.sh failed" }
+  Say "applying OpenVibe SDK patch through bash"
+  & bash "$Root/tools/apply-openvibe-sdk.sh"
+  if ($LASTEXITCODE -ne 0) { throw "apply-openvibe-sdk.sh failed with exit code $LASTEXITCODE" }
 } else {
-  Write-Warning "bash.exe not found. Skipping apply-openvibe-sdk.sh. Make sure SDK files are already applied."
+  throw "Git Bash is required on the Windows runner to apply the OpenVibe SDK patch."
 }
 
-& (Join-Path $Root 'tools/build-quickjs-lib-windows.ps1')
+# Build QuickJS as MSVC objects/lib. The Linux .a cannot be linked into Windows DLLs.
+if (Test-Path (Join-Path $Root "tools/build-quickjs-lib-windows.ps1")) {
+  Say "building QuickJS Windows static library"
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "tools/build-quickjs-lib-windows.ps1")
+  if ($LASTEXITCODE -ne 0) { throw "build-quickjs-lib-windows.ps1 failed with exit code $LASTEXITCODE" }
+} else {
+  Say "no build-quickjs-lib-windows.ps1 found; continuing"
+}
 
-Push-Location (Join-Path $Sdk 'src')
-try {
-  $vpc = @(
-    (Join-Path $Sdk 'src/devtools/bin/vpc.exe'),
-    (Join-Path $Sdk 'devtools/bin/vpc.exe')
-  ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+Set-Location $Src
 
-  if (Test-Path '.\createallprojects.bat') {
-    Write-Host "[openvibe-win] running createallprojects.bat"
-    & cmd.exe /c createallprojects.bat
-  } elseif ($vpc) {
-    Write-Host "[openvibe-win] running VPC: $vpc"
-    $ok = $false
-    $attempts = @(
-      @('/2013','/hl2mp','/game','/mksln','games.sln'),
-      @('/hl2mp','/game','/mksln','games.sln'),
-      @('+game','/mksln','games.sln')
-    )
-    foreach ($args in $attempts) {
-      & $vpc @args
-      if ($LASTEXITCODE -eq 0) { $ok = $true; break }
+# Generate Visual Studio project files if needed.
+$solutions = @(Get-ChildItem -Path $Src -Recurse -Filter "*.sln" -ErrorAction SilentlyContinue)
+if ($solutions.Count -eq 0) {
+  Say "no .sln files found; trying Source SDK project generators"
+  $generators = @(
+    (Join-Path $Src "creategameprojects.bat"),
+    (Join-Path $Src "createallprojects.bat"),
+    (Join-Path $Src "createprojects.bat")
+  )
+  $ran = $false
+  foreach ($gen in $generators) {
+    if (Test-Path $gen) {
+      Say "running $gen"
+      & cmd /c "`"$gen`"" | Tee-Object -FilePath (Join-Path $LogDir "project-generation.log")
+      $ran = $true
+      break
     }
-    if (!$ok) { throw "VPC solution generation failed" }
-  } else {
-    throw "Could not find createallprojects.bat or vpc.exe"
   }
 
-  $sln = Get-ChildItem -Path . -Recurse -Filter *.sln | Where-Object { $_.Name -match 'game|hl2mp|everything|sdk' } | Select-Object -First 1
-  if (!$sln) { $sln = Get-ChildItem -Path . -Recurse -Filter *.sln | Select-Object -First 1 }
-  if (!$sln) { throw "No Visual Studio solution generated" }
-
-  $msbuild = $null
-  $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
-  if (Test-Path $vswhere) {
-    $msbuild = (& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -find 'MSBuild\**\Bin\MSBuild.exe' | Select-Object -First 1)
-  }
-  if (!$msbuild) { $msbuild = (Get-Command msbuild.exe -ErrorAction SilentlyContinue).Source }
-  if (!$msbuild) { throw "MSBuild not found. Install Visual Studio Build Tools with C++ workload." }
-
-  Write-Host "[openvibe-win] building $($sln.FullName)"
-  $built = $false
-  foreach ($platform in @('Win32','x86')) {
-    foreach ($config in @('Release','Release_HL2MP','Release HL2MP')) {
-      Write-Host "[openvibe-win] trying Configuration=$config Platform=$platform"
-      & $msbuild $sln.FullName /m /p:Configuration=$config /p:Platform=$platform
-      if ($LASTEXITCODE -eq 0) { $built = $true; break }
+  if (-not $ran) {
+    $vpc = Join-Path $Src "devtools/bin/vpc.exe"
+    if (Test-Path $vpc) {
+      Say "running vpc.exe fallback"
+      & $vpc /hl2mp +game /mksln OpenVibe_HL2MP.sln | Tee-Object -FilePath (Join-Path $LogDir "vpc.log")
+      $ran = $true
     }
-    if ($built) { break }
   }
-  if (!$built) { throw "MSBuild failed for all known configurations" }
+
+  $solutions = @(Get-ChildItem -Path $Src -Recurse -Filter "*.sln" -ErrorAction SilentlyContinue)
+  if ($solutions.Count -eq 0) {
+    Get-ChildItem -Path $Src -Force | Select-Object Mode,Length,Name | Format-Table -AutoSize | Out-File (Join-Path $LogDir "src-root-after-generator.txt")
+    throw "No Visual Studio solution was generated. Check openvibe-windows-build-debug artifact."
+  }
 }
-finally {
-  Pop-Location
+
+Say "solutions found:"
+$solutions | ForEach-Object { Say "  $($_.FullName)" }
+
+# Pick the most likely HL2MP/game solution.
+$solution = $solutions |
+  Where-Object { $_.Name -match "hl2mp|game|sdk|everything|OpenVibe" } |
+  Select-Object -First 1
+if (-not $solution) { $solution = $solutions | Select-Object -First 1 }
+Say "selected solution=$($solution.FullName)"
+
+# Try common project targets/configurations. Source SDK projects vary by branch/version.
+$configs = @("Release", "Release_HL2MP", "Release HL2MP")
+$platforms = @("Win32", "x86")
+$targets = @("client_hl2mp", "server_hl2mp", "client", "server", "Build")
+
+$builtAny = $false
+foreach ($cfg in $configs) {
+  foreach ($plat in $platforms) {
+    foreach ($target in $targets) {
+      Say "msbuild cfg=$cfg platform=$plat target=$target"
+      & msbuild $solution.FullName /m /p:Configuration=$cfg /p:Platform=$plat /t:$target /v:minimal /nologo 2>&1 | Tee-Object -FilePath (Join-Path $LogDir "msbuild-$($cfg -replace '[^A-Za-z0-9]','_')-$plat-$target.log")
+      if ($LASTEXITCODE -eq 0) {
+        $builtAny = $true
+        break
+      }
+    }
+    if ($builtAny) { break }
+  }
+  if ($builtAny) { break }
 }
 
-$modBin = Join-Path $Root 'game/openvibe.games/bin'
-New-Item -ItemType Directory -Force -Path $modBin | Out-Null
+if (-not $builtAny) {
+  throw "MSBuild could not build any known Source SDK HL2MP target. Check uploaded msbuild logs."
+}
 
-$client = Get-ChildItem $Sdk -Recurse -Filter client.dll -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'mod_hl2mp|hl2mp|game\\client' } | Sort-Object FullName | Select-Object -First 1
-$server = Get-ChildItem $Sdk -Recurse -Filter server.dll -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match 'mod_hl2mp|hl2mp|game\\server' } | Sort-Object FullName | Select-Object -First 1
+New-Item -ItemType Directory -Force -Path $OutBin | Out-Null
 
-if ($client) { Copy-Item $client.FullName (Join-Path $modBin 'client.dll') -Force; Write-Host "[openvibe-win] copied client.dll from $($client.FullName)" } else { Write-Warning "client.dll not found after build" }
-if ($server) { Copy-Item $server.FullName (Join-Path $modBin 'server.dll') -Force; Write-Host "[openvibe-win] copied server.dll from $($server.FullName)" } else { Write-Warning "server.dll not found after build" }
+$client = Get-ChildItem -Path $Sdk -Recurse -Filter client.dll -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -match "hl2mp|mod_hl2mp|client" } |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
+$server = Get-ChildItem -Path $Sdk -Recurse -Filter server.dll -ErrorAction SilentlyContinue |
+  Where-Object { $_.FullName -match "hl2mp|mod_hl2mp|server" } |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 1
 
-Write-Host "[openvibe-win] done. Proton/Windows client uses game/openvibe.games/bin/client.dll"
+if (-not $client) { throw "client.dll was not produced" }
+if (-not $server) { throw "server.dll was not produced" }
+
+Say "copy client=$($client.FullName)"
+Say "copy server=$($server.FullName)"
+Copy-Item $client.FullName (Join-Path $OutBin "client.dll") -Force
+Copy-Item $server.FullName (Join-Path $OutBin "server.dll") -Force
+
+Say "done"

@@ -2,21 +2,33 @@ name: Build Windows Source DLLs
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostics:
+        description: "Upload verbose build diagnostics"
+        required: false
+        default: "1"
   push:
     branches:
       - codex/openvibe-next-steps
     paths:
-      - 'sdk/openvibe/**'
-      - 'game/openvibe.games/**'
-      - 'tools/build-sdk-windows.ps1'
-      - 'tools/build-quickjs-lib-windows.ps1'
-      - '.github/workflows/windows-source-sdk-dlls.yml'
+      - ".github/workflows/windows-source-sdk-dlls.yml"
+      - "tools/build-sdk-windows.ps1"
+      - "tools/build-quickjs-lib-windows.ps1"
+      - "tools/apply-openvibe-sdk.sh"
+      - "sdk/openvibe/**"
+      - "game/openvibe.games/js/**"
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   windows-dlls:
     name: Windows client.dll/server.dll
     runs-on: windows-2022
-    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
 
     steps:
       - name: Checkout OpenVibe
@@ -25,56 +37,94 @@ jobs:
           fetch-depth: 1
 
       - name: Configure git line endings
-        shell: pwsh
         run: |
           git config --global core.autocrlf false
+          git config --global core.eol lf
+          git status --short
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Show toolchain
-        shell: pwsh
+      - name: Show toolchain and tree
         run: |
-          where msbuild
-          where cl
-          git --version
-          pwsh --version
+          $ErrorActionPreference = 'Continue'
+          Write-Host "pwd=$(Get-Location)"
+          git rev-parse --short HEAD
+          where.exe msbuild
+          where.exe cl
+          where.exe link
+          where.exe bash
+          Get-ChildItem -Force | Select-Object Mode,Length,Name
+          if (Test-Path engine) { Get-ChildItem -Force engine | Select-Object Mode,Length,Name } else { Write-Host "[miss] engine directory" }
+          if (Test-Path engine/source-sdk-2013/src) { Get-ChildItem -Force engine/source-sdk-2013/src | Select-Object Mode,Length,Name } else { Write-Host "[miss] engine/source-sdk-2013/src" }
 
       - name: Build Windows Source SDK DLLs
-        shell: pwsh
+        id: build
         run: |
-          powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-sdk-windows.ps1
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path artifacts/windows-build-debug | Out-Null
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-sdk-windows.ps1 *>&1 | Tee-Object -FilePath artifacts/windows-build-debug/build-sdk-windows.log
 
-      - name: Stage artifacts
-        shell: pwsh
+      - name: Stage build outputs and diagnostics
+        if: always()
         run: |
-          New-Item -Force -ItemType Directory artifact\game\openvibe.games\bin | Out-Null
-          New-Item -Force -ItemType Directory artifact\logs | Out-Null
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path artifacts/windows-dlls | Out-Null
+          New-Item -ItemType Directory -Force -Path artifacts/windows-build-debug | Out-Null
 
-          $candidates = @(
-            "game\openvibe.games\bin\client.dll",
-            "game\openvibe.games\bin\server.dll",
-            "engine\source-sdk-2013\game\mod_hl2mp\bin\client.dll",
-            "engine\source-sdk-2013\game\mod_hl2mp\bin\server.dll",
-            "engine\source-sdk-2013\game\mod_hl2mp\bin\client.pdb",
-            "engine\source-sdk-2013\game\mod_hl2mp\bin\server.pdb"
+          "=== repo ===" | Out-File artifacts/windows-build-debug/tree.txt
+          Get-ChildItem -Force | Format-Table -AutoSize | Out-File artifacts/windows-build-debug/tree.txt -Append
+          "=== dll search ===" | Out-File artifacts/windows-build-debug/dll-search.txt
+          Get-ChildItem -Recurse -Force -Include client.dll,server.dll -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Format-List | Out-File artifacts/windows-build-debug/dll-search.txt -Append
+          "=== vc/sln search ===" | Out-File artifacts/windows-build-debug/project-search.txt
+          Get-ChildItem -Recurse -Force -Include *.sln,*.vcxproj,*.vcproj,*.log -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Format-List | Out-File artifacts/windows-build-debug/project-search.txt -Append
+
+          $clientCandidates = @(
+            "game/openvibe.games/bin/client.dll",
+            "engine/source-sdk-2013/game/mod_hl2mp/bin/client.dll",
+            "engine/source-sdk-2013/game/mod_hl2mp/bin/win64/client.dll",
+            "engine/source-sdk-2013/game/mod_hl2mp/bin/Release/client.dll",
+            "engine/source-sdk-2013/src/game/client/Release_hl2mp/client.dll",
+            "engine/source-sdk-2013/src/game/client/Release/client.dll"
+          )
+          $serverCandidates = @(
+            "game/openvibe.games/bin/server.dll",
+            "engine/source-sdk-2013/game/mod_hl2mp/bin/server.dll",
+            "engine/source-sdk-2013/game/mod_hl2mp/bin/win64/server.dll",
+            "engine/source-sdk-2013/game/mod_hl2mp/bin/Release/server.dll",
+            "engine/source-sdk-2013/src/game/server/Release_hl2mp/server.dll",
+            "engine/source-sdk-2013/src/game/server/Release/server.dll"
           )
 
-          foreach ($file in $candidates) {
-            if (Test-Path $file) {
-              Copy-Item $file artifact\game\openvibe.games\bin\ -Force
-            }
-          }
+          $client = $clientCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          $server = $serverCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if ($client) { Copy-Item $client artifacts/windows-dlls/client.dll -Force }
+          if ($server) { Copy-Item $server artifacts/windows-dlls/server.dll -Force }
 
-          if (Test-Path "windows-build.log") {
-            Copy-Item windows-build.log artifact\logs\windows-build.log -Force
+          if (Test-Path artifacts/windows-dlls/client.dll) {
+            $clientText = (Select-String -Path artifacts/windows-dlls/client.dll -Pattern "ov_join|ov_menu|OpenVibe" -Encoding Byte -SimpleMatch -Quiet)
+            Write-Host "client.dll staged"
+          } else {
+            Write-Host "[miss] no client.dll staged"
           }
-
-          Get-ChildItem artifact -Recurse | Format-Table FullName,Length
+          if (Test-Path artifacts/windows-dlls/server.dll) { Write-Host "server.dll staged" } else { Write-Host "[miss] no server.dll staged" }
 
       - name: Upload Windows DLL artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: openvibe-windows-dlls
-          path: artifact/**
-          if-no-files-found: error
+          path: artifacts/windows-dlls/**
+          if-no-files-found: warn
+
+      - name: Upload Windows build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvibe-windows-build-debug
+          path: artifacts/windows-build-debug/**
+          if-no-files-found: warn
