@@ -15,25 +15,25 @@
     "3"
     {
         "label" "Prop Hunt"
-        "command" "engine connect 127.0.0.2:27016"
+        "command" "engine connect 127.0.0.1:27016"
         "OnlyInGame" "0"
     }
     "4"
     {
         "label" "Deathrun"
-        "command" "engine connect 127.0.0.3:27017"
+        "command" "engine connect 127.0.0.1:27017"
         "OnlyInGame" "0"
     }
     "5"
     {
         "label" "Fort Wars"
-        "command" "engine connect 127.0.0.4:27018"
+        "command" "engine connect 127.0.0.1:27018"
         "OnlyInGame" "0"
     }
     "6"
     {
         "label" "Traitor Town"
-        "command" "engine connect 127.0.0.5:27019"
+        "command" "engine connect 127.0.0.1:27019"
         "OnlyInGame" "0"
     }
     "7"

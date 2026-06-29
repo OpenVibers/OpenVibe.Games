@@ -73,10 +73,10 @@ static bool OV_IsModeAllowed( const char *pszMode )
 static const char *OV_LocalConnectForMode( const char *pszMode )
 {
 	if ( !Q_stricmp( pszMode, "hub" ) ) return "127.0.0.1:27015";
-	if ( !Q_stricmp( pszMode, "prophunt" ) ) return "127.0.0.2:27016";
-	if ( !Q_stricmp( pszMode, "deathrun" ) ) return "127.0.0.3:27017";
-	if ( !Q_stricmp( pszMode, "fortwars" ) ) return "127.0.0.4:27018";
-	if ( !Q_stricmp( pszMode, "traitortown" ) ) return "127.0.0.5:27019";
+	if ( !Q_stricmp( pszMode, "prophunt" ) ) return "127.0.0.1:27016";
+	if ( !Q_stricmp( pszMode, "deathrun" ) ) return "127.0.0.1:27017";
+	if ( !Q_stricmp( pszMode, "fortwars" ) ) return "127.0.0.1:27018";
+	if ( !Q_stricmp( pszMode, "traitortown" ) ) return "127.0.0.1:27019";
 	return "127.0.0.1:27015";
 }
 

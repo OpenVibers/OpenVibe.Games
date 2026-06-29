@@ -15,6 +15,20 @@
 #include "steam/steam_gameserver.h"
 #include "steam/isteamhttp.h"
 
+// Standard library and socket includes for JS bridge
+#include <thread>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <condition_variable>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sstream>
+#include <sys/select.h>
+#include <sys/time.h>
+
 // memdbgon must be the last include file in a .cpp file.
 #include "tier0/memdbgon.h"
 
@@ -361,4 +375,445 @@ static ConCommand ov_fortwars_spawn_cmd(
 	"ov_fortwars_spawn",
 	OV_FortWarsSpawn_f,
 	"Spawn a whitelisted Fort Wars build prop in front of the player.",
+	FCVAR_GAMEDLL );
+
+// =================================══════════════════════════════════════════
+// OpenVibe.JS - Scripting Engine C++ Bridge
+// =================================══════════════════════════════════════════
+
+class COpenVibeJsBridge
+{
+private:
+	std::thread m_workerThread;
+	std::mutex m_outgoingMutex;
+	std::queue<std::string> m_outgoingQueue;
+	std::mutex m_incomingMutex;
+	std::queue<std::string> m_incomingQueue;
+	bool m_bRunning;
+	bool m_bConnected;
+	int m_socketFd;
+	std::string m_socketPath;
+	std::string m_incomingBuffer;
+
+	void ThreadFunc()
+	{
+		while ( m_bRunning )
+		{
+			if ( !m_bConnected )
+			{
+				m_socketFd = socket( AF_UNIX, SOCK_STREAM, 0 );
+				if ( m_socketFd >= 0 )
+				{
+					struct sockaddr_un addr;
+					memset( &addr, 0, sizeof( addr ) );
+					addr.sun_family = AF_UNIX;
+					Q_strncpy( addr.sun_path, m_socketPath.c_str(), sizeof( addr.sun_path ) );
+
+					if ( connect( m_socketFd, (struct sockaddr*)&addr, sizeof( addr ) ) == 0 )
+					{
+						m_bConnected = true;
+						Msg( "[OV JS] Connected to Node.js scripting bridge at %s\n", m_socketPath.c_str() );
+					}
+					else
+					{
+						close( m_socketFd );
+						m_socketFd = -1;
+						SpawnNodeJs();
+						std::this_thread::sleep_for( std::chrono::milliseconds( 2000 ) );
+						continue;
+					}
+				}
+			}
+
+			if ( m_bConnected )
+			{
+				fd_set readFds;
+				fd_set writeFds;
+				FD_ZERO( &readFds );
+				FD_ZERO( &writeFds );
+				FD_SET( m_socketFd, &readFds );
+
+				bool bHasWrite = false;
+				{
+					std::lock_guard<std::mutex> lock( m_outgoingMutex );
+					bHasWrite = !m_outgoingQueue.empty();
+				}
+				if ( bHasWrite )
+				{
+					FD_SET( m_socketFd, &writeFds );
+				}
+
+				struct timeval tv;
+				tv.tv_sec = 0;
+				tv.tv_usec = 50000;
+
+				int activity = select( m_socketFd + 1, &readFds, &writeFds, NULL, &tv );
+				if ( activity < 0 )
+				{
+					Disconnect();
+					continue;
+				}
+
+				if ( FD_ISSET( m_socketFd, &readFds ) )
+				{
+					char buffer[4096];
+					int bytesRead = recv( m_socketFd, buffer, sizeof( buffer ) - 1, 0 );
+					if ( bytesRead <= 0 )
+					{
+						Disconnect();
+						continue;
+					}
+					buffer[bytesRead] = '\0';
+					ProcessIncomingBuffer( buffer );
+				}
+
+				if ( bHasWrite && FD_ISSET( m_socketFd, &writeFds ) )
+				{
+					std::string msg;
+					{
+						std::lock_guard<std::mutex> lock( m_outgoingMutex );
+						if ( !m_outgoingQueue.empty() )
+						{
+							msg = m_outgoingQueue.front();
+							m_outgoingQueue.pop();
+						}
+					}
+					if ( !msg.empty() )
+					{
+						int sent = send( m_socketFd, msg.c_str(), msg.length(), 0 );
+						if ( sent < 0 )
+						{
+							Disconnect();
+							continue;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	void SpawnNodeJs()
+	{
+		static float lastSpawnTime = 0.0f;
+		float curTime = gpGlobals ? gpGlobals->realtime : 0.0f;
+		if ( curTime > 0.0f && curTime - lastSpawnTime < 10.0f )
+		{
+			return;
+		}
+		lastSpawnTime = curTime;
+
+		Msg( "[OV JS] Starting Node.js OpenVibe.JS runtime...\n" );
+		char cmd[1024];
+		const char *root = getenv( "OPENVIBE_ROOT" );
+		if ( !root )
+		{
+			root = "/home/workstation/src/openvibe-source";
+		}
+		Q_snprintf( cmd, sizeof( cmd ), "node %s/engine/openvibe-js-runtime/bridge.js %s > /tmp/openvibe-js-%s.log 2>&1 &", 
+			root, m_socketPath.c_str(), ov_server_id.GetString() );
+		int ret = system( cmd );
+		(void)ret;
+	}
+
+	void Disconnect()
+	{
+		if ( m_socketFd >= 0 )
+		{
+			close( m_socketFd );
+			m_socketFd = -1;
+		}
+		m_bConnected = false;
+		Msg( "[OV JS] Disconnected from Node.js scripting bridge.\n" );
+	}
+
+	void ProcessIncomingBuffer( const char *data )
+	{
+		m_incomingBuffer += data;
+		size_t pos;
+		while ( ( pos = m_incomingBuffer.find( '\n' ) ) != std::string::npos )
+		{
+			std::string line = m_incomingBuffer.substr( 0, pos );
+			m_incomingBuffer.erase( 0, pos + 1 );
+			if ( !line.empty() )
+			{
+				std::lock_guard<std::mutex> lock( m_incomingMutex );
+				m_incomingQueue.push( line );
+			}
+		}
+	}
+
+public:
+	COpenVibeJsBridge() : 
+		m_bRunning( false ), 
+		m_bConnected( false ), 
+		m_socketFd( -1 ) 
+	{
+	}
+
+	~COpenVibeJsBridge()
+	{
+		Stop();
+	}
+
+	void Start()
+	{
+		if ( m_bRunning ) return;
+
+		char szSocket[256];
+		Q_snprintf( szSocket, sizeof( szSocket ), "/tmp/openvibe-js-%s.sock", ov_server_id.GetString() );
+		m_socketPath = szSocket;
+
+		m_bRunning = true;
+		m_workerThread = std::thread( &COpenVibeJsBridge::ThreadFunc, this );
+		Msg( "[OV JS] Scripting bridge service thread started. socket=%s\n", m_socketPath.c_str() );
+	}
+
+	void Stop()
+	{
+		m_bRunning = false;
+		if ( m_workerThread.joinable() )
+		{
+			m_workerThread.join();
+		}
+		Disconnect();
+	}
+
+	void SendMessage( const std::string &msg )
+	{
+		if ( !m_bConnected ) return;
+		std::lock_guard<std::mutex> lock( m_outgoingMutex );
+		m_outgoingQueue.push( msg + "\n" );
+	}
+
+	void OnPlayerJoined( CBasePlayer *pPlayer )
+	{
+		if ( !pPlayer ) return;
+		
+		char szSteamID[32];
+		CSteamID steamID;
+		if ( pPlayer->GetSteamID( &steamID ) )
+		{
+			Q_snprintf( szSteamID, sizeof( szSteamID ), "%llu", steamID.ConvertToUint64() );
+		}
+		else
+		{
+			Q_strncpy( szSteamID, "0", sizeof( szSteamID ) );
+		}
+
+		std::stringstream ss;
+		ss << "{\"type\":\"player_join\",\"data\":{"
+		   << "\"steamId\":\"" << szSteamID << "\","
+		   << "\"name\":\"" << pPlayer->GetPlayerName() << "\""
+		   << "}}";
+		SendMessage( ss.str() );
+	}
+
+	void OnPlayerLeft( CBasePlayer *pPlayer )
+	{
+		if ( !pPlayer ) return;
+		
+		char szSteamID[32];
+		CSteamID steamID;
+		if ( pPlayer->GetSteamID( &steamID ) )
+		{
+			Q_snprintf( szSteamID, sizeof( szSteamID ), "%llu", steamID.ConvertToUint64() );
+		}
+		else
+		{
+			Q_strncpy( szSteamID, "0", sizeof( szSteamID ) );
+		}
+
+		std::stringstream ss;
+		ss << "{\"type\":\"player_leave\",\"data\":{"
+		   << "\"steamId\":\"" << szSteamID << "\""
+		   << "}}";
+		SendMessage( ss.str() );
+	}
+
+	void OnPlayerDeath( CBasePlayer *pPlayer, CBaseEntity *pKiller )
+	{
+		if ( !pPlayer ) return;
+		
+		char szDeadSteamID[32];
+		CSteamID deadSteamID;
+		if ( pPlayer->GetSteamID( &deadSteamID ) )
+		{
+			Q_snprintf( szDeadSteamID, sizeof( szDeadSteamID ), "%llu", deadSteamID.ConvertToUint64() );
+		}
+		else
+		{
+			Q_strncpy( szDeadSteamID, "0", sizeof( szDeadSteamID ) );
+		}
+
+		char szKillerSteamID[32] = "0";
+		if ( pKiller && pKiller->IsPlayer() )
+		{
+			CBasePlayer *pKillerPlayer = (CBasePlayer*)pKiller;
+			CSteamID killerSteamID;
+			if ( pKillerPlayer->GetSteamID( &killerSteamID ) )
+			{
+				Q_snprintf( szKillerSteamID, sizeof( szKillerSteamID ), "%llu", killerSteamID.ConvertToUint64() );
+			}
+		}
+
+		std::stringstream ss;
+		ss << "{\"type\":\"player_death\",\"data\":{"
+		   << "\"deadSteamId\":\"" << szDeadSteamID << "\","
+		   << "\"killerSteamId\":\"" << szKillerSteamID << "\""
+		   << "}}";
+		SendMessage( ss.str() );
+	}
+
+	void OnCommand( const char *cmd )
+	{
+		std::stringstream ss;
+		ss << "{\"type\":\"command\",\"data\":{"
+		   << "\"cmd\":\"" << cmd << "\""
+		   << "}}";
+		SendMessage( ss.str() );
+	}
+
+	void Update()
+	{
+		if ( !m_bRunning )
+		{
+			Start();
+		}
+
+		static float lastTickTime = 0.0f;
+		float curTime = gpGlobals->curtime;
+		if ( curTime - lastTickTime >= 1.0f )
+		{
+			lastTickTime = curTime;
+			SendMessage( "{\"type\":\"tick\",\"data\":{}}" );
+		}
+
+		std::queue<std::string> localQueue;
+		{
+			std::lock_guard<std::mutex> lock( m_incomingMutex );
+			while ( !m_incomingQueue.empty() )
+			{
+				localQueue.push( m_incomingQueue.front() );
+				m_incomingQueue.pop();
+			}
+		}
+
+		while ( !localQueue.empty() )
+		{
+			std::string line = localQueue.front();
+			localQueue.pop();
+			ProcessMessage( line );
+		}
+	}
+
+private:
+	void ProcessMessage( const std::string &line )
+	{
+		if ( line.find( "\"type\":\"broadcast\"" ) != std::string::npos )
+		{
+			size_t msgPos = line.find( "\"message\":\"" );
+			if ( msgPos != std::string::npos )
+			{
+				msgPos += 11;
+				size_t endPos = line.find( "\"", msgPos );
+				if ( endPos != std::string::npos )
+				{
+					std::string msg = line.substr( msgPos, endPos - msgPos );
+					UTIL_ClientPrintAll( HUD_PRINTTALK, "[OV JS] %s", msg.c_str() );
+				}
+			}
+		}
+		else if ( line.find( "\"type\":\"entity_spawn\"" ) != std::string::npos )
+		{
+			std::string type = "prop_physics_override";
+			std::string model = "";
+			Vector pos( 0, 0, 0 );
+
+			size_t tPos = line.find( "\"type\":\"" );
+			if ( tPos != std::string::npos )
+			{
+				size_t dataPos = line.find( "\"data\":{" );
+				if ( dataPos != std::string::npos )
+				{
+					size_t innerType = line.find( "\"type\":\"", dataPos );
+					if ( innerType != std::string::npos )
+					{
+						innerType += 8;
+						size_t end = line.find( "\"", innerType );
+						if ( end != std::string::npos )
+						{
+							type = line.substr( innerType, end - innerType );
+						}
+					}
+					size_t innerModel = line.find( "\"model\":\"", dataPos );
+					if ( innerModel != std::string::npos )
+					{
+						innerModel += 9;
+						size_t end = line.find( "\"", innerModel );
+						if ( end != std::string::npos )
+						{
+							model = line.substr( innerModel, end - innerModel );
+						}
+					}
+					size_t xPos = line.find( "\"x\":", dataPos );
+					size_t yPos = line.find( "\"y\":", dataPos );
+					size_t zPos = line.find( "\"z\":", dataPos );
+					if ( xPos != std::string::npos && yPos != std::string::npos && zPos != std::string::npos )
+					{
+						pos.x = atof( line.c_str() + xPos + 4 );
+						pos.y = atof( line.c_str() + yPos + 4 );
+						pos.z = atof( line.c_str() + zPos + 4 );
+					}
+				}
+			}
+
+			if ( !model.empty() )
+			{
+				CBaseEntity::PrecacheModel( model.c_str() );
+				CBaseEntity *pEnt = CreateEntityByName( type.c_str() );
+				if ( pEnt )
+				{
+					pEnt->KeyValue( "model", model.c_str() );
+					pEnt->SetAbsOrigin( pos );
+					DispatchSpawn( pEnt );
+					pEnt->Activate();
+					Msg( "[OV JS] Spawned entity %s with model %s at (%f, %f, %f)\n", 
+						type.c_str(), model.c_str(), pos.x, pos.y, pos.z );
+				}
+			}
+		}
+	}
+};
+
+static COpenVibeJsBridge g_OpenVibeJsBridge;
+
+void OpenVibe_OnClientDisconnect( CBasePlayer *pPlayer )
+{
+	g_OpenVibeJsBridge.OnPlayerLeft( pPlayer );
+}
+
+void OpenVibe_OnPlayerDeath( CHL2MP_Player *pPlayer, CBaseEntity *pKiller )
+{
+	g_OpenVibeJsBridge.OnPlayerDeath( pPlayer, pKiller );
+}
+
+void OpenVibe_OnFrame()
+{
+	g_OpenVibeJsBridge.Update();
+}
+
+static void OV_JsCmd_f( const CCommand &args )
+{
+	if ( args.ArgC() < 2 )
+	{
+		Msg( "Usage: ov_js_cmd <command_or_json>\n" );
+		return;
+	}
+	g_OpenVibeJsBridge.OnCommand( args.ArgS() );
+}
+
+static ConCommand ov_js_cmd(
+	"ov_js_cmd",
+	OV_JsCmd_f,
+	"Send a command or JSON message to the OpenVibe.JS runtime.",
 	FCVAR_GAMEDLL );

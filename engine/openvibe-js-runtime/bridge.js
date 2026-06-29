@@ -28,17 +28,11 @@
 
 /**
  * Message from C++ to Node.js
+ *
+ * @typedef {Object} CppToNodeMessage
+ * @property {'init'|'player_join'|'player_leave'|'player_death'|'command'|'tick'} type
+ * @property {Record<string, any>} data
  */
-interface CppToNodeMessage {
-  type:
-    | 'init'
-    | 'player_join'
-    | 'player_leave'
-    | 'player_death'
-    | 'command'
-    | 'tick';
-  data: Record<string, any>;
-}
 
 /**
  * Example messages:
@@ -61,20 +55,11 @@ interface CppToNodeMessage {
 
 /**
  * Message from Node.js to C++
+ *
+ * @typedef {Object} NodeToCppMessage
+ * @property {'ready'|'gamemode_loaded'|'gamemode_started'|'entity_spawn'|'entity_remove'|'entity_update'|'broadcast'|'team_message'|'error'} type
+ * @property {Record<string, any>} data
  */
-interface NodeToCppMessage {
-  type:
-    | 'ready'
-    | 'gamemode_loaded'
-    | 'gamemode_started'
-    | 'entity_spawn'
-    | 'entity_remove'
-    | 'entity_update'
-    | 'broadcast'
-    | 'team_message'
-    | 'error';
-  data: Record<string, any>;
-}
 
 /**
  * Example messages:

@@ -1,0 +1,10 @@
+{
+  "id": "hub",
+  "name": "OpenVibe Hub",
+  "base": "base",
+  "entry": {
+    "shared": "shared.js",
+    "server": "server.js",
+    "client": "client.js"
+  }
+}

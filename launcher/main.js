@@ -211,10 +211,10 @@ ipcMain.handle('game:launch-direct', async (_e, mode) => {
   // Look up the mode's port from local server list
   const serverMap = {
     hub: { ip: '127.0.0.1', port: 27015 },
-    prophunt: { ip: '127.0.0.2', port: 27016 },
-    deathrun: { ip: '127.0.0.3', port: 27017 },
-    fortwars: { ip: '127.0.0.4', port: 27018 },
-    traitortown: { ip: '127.0.0.5', port: 27019 },
+    prophunt: { ip: '127.0.0.1', port: 27016 },
+    deathrun: { ip: '127.0.0.1', port: 27017 },
+    fortwars: { ip: '127.0.0.1', port: 27018 },
+    traitortown: { ip: '127.0.0.1', port: 27019 },
   };
   const srv = serverMap[mode] || serverMap.hub;
   return launchGame(srv.ip, srv.port);

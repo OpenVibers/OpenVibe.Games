@@ -13,7 +13,7 @@
     "serverSecret": "dev-secret",
     "mode": "prophunt",
     "mapName": "ph_openvibe_dev",
-    "publicHost": "127.0.0.2",
+    "publicHost": "127.0.0.1",
     "port": 27016,
     "maxPlayers": 24
   },
@@ -22,7 +22,7 @@
     "serverSecret": "dev-secret",
     "mode": "deathrun",
     "mapName": "dr_openvibe_dev",
-    "publicHost": "127.0.0.3",
+    "publicHost": "127.0.0.1",
     "port": 27017,
     "maxPlayers": 24
   },
@@ -31,7 +31,7 @@
     "serverSecret": "dev-secret",
     "mode": "fortwars",
     "mapName": "fw_openvibe_dev",
-    "publicHost": "127.0.0.4",
+    "publicHost": "127.0.0.1",
     "port": 27018,
     "maxPlayers": 32
   },
@@ -40,7 +40,7 @@
     "serverSecret": "dev-secret",
     "mode": "traitortown",
     "mapName": "tt_openvibe_dev",
-    "publicHost": "127.0.0.5",
+    "publicHost": "127.0.0.1",
     "port": 27019,
     "maxPlayers": 24
   }

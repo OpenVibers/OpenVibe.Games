@@ -19,10 +19,10 @@ MAP_DELAY="${OPENVIBE_SRCDS_MAP_DELAY:-6}"
 
 case "$MODE" in
   hub) DEFAULT_BIND_IP="127.0.0.1" ;;
-  prophunt) DEFAULT_BIND_IP="127.0.0.2" ;;
-  deathrun) DEFAULT_BIND_IP="127.0.0.3" ;;
-  fortwars) DEFAULT_BIND_IP="127.0.0.4" ;;
-  traitortown) DEFAULT_BIND_IP="127.0.0.5" ;;
+  prophunt) DEFAULT_BIND_IP="127.0.0.1" ;;
+  deathrun) DEFAULT_BIND_IP="127.0.0.1" ;;
+  fortwars) DEFAULT_BIND_IP="127.0.0.1" ;;
+  traitortown) DEFAULT_BIND_IP="127.0.0.1" ;;
   *) DEFAULT_BIND_IP="127.0.0.1" ;;
 esac
 

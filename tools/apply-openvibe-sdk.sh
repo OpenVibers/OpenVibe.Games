@@ -51,4 +51,29 @@ fi
 
 perl -0pi -e 's/^[ \t]*tOpenVibe_OnClientModeInit\(\);/    OpenVibe_OnClientModeInit();/m' "$HL2MP_CLIENTMODE"
 
+GAMEINTERFACE="$SDK/src/game/server/gameinterface.cpp"
+HL2MP_PLAYER="$SDK/src/game/server/hl2mp/hl2mp_player.cpp"
+
+if [[ -f "$GAMEINTERFACE" ]]; then
+  if ! grep -q 'OpenVibe_OnFrame' "$GAMEINTERFACE"; then
+    sed -i '/CServerGameDLL::GameFrame/i #ifdef HL2MP\nvoid OpenVibe_OnFrame();\n#endif' "$GAMEINTERFACE"
+    sed -i '/VPROF( "CServerGameDLL::GameFrame" );/a #ifdef HL2MP\n\tOpenVibe_OnFrame();\n#endif' "$GAMEINTERFACE"
+    echo "[openvibe-sdk] patched gameinterface.cpp frame hook"
+  fi
+
+  if ! grep -q 'OpenVibe_OnClientDisconnect' "$GAMEINTERFACE"; then
+    perl -pi -e 's/void CServerGameClients::ClientDisconnect/#ifdef HL2MP\nvoid OpenVibe_OnClientDisconnect( CBasePlayer *pPlayer );\n#endif\nvoid CServerGameClients::ClientDisconnect/' "$GAMEINTERFACE"
+    perl -0777 -pi -e 's/(void CServerGameClients::ClientDisconnect\( edict_t \*pEdict \)\s*\{\s*extern bool\s+g_fGameOver;\s*CBasePlayer \*player = \( CBasePlayer \* \)CBaseEntity::Instance\( pEdict \);)/$1\n#ifdef HL2MP\n\tif ( player ) { OpenVibe_OnClientDisconnect( player ); }\n#endif/g' "$GAMEINTERFACE"
+    echo "[openvibe-sdk] patched gameinterface.cpp disconnect hook"
+  fi
+fi
+
+if [[ -f "$HL2MP_PLAYER" ]]; then
+  if ! grep -q 'OpenVibe_OnPlayerDeath' "$HL2MP_PLAYER"; then
+    sed -i '/CHL2MP_Player::Event_Killed/i void OpenVibe_OnPlayerDeath( CHL2MP_Player *pPlayer, CBaseEntity *pKiller );' "$HL2MP_PLAYER"
+    sed -i '/CTakeDamageInfo subinfo = info;/i \	OpenVibe_OnPlayerDeath( this, info.GetAttacker() );' "$HL2MP_PLAYER"
+    echo "[openvibe-sdk] patched hl2mp_player.cpp death hook"
+  fi
+fi
+
 echo "[openvibe-sdk] Source SDK OpenVibe patch applied"

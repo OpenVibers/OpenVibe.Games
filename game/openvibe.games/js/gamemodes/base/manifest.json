@@ -1,0 +1,12 @@
+{
+  "id": "base",
+  "name": "OpenVibe Base",
+  "author": "OpenVibe.Games",
+  "version": "0.0.1",
+  "realm": "shared",
+  "entry": {
+    "shared": "shared.js",
+    "server": "server.js",
+    "client": "client.js"
+  }
+}

@@ -17,10 +17,10 @@ const useAuthenticatedJoin = process.env.OPENVIBE_USE_OV_JOIN === "1";
 
 const localHosts = {
   hub: "127.0.0.1",
-  prophunt: "127.0.0.2",
-  deathrun: "127.0.0.3",
-  fortwars: "127.0.0.4",
-  traitortown: "127.0.0.5",
+  prophunt: "127.0.0.1",
+  deathrun: "127.0.0.1",
+  fortwars: "127.0.0.1",
+  traitortown: "127.0.0.1",
 };
 
 function joinCommand(mode, port) {
