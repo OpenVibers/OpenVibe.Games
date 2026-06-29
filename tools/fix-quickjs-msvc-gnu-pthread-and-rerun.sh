@@ -1,3 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${OPENVIBE_ROOT:-$HOME/src/openvibe-source}"
+cd "$ROOT"
+BRANCH="$(git branch --show-current 2>/dev/null || echo codex/openvibe-next-steps)"
+
+say(){ echo "[openvibe] $*"; }
+
+say "fix QuickJS MSVC GNU builtins/attribute/pthread compat + rerun Windows DLL workflow"
+say "root=$ROOT"
+say "branch=$BRANCH"
+
+mkdir -p tools docs
+
+cat > tools/build-quickjs-lib-windows.ps1 <<'PS1'
 $ErrorActionPreference = 'Stop'
 
 $Root = if ($env:OPENVIBE_ROOT) { (Resolve-Path $env:OPENVIBE_ROOT).Path } else { (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
@@ -248,3 +264,64 @@ if ($LASTEXITCODE -ne 0) { throw "lib.exe failed" }
 if (!(Test-Path $outLib)) { throw "lib.exe did not produce $outLib" }
 
 Say "built $outLib"
+PS1
+
+cat > docs/WINDOWS_QUICKJS_MSVC.md <<'MD'
+# Windows QuickJS MSVC Build Note
+
+The vendored QuickJS source is GCC/clang oriented. On Windows/MSVC it needs compatibility for:
+
+- POSIX `sys/time.h`
+- accidental `pthread.h` includes
+- GNU `__attribute__((...))`
+- GNU `__builtin_clz`, `__builtin_ctz`, and `__builtin_expect`
+
+`tools/build-quickjs-lib-windows.ps1` now generates build-local compatibility headers under:
+
+```text
+engine/source-sdk-2013/src/game/shared/openvibe/third_party/quickjs/build/compat/include
+```
+
+It also force-includes `openvibe_qjs_msvc_compat.h` for every QuickJS source file and disables `CONFIG_ATOMICS` in the copied SDK-side `quickjs.c` before compiling. Linux builds are unchanged.
+MD
+
+# Keep generated diagnostics/build deps out of git.
+if [[ -f .gitignore ]]; then
+  grep -qxF 'artifacts/' .gitignore || echo 'artifacts/' >> .gitignore
+  grep -qxF '_deps/' .gitignore || echo '_deps/' >> .gitignore
+  grep -qxF 'engine/source-sdk-2013/' .gitignore || echo 'engine/source-sdk-2013/' >> .gitignore
+else
+  cat > .gitignore <<'GI'
+artifacts/
+_deps/
+engine/source-sdk-2013/
+GI
+fi
+
+git rm -r --cached artifacts >/dev/null 2>&1 || true
+
+git add .gitignore docs/WINDOWS_QUICKJS_MSVC.md tools/build-quickjs-lib-windows.ps1 "$0" 2>/dev/null || \
+  git add .gitignore docs/WINDOWS_QUICKJS_MSVC.md tools/build-quickjs-lib-windows.ps1
+
+say "git diff summary"
+git diff --cached --stat || true
+
+if ! git diff --cached --quiet; then
+  git commit -m "Fix QuickJS MSVC GNU compatibility"
+  git push
+else
+  say "no changes to commit"
+fi
+
+if [[ -x tools/trigger-windows-dll-build-clean.sh ]]; then
+  say "triggering clean Windows DLL build"
+  tools/trigger-windows-dll-build-clean.sh
+else
+  REPO="$(git remote get-url origin | sed -E 's#^git@github.com:##; s#^https://github.com/##; s#\.git$##')"
+  say "triggering workflow repo=$REPO"
+  gh workflow run windows-source-sdk-dlls.yml --repo "$REPO" --ref "$BRANCH"
+  sleep 5
+  gh run list --repo "$REPO" --workflow windows-source-sdk-dlls.yml --limit 3
+fi
+
+say "done"

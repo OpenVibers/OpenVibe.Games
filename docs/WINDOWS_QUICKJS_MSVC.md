@@ -1,11 +1,16 @@
 # Windows QuickJS MSVC Build Note
 
-The vendored QuickJS C source includes POSIX `<sys/time.h>`, which MSVC does not provide. The Windows QuickJS build helper now generates a tiny compatibility include directory at build time:
+The vendored QuickJS source is GCC/clang oriented. On Windows/MSVC it needs compatibility for:
+
+- POSIX `sys/time.h`
+- accidental `pthread.h` includes
+- GNU `__attribute__((...))`
+- GNU `__builtin_clz`, `__builtin_ctz`, and `__builtin_expect`
+
+`tools/build-quickjs-lib-windows.ps1` now generates build-local compatibility headers under:
 
 ```text
-engine/source-sdk-2013/src/game/shared/openvibe/third_party/quickjs/build/compat/include/sys/time.h
+engine/source-sdk-2013/src/game/shared/openvibe/third_party/quickjs/build/compat/include
 ```
 
-That shim defines `struct timeval` and `gettimeofday()` using `GetSystemTimeAsFileTime()`, then passes the compatibility include directory to `cl.exe` before compiling QuickJS.
-
-This keeps Linux builds unchanged while allowing the Windows GitHub Actions runner to produce `libquickjs_openvibe.lib` for `client.dll` / `server.dll` builds.
+It also force-includes `openvibe_qjs_msvc_compat.h` for every QuickJS source file and disables `CONFIG_ATOMICS` in the copied SDK-side `quickjs.c` before compiling. Linux builds are unchanged.
