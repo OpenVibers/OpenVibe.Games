@@ -1,0 +1,198 @@
+=== vc/sln search ===
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\artifacts\windows-build-debug\build-sdk-windows.log
+Length        : 1032
+LastWriteTime : 6/29/2026 4:40:01 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628000.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628001.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628002.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628003.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628004.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628005.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628006.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628007.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628008.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628009.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628010.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628011.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628012.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628013.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628014.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628015.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628016.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628017.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628018.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628019.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628020.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628021.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628022.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628023.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628024.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628025.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628026.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628027.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628028.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628029.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628030.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628031.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628032.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628033.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628034.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628035.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628036.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628037.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628038.log
+Length        : 596
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628039.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628040.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628041.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628042.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628043.log
+Length        : 538
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628044.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628045.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628046.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\logs\l0628047.log
+Length        : 4175
+LastWriteTime : 6/29/2026 4:39:51 AM
+

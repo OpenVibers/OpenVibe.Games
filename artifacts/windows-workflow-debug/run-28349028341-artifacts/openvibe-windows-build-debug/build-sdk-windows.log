@@ -1,0 +1,14 @@
+[openvibe-win] root=D:\a\OpenVibe.Games\OpenVibe.Games
+[openvibe-win] sdk=D:\a\OpenVibe.Games\OpenVibe.Games\engine\source-sdk-2013
+[openvibe-win] src=D:\a\OpenVibe.Games\OpenVibe.Games\engine\source-sdk-2013\src
+Source SDK checkout is missing from this runner. The workflow must have engine/source-sdk-2013 available in the 
+repository/submodule before Windows DLLs can build.
+Missing: D:\a\OpenVibe.Games\OpenVibe.Games\engine\source-sdk-2013\src
+At D:\a\OpenVibe.Games\OpenVibe.Games\tools\build-sdk-windows.ps1:14 char:26
++   if (!(Test-Path $p)) { throw "$msg`nMissing: $p" }
++                          ~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : OperationStopped: (Source SDK chec...ce-sdk-2013\src:String) [], RuntimeException
+    + FullyQualifiedErrorId : Source SDK checkout is missing from this runner. The workflow must have engine/source-sd 
+   k-2013 available in the repository/submodule before Windows DLLs can build.
+Missing: D:\a\OpenVibe.Games\OpenVibe.Games\engine\source-sdk-2013\src
+ 

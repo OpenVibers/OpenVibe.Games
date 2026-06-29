@@ -1,0 +1,25 @@
+
+Mode  Length Name
+----  ------ ----
+d--h-        .git
+d----        .github
+d----        .tmp
+d----        artifacts
+d----        backend
+d----        docs
+d----        engine
+d----        game
+d----        hammer
+d----        infra
+d----        launcher
+d----        sdk
+d----        servers
+d----        tools
+-a--- 983    .gitignore
+-a--- 3758   DEPLOYMENT_STATUS.md
+-a--- 1099   LICENSE
+-a--- 12759  LINUX_SETUP.md
+-a--- 4075   PROJECT_INDEX.md
+-a--- 3826   QUICK_REFERENCE.md
+-a--- 8794   README.md
+

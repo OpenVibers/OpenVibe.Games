@@ -1,0 +1,29 @@
+=== repo ===
+
+    Directory: D:\a\OpenVibe.Games\OpenVibe.Games
+
+Mode        LastWriteTime Length Name
+----        ------------- ------ ----
+d----  6/29/2026  4:43 AM        _deps
+d--h-  6/29/2026  4:43 AM        .git
+d----  6/29/2026  4:43 AM        .github
+d----  6/29/2026  4:43 AM        .tmp
+d----  6/29/2026  4:44 AM        artifacts
+d----  6/29/2026  4:43 AM        backend
+d----  6/29/2026  4:43 AM        docs
+d----  6/29/2026  4:43 AM        engine
+d----  6/29/2026  4:43 AM        game
+d----  6/29/2026  4:43 AM        hammer
+d----  6/29/2026  4:43 AM        infra
+d----  6/29/2026  4:43 AM        launcher
+d----  6/29/2026  4:43 AM        sdk
+d----  6/29/2026  4:43 AM        servers
+d----  6/29/2026  4:43 AM        tools
+-a---  6/29/2026  4:43 AM    983 .gitignore
+-a---  6/29/2026  4:43 AM   3758 DEPLOYMENT_STATUS.md
+-a---  6/29/2026  4:43 AM   1099 LICENSE
+-a---  6/29/2026  4:43 AM  12759 LINUX_SETUP.md
+-a---  6/29/2026  4:43 AM   4075 PROJECT_INDEX.md
+-a---  6/29/2026  4:43 AM   3826 QUICK_REFERENCE.md
+-a---  6/29/2026  4:43 AM   8794 README.md
+
