@@ -1,7 +1,6 @@
+#include "cbase.h"
 // OPENVIBE_WINDOWS_SERVER_QUICKJS_STUB
 #if defined(_WIN32) && defined(GAME_DLL) && !defined(OPENVIBE_WINDOWS_SERVER_REAL_QUICKJS)
-
-#include "cbase.h"
 #include "hl2mp_player.h"
 #include "openvibe_js_server.h"
 
@@ -82,7 +81,6 @@ static ConCommand ov_js_cmd(
     FCVAR_GAMEDLL
 );
 #else
-#include "cbase.h"
 #include "hl2mp_player.h"
 #include "openvibe_js_server.h"
 #include "openvibe/ov_js_runtime.h"

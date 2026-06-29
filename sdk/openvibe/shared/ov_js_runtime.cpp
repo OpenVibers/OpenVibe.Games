@@ -1,7 +1,6 @@
+#include "cbase.h"
 // OPENVIBE_WINDOWS_SERVER_QUICKJS_STUB
 #if defined(_WIN32) && defined(GAME_DLL) && !defined(OPENVIBE_WINDOWS_SERVER_REAL_QUICKJS)
-
-#include "cbase.h"
 #include "ov_js_runtime.h"
 
 #include "tier0/memdbgon.h"
@@ -28,7 +27,6 @@ bool COpenVibeJSRuntime::CallHookBool(const char *pszHookName, bool *pOut, int a
     return false;
 }
 #else
-#include "cbase.h"
 #include "filesystem.h"
 #include "ov_js_runtime.h"
 #include "ov_js_bindings.h"
