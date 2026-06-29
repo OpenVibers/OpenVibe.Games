@@ -54,7 +54,7 @@ done < <(find "$OUT" -type f \( -iname 'client.dll' -o -iname 'server.dll' \) | 
 if [[ -n "$CLIENT" && -n "$SERVER" ]]; then
   say "candidate client=$CLIENT"
   say "candidate server=$SERVER"
-  if strings "$CLIENT" | grep -Eq 'ov_join|ov_menu|OpenVibe'; then
+  if strings -a "$CLIENT" | grep -Eq 'ov_join|ov_menu|OpenVibe' && strings -a "$SERVER" | grep -Eq 'ov_js_status|ov_js_cmd|OpenVibe'; then
     mkdir -p game/openvibe.games/bin
     cp -f "$CLIENT" game/openvibe.games/bin/client.dll
     cp -f "$SERVER" game/openvibe.games/bin/server.dll
@@ -62,7 +62,7 @@ if [[ -n "$CLIENT" && -n "$SERVER" ]]; then
     if [[ -x tools/verify-openvibe-dll-content.sh ]]; then
       tools/verify-openvibe-dll-content.sh || true
     else
-      strings game/openvibe.games/bin/client.dll | grep -E 'ov_join|ov_menu|OpenVibe' | head || true
+      strings -a game/openvibe.games/bin/client.dll | grep -E 'ov_join|ov_menu|OpenVibe' | head || true
     fi
     exit 0
   else
