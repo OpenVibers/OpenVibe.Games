@@ -105,7 +105,16 @@ export const leaderboardQuerySchema = z.object({
 
 export const upsertShopItemSchema = z.object({
   itemId: z.string().min(1).max(80),
-  itemType: z.enum(["player_model", "trail", "nameplate"]),
+  itemType: z.enum([
+    "player_model",
+    "trail",
+    "nameplate",
+    "title",
+    "spray",
+    "emote",
+    "fortwars_part",
+    "traitortown_cosmetic",
+  ]),
   displayName: z.string().trim().min(1).max(120),
   description: z.string().max(500).default(""),
   assetPath: z.string().min(1).max(255),
@@ -122,4 +131,27 @@ export const auditEventSchema = z.object({
 
 export const auditQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const packageIdParamSchema = z.object({
+  packageId: z.string().min(1).max(80),
+});
+
+export const upsertScriptPackageSchema = z.object({
+  packageId: z.string().min(1).max(80),
+  packageType: z.enum(["gamemode", "addon", "library"]),
+  displayName: z.string().trim().min(1).max(120),
+  description: z.string().max(500).default(""),
+  version: z.string().trim().min(1).max(40),
+  authorSteamId: steamId.optional().nullable(),
+  manifestJson: z.record(z.string(), z.unknown()).optional(),
+  trusted: z.boolean().optional(),
+});
+
+export const upsertScriptPackageFileSchema = z.object({
+  path: z.string().min(1).max(255),
+  sha256: z.string().regex(/^[0-9a-fA-F]{64}$/, "sha256 must be 64 hex chars"),
+  sizeBytes: z.number().int().min(0).max(1_048_576),
+  realm: z.enum(["server", "client", "shared"]),
+  content: z.string().max(1_048_576),
 });

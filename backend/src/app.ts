@@ -17,10 +17,13 @@ import {
   leaderboardQuerySchema,
   listServersQuerySchema,
   matchEndSchema,
+  packageIdParamSchema,
   partyInviteSchema,
   partyTravelSchema,
   registerServerSchema,
   travelRequestSchema,
+  upsertScriptPackageFileSchema,
+  upsertScriptPackageSchema,
   upsertShopItemSchema,
   validateJoinTokenSchema,
 } from "./schemas.js";
@@ -303,6 +306,49 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (!requireAdmin(request, reply)) return;
     const query = auditQuerySchema.parse(request.query);
     return { events: await options.repository.listAuditEvents(query) };
+  });
+
+  // Script packages
+  app.get("/v1/scripts/packages", async () => {
+    return { packages: await options.repository.listScriptPackages() };
+  });
+
+  app.get("/v1/scripts/packages/:packageId", async (request, reply) => {
+    const { packageId } = packageIdParamSchema.parse(request.params);
+    const pkg = await options.repository.getScriptPackage(packageId);
+    if (!pkg) return reply.code(404).send({ error: "not_found" });
+    return pkg;
+  });
+
+  app.post("/v1/admin/scripts/packages", async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const body = upsertScriptPackageSchema.parse(request.body);
+    return options.repository.upsertScriptPackage(body);
+  });
+
+  app.post("/v1/admin/scripts/packages/:packageId/files", async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const { packageId } = packageIdParamSchema.parse(request.params);
+    const body = upsertScriptPackageFileSchema.parse(request.body);
+    const pkg = await options.repository.getScriptPackage(packageId);
+    if (!pkg) return reply.code(404).send({ error: "package_not_found" });
+    return options.repository.upsertScriptPackageFile({ ...body, packageId });
+  });
+
+  app.post("/v1/admin/scripts/packages/:packageId/enable", async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const { packageId } = packageIdParamSchema.parse(request.params);
+    const pkg = await options.repository.setScriptPackageEnabled(packageId, true);
+    if (!pkg) return reply.code(404).send({ error: "not_found" });
+    return pkg;
+  });
+
+  app.post("/v1/admin/scripts/packages/:packageId/disable", async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const { packageId } = packageIdParamSchema.parse(request.params);
+    const pkg = await options.repository.setScriptPackageEnabled(packageId, false);
+    if (!pkg) return reply.code(404).send({ error: "not_found" });
+    return pkg;
   });
 
   app.get("/metrics", async (_request, reply) => {
