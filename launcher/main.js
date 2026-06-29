@@ -11,9 +11,12 @@ const https = require('https');
 
 const API_BASE = 'http://127.0.0.1:3000';
 const DEV = process.env.ELECTRON_IS_DEV === '1';
+const CLIENT_UI_PORT = Number(process.env.OPENVIBE_CLIENT_UI_PORT || 5173);
 
 let mainWindow = null;
 let gameProcess = null;
+let uiServerProcess = null;
+let appIsQuitting = false;
 
 // ── API helper ────────────────────────────────────────────────────────────────
 function apiGet(urlPath) {
@@ -58,8 +61,63 @@ function apiPost(urlPath, body) {
   });
 }
 
+function waitForHttp(url, timeoutMs = 5000) {
+  const started = Date.now();
+  return new Promise((resolve) => {
+    const tick = () => {
+      http.get(url, { timeout: 1000 }, (res) => {
+        res.resume();
+        resolve(res.statusCode >= 200 && res.statusCode < 500);
+      }).on('error', () => {
+        if (Date.now() - started >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(tick, 200);
+      }).on('timeout', () => {
+        if (Date.now() - started >= timeoutMs) {
+          resolve(false);
+          return;
+        }
+        setTimeout(tick, 200);
+      });
+    };
+    tick();
+  });
+}
+
+async function ensureClientUiServer(root) {
+  const healthUrl = `http://127.0.0.1:${CLIENT_UI_PORT}/health`;
+  if (await waitForHttp(healthUrl, 500)) return true;
+
+  const serverScript = path.join(root, 'tools/serve-client-ui.mjs');
+  if (!fs.existsSync(serverScript)) {
+    dialog.showErrorBox('OpenVibe Menu Server Missing', `Could not find:\n${serverScript}`);
+    return false;
+  }
+
+  uiServerProcess = spawn(process.execPath, [serverScript], {
+    cwd: root,
+    env: {
+      ...process.env,
+      OPENVIBE_ROOT: root,
+      OPENVIBE_CLIENT_UI_PORT: String(CLIENT_UI_PORT),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  uiServerProcess.stdout.on('data', (d) => console.log('[client-ui]', d.toString().trim()));
+  uiServerProcess.stderr.on('data', (d) => console.error('[client-ui]', d.toString().trim()));
+  uiServerProcess.on('exit', (code) => {
+    console.log('[launcher] client UI server exited with code', code);
+    uiServerProcess = null;
+  });
+
+  return waitForHttp(healthUrl, 5000);
+}
+
 // ── Game launch ────────────────────────────────────────────────────────────────
-function launchGame(serverIp, serverPort) {
+async function launchGame(serverIp, serverPort) {
   const root = path.resolve(__dirname, '..');
   const mod = path.join(root, 'game/openvibe.games');
 
@@ -76,6 +134,13 @@ function launchGame(serverIp, serverPort) {
       !hasHl2
         ? `hl2.exe not found at:\n${hl2Exe}`
         : 'GE-Proton10-34 not found.\nInstall it via ProtonUp-Qt or manually.');
+    return false;
+  }
+
+  const uiReady = await ensureClientUiServer(root);
+  if (!uiReady) {
+    dialog.showErrorBox('OpenVibe Menu Server Failed',
+      `Could not start http://127.0.0.1:${CLIENT_UI_PORT}/client for the in-game HTML menu.`);
     return false;
   }
 
@@ -100,7 +165,14 @@ function launchGame(serverIp, serverPort) {
     console.log('[launcher] game exited with code', code);
     gameProcess = null;
     mainWindow?.webContents.send('game-exited', code);
+    mainWindow?.show();
+    mainWindow?.focus();
   });
+
+  mainWindow?.webContents.send('game-started', gameProcess.pid);
+  setTimeout(() => {
+    if (gameProcess && mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
+  }, 750);
 
   // Detach so the game keeps running if Electron is closed
   gameProcess.unref();
@@ -131,11 +203,11 @@ ipcMain.handle('api:travel', async (_e, { steamId, mode }) => {
   catch (e) { return { error: e.message }; }
 });
 
-ipcMain.handle('game:launch', (_e, { ip, port }) => {
+ipcMain.handle('game:launch', async (_e, { ip, port }) => {
   return launchGame(ip, port);
 });
 
-ipcMain.handle('game:launch-direct', (_e, mode) => {
+ipcMain.handle('game:launch-direct', async (_e, mode) => {
   // Look up the mode's port from local server list
   const serverMap = {
     hub: { ip: '127.0.0.1', port: 27015 },
@@ -181,6 +253,13 @@ function createWindow() {
     if (DEV) mainWindow.webContents.openDevTools({ mode: 'detach' });
   });
 
+  mainWindow.on('close', (event) => {
+    if (gameProcess && !appIsQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -196,7 +275,16 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (gameProcess) return;
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('before-quit', () => {
+  appIsQuitting = true;
+  if (uiServerProcess) {
+    uiServerProcess.kill();
+    uiServerProcess = null;
+  }
 });
 
 // Titlebar controls via IPC

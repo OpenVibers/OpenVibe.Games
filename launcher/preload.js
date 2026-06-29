@@ -21,5 +21,6 @@ contextBridge.exposeInMainWorld('OV', {
   openUrl:     (url)         => ipcRenderer.send('open-url', url),
 
   // Events from main → renderer
+  onGameStart: (cb) => ipcRenderer.on('game-started', (_e, pid) => cb(pid)),
   onGameExit: (cb) => ipcRenderer.on('game-exited', (_e, code) => cb(code)),
 });

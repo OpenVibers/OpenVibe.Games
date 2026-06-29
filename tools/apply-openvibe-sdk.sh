@@ -27,6 +27,7 @@ copy_file "$ROOT/sdk/openvibe/server/hl2mp/openvibe_server.cpp" \
 CLIENT_VPC="$SDK/src/game/client/client_hl2mp.vpc"
 SERVER_VPC="$SDK/src/game/server/server_hl2mp.vpc"
 HL2MP_CLIENT="$SDK/src/game/server/hl2mp/hl2mp_client.cpp"
+HL2MP_CLIENTMODE="$SDK/src/game/client/hl2mp/clientmode_hl2mpnormal.cpp"
 
 perl -0pi -e 's/^.*hl2mp\\openvibe_client\.cpp.*\n//mg; s/^.*hl2mp\\vgui_openvibe_menu\.cpp.*\n//mg; s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n/s' "$CLIENT_VPC"
 echo "[openvibe-sdk] patched client_hl2mp.vpc"
@@ -41,5 +42,13 @@ if ! grep -q 'OpenVibe_OnClientActive' "$HL2MP_CLIENT"; then
 fi
 
 perl -0pi -e 's/[^\S\r\n]*\x0boid OpenVibe_OnClientActive/void OpenVibe_OnClientActive/g; s/\\tOpenVibe_OnClientActive/\tOpenVibe_OnClientActive/g; s/^[ \t]*void OpenVibe_OnClientActive/void OpenVibe_OnClientActive/m' "$HL2MP_CLIENT"
+
+if ! grep -q 'OpenVibe_OnClientModeInit' "$HL2MP_CLIENTMODE"; then
+  sed -i '/#include "ienginevgui.h"/a void OpenVibe_OnClientModeInit();' "$HL2MP_CLIENTMODE"
+  sed -i '/BaseClass::Init();/a \    OpenVibe_OnClientModeInit();' "$HL2MP_CLIENTMODE"
+  echo "[openvibe-sdk] patched clientmode_hl2mpnormal.cpp OpenVibe menu hook"
+fi
+
+perl -0pi -e 's/^[ \t]*tOpenVibe_OnClientModeInit\(\);/    OpenVibe_OnClientModeInit();/m' "$HL2MP_CLIENTMODE"
 
 echo "[openvibe-sdk] Source SDK OpenVibe patch applied"

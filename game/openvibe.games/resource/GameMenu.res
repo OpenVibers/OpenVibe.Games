@@ -2,8 +2,8 @@
 {
     "1"
     {
-        "label" "OpenVibe.Games"
-        "command" "engine echo OpenVibe.Games"
+        "label" "OpenVibe.Games Menu"
+        "command" "engine openvibe_menu"
         "OnlyInGame" "0"
     }
     "2"
