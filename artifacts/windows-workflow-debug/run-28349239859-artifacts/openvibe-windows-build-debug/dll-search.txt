@@ -1,0 +1,18 @@
+=== dll search ===
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\artifacts\windows-workflow-debug\run-28349028341-artifacts\openvibe-windows-dlls\client.dll
+Length        : 5591976
+LastWriteTime : 6/29/2026 4:46:06 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\artifacts\windows-workflow-debug\run-28349028341-artifacts\openvibe-windows-dlls\server.dll
+Length        : 7183272
+LastWriteTime : 6/29/2026 4:46:06 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\bin\client.dll
+Length        : 5591976
+LastWriteTime : 6/29/2026 4:46:06 AM
+
+FullName      : D:\a\OpenVibe.Games\OpenVibe.Games\game\openvibe.games\bin\server.dll
+Length        : 7183272
+LastWriteTime : 6/29/2026 4:46:06 AM
+
