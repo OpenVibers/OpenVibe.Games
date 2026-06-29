@@ -3,6 +3,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# OPENVIBE_TARGET_ARCH_TRIM_GUARD
+if ($env:OPENVIBE_WINDOWS_TARGET_ARCH) { $env:OPENVIBE_WINDOWS_TARGET_ARCH = $env:OPENVIBE_WINDOWS_TARGET_ARCH.Trim() }
+if ($script:TargetArch) { $script:TargetArch = ([string]$script:TargetArch).Trim() }
+
 
 $Root = if ($env:OPENVIBE_ROOT) { (Resolve-Path $env:OPENVIBE_ROOT).Path } else { (Resolve-Path (Join-Path $PSScriptRoot "..")).Path }
 $Sdk = if ($env:OPENVIBE_SDK) { $env:OPENVIBE_SDK } else { Join-Path $Root "engine/source-sdk-2013" }
@@ -19,6 +23,10 @@ $script:OpenVibeTargetArch = if ($env:OPENVIBE_WINDOWS_TARGET_ARCH) { $env:OPENV
 if ($script:OpenVibeTargetArch -notin @("x86", "x64")) {
   throw "OPENVIBE_WINDOWS_TARGET_ARCH must be x86 or x64, got '$script:OpenVibeTargetArch'"
 }
+# OPENVIBE_TARGET_ARCH_NORMALIZE_AFTER_VALIDATE
+$script:TargetArch = ([string]$script:TargetArch).Trim()
+$env:OPENVIBE_WINDOWS_TARGET_ARCH = $script:TargetArch
+
 Write-Host "[openvibe-win] target arch=$script:OpenVibeTargetArch"
 function Require($p, $msg) {
   if (!(Test-Path $p)) { throw "$msg`nMissing: $p" }
