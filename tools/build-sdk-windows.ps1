@@ -547,7 +547,13 @@ function Copy-LibIfNeeded([string]$libName, [string]$destDir) {
   if (Test-Path $dest) { return }
   $found = Get-ChildItem -Path $Sdk -Recurse -File -Filter $libName -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch "artifacts|windows-build-debug|_deps" } |
-    Sort-Object LastWriteTime -Descending |
+    Sort-Object @{ Expression = {
+      if ($script:OpenVibeTargetArch -eq "x86") {
+        if ($_.FullName -match "\x64\|/x64/|win64|x64") { 1 } else { 0 }
+      } else {
+        if ($_.FullName -match "\x64\|/x64/|win64|x64") { 0 } else { 1 }
+      }
+    } }, LastWriteTime -Descending |
     Select-Object -First 1
   if ($found) {
     Say "copying fallback lib $($found.FullName) -> $dest"
@@ -555,12 +561,14 @@ function Copy-LibIfNeeded([string]$libName, [string]$destDir) {
   }
 }
 
+# OPENVIBE_WIN32_BITMAP_LIB_DEP_PATCH
 function Build-SourceSdkDependencyProjects {
   Say "building Source SDK dependency libraries before HL2MP client/server"
 
   $patterns = @(
     "tier1*.vcxproj",
     "mathlib*.vcxproj",
+    "bitmap*.vcxproj",
     "raytrace*.vcxproj",
     "vgui_controls*.vcxproj",
     "matsys_controls*.vcxproj",
@@ -583,6 +591,7 @@ function Build-SourceSdkDependencyProjects {
 
   $publicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
   Copy-LibIfNeeded "mathlib.lib" $publicLibDir
+  Copy-LibIfNeeded "bitmap.lib" $publicLibDir
   Copy-LibIfNeeded "tier1.lib" $publicLibDir
   Copy-LibIfNeeded "raytrace.lib" $publicLibDir
   Copy-LibIfNeeded "vgui_controls.lib" $publicLibDir
