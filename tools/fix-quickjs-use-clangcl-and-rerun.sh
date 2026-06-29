@@ -1,3 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT"
+BRANCH="$(git branch --show-current)"
+
+say() { echo "[openvibe] $*"; }
+
+say "fix QuickJS Windows build: use clang-cl for GNU/C99 QuickJS objects"
+say "root=$ROOT"
+say "branch=$BRANCH"
+
+mkdir -p tools docs
+
+cat > tools/build-quickjs-lib-windows.ps1 <<'PS1'
 $ErrorActionPreference = 'Stop'
 
 $Root = if ($env:OPENVIBE_ROOT) { (Resolve-Path $env:OPENVIBE_ROOT).Path } else { (Resolve-Path (Join-Path $PSScriptRoot '..')).Path }
@@ -288,3 +304,39 @@ Say "lib -> $outLib"
 if ($LASTEXITCODE -ne 0) { throw "lib.exe failed" }
 if (!(Test-Path $outLib)) { throw "lib.exe did not produce $outLib" }
 Say "built $outLib"
+PS1
+
+cat > docs/WINDOWS_QUICKJS_CLANGCL.md <<'MD'
+# Windows QuickJS build uses clang-cl
+
+QuickJS uses GNU/C99 compiler features that plain `cl.exe` does not parse cleanly, including GNU attributes, GCC/Clang builtins, and C initializer patterns. The Windows workflow now prefers `clang-cl.exe` for QuickJS only. `clang-cl` emits MSVC-compatible COFF `.obj` files, and `lib.exe` packs them into `libquickjs_openvibe.lib` for the regular Source SDK MSVC link.
+
+The rest of the Source SDK build still uses the Visual Studio/MSBuild toolchain.
+MD
+
+chmod +x tools/trigger-windows-dll-build-clean.sh 2>/dev/null || true
+
+git add tools/build-quickjs-lib-windows.ps1 docs/WINDOWS_QUICKJS_CLANGCL.md "$0" 2>/dev/null || git add tools/build-quickjs-lib-windows.ps1 docs/WINDOWS_QUICKJS_CLANGCL.md
+
+say "git diff summary"
+git diff --cached --stat || true
+
+if git diff --cached --quiet; then
+  say "no changes to commit"
+else
+  git commit -m "Build QuickJS with clang-cl on Windows"
+  git push
+fi
+
+say "triggering clean Windows DLL build"
+if [[ -x tools/trigger-windows-dll-build-clean.sh ]]; then
+  tools/trigger-windows-dll-build-clean.sh
+else
+  gh workflow run windows-source-sdk-dlls.yml --ref "$BRANCH"
+  sleep 10
+  RUN_ID="$(gh run list --workflow windows-source-sdk-dlls.yml --branch "$BRANCH" --limit 1 --json databaseId --jq '.[0].databaseId')"
+  gh run watch "$RUN_ID" --exit-status || true
+  tools/windows-workflow-debug-and-install.sh "$RUN_ID" || true
+fi
+
+say "done"
