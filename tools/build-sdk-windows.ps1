@@ -42,6 +42,72 @@ function Ensure-PythonOnPath {
 }
 
 
+
+# OPENVIBE_PYTHON_SHIM_FOR_MSBUILD
+function Ensure-PythonCommandForMSBuild {
+  $shimDir = Join-Path $Root "artifacts/python-shim"
+  New-Item -ItemType Directory -Force -Path $shimDir | Out-Null
+  $log = Join-Path $LogDir "python-version.txt"
+  "=== Ensure-PythonCommandForMSBuild ===" | Out-File $log
+  "initial PATH=$env:PATH" | Out-File $log -Append
+  "pythonLocation=$env:pythonLocation" | Out-File $log -Append
+  "Python_ROOT_DIR=$env:Python_ROOT_DIR" | Out-File $log -Append
+
+  $candidates = New-Object System.Collections.Generic.List[string]
+  foreach ($base in @($env:pythonLocation, $env:Python_ROOT_DIR, $env:Python3_ROOT_DIR)) {
+    if ($base) {
+      [void]$candidates.Add((Join-Path $base "python.exe"))
+      [void]$candidates.Add((Join-Path $base "python3.exe"))
+    }
+  }
+
+  foreach ($name in @("python.exe", "python3.exe", "py.exe")) {
+    $cmd = Get-Command $name -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) { [void]$candidates.Add($cmd.Source) }
+  }
+
+  foreach ($rootCandidate in @("C:\hostedtoolcache\windows\Python", "C:\hostedtoolcache\windows\PyPy")) {
+    if (Test-Path $rootCandidate) {
+      Get-ChildItem -Path $rootCandidate -Recurse -File -Filter "python.exe" -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        ForEach-Object { [void]$candidates.Add($_.FullName) }
+    }
+  }
+
+  $py = $null
+  foreach ($cand in ($candidates | Select-Object -Unique)) {
+    if ($cand -and (Test-Path $cand)) {
+      $py = (Resolve-Path $cand).Path
+      break
+    }
+  }
+
+  if (-not $py) {
+    "candidate list:" | Out-File $log -Append
+    $candidates | Out-File $log -Append
+    throw "Python executable not found after setup-python/vcvars. Check python-version.txt in the debug artifact."
+  }
+
+  $pyDir = Split-Path -Parent $py
+  $bat = Join-Path $shimDir "python.bat"
+  $cmdFile = Join-Path $shimDir "python.cmd"
+  $batContent = @"
+@echo off
+"$py" %*
+exit /b %ERRORLEVEL%
+"@
+  Set-Content -Encoding ascii -Path $bat -Value $batContent
+  Set-Content -Encoding ascii -Path $cmdFile -Value $batContent
+
+  # Put the shim first so custom build steps that literally run `python` find it.
+  $env:PATH = "$shimDir;$pyDir;$env:PATH"
+  "selected python=$py" | Out-File $log -Append
+  "shimDir=$shimDir" | Out-File $log -Append
+  "updated PATH=$env:PATH" | Out-File $log -Append
+  & $py --version 2>&1 | Tee-Object -FilePath $log -Append
+  & cmd.exe /d /s /c "where python" 2>&1 | Tee-Object -FilePath $log -Append
+}
+
 function Find-VcVars64 {
   $candidates = @(
     "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
