@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import { OpenVibeRepository } from "./domain.js";
 import {
   authDevSchema,
+  authSteamSchema,
   buyItemSchema,
   equipItemSchema,
   getMeQuerySchema,
@@ -17,11 +18,13 @@ import {
   validateJoinTokenSchema,
 } from "./schemas.js";
 import { RepositoryError } from "./repository-memory.js";
+import { createSessionToken, OpenVibeSessionStore } from "./sessions.js";
 
 export interface AppOptions {
   repository: OpenVibeRepository;
   devAuthEnabled?: boolean;
   adminSecret?: string;
+  sessionStore?: OpenVibeSessionStore;
 }
 
 export async function createApp(options: AppOptions): Promise<FastifyInstance> {
@@ -78,18 +81,79 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
 
     const body = authDevSchema.parse(request.body ?? {});
     const profile = await options.repository.upsertDevPlayer(body);
+    const sessionToken = await createSessionToken(options.sessionStore, "dev", profile.player.steamId);
 
     return {
-      sessionToken: `dev.${profile.player.steamId}`,
+      sessionToken,
       ...profile,
     };
   });
 
-  app.post("/v1/auth/steam", async (_request, reply) => {
-    return reply.code(501).send({
-      error: "steam_auth_not_configured",
-      next: "Use ISteamUser::GetAuthTicketForWebApi client-side, then verify with AuthenticateUserTicket server-side.",
+  app.post("/v1/auth/steam", async (request, reply) => {
+    const body = authSteamSchema.parse(request.body ?? {});
+    const apiKey = process.env.STEAM_WEB_API_KEY;
+    const appId = process.env.STEAM_APP_ID;
+    const steamApiBase = process.env.STEAM_WEB_API_BASE ?? "https://api.steampowered.com";
+
+    if (!apiKey || !appId) {
+      return reply.code(501).send({
+        error: "steam_auth_not_configured",
+        next: "Set STEAM_WEB_API_KEY and STEAM_APP_ID so the backend can call ISteamUserAuth/AuthenticateUserTicket.",
+      });
+    }
+
+    const url = new URL("/ISteamUserAuth/AuthenticateUserTicket/v1/", steamApiBase);
+    url.searchParams.set("key", apiKey);
+    url.searchParams.set("appid", appId);
+    url.searchParams.set("ticket", body.ticket);
+    url.searchParams.set("identity", body.identity);
+    url.searchParams.set("format", "json");
+
+    const steamResponse = await fetch(url);
+    if (!steamResponse.ok) {
+      request.log.warn({ status: steamResponse.status }, "steam auth request failed");
+      return reply.code(502).send({ error: "steam_auth_upstream_failed" });
+    }
+
+    const steamJson = (await steamResponse.json()) as {
+      response?: {
+        params?: {
+          steamid?: string;
+          ownersteamid?: string;
+          vacbanned?: boolean;
+          publisherbanned?: boolean;
+        };
+        error?: {
+          errorcode?: number;
+          errordesc?: string;
+        };
+      };
+    };
+
+    const params = steamJson.response?.params;
+    if (!params?.steamid) {
+      request.log.warn({ steam: steamJson.response?.error }, "steam auth ticket rejected");
+      return reply.code(401).send({ error: "steam_ticket_invalid" });
+    }
+
+    if (params.vacbanned || params.publisherbanned) {
+      return reply.code(403).send({ error: "steam_account_banned" });
+    }
+
+    const displayName = body.displayName ?? `Steam ${params.steamid.slice(-6)}`;
+    const profile = await options.repository.upsertDevPlayer({
+      steamId: params.steamid,
+      displayName,
     });
+    const sessionToken = await createSessionToken(options.sessionStore, "steam", params.steamid);
+
+    return {
+      authenticated: true,
+      sessionToken,
+      steamId: params.steamid,
+      ownerSteamId: params.ownersteamid ?? params.steamid,
+      ...profile,
+    };
   });
 
   app.get("/v1/me", async (request, reply) => {
@@ -102,6 +166,29 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
   app.get("/v1/shop", async () => ({
     items: await options.repository.listShop(),
   }));
+
+  app.get("/v1/assets/manifest", async () => {
+    const cdnBaseUrl = (process.env.OPENVIBE_CDN_BASE_URL ?? "https://openvibe.games/cdn").replace(/\/+$/, "");
+    const shop = await options.repository.listShop();
+
+    return {
+      cdnBaseUrl,
+      generatedAt: new Date().toISOString(),
+      assets: shop
+        .filter((item) => item.assetPath.length > 0)
+        .map((item) => {
+          const isAbsolute = /^https?:\/\//i.test(item.assetPath);
+          const assetPath = item.assetPath.replace(/^\/+/, "");
+          return {
+            itemId: item.itemId,
+            itemType: item.itemType,
+            displayName: item.displayName,
+            assetPath: item.assetPath,
+            url: isAbsolute ? item.assetPath : `${cdnBaseUrl}/${assetPath}`,
+          };
+        }),
+    };
+  });
 
   app.post("/v1/shop/buy", async (request) => {
     const body = buyItemSchema.parse(request.body);
@@ -168,6 +255,10 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     if (!requireAdmin(request, reply)) return;
     const body = upsertShopItemSchema.parse(request.body);
     return options.repository.upsertShopItem(body);
+  });
+
+  app.addHook("onClose", async () => {
+    await options.sessionStore?.close?.();
   });
 
   return app;

@@ -205,7 +205,7 @@ function OV_CreateThinkEnt(thinkFuncName) {
         printl("[OV] ERROR: could not create think entity for " + thinkFuncName)
         return null
     }
-    ent.SetName("ov_think_" + thinkFuncName)
+    ent.__KeyValueFromString("targetname", "ov_think_" + thinkFuncName)
     AddThinkToEnt(ent, thinkFuncName)
     printl("[OV] think entity created for " + thinkFuncName)
     return ent

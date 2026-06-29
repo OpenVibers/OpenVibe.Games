@@ -126,8 +126,8 @@ ipcMain.handle('api:leaderboard', async (_e, limit = 10) => {
   catch { return []; }
 });
 
-ipcMain.handle('api:travel', async (_e, { steamId, targetMode }) => {
-  try { return await apiPost('/v1/travel/request', { steamId, targetMode }); }
+ipcMain.handle('api:travel', async (_e, { steamId, mode }) => {
+  try { return await apiPost('/v1/travel/request', { steamId, mode }); }
   catch (e) { return { error: e.message }; }
 });
 

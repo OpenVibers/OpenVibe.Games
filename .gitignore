@@ -2,11 +2,23 @@ backend/node_modules/
 backend/dist/
 backend/.env
 
+# Local Valve SDK checkout. OpenVibe patch sources are tracked in sdk/openvibe/.
+engine/source-sdk-2013/
+
 hammer/vmf/*.log
 hammer/vmf/*.prt
 hammer/vmf/*.lin
 hammer/vmf/*.vmx
 hammer/vmf/*.bsp
+
+game/openvibe.games/ServerConfig.vdf
+game/openvibe.games/console.log
+game/openvibe.games/demoheader.tmp
+game/openvibe.games/download/
+game/openvibe.games/downloadlists/
+game/openvibe.games/logs/
+game/openvibe.games/materials/vgui/
+game/openvibe.games/cfg/settings.scr
 
 *.core
 core

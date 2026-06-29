@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { MemoryOpenVibeRepository } from "./repository-memory.js";
+import { SessionInput } from "./sessions.js";
 
 const steamId = "76561198000000000";
 const serverSecret = "dev-secret";
@@ -29,6 +30,73 @@ describe("OpenVibe API vertical slice", () => {
     expect(body.player.displayName).toBe("Mapper");
     expect(body.player.currencyBalance).toBe(250);
     expect(body.inventory.map((item: { itemId: string }) => item.itemId)).toContain("model_rebel");
+
+    await app.close();
+  });
+
+  it("writes auth sessions to the configured session store", async () => {
+    const sessions: SessionInput[] = [];
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      sessionStore: {
+        async createSession(input) {
+          sessions.push(input);
+        },
+      },
+    });
+    await app.ready();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Session Tester" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sessionToken).toMatch(/^dev\.76561198000000000\./);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      steamId,
+      provider: "dev",
+      ttlSeconds: 86400,
+    });
+
+    await app.close();
+  });
+
+  it("keeps Steam auth disabled until Steam credentials are configured", async () => {
+    const app = await testApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/steam",
+      payload: {
+        ticket: "0123456789abcdef",
+        identity: "openvibe.games",
+      },
+    });
+
+    expect(response.statusCode).toBe(501);
+    expect(response.json().error).toBe("steam_auth_not_configured");
+
+    await app.close();
+  });
+
+  it("returns a CDN asset manifest for shop-backed cosmetics", async () => {
+    const app = await testApp();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/assets/manifest",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.cdnBaseUrl).toBe("https://openvibe.games/cdn");
+    expect(body.assets.some((asset: { itemId: string; url: string }) =>
+      asset.itemId === "trail_blue" && asset.url.includes("https://openvibe.games/cdn/"),
+    )).toBe(true);
 
     await app.close();
   });

@@ -6,12 +6,12 @@ OpenVibe: Source uses Source dedicated servers for gameplay and OpenVibe.Games a
 
 ```text
 Source client
-  → OpenVibe main menu
+  → OpenVibe VGUI menu / launcher
   → Steam auth / dev auth → OpenVibe.Games API
-  → Hub SRCDS (portal pads → direct connect)
+  → Hub SRCDS (portal pads → ov_join)
 
 Hub SRCDS                         ov_hub.nut
-  → portal pads (trigger → connect)
+  → portal pads (trigger → ov_join <mode>)
   → shop NPC / inventory station
   → sidecar → /v1/servers/heartbeat
 
@@ -30,6 +30,7 @@ Sidecar (ov-sidecar.mjs)
 Backend API (Fastify/TypeScript)
   → /v1/auth/{dev,steam}
   → /v1/me  /v1/shop  /v1/equip
+  → /v1/assets/manifest
   → /v1/servers/{register,heartbeat}
   → /v1/travel/{request,validate}
   → /v1/matches/end
@@ -41,6 +42,12 @@ PostgreSQL
   → shop_items, player_items
   → game_servers, join_tokens
   → match_results
+
+Redis (optional)
+  → auth sessions
+
+CDN/static hosting
+  → cosmetic assets served under openvibe.games
 ```
 
 ## Modes
@@ -61,6 +68,7 @@ PostgreSQL
 - Server heartbeat and reward APIs require `serverSecret`.
 - The backend owns item IDs, asset paths, prices, and equipped cosmetics.
 - Admin endpoints require `X-Admin-Secret` header.
+- Production Steam auth is done by the backend calling Steam Web API ticket validation. The client never receives the Steam Web API publisher key.
 
 ## VScript → API Event Protocol
 
@@ -77,26 +85,29 @@ VScript cannot make HTTP requests directly.  The sidecar bridges the gap:
 | `REWARD` | `matchId serverId secret uid mode coins xp` | `POST /v1/matches/end` |
 | `SAY` | `message…` | log only |
 
-## Next C++ Work
+## C++ Travel Flow
 
-The current portal pads use `point_clientcommand` with hardcoded `connect` commands.
-Replace this with a proper authenticated travel flow:
-
-```text
-1. Player steps on portal pad → VScript prints [OV] TRAVEL_REQUEST steamId mode
-2. Sidecar calls /v1/travel/request → gets { connect, joinToken }
-3. Sidecar sends RCON command: ov_send_travel {userId} {connect} {joinToken}
-4. C++ ConCommand parses the command, sends connect + token to the client
-5. Destination server receives player + token
-6. Server VScript prints [OV] ARRIVAL steamId token
-7. Sidecar calls /v1/travel/validate → confirms token is valid
-```
-
-Or with a C++ HTTP client built into the GameDLL:
+Portal pads now call `ov_join <mode>` instead of hardcoded `connect` commands:
 
 ```text
-ov_join prophunt   → ConCommand calls /v1/travel/request
-                   → receives { connect, joinToken }
-                   → engine.ClientCommand("connect {connect}")
-                   → token stored for validation on arrival
+1. Player steps on portal pad.
+2. The map fires `point_clientcommand -> ov_join <mode>`.
+3. Client C++ calls `/v1/travel/request` with SteamID + mode.
+4. Backend reserves a short-lived join token and returns `{ connect, joinToken }`.
+5. Client stores the token in userinfo and runs `connect host:port`.
+6. Destination server reads the token after player activation.
+7. Server C++ validates the token with `/v1/travel/validate`.
 ```
+
+## GameDLL Feature Hooks
+
+Tracked C++ patch sources live under `sdk/openvibe/` and are copied into the local Valve SDK checkout by `tools/apply-openvibe-sdk.sh`.
+
+| Feature | Command / hook | Notes |
+| --- | --- | --- |
+| Authenticated travel | `ov_join <mode>` | Client HTTP travel request + connect. |
+| Arrival validation | `ClientActive` hook | Server validates `ov_join_token`. |
+| Main menu | `openvibe_menu`, `ov_menu` | VGUI hub selector. |
+| Steam auth | `ov_auth_steam` | Client obtains Steam Web API ticket; backend validates it. |
+| Prop Hunt disguise | `ov_prophunt_disguise`, `ov_prophunt_reset_disguise` | Server-side allowlisted model swap. |
+| Fort Wars placement | `ov_fortwars_spawn` | Server-side allowlisted physics prop spawn. |

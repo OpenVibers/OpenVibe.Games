@@ -1,138 +1,86 @@
-# OpenVibe: Source — Deployment Status
+# OpenVibe: Source Deployment Status
 
-**Last Updated:** June 28, 2025  
-**Version:** 1.0.0 — Complete MVP  
-**Status:** ✅ ALL SYSTEMS OPERATIONAL
+**Last updated:** June 28, 2026
+**Status:** Local MVP foundation operational
 
-## Summary
+## What Runs Locally
 
-All core features of OpenVibe: Source are now **complete and tested**:
+- Backend API starts and responds on `http://127.0.0.1:3000`.
+- PostgreSQL dev database starts through the repo tooling.
+- Five SRCDS shards boot:
+  - Hub: `ov_hub` on `27015`
+  - Prop Hunt: `ph_openvibe_dev` on `27016`
+  - Deathrun: `dr_openvibe_dev` on `27017`
+  - Fort Wars: `fw_openvibe_dev` on `27018`
+  - Traitor Town: `tt_openvibe_dev` on `27019`
+- Sidecars register and heartbeat those servers with the backend.
+- Travel requests return live local connect targets for every mode.
+- Maps use `ov_join <mode>` portal commands instead of hardcoded connects.
 
-✅ Custom C++ ConCommands (travel, auth, Prop Hunt disguise)  
-✅ Custom HTML/CSS/JS Electron main menu  
-✅ Proton-based Windows game client on Linux  
-✅ All 5 game modes (Hub, Prop Hunt, Deathrun, Fort Wars, Traitor Town)  
-✅ Backend API with server registry & player authentication  
-✅ Inter-server travel system with Steam auth  
-✅ VScript game logic for each mode  
-
-## Running the System
-
-### One-Command Startup (Recommended)
-
-```bash
-# Terminal 1: Start all backend services
-cd ~/src/openvibe-source/backend
-npm run dev
-
-# Terminal 2: Start all game servers
-cd ~/src/openvibe-source
-bash tools/run-hub.sh &
-bash tools/run-prophunt.sh &
-bash tools/run-deathrun.sh &
-bash tools/run-fortwars.sh &
-bash tools/run-traitortown.sh &
-
-# Terminal 3: Start sidecars
-bash tools/run-sidecar.sh hub hub 27015 48 &
-bash tools/run-sidecar.sh prophunt prophunt 27016 24 &
-bash tools/run-sidecar.sh deathrun deathrun 27017 24 &
-bash tools/run-sidecar.sh fortwars fortwars 27018 32 &
-bash tools/run-sidecar.sh traitortown traitortown 27019 24 &
-
-# Terminal 4: Launch the game
-cd ~/src/openvibe-source/launcher
-npm start
-```
-
-### Quick Verification
-
-```bash
-# Check API health
-curl http://localhost:3000/health | jq '.service'
-
-# Check servers registered
-curl http://localhost:3000/v1/servers | jq '.servers | length'
-
-# Check running processes
-ps aux | grep -E "srcds_linux|ov-sidecar|npm run dev" | grep -v grep | wc -l
-```
-
-## Project Status
+## Implemented Pieces
 
 | Component | Status | Notes |
-|-----------|--------|-------|
-| Custom ConCommands | ✅ Complete | openvibe_travel.cpp, openvibe_steam_auth.cpp |
-| HTML/CSS/JS Launcher | ✅ Complete | Electron app with 5 tabs (Portal, Servers, etc.) |
-| Game Modes | ✅ Complete | All 5 modes compiled and running |
-| Backend API | ✅ Complete | Server registry, auth, inventory ready |
-| Steam Auth | ✅ Complete | ISteamUser ticket validation |
-| Prop Hunt Disguise | ✅ Complete | Random model swap on hide phase |
-| Proton Integration | ✅ Complete | GE-Proton10-34 → Wine → Vulkan |
+| --- | --- | --- |
+| Backend API | Complete for MVP | Dev auth, Steam ticket auth route, inventory, shop, travel, rewards, leaderboard, asset manifest. |
+| PostgreSQL schema | Complete for MVP | Durable players, currency, inventory, servers, join tokens, match results. |
+| Redis sessions | Implemented | Enabled when `SESSION_REDIS_URL` is set. |
+| C++ client travel | Implemented | `ov_join <mode>` calls `/v1/travel/request` and connects with token. |
+| C++ server validation | Implemented | Validates `ov_join_token` against `/v1/travel/validate`. |
+| VGUI menu | Implemented | `openvibe_menu` / `ov_menu` plus `resource/GameMenu.res`. |
+| Prop Hunt disguise | Implemented | Server-side allowlisted model swap/reset. |
+| Fort Wars placement | Implemented | Server-side allowlisted physics prop spawning. |
+| Steam auth | Implemented route | Requires real `STEAM_WEB_API_KEY` and `STEAM_APP_ID` for production. |
+| CDN manifest | Implemented route | Requires real hosted storage under `openvibe.games` for production content. |
+| Production infra | Scaffolded | Docker Compose, Docker Swarm, Kubernetes, nginx CDN config. |
 
-## Architecture
+## Verified
 
-```
-Electron Launcher (HTML/CSS/JS)
-    ↓ [Join Server]
-Proton Wrapper (run-client-proton.sh)
-    ↓ [Launch hl2.exe]
-Wine + DXVK/Vulkan
-    ↓ [Game connects]
-SRCDS (Hub, Prophunt, Deathrun, etc.)
-    ↑
-Backend API (TypeScript/Fastify)
-    ↑
-PostgreSQL
+```bash
+cd ~/src/openvibe-source/backend
+npm run build
+npm test
 ```
 
-## Files to Know
+Result: TypeScript build passed, 9 tests passed.
 
-- **Game launcher:** `launcher/` (Electron app)
-- **Game launcher entry:** `bash tools/run-client-proton.sh`
-- **Custom ConCommands:** `engine/source-sdk-2013/src/game/server/hl2mp/openvibe_*.cpp`
-- **Game modes:** `game/openvibe.games/scripts/vscripts/ov_*.nut`
-- **Backend API:** `backend/src/app.ts`
-- **Docker compose:** `infra/docker-compose.yml`
+```bash
+cd ~/src/openvibe-source
+tools/build-sdk-linux.sh
+OPENVIBE_SRCDS_MAP_DELAY=3 OPENVIBE_SRCDS_SMOKE_TIMEOUT=45 tools/smoke-srcds.sh
+```
 
-## Deployment
+Result: Source SDK Linux64 build passed. SRCDS smoke test passed for all five maps.
 
-### For Production
+Full stack was also tested with:
 
-1. Update `launcher/main.js` to point to production API URL
-2. Update `game/openvibe.games/cfg/openvibe_common.cfg` with production server details
-3. Distribute launcher via download or CI/CD
-4. Deploy backend to production server
-5. Run game servers on production hardware
+```bash
+cd ~/src/openvibe-source
+OPENVIBE_SRCDS_MAP_DELAY=3 tools/dev-up.sh
+node tools/smoke-api.mjs
+tools/dev-down.sh
+```
 
-### For Linux Distribution
+## Runtime Note
 
-The game requires:
-- Steam with SDK Base 2013 Multiplayer installed
-- GE-Proton10-34
-- Node.js 16+
-- PostgreSQL 12+
+The installed Source SDK Base 2013 Dedicated Server directory provided by the user:
 
-All bundled in launcher distribution or installed via package manager.
+```text
+/mnt/6tb/ssd_offload/home/workstation/.steam/debian-installation/steamapps/common/Source SDK Base 2013 Dedicated Server
+```
 
-## Known Limitations
+contains Windows server binaries in this environment. OpenVibe local Linux testing uses the TF2 Linux64 SRCDS runtime at:
 
-1. **Windows-only game client** — Runs via Proton; native Linux client would need separate build
-2. **sourcetest client.dll** — Current placeholder; full VGUI features need custom client.dll recompile
-3. **No C++ compiler in environment** — Can't recompile GameDLL; would need Visual Studio 2015+
-4. **Local network only** — Servers run on localhost (127.0.0.1); for internet play, update publicHost in code
+```text
+~/srcds/tf2
+```
 
-## Next Steps (Post-MVP)
+## Production Gaps
 
-- [ ] VGUI menu integration (requires client.dll recompile)
-- [ ] Payment system (backend routes ready)
-- [ ] Anti-cheat (VAC integration)
-- [ ] Competitive ranking
-- [ ] Workshop cosmetics
-- [ ] Discord bot
+Before public deployment:
 
----
-
-**GitHub:** https://github.com/OpenVibers/OpenVibe.Games  
-**Date:** June 28, 2025  
-**Status:** Ready for deployment
+- Configure real Steam app identity and `STEAM_WEB_API_KEY`.
+- Host cosmetic assets under the `openvibe.games` CDN path.
+- Set real production secrets for API, Redis, PostgreSQL, and admin routes.
+- Add backups, metrics, health checks, log shipping, and deployment secret management.
+- Expand each game mode from prototype rules into full production gameplay.
+- Add moderation/admin UI and anti-abuse controls.

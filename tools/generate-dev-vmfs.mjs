@@ -348,7 +348,7 @@ function hub() {
             [pad.origin[0] - 128, pad.origin[1] - 128, 16],
             [pad.origin[0] + 128, pad.origin[1] + 128, 128],
             commandTarget,
-            `connect 127.0.0.1:${pad.port}`,
+            `ov_join ${pad.mode}`,
           ),
         ];
       }),
@@ -417,7 +417,7 @@ function minigame(mapName, modeName, returnX = 0) {
         [returnX - 128, 580, 16],
         [returnX + 128, 836, 128],
         "cmd_return_hub",
-        "connect 127.0.0.1:27015",
+        "ov_join hub",
       ),
     ];
 

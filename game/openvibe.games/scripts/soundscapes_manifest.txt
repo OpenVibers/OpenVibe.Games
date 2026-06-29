@@ -1,4 +1,4 @@
-soundscapes_manifest
+soundscaples_manifest
 {
     "file" "scripts/soundscapes_openvibe.txt"
 }

@@ -1080,7 +1080,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_prophunt,Command,connect 127.0.0.1:27016,0,-1"
+      "OnStartTouch" "cmd_join_prophunt,Command,ov_join prophunt,0,-1"
     }
     solid
     {
@@ -1178,7 +1178,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_deathrun,Command,connect 127.0.0.1:27017,0,-1"
+      "OnStartTouch" "cmd_join_deathrun,Command,ov_join deathrun,0,-1"
     }
     solid
     {
@@ -1276,7 +1276,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_fortwars,Command,connect 127.0.0.1:27018,0,-1"
+      "OnStartTouch" "cmd_join_fortwars,Command,ov_join fortwars,0,-1"
     }
     solid
     {
@@ -1374,7 +1374,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_join_traitortown,Command,connect 127.0.0.1:27019,0,-1"
+      "OnStartTouch" "cmd_join_traitortown,Command,ov_join traitortown,0,-1"
     }
     solid
     {

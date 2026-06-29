@@ -11,6 +11,12 @@ export const authDevSchema = z.object({
   displayName: z.string().trim().min(1).max(64).default("OpenVibe Dev"),
 });
 
+export const authSteamSchema = z.object({
+  ticket: z.string().regex(/^[0-9a-fA-F]+$/).min(16).max(8192),
+  identity: z.string().trim().min(1).max(128).default("openvibe.games"),
+  displayName: z.string().trim().min(1).max(64).optional(),
+});
+
 export const getMeQuerySchema = z.object({
   steamId,
 });

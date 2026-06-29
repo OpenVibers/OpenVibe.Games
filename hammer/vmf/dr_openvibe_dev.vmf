@@ -865,7 +865,7 @@ world
     "wait" "1"
     connections
     {
-      "OnStartTouch" "cmd_return_hub,Command,connect 127.0.0.1:27015,0,-1"
+      "OnStartTouch" "cmd_return_hub,Command,ov_join hub,0,-1"
     }
     solid
     {
