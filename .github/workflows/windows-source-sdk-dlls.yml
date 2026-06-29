@@ -27,6 +27,8 @@ jobs:
   windows-dlls:
     name: Windows client.dll/server.dll
     runs-on: windows-2022
+    env:
+      OPENVIBE_WINDOWS_TARGET_ARCH: x86
     defaults:
       run:
         shell: pwsh

@@ -13,6 +13,13 @@ $LogDir = Join-Path $Root "artifacts/windows-build-debug"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 function Say($m) { Write-Host "[openvibe-win] $m" }
+
+# OPENVIBE_PROTON_WIN32_DLL_TARGET
+$script:OpenVibeTargetArch = if ($env:OPENVIBE_WINDOWS_TARGET_ARCH) { $env:OPENVIBE_WINDOWS_TARGET_ARCH.ToLowerInvariant() } else { "x86" }
+if ($script:OpenVibeTargetArch -notin @("x86", "x64")) {
+  throw "OPENVIBE_WINDOWS_TARGET_ARCH must be x86 or x64, got '$script:OpenVibeTargetArch'"
+}
+Write-Host "[openvibe-win] target arch=$script:OpenVibeTargetArch"
 function Require($p, $msg) {
   if (!(Test-Path $p)) { throw "$msg`nMissing: $p" }
 }
@@ -216,20 +223,57 @@ function Find-VcVars64 {
   return $null
 }
 
+function Find-VcVarsForOpenVibeArch([string]$arch) {
+  $editions = @("Enterprise", "Professional", "Community", "BuildTools")
+  $roots = @($env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ }
+
+  if ($arch -eq "x86") {
+    foreach ($root in $roots) {
+      foreach ($ed in $editions) {
+        $p = Join-Path $root "Microsoft Visual Studio\2022\$ed\VC\Auxiliary\Build\vcvars32.bat"
+        if (Test-Path $p) { return [pscustomobject]@{ Path = $p; Args = "" } }
+      }
+    }
+    foreach ($root in $roots) {
+      foreach ($ed in $editions) {
+        $p = Join-Path $root "Microsoft Visual Studio\2022\$ed\VC\Auxiliary\Build\vcvarsall.bat"
+        if (Test-Path $p) { return [pscustomobject]@{ Path = $p; Args = "x86" } }
+      }
+    }
+  } else {
+    foreach ($root in $roots) {
+      foreach ($ed in $editions) {
+        $p = Join-Path $root "Microsoft Visual Studio\2022\$ed\VC\Auxiliary\Build\vcvars64.bat"
+        if (Test-Path $p) { return [pscustomobject]@{ Path = $p; Args = "" } }
+      }
+    }
+    foreach ($root in $roots) {
+      foreach ($ed in $editions) {
+        $p = Join-Path $root "Microsoft Visual Studio\2022\$ed\VC\Auxiliary\Build\vcvarsall.bat"
+        if (Test-Path $p) { return [pscustomobject]@{ Path = $p; Args = "x64" } }
+      }
+    }
+  }
+
+  return $null
+}
+
+
 Say "root=$Root"
 Say "sdk=$Sdk"
 Say "src=$Src"
 
 Require $Src "Source SDK checkout is missing from this runner. Bootstrap must create engine/source-sdk-2013 first."
 
-# VPC is generating *_win64_*.vcxproj on the hosted runner, so use an x64 VS shell.
-# clang-cl/lib/msbuild all remain MSVC ABI-compatible.
+# Proton's Source SDK Base 2013 Multiplayer Windows hl2.exe is 32-bit in normal installs,
+# so default to x86 DLLs. Set OPENVIBE_WINDOWS_TARGET_ARCH=x64 only for a native x64 test.
 if (-not $InDevShell -or !(Get-Command cl.exe -ErrorAction SilentlyContinue)) {
-  $vcvars = Find-VcVars64
-  if (-not $vcvars) { throw "Could not find Visual Studio vcvars64.bat" }
-  Say "relaunching through MSVC x64 dev shell: $vcvars"
+  $vc = Find-VcVarsForOpenVibeArch $script:OpenVibeTargetArch
+  if (-not $vc) { throw "Could not find Visual Studio vcvars for target arch $script:OpenVibeTargetArch" }
+  Say "relaunching through MSVC $script:OpenVibeTargetArch dev shell: $($vc.Path) $($vc.Args)"
   $self = $PSCommandPath
-  $cmd = "`"$vcvars`" && powershell -NoProfile -ExecutionPolicy Bypass -File `"$self`" -InDevShell"
+  $vcCall = if ($vc.Args) { "`"$($vc.Path)`" $($vc.Args)" } else { "`"$($vc.Path)`"" }
+  $cmd = "$vcCall && set OPENVIBE_WINDOWS_TARGET_ARCH=$script:OpenVibeTargetArch && powershell -NoProfile -ExecutionPolicy Bypass -File `"$self`" -InDevShell"
   & cmd.exe /d /s /c $cmd
   exit $LASTEXITCODE
 }
@@ -350,7 +394,8 @@ function Get-ProjectConfigs([string]$projPath) {
 function Sort-PreferredConfigs($pairs, [string]$projName) {
   $preferred = @()
   foreach ($cfg in @("Release", "Release_HL2MP", "Release HL2MP", "Debug")) {
-    foreach ($plat in @("x64", "Win64", "Win32", "x86")) {
+    $platformPreference = if ($script:OpenVibeTargetArch -eq "x86") { @("Win32", "x86", "x64", "Win64") } else { @("x64", "Win64", "Win32", "x86") }
+    foreach ($plat in $platformPreference) {
       $hit = $pairs | Where-Object { $_.Configuration -eq $cfg -and $_.Platform -eq $plat }
       if ($hit) { $preferred += $hit }
     }
@@ -407,7 +452,7 @@ function Invoke-MSBuildProject([System.IO.FileInfo]$proj, [string]$label) {
   Say "building $label project=$($proj.FullName)"
   $pairs = Get-ProjectConfigs $proj.FullName
   if ($pairs.Count -eq 0) {
-    $pairs = @([pscustomobject]@{ Configuration = "Release"; Platform = "x64" })
+    $pairs = @([pscustomobject]@{ Configuration = "Release"; Platform = if ($script:OpenVibeTargetArch -eq "x86") { "Win32" } else { "x64" } })
   }
   $pairs = Sort-PreferredConfigs $pairs $proj.Name
 
@@ -450,12 +495,12 @@ function Build-SourceSdkDependencyProjects {
   Say "building Source SDK dependency libraries before HL2MP client/server"
 
   $patterns = @(
-    "tier1*_win64.vcxproj",
-    "mathlib*_win64.vcxproj",
-    "raytrace*_win64.vcxproj",
-    "vgui_controls*_win64.vcxproj",
-    "matsys_controls*_win64.vcxproj",
-    "fgdlib*_win64.vcxproj"
+    "tier1*.vcxproj",
+    "mathlib*.vcxproj",
+    "raytrace*.vcxproj",
+    "vgui_controls*.vcxproj",
+    "matsys_controls*.vcxproj",
+    "fgdlib*.vcxproj"
   )
 
   $projects = @()
@@ -472,18 +517,18 @@ function Build-SourceSdkDependencyProjects {
     [void](Invoke-MSBuildProject $dep $label)
   }
 
-  $publicX64 = Join-Path $Src "lib/public/x64"
-  Copy-LibIfNeeded "mathlib.lib" $publicX64
-  Copy-LibIfNeeded "tier1.lib" $publicX64
-  Copy-LibIfNeeded "raytrace.lib" $publicX64
-  Copy-LibIfNeeded "vgui_controls.lib" $publicX64
-  Copy-LibIfNeeded "matsys_controls.lib" $publicX64
+  $publicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
+  Copy-LibIfNeeded "mathlib.lib" $publicLibDir
+  Copy-LibIfNeeded "tier1.lib" $publicLibDir
+  Copy-LibIfNeeded "raytrace.lib" $publicLibDir
+  Copy-LibIfNeeded "vgui_controls.lib" $publicLibDir
+  Copy-LibIfNeeded "matsys_controls.lib" $publicLibDir
 
-  "=== public x64 libs after deps ===" | Out-File (Join-Path $LogDir "public-x64-libs-after-deps.txt")
-  if (Test-Path $publicX64) {
-    Get-ChildItem -Path $publicX64 -File -ErrorAction SilentlyContinue |
+  "=== public libs after deps ($script:OpenVibeTargetArch) ===" | Out-File (Join-Path $LogDir "public-libs-after-deps.txt")
+  if (Test-Path $publicLibDir) {
+    Get-ChildItem -Path $publicLibDir -File -ErrorAction SilentlyContinue |
       Select-Object FullName,Length,LastWriteTime |
-      Format-List | Out-File (Join-Path $LogDir "public-x64-libs-after-deps.txt") -Append
+      Format-List | Out-File (Join-Path $LogDir "public-libs-after-deps.txt") -Append
   }
 }
 
@@ -517,17 +562,29 @@ if ($serverProjects.Count -eq 0) {
   throw "No HL2MP server vcxproj was generated. Check openvibe-windows-build-debug artifact."
 }
 
-# Prefer the actual HL2MP game projects and prefer win64 because current Valve VPC emitted *_win64_hl2mp.vcxproj on the runner.
+# Prefer the actual HL2MP game projects and the requested target architecture.
+function Get-OpenVibeProjectArchScore([System.IO.FileInfo]$p) {
+  if ($script:OpenVibeTargetArch -eq "x86") {
+    if ($p.Name -match 'win64|x64') { return 20 }
+    if ($p.Name -match 'win32|x86') { return 0 }
+    return 5
+  }
+  if ($p.Name -match 'win64|x64') { return 0 }
+  if ($p.Name -match 'win32|x86') { return 20 }
+  return 5
+}
 $clientProject = $clientProjects |
-  Sort-Object @{ Expression = { if ($_.Name -match 'win64') { 0 } else { 1 } } },
+  Sort-Object @{ Expression = { Get-OpenVibeProjectArchScore $_ } },
               @{ Expression = { if ($_.Name -match '^client') { 0 } else { 1 } } },
               FullName |
   Select-Object -First 1
 $serverProject = $serverProjects |
-  Sort-Object @{ Expression = { if ($_.Name -match 'win64') { 0 } else { 1 } } },
+  Sort-Object @{ Expression = { Get-OpenVibeProjectArchScore $_ } },
               @{ Expression = { if ($_.Name -match '^server') { 0 } else { 1 } } },
               FullName |
   Select-Object -First 1
+Say "selected client project=$($clientProject.FullName)"
+Say "selected server project=$($serverProject.FullName)"
 
 Patch-GeneratedPythonCustomBuildCommands
 
