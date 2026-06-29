@@ -1,0 +1,80 @@
+name: Build Windows Source DLLs
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/openvibe-next-steps
+    paths:
+      - 'sdk/openvibe/**'
+      - 'game/openvibe.games/**'
+      - 'tools/build-sdk-windows.ps1'
+      - 'tools/build-quickjs-lib-windows.ps1'
+      - '.github/workflows/windows-source-sdk-dlls.yml'
+
+jobs:
+  windows-dlls:
+    name: Windows client.dll/server.dll
+    runs-on: windows-2022
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout OpenVibe
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Configure git line endings
+        shell: pwsh
+        run: |
+          git config --global core.autocrlf false
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Show toolchain
+        shell: pwsh
+        run: |
+          where msbuild
+          where cl
+          git --version
+          pwsh --version
+
+      - name: Build Windows Source SDK DLLs
+        shell: pwsh
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\build-sdk-windows.ps1
+
+      - name: Stage artifacts
+        shell: pwsh
+        run: |
+          New-Item -Force -ItemType Directory artifact\game\openvibe.games\bin | Out-Null
+          New-Item -Force -ItemType Directory artifact\logs | Out-Null
+
+          $candidates = @(
+            "game\openvibe.games\bin\client.dll",
+            "game\openvibe.games\bin\server.dll",
+            "engine\source-sdk-2013\game\mod_hl2mp\bin\client.dll",
+            "engine\source-sdk-2013\game\mod_hl2mp\bin\server.dll",
+            "engine\source-sdk-2013\game\mod_hl2mp\bin\client.pdb",
+            "engine\source-sdk-2013\game\mod_hl2mp\bin\server.pdb"
+          )
+
+          foreach ($file in $candidates) {
+            if (Test-Path $file) {
+              Copy-Item $file artifact\game\openvibe.games\bin\ -Force
+            }
+          }
+
+          if (Test-Path "windows-build.log") {
+            Copy-Item windows-build.log artifact\logs\windows-build.log -Force
+          }
+
+          Get-ChildItem artifact -Recurse | Format-Table FullName,Length
+
+      - name: Upload Windows DLL artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvibe-windows-dlls
+          path: artifact/**
+          if-no-files-found: error
