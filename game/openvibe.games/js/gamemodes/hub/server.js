@@ -1,27 +1,44 @@
-export const GM = {
+const GM = {
   mode: "hub",
   name: "OpenVibe Hub",
 
   Initialize() {
-    game.broadcast("OpenVibe Hub online");
+    OV.log("Hub Initialize fired");
+  },
+
+  MapInitialize(mapName) {
+    OV.log(`Map initialized: ${mapName}`);
   },
 
   PlayerInitialSpawn(ply) {
-    ply.chat("Welcome to the OpenVibe Hub");
-    ply.chat("Use the portals to join Prop Hunt, Deathrun, Fort Wars, or Traitor Town.");
+    ply.chat("Welcome to OpenVibe: Source JS runtime.");
+    OV.broadcast(`${ply.name()} joined the hub.`);
   },
 
-  HubPortalUse(ply, mode) {
-    ply.chat(`Sending you to ${mode}...`);
-    ply.runCommand(`ov_join ${mode}`);
-    return true;
+  PlayerSpawn(ply) {
+    ply.chat("PlayerSpawn hook fired.");
   },
 
-  ShopNpcUse(ply, category) {
-    ply.chat(`Opening ${category} shop...`);
-    ply.runCommand(`ov_open_url https://openvibe.games/me/inventory`);
-    return true;
-  }
+  PlayerSay(ply, text) {
+    if (text === "!js") {
+      ply.chat("JavaScript hooks are working.");
+      return false;
+    }
+
+    if (text === "!hp") {
+      ply.chat(`Health: ${ply.health()}`);
+      return false;
+    }
+
+    if (text === "!players") {
+      ply.chat(`Players online: ${OV.players().length}`);
+      return false;
+    }
+
+    return undefined;
+  },
+
+  Think() {}
 };
 
 gamemode.set(GM);

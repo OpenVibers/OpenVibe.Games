@@ -1,49 +1,29 @@
-let state = "waiting";
-let roles = new Map();
+const roles = new Map();
 
-function assignRoles(players) {
-  roles.clear();
-
-  const shuffled = [...players].sort(() => Math.random() - 0.5);
-  const traitorCount = Math.max(1, Math.floor(shuffled.length / 4));
-
-  for (let i = 0; i < shuffled.length; i++) {
-    const role = i < traitorCount ? "traitor" : "innocent";
-    roles.set(shuffled[i].steamId(), role);
-    shuffled[i].chat(`Your role: ${role}`);
-  }
-}
-
-export const GM = {
+const GM = {
   mode: "traitortown",
   name: "OpenVibe Traitor Town",
 
   Initialize() {
-    state = "waiting";
+    OV.log("Traitor Town Initialize fired");
   },
 
   PlayerInitialSpawn(ply) {
     ply.chat("Traitor Town: find the traitors before they find you.");
-  },
-
-  RoundStart() {
-    state = "running";
-    assignRoles(OV.players());
-    game.broadcast("Traitor Town round started.");
-  },
-
-  PlayerDeath(victim, attacker) {
-    const role = roles.get(victim.steamId()) || "unknown";
-    game.broadcast(`${victim.name()} died. They were ${role}.`);
+    roles.set(ply.userId(), "innocent");
   },
 
   PlayerSay(ply, text) {
     if (text === "!role") {
-      ply.chat(`Your role: ${roles.get(ply.steamId()) || "none"}`);
+      ply.chat(`Your role: ${roles.get(ply.userId()) || "none"}`);
       return false;
     }
 
     return undefined;
+  },
+
+  PlayerDeath(victim, attacker) {
+    OV.broadcast(`${victim.name()} died.`);
   }
 };
 

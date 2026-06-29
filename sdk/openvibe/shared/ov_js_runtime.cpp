@@ -1,6 +1,7 @@
 #include "cbase.h"
-#include "ov_js_runtime.h"
 #include "filesystem.h"
+#include "ov_js_runtime.h"
+#include "ov_js_bindings.h"
 
 #include "tier0/memdbgon.h"
 
@@ -16,13 +17,12 @@ COpenVibeJSRuntime::~COpenVibeJSRuntime()
     Shutdown();
 }
 
-bool COpenVibeJSRuntime::Init(bool bServerRealm, const char *pszMode, const char *pszRootDir)
+bool COpenVibeJSRuntime::Init(bool bServerRealm, const char *pszMode)
 {
     Shutdown();
 
     m_bServerRealm = bServerRealm;
-    Q_strncpy(m_szMode, pszMode ? pszMode : "hub", sizeof(m_szMode));
-    Q_strncpy(m_szRootDir, pszRootDir ? pszRootDir : "js", sizeof(m_szRootDir));
+    Q_strncpy(m_szMode, pszMode && pszMode[0] ? pszMode : "hub", sizeof(m_szMode));
 
     m_pRuntime = JS_NewRuntime();
     if (!m_pRuntime)
@@ -39,9 +39,15 @@ bool COpenVibeJSRuntime::Init(bool bServerRealm, const char *pszMode, const char
         return false;
     }
 
-    // TODO: OV_RegisterNativeBindings(m_pCtx, this);
+    OVJS_RegisterNativeBindings(m_pCtx, this);
 
-    return LoadCoreFiles() && LoadGamemode();
+    if (!LoadCoreFiles())
+        return false;
+
+    if (!LoadGamemode())
+        return false;
+
+    return true;
 }
 
 void COpenVibeJSRuntime::Shutdown()
@@ -69,7 +75,7 @@ bool COpenVibeJSRuntime::Eval(const char *pszCode, const char *pszFilename)
         pszCode,
         Q_strlen(pszCode),
         pszFilename ? pszFilename : "<openvibe>",
-        JS_EVAL_TYPE_MODULE
+        JS_EVAL_TYPE_GLOBAL
     );
 
     if (JS_IsException(result))
@@ -85,9 +91,6 @@ bool COpenVibeJSRuntime::Eval(const char *pszCode, const char *pszFilename)
 
 bool COpenVibeJSRuntime::LoadFile(const char *pszPath)
 {
-    if (!pszPath || !pszPath[0])
-        return false;
-
     FileHandle_t file = filesystem->Open(pszPath, "rb", "MOD");
     if (!file)
     {
@@ -95,23 +98,23 @@ bool COpenVibeJSRuntime::LoadFile(const char *pszPath)
         return false;
     }
 
-    const int size = filesystem->Size(file);
-    if (size <= 0 || size > 512 * 1024)
+    int size = filesystem->Size(file);
+    if (size <= 0 || size > 1024 * 1024)
     {
         filesystem->Close(file);
         Warning("[OV JS] Refusing script %s size=%d\n", pszPath, size);
         return false;
     }
 
-    CUtlVector<char> buffer;
-    buffer.SetSize(size + 1);
-
-    filesystem->Read(buffer.Base(), size, file);
+    char *buffer = new char[size + 1];
+    filesystem->Read(buffer, size, file);
     filesystem->Close(file);
-
     buffer[size] = '\0';
 
-    return Eval(buffer.Base(), pszPath);
+    bool ok = Eval(buffer, pszPath);
+    delete[] buffer;
+
+    return ok;
 }
 
 bool COpenVibeJSRuntime::LoadCoreFiles()
@@ -130,26 +133,15 @@ bool COpenVibeJSRuntime::LoadCoreFiles()
 
 bool COpenVibeJSRuntime::LoadGamemode()
 {
+    LoadFile("js/gamemodes/base/server.js");
+
     char path[256];
-
-    Q_snprintf(path, sizeof(path), "js/gamemodes/base/shared.js");
-    LoadFile(path);
-
-    Q_snprintf(path, sizeof(path), "js/gamemodes/%s/shared.js", m_szMode);
-    LoadFile(path);
-
-    Q_snprintf(
-        path,
-        sizeof(path),
-        "js/gamemodes/%s/%s.js",
-        m_szMode,
-        m_bServerRealm ? "server" : "client"
-    );
+    Q_snprintf(path, sizeof(path), "js/gamemodes/%s/%s.js", m_szMode, m_bServerRealm ? "server" : "client");
 
     return LoadFile(path);
 }
 
-JSValue COpenVibeJSRuntime::CallHook(const char *pszHookName, int argc, JSValueConst *argv)
+JSValue COpenVibeJSRuntime::CallHookRaw(const char *pszHookName, int argc, JSValueConst *argv)
 {
     if (!m_pCtx)
         return JS_UNDEFINED;
@@ -158,22 +150,27 @@ JSValue COpenVibeJSRuntime::CallHook(const char *pszHookName, int argc, JSValueC
     JSValue gamemode = JS_GetPropertyStr(m_pCtx, global, "gamemode");
     JSValue call = JS_GetPropertyStr(m_pCtx, gamemode, "call");
 
-    JSValue hookName = JS_NewString(m_pCtx, pszHookName);
+    if (!JS_IsFunction(m_pCtx, call))
+    {
+        JS_FreeValue(m_pCtx, call);
+        JS_FreeValue(m_pCtx, gamemode);
+        JS_FreeValue(m_pCtx, global);
+        return JS_UNDEFINED;
+    }
 
-    CUtlVector<JSValueConst> args;
-    args.AddToTail(hookName);
+    JSValue *callArgs = new JSValue[argc + 1];
+    callArgs[0] = JS_NewString(m_pCtx, pszHookName);
+
     for (int i = 0; i < argc; ++i)
-        args.AddToTail(argv[i]);
+        callArgs[i + 1] = JS_DupValue(m_pCtx, argv[i]);
 
-    JSValue result = JS_Call(
-        m_pCtx,
-        call,
-        gamemode,
-        args.Count(),
-        args.Base()
-    );
+    JSValue result = JS_Call(m_pCtx, call, gamemode, argc + 1, callArgs);
 
-    JS_FreeValue(m_pCtx, hookName);
+    for (int i = 0; i < argc + 1; ++i)
+        JS_FreeValue(m_pCtx, callArgs[i]);
+
+    delete[] callArgs;
+
     JS_FreeValue(m_pCtx, call);
     JS_FreeValue(m_pCtx, gamemode);
     JS_FreeValue(m_pCtx, global);
@@ -186,6 +183,35 @@ JSValue COpenVibeJSRuntime::CallHook(const char *pszHookName, int argc, JSValueC
     }
 
     return result;
+}
+
+void COpenVibeJSRuntime::CallHookVoid(const char *pszHookName, int argc, JSValueConst *argv)
+{
+    if (!m_pCtx)
+        return;
+
+    JSValue result = CallHookRaw(pszHookName, argc, argv);
+    JS_FreeValue(m_pCtx, result);
+}
+
+bool COpenVibeJSRuntime::CallHookBool(const char *pszHookName, bool *pOut, int argc, JSValueConst *argv)
+{
+    if (!m_pCtx)
+        return false;
+
+    JSValue result = CallHookRaw(pszHookName, argc, argv);
+
+    if (JS_IsUndefined(result))
+    {
+        JS_FreeValue(m_pCtx, result);
+        return false;
+    }
+
+    if (pOut)
+        *pOut = JS_ToBool(m_pCtx, result) != 0;
+
+    JS_FreeValue(m_pCtx, result);
+    return true;
 }
 
 void COpenVibeJSRuntime::PrintException(const char *pszWhere)

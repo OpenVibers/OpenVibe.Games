@@ -8,7 +8,6 @@
 
 #include "cbase.h"
 #include "hl2mp_player.h"
-#include "openvibe_js_server.h"
 #include "player.h"
 #include "props.h"
 #include "util.h"
@@ -260,8 +259,6 @@ void OpenVibe_OnClientActive( CHL2MP_Player *pPlayer )
 	{
 		engine->ServerCommand( UTIL_VarArgs( "kickid %d \"OpenVibe join token required\"\n", pPlayer->GetUserID() ) );
 	}
-
-    OpenVibeJS_Server_PlayerInitialSpawn( pPlayer );
 }
 
 static void OV_PropHuntDisguise_f( const CCommand &args )
@@ -792,22 +789,17 @@ static COpenVibeJsBridge g_OpenVibeJsBridge;
 
 void OpenVibe_OnClientDisconnect( CBasePlayer *pPlayer )
 {
-
-    CHL2MP_Player *pHL2MP = ToHL2MPPlayer( pPlayer );
-    if ( pHL2MP )
-        OpenVibeJS_Server_PlayerDisconnected( pHL2MP );
+	g_OpenVibeJsBridge.OnPlayerLeft( pPlayer );
 }
 
 void OpenVibe_OnPlayerDeath( CHL2MP_Player *pPlayer, CBaseEntity *pKiller )
 {
-
-    OpenVibeJS_Server_PlayerDeath( pPlayer, pKiller, NULL );
+	g_OpenVibeJsBridge.OnPlayerDeath( pPlayer, pKiller );
 }
 
 void OpenVibe_OnFrame()
 {
-
-    OpenVibeJS_ServerThink();
+	g_OpenVibeJsBridge.Update();
 }
 
 static void OV_JsCmd_f( const CCommand &args )

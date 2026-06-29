@@ -1,29 +1,19 @@
-let state = "waiting";
-let roundEndsAt = 0;
-
-const propChoices = ["can", "crate", "barrel", "chair", "bucket"];
+const props = ["crate", "barrel", "chair", "bucket"];
 
 function randomProp() {
-  return propChoices[Math.floor(Math.random() * propChoices.length)];
+  return props[Math.floor(Math.random() * props.length)];
 }
 
-export const GM = {
+const GM = {
   mode: "prophunt",
   name: "OpenVibe Prop Hunt",
 
   Initialize() {
-    state = "waiting";
-    console.log("Prop Hunt initialized");
+    OV.log("Prop Hunt Initialize fired");
   },
 
   PlayerInitialSpawn(ply) {
     ply.chat("Prop Hunt: hide as props or hunt them down.");
-  },
-
-  PlayerSpawn(ply) {
-    if (state === "hide") {
-      ply.runCommand(`ov_prophunt_disguise ${randomProp()}`);
-    }
   },
 
   PlayerSay(ply, text) {
@@ -33,27 +23,14 @@ export const GM = {
     }
 
     if (text.startsWith("!prop ")) {
-      const choice = text.slice("!prop ".length).trim();
-      ply.runCommand(`ov_prophunt_disguise ${choice}`);
+      ply.runCommand(`ov_prophunt_disguise ${text.slice(6).trim()}`);
       return false;
     }
 
     return undefined;
   },
 
-  RoundStart() {
-    state = "hide";
-    roundEndsAt = game.time() + 300;
-    game.broadcast("Prop Hunt round started. Props hide. Hunters seek.");
-  },
-
-  Think() {
-    if (state === "hide" && game.time() >= roundEndsAt) {
-      state = "ended";
-      game.broadcast("Props win!");
-      OV.endMatch("props_win");
-    }
-  }
+  Think() {}
 };
 
 gamemode.set(GM);

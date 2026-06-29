@@ -94,7 +94,7 @@ perl -0pi -e '
   s/^.*openvibe\\third_party\\quickjs\\cutils\.c.*\n//mg;
   s/^.*openvibe\\third_party\\quickjs\\dtoa\.c.*\n//mg;
   s/^.*openvibe\\third_party\\quickjs\\libbf\.c.*\n//mg;
-  s/(\$File\s+"hl2mp\\hl2mp_player\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_server.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_server.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_runtime.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_bindings.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_player.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\quickjs.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\libregexp.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\libunicode.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\cutils.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\dtoa.c"\n/s;
+  s/(\$File\s+"hl2mp\\hl2mp_player\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_server.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_server.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_runtime.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_bindings.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_player.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\quickjs.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\libregexp.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\libunicode.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\cutils.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\dtoa.c"\n\t\t\t\$File\t"..\\shared\\openvibe\\third_party\\quickjs\\libbf.c"\n/s;
 ' "$SERVER_VPC"
 echo "[openvibe-sdk] patched server_hl2mp.vpc"
 
