@@ -4,10 +4,14 @@ import {
   GameServer,
   HeartbeatInput,
   InventoryItem,
+  AuditEvent,
   JoinTokenValidation,
   LeaderboardEntry,
   MatchRewardInput,
   OpenVibeRepository,
+  Party,
+  PartyInvite,
+  PartyTravelReservation,
   Player,
   PlayerProfile,
   RegisterServerInput,
@@ -316,6 +320,165 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     };
   }
 
+  async createParty(input: { leaderSteamId: string }): Promise<Party> {
+    const partyId = nanoid(16);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO parties (party_id, leader_steam_id) VALUES ($1, $2)",
+        [partyId, input.leaderSteamId],
+      );
+      await client.query(
+        "INSERT INTO party_members (party_id, steam_id) VALUES ($1, $2)",
+        [partyId, input.leaderSteamId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    const party = await this.getParty(partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    return party;
+  }
+
+  async inviteToParty(input: {
+    partyId: string;
+    invitedBySteamId: string;
+    invitedSteamId: string;
+  }): Promise<PartyInvite> {
+    const member = await this.pool.query(
+      "SELECT 1 FROM party_members WHERE party_id = $1 AND steam_id = $2",
+      [input.partyId, input.invitedBySteamId],
+    );
+    if (member.rowCount !== 1) throw new RepositoryError("not_party_member", 403);
+
+    const inviteId = nanoid(16);
+    const result = await this.pool.query(
+      `
+      INSERT INTO party_invites (
+        invite_id, party_id, invited_by_steam_id, invited_steam_id, status, expires_at
+      )
+      VALUES ($1, $2, $3, $4, 'pending', now() + interval '5 minutes')
+      RETURNING invite_id, party_id, invited_by_steam_id, invited_steam_id, status, expires_at
+      `,
+      [inviteId, input.partyId, input.invitedBySteamId, input.invitedSteamId],
+    );
+    return mapPartyInvite(result.rows[0]);
+  }
+
+  async acceptPartyInvite(input: { inviteId: string; steamId: string }): Promise<Party> {
+    const client = await this.pool.connect();
+    let partyId = "";
+    try {
+      await client.query("BEGIN");
+      const invite = await client.query(
+        `
+        UPDATE party_invites
+        SET status = 'accepted'
+        WHERE invite_id = $1
+          AND invited_steam_id = $2
+          AND status = 'pending'
+          AND expires_at > now()
+        RETURNING party_id
+        `,
+        [input.inviteId, input.steamId],
+      );
+      if (invite.rowCount !== 1) throw new RepositoryError("invite_not_found", 404);
+      partyId = String(invite.rows[0].party_id);
+      await client.query(
+        `
+        INSERT INTO party_members (party_id, steam_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        `,
+        [partyId, input.steamId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    const party = await this.getParty(partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    return party;
+  }
+
+  async getParty(partyId: string): Promise<Party | null> {
+    const result = await this.pool.query(
+      `
+      SELECT p.party_id, p.leader_steam_id, pm.steam_id, pm.joined_at, pl.display_name
+      FROM parties p
+      JOIN party_members pm ON pm.party_id = p.party_id
+      JOIN players pl ON pl.steam_id = pm.steam_id
+      WHERE p.party_id = $1
+      ORDER BY pm.joined_at
+      `,
+      [partyId],
+    );
+    if (result.rowCount === 0) return null;
+    return mapParty(result.rows);
+  }
+
+  async reservePartyTravel(input: {
+    partyId: string;
+    leaderSteamId: string;
+    mode: GameMode;
+  }): Promise<PartyTravelReservation | null> {
+    const party = await this.getParty(input.partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    if (party.leaderSteamId !== input.leaderSteamId) throw new RepositoryError("party_leader_required", 403);
+
+    const serverResult = await this.pool.query(
+      `
+      SELECT server_id, public_host, port
+      FROM game_servers
+      WHERE mode = $1
+        AND state = 'open'
+        AND max_players - player_count >= $2
+        AND last_heartbeat > now() - interval '60 seconds'
+      ORDER BY player_count DESC, last_heartbeat DESC
+      LIMIT 1
+      `,
+      [input.mode, party.members.length],
+    );
+    if (serverResult.rowCount !== 1) return null;
+
+    const server = serverResult.rows[0];
+    const reservations: TravelReservation[] = [];
+    for (const member of party.members) {
+      const token = nanoid(32);
+      const tokenResult = await this.pool.query(
+        `
+        INSERT INTO join_tokens (token, steam_id, server_id, mode, expires_at)
+        VALUES ($1, $2, $3, $4, now() + interval '90 seconds')
+        RETURNING expires_at
+        `,
+        [token, member.steamId, server.server_id, input.mode],
+      );
+      reservations.push({
+        mode: input.mode,
+        serverId: String(server.server_id),
+        connect: `${server.public_host}:${server.port}`,
+        joinToken: token,
+        expiresAt: new Date(tokenResult.rows[0].expires_at).toISOString(),
+      });
+    }
+
+    return {
+      partyId: input.partyId,
+      mode: input.mode,
+      serverId: String(server.server_id),
+      connect: `${server.public_host}:${server.port}`,
+      reservations,
+    };
+  }
+
   async validateJoinToken(input: {
     token: string;
     steamId: string;
@@ -456,6 +619,36 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     );
     return mapShopItem(result.rows[0]);
   }
+
+  async recordAuditEvent(input: {
+    actorSteamId: string;
+    action: string;
+    targetSteamId?: string | null;
+    reason: string;
+  }): Promise<AuditEvent> {
+    const result = await this.pool.query(
+      `
+      INSERT INTO audit_events (audit_id, actor_steam_id, action, target_steam_id, reason)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING audit_id, actor_steam_id, action, target_steam_id, reason, created_at
+      `,
+      [nanoid(16), input.actorSteamId, input.action, input.targetSteamId ?? null, input.reason],
+    );
+    return mapAuditEvent(result.rows[0]);
+  }
+
+  async listAuditEvents(options: { limit: number }): Promise<AuditEvent[]> {
+    const result = await this.pool.query(
+      `
+      SELECT audit_id, actor_steam_id, action, target_steam_id, reason, created_at
+      FROM audit_events
+      ORDER BY created_at DESC
+      LIMIT $1
+      `,
+      [options.limit],
+    );
+    return result.rows.map(mapAuditEvent);
+  }
 }
 
 function mapPlayer(row: Record<string, unknown>): Player {
@@ -499,5 +692,45 @@ function mapServer(row: Record<string, unknown>): GameServer {
     playerCount: Number(row.player_count),
     state: row.state as GameServer["state"],
     lastHeartbeat: new Date(row.last_heartbeat as string | Date).toISOString(),
+  };
+}
+
+function mapPartyInvite(row: Record<string, unknown>): PartyInvite {
+  return {
+    inviteId: String(row.invite_id),
+    partyId: String(row.party_id),
+    invitedBySteamId: String(row.invited_by_steam_id),
+    invitedSteamId: String(row.invited_steam_id),
+    status: row.status as PartyInvite["status"],
+    expiresAt: new Date(row.expires_at as string | Date).toISOString(),
+  };
+}
+
+function mapParty(rows: Record<string, unknown>[]): Party {
+  const first = rows[0];
+  const leaderSteamId = String(first.leader_steam_id);
+  return {
+    partyId: String(first.party_id),
+    leaderSteamId,
+    members: rows.map((row) => {
+      const steamId = String(row.steam_id);
+      return {
+        steamId,
+        displayName: String(row.display_name),
+        leader: steamId === leaderSteamId,
+        joinedAt: new Date(row.joined_at as string | Date).toISOString(),
+      };
+    }),
+  };
+}
+
+function mapAuditEvent(row: Record<string, unknown>): AuditEvent {
+  return {
+    auditId: String(row.audit_id),
+    actorSteamId: String(row.actor_steam_id),
+    action: String(row.action),
+    targetSteamId: row.target_steam_id ? String(row.target_steam_id) : null,
+    reason: String(row.reason),
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
   };
 }

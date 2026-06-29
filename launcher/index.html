@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OpenVibe: Source</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Orbitron:wght@700;900&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -32,6 +30,7 @@
   <span id="server-count">0 servers</span>
   <span class="status-sep">|</span>
   <span class="status-right" id="game-status-label">Game: idle</span>
+  <button class="embedded-close-btn" id="embedded-close" title="Close menu">Close</button>
 </div>
 
 <!-- ── Main layout ──────────────────────────────────────────────────── -->
@@ -279,9 +278,14 @@
 <div class="launch-overlay" id="launch-overlay">
   <div class="launch-spinner"></div>
   <div class="launch-label" id="launch-label">Launching…</div>
-  <button class="launch-cancel" id="launch-cancel">Cancel</button>
+  <div class="launch-help" id="launch-help">OpenVibe will keep this launcher visible until Source is actually ready.</div>
+  <div class="launch-actions">
+    <button class="launch-cancel" id="launch-focus-game">Focus Game Window</button>
+    <button class="launch-cancel" id="launch-cancel">Dismiss</button>
+  </div>
 </div>
 
 <script src="renderer.js"></script>
+<script src="openvibe-ui-sync.js"></script>
 </body>
 </html>

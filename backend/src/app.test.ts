@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { MemoryOpenVibeRepository } from "./repository-memory.js";
+import { SessionInput } from "./sessions.js";
 
 const steamId = "76561198000000000";
 const serverSecret = "dev-secret";
@@ -29,6 +30,73 @@ describe("OpenVibe API vertical slice", () => {
     expect(body.player.displayName).toBe("Mapper");
     expect(body.player.currencyBalance).toBe(250);
     expect(body.inventory.map((item: { itemId: string }) => item.itemId)).toContain("model_rebel");
+
+    await app.close();
+  });
+
+  it("writes auth sessions to the configured session store", async () => {
+    const sessions: SessionInput[] = [];
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      sessionStore: {
+        async createSession(input) {
+          sessions.push(input);
+        },
+      },
+    });
+    await app.ready();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Session Tester" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sessionToken).toMatch(/^dev\.76561198000000000\./);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      steamId,
+      provider: "dev",
+      ttlSeconds: 86400,
+    });
+
+    await app.close();
+  });
+
+  it("keeps Steam auth disabled until Steam credentials are configured", async () => {
+    const app = await testApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/steam",
+      payload: {
+        ticket: "0123456789abcdef",
+        identity: "openvibe.games",
+      },
+    });
+
+    expect(response.statusCode).toBe(501);
+    expect(response.json().error).toBe("steam_auth_not_configured");
+
+    await app.close();
+  });
+
+  it("returns a CDN asset manifest for shop-backed cosmetics", async () => {
+    const app = await testApp();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/assets/manifest",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.cdnBaseUrl).toBe("https://openvibe.games/cdn");
+    expect(body.assets.some((asset: { itemId: string; url: string }) =>
+      asset.itemId === "trail_blue" && asset.url.includes("https://openvibe.games/cdn/"),
+    )).toBe(true);
 
     await app.close();
   });
@@ -241,6 +309,90 @@ describe("OpenVibe API vertical slice", () => {
     });
 
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("supports party invites and capacity-aware party travel", async () => {
+    const app = await testApp();
+    const friendSteamId = "76561198000000003";
+
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Party Leader" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: friendSteamId, displayName: "Party Friend" } });
+
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "party-prophunt-1", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27016, maxPlayers: 1 } });
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "party-prophunt-2", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27026, maxPlayers: 4 } });
+
+    const partyRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties",
+      payload: { leaderSteamId: steamId },
+    });
+    expect(partyRes.statusCode).toBe(200);
+    const party = partyRes.json();
+
+    const inviteRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/invite",
+      payload: { partyId: party.partyId, invitedBySteamId: steamId, invitedSteamId: friendSteamId },
+    });
+    expect(inviteRes.statusCode).toBe(200);
+
+    const acceptRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/invite/accept",
+      payload: { inviteId: inviteRes.json().inviteId, steamId: friendSteamId },
+    });
+    expect(acceptRes.json().members).toHaveLength(2);
+
+    const travelRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/travel",
+      payload: { partyId: party.partyId, leaderSteamId: steamId, mode: "prophunt" },
+    });
+    expect(travelRes.statusCode).toBe(200);
+    expect(travelRes.json().serverId).toBe("party-prophunt-2");
+    expect(travelRes.json().reservations).toHaveLength(2);
+
+    await app.close();
+  });
+
+  it("records and lists admin audit events", async () => {
+    const adminSecret = "test-admin-secret";
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      adminSecret,
+    });
+    await app.ready();
+
+    const event = await app.inject({
+      method: "POST",
+      url: "/v1/admin/audit/events",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        actorSteamId: steamId,
+        action: "moderation.note",
+        targetSteamId: "76561198000000004",
+        reason: "Testing moderation audit trail.",
+      },
+    });
+    expect(event.statusCode).toBe(200);
+    expect(event.json().action).toBe("moderation.note");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/admin/audit/events?limit=10",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().events).toHaveLength(1);
+
     await app.close();
   });
 });

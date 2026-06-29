@@ -23,7 +23,13 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://openvibe:openvibe@postgres:5432/openvibe
+      SESSION_REDIS_URL: redis://redis:6379
       OPENVIBE_DEV_AUTH_ENABLED: "true"
+      OPENVIBE_PUBLIC_URL: "https://openvibe.games"
+      OPENVIBE_CDN_BASE_URL: "https://openvibe.games/cdn"
+      OPENVIBE_DEFAULT_SERVER_SECRET: "dev-secret"
+      STEAM_APP_ID: "243750"
+      STEAM_WEB_API_KEY: "${STEAM_WEB_API_KEY:-}"
       HOST: "0.0.0.0"
       PORT: "3000"
     ports:
@@ -31,11 +37,32 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:3000/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 6
 
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  cdn:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./cdn/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../game/openvibe.games:/var/www/openvibe-cdn:ro
+
 volumes:
   pg_data:
+  redis_data:

@@ -1,0 +1,79 @@
+version: "3.9"
+
+services:
+  api:
+    image: ghcr.io/openvibers/openvibe.games-api:latest
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3000"
+      DATABASE_URL: "postgres://openvibe:${POSTGRES_PASSWORD}@postgres:5432/openvibe"
+      SESSION_REDIS_URL: "redis://redis:6379"
+      OPENVIBE_PUBLIC_URL: "https://openvibe.games"
+      OPENVIBE_CDN_BASE_URL: "https://openvibe.games/cdn"
+      OPENVIBE_DEV_AUTH_ENABLED: "false"
+      OPENVIBE_ADMIN_SECRET: "${OPENVIBE_ADMIN_SECRET}"
+      OPENVIBE_DEFAULT_SERVER_SECRET: "${OPENVIBE_DEFAULT_SERVER_SECRET}"
+      STEAM_APP_ID: "${STEAM_APP_ID}"
+      STEAM_WEB_API_KEY: "${STEAM_WEB_API_KEY}"
+      STEAM_WEB_API_BASE: "https://api.steampowered.com"
+    networks:
+      - openvibe
+    deploy:
+      replicas: 2
+      update_config:
+        order: start-first
+      restart_policy:
+        condition: on-failure
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: openvibe
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: openvibe
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - openvibe
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - openvibe
+    deploy:
+      replicas: 1
+
+  cdn:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    configs:
+      - source: openvibe_nginx
+        target: /etc/nginx/conf.d/default.conf
+    volumes:
+      - cdn_assets:/var/www/openvibe-cdn:ro
+    networks:
+      - openvibe
+    deploy:
+      replicas: 2
+
+networks:
+  openvibe:
+    driver: overlay
+
+volumes:
+  pg_data:
+  redis_data:
+  cdn_assets:
+
+configs:
+  openvibe_nginx:
+    file: ../cdn/nginx.conf

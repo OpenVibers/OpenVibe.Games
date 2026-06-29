@@ -75,12 +75,50 @@ CREATE TABLE IF NOT EXISTS match_results (
     UNIQUE (match_id, steam_id)
 );
 
+CREATE TABLE IF NOT EXISTS parties (
+    party_id          TEXT PRIMARY KEY,
+    leader_steam_id   BIGINT NOT NULL REFERENCES players(steam_id) ON DELETE CASCADE,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS party_members (
+    party_id   TEXT NOT NULL REFERENCES parties(party_id) ON DELETE CASCADE,
+    steam_id   BIGINT NOT NULL REFERENCES players(steam_id) ON DELETE CASCADE,
+    joined_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (party_id, steam_id)
+);
+
+CREATE TABLE IF NOT EXISTS party_invites (
+    invite_id           TEXT PRIMARY KEY,
+    party_id            TEXT NOT NULL REFERENCES parties(party_id) ON DELETE CASCADE,
+    invited_by_steam_id BIGINT NOT NULL REFERENCES players(steam_id) ON DELETE CASCADE,
+    invited_steam_id    BIGINT NOT NULL REFERENCES players(steam_id) ON DELETE CASCADE,
+    status              TEXT NOT NULL CHECK (status IN ('pending','accepted','declined','expired')),
+    expires_at          TIMESTAMPTZ NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    audit_id        TEXT PRIMARY KEY,
+    actor_steam_id  BIGINT NOT NULL,
+    action          TEXT NOT NULL,
+    target_steam_id BIGINT,
+    reason          TEXT NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_game_servers_open
 ON game_servers (mode, state, player_count, last_heartbeat);
 
 CREATE INDEX IF NOT EXISTS idx_join_tokens_valid
 ON join_tokens (steam_id, server_id, expires_at)
 WHERE consumed_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_party_invites_invited
+ON party_invites (invited_steam_id, status, expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_created
+ON audit_events (created_at DESC);
 
 INSERT INTO shop_items (item_id, item_type, display_name, description, asset_path, price)
 VALUES

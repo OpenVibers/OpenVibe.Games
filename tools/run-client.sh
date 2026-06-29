@@ -26,4 +26,6 @@ exec "$LAUNCHER" \
   -dev \
   -sw \
   -w 1280 \
-  -h 720
+  -h 720 \
+  -port 27115 \
+  -clientport 27105

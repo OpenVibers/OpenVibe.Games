@@ -1,1 +1,4 @@
-// OpenVibe: Source placeholder soundscape file.
+"openvibe.blank"
+{
+    "dsp" "1"
+}

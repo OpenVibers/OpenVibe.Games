@@ -1026,7 +1026,6 @@ world
     "angles" "0 0 0"
     "model" "models/Humans/Group03/male_07.mdl"
     "solid" "0"
-    "DefaultAnim" "idle_all_01"
   }
   entity
   {
@@ -1037,7 +1036,6 @@ world
     "angles" "0 0 0"
     "model" "models/Humans/Group03/male_07.mdl"
     "solid" "0"
-    "DefaultAnim" "idle_all_01"
   }
   entity
   {

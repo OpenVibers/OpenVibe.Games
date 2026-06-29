@@ -1,10 +1,11 @@
 # OpenVibe: Source
 
-Linux-first Source SDK 2013 multiplayer project for `OpenVibe: Source`.
+Linux-first Source SDK 2013 multiplayer project for **OpenVibe: Source**.
 
 - Public identity: `OpenVibe.Games`
 - Source mod folder: `game/openvibe.games`
 - Backend/API: `backend/`
+- Tracked OpenVibe C++ patch sources: `sdk/openvibe/`
 - VScript game logic: `game/openvibe.games/scripts/vscripts/`
 - Editable maps: `hammer/vmf/`
 - Compiled maps: `game/openvibe.games/maps/`
@@ -12,170 +13,171 @@ Linux-first Source SDK 2013 multiplayer project for `OpenVibe: Source`.
 
 ## Current State
 
-### ✅ Implemented
+Implemented and tested locally:
 
-- **Backend API** — Fastify/TypeScript with dev auth, player profiles, shop, inventory,
-  server registry, travel tokens, match rewards, leaderboard, and admin shop management.
-- **PostgreSQL migration** — players, inventory, shop, servers, join tokens, currency
-  ledger, and match results.
-- **In-memory repository** — fast local tests without a database.
-- **6/6 backend tests** — vertical slices covering all major flows.
-- **VScript game logic** — Squirrel scripts for all five servers:
-  - `ov_shared.nut` — shared utilities, event emission protocol.
-  - `ov_hub.nut` — hub heartbeat, portal pad labels, player join.
-  - `ov_prophunt.nut` — role assignment, hide phase, hunt phase, rewards.
-  - `ov_deathrun.nut` — activator vs. runners, trap system, finish line.
-  - `ov_fortwars.nut` — two-team build phase → combat phase, kill tracking.
-  - `ov_traitortown.nut` — role assignment (traitors / detective / innocents), win conditions.
-- **Per-map auto-exec CFGs** — `cfg/<mapname>.cfg` automatically loads the VScript when the map starts.
-- **Sidecar process** (`ov-sidecar.mjs`) — tails SRCDS log files, bridges `[OV]` events to the backend API (heartbeat, match rewards).
-- **VMF generator updated** — `logic_script`, `game_text` HUD entities, team spawn points now in all generated maps.
-- **Five compiled BSP maps** — hub + Prop Hunt, Deathrun, Fort Wars, Traitor Town.
-- **Docker Compose** (`infra/docker-compose.yml`) — PostgreSQL + API service.
-- **Localization** (`resource/openvibe_english.txt`) — English strings for all modes.
-- **Particle manifest** — placeholder for trail particles.
-- **Dev tools** — compile, run, register, and full dev orchestration scripts.
+- **Backend API** - Fastify/TypeScript with dev auth, Steam Web API ticket auth, player profiles, shop, inventory, server registry, travel tokens, match rewards, leaderboard, admin shop management, CDN asset manifest, and optional Redis-backed sessions.
+- **Database** - PostgreSQL migrations for players, inventory, shop, servers, join tokens, currency ledger, and match results.
+- **C++ GameDLL patch** - tracked in `sdk/openvibe/` and applied into the local Valve SDK checkout with `tools/apply-openvibe-sdk.sh`.
+- **Authenticated travel** - `ov_join <mode>` requests `/v1/travel/request`, stores a join token in userinfo, and connects to the selected server.
+- **Server-side arrival validation** - the destination server validates join tokens with `/v1/travel/validate`.
+- **OpenVibe menu hooks** - VGUI commands `openvibe_menu` / `ov_menu` plus `resource/GameMenu.res` expose OpenVibe hub actions instead of relying on the stock server browser.
+- **Prop Hunt C++ disguise command** - `ov_prophunt_disguise <model>` swaps the player to an allowlisted prop model; `ov_prophunt_reset_disguise` restores the player model.
+- **Fort Wars C++ placement command** - `ov_fortwars_spawn <crate|barrel|fence|plate|concrete>` spawns allowlisted physics props during the build phase.
+- **VScript game logic** - Squirrel scripts for hub, Prop Hunt, Deathrun, Fort Wars, and Traitor Town prototypes.
+- **Portal maps** - generated VMFs and compiled BSPs use direct local connects for the current Proton fallback; set `OPENVIBE_USE_OV_JOIN=1` when generating maps for a rebuilt custom client DLL.
+- **Sidecars** - tail SRCDS logs and bridge `[OV]` events to the backend API.
+- **Production infra skeleton** - Docker Compose, Docker Swarm stack, and Kubernetes manifests for API, PostgreSQL, Redis, and CDN/static assets.
+- **Hardening routes** - party invites, capacity-aware party travel, moderation/audit events, Prometheus-style metrics, and backup tooling.
 
-## Custom ConCommands (C++)
+Verified locally on June 28, 2026:
 
-All game logic is driven by authenticated ConCommands:
+- `backend`: TypeScript build passes.
+- `backend`: 11 Vitest tests pass.
+- Source SDK 2013 Linux64 build passes with the OpenVibe C++ patch applied.
+- SRCDS smoke test passes for all five maps: `ov_hub`, `ph_openvibe_dev`, `dr_openvibe_dev`, `fw_openvibe_dev`, `tt_openvibe_dev`.
+- Full dev stack registers all five servers and returns travel targets for hub, Prop Hunt, Deathrun, Fort Wars, and Traitor Town.
 
-| Command | Location | Purpose |
-|---------|----------|---------|
-| `ov_join <mode>` | `openvibe_travel.cpp` | Travel to hub, prophunt, deathrun, etc. |
-| `ov_auth_ticket <ticket>` | `openvibe_steam_auth.cpp` | Authenticate player with Steam ticket |
-| `ov_auth_confirm <token>` | `openvibe_steam_auth.cpp` | Confirm auth with backend token |
-| `ov_prophunt_disguise <model>` | `openvibe_travel.cpp` | Swap player model to random prop |
-| `ov_travel_complete` | `openvibe_travel.cpp` | Confirm successful travel |
+## Commands
 
-**Files:**
-- `engine/source-sdk-2013/src/game/server/hl2mp/openvibe_travel.cpp` (8.0 KB)
-- `engine/source-sdk-2013/src/game/server/hl2mp/openvibe_steam_auth.cpp` (8.5 KB)
-
-## Electron Launcher (HTML/CSS/JS)
-
-A custom main menu replacing the stock HL2MP server browser:
-
-**Features:**
-- Portal tab with quick-join buttons for each game mode
-- Live server list (hub, prophunt, deathrun, fortwars, traitortown)
-- Leaderboard, inventory, and shop tabs
-- Neon theme with Rajdhani + Orbitron fonts
-
-**Files:**
-- `launcher/main.js` — Electron main process + Proton spawning
-- `launcher/renderer.js` — UI event handlers
-- `launcher/index.html` — Portal, servers, leaderboard, inventory, shop tabs
-- `launcher/styles.css` — Custom CSS (12 KB)
-- `launcher/assets/` — Images and icons
-
-**How it works:**
-1. Launcher displays server list from `http://localhost:3000/api/servers`
-2. User clicks "Join Hub" or a game mode
-3. Launcher calls `bash tools/run-client-proton.sh <ip> <port>`
-4. Proton launches Windows hl2.exe via Wine + Vulkan/DXVK
-5. Game connects to server with auto-login from backend auth
+| Command | Side | Purpose |
+| --- | --- | --- |
+| `ov_join <mode>` | Client | Requests backend travel, stores join token, connects to target server. |
+| `ov_auth_steam` | Client | Requests a Steam Web API ticket and posts it to `/v1/auth/steam`. |
+| `openvibe_menu` / `ov_menu` | Client | Opens the OpenVibe VGUI hub menu. |
+| `ov_open_url <url>` | Client | Opens OpenVibe web surfaces such as auth/inventory in Steam overlay/browser. |
+| `ov_prophunt_disguise <model>` | Server | Applies allowlisted Prop Hunt disguise model. |
+| `ov_prophunt_reset_disguise` | Server | Restores the normal player model. |
+| `ov_fortwars_spawn <type>` | Server | Spawns allowlisted Fort Wars build props. |
 
 ## Quick Start
 
-### Prerequisites
-- Steam logged in with SDK Base 2013 Multiplayer installed
-- GE-Proton10-34 (install via ProtonUp-Qt)
-- Node.js 16+
-- PostgreSQL 12+
-- Wine (for BSP compilation)
-
-### Backend (in-memory, no database needed)
+### Backend
 
 ```bash
 cd ~/src/openvibe-source/backend
-npm test         # 6 tests, should all pass
-npm run build    # TypeScript compile
-npm start        # Runs on http://localhost:3000
+npm install
+npm run build
+npm test
 ```
 
-### Full dev stack (PostgreSQL + API + servers + sidecars)
+### Build Source SDK GameDLLs
 
 ```bash
 cd ~/src/openvibe-source
-tools/dev-up.sh   # starts: postgres → API → SRCDS × 5 → sidecar × 5 (via tmux)
+tools/build-sdk-linux.sh
+tools/setup-openvibe-bin.sh
 ```
 
-Or step-by-step:
+`tools/build-sdk-linux.sh` applies `sdk/openvibe/` into `engine/source-sdk-2013/`, patches the VPC files, and builds the HL2MP client/server Linux64 game DLLs.
+
+### Full Dev Stack
 
 ```bash
-# 1. Start PostgreSQL
-tools/dev-db-up.sh
-
-# 2. Migrate and run API
-cd backend && npm run migrate && npm run dev
-
-# 3. Register servers with the API
-cd .. && node tools/register-local-servers.mjs http://127.0.0.1:3000 servers/local-servers.json
-
-# 4. Start a server (needs BSPs compiled)
-tools/run-hub.sh
-tools/run-prophunt.sh
-
-# 5. Start sidecars (one per server)
-tools/run-sidecar.sh local-hub-27015 hub 27015 48
-tools/run-sidecar.sh local-prophunt-27016 prophunt 27016 24
+cd ~/src/openvibe-source
+OPENVIBE_SRCDS_MAP_DELAY=3 tools/dev-up.sh
 ```
 
-### Smoke API
+This starts:
+
+- PostgreSQL
+- OpenVibe API
+- Hub SRCDS
+- Prop Hunt SRCDS
+- Deathrun SRCDS
+- Fort Wars SRCDS
+- Traitor Town SRCDS
+- one sidecar per server
+
+Stop everything:
 
 ```bash
-cd ~/src/openvibe-source && node tools/smoke-api.mjs
+cd ~/src/openvibe-source
+tools/dev-down.sh
 ```
 
-### Map workflow
+### Smoke Tests
 
 ```bash
-# Regenerate VMFs (adds VScript entities, HUD text, team spawns)
+cd ~/src/openvibe-source
+node tools/smoke-api.mjs
+OPENVIBE_SRCDS_MAP_DELAY=3 OPENVIBE_SRCDS_SMOKE_TIMEOUT=45 tools/smoke-srcds.sh
+```
+
+### Maps
+
+```bash
+cd ~/src/openvibe-source
 node tools/generate-dev-vmfs.mjs
-
-# Compile all maps via Wine + TF2 tools
 tools/compile-dev-maps-wine.sh
 ```
 
-### Client
+Hammer++ is currently launched as a non-Steam game with Proton Experimental. The repo also keeps direct Wine launchers:
 
 ```bash
-tools/run-client.sh
+tools/run-hammerpp.sh
+tools/run-hammerpp-wined3d.sh
 ```
 
-### Hammer++
+Recommended Hammer++ paths through Wine:
 
-```bash
-tools/run-hammerpp.sh       # Wine + D3D11
-tools/run-hammerpp-wined3d.sh  # Wine + WineD3D fallback
+```text
+Game directory:
+Z:\home\workstation\src\openvibe-source\game\openvibe.games
+
+VMF directory:
+Z:\home\workstation\src\openvibe-source\hammer\vmf
+
+Map output:
+Z:\home\workstation\src\openvibe-source\game\openvibe.games\maps
 ```
+
+## Dedicated Server Runtime
+
+The installed Source SDK Base 2013 Dedicated Server path:
+
+```text
+/mnt/6tb/ssd_offload/home/workstation/.steam/debian-installation/steamapps/common/Source SDK Base 2013 Dedicated Server
+```
+
+contains Windows server binaries in this environment. The working local Linux64 runtime is the TF2 dedicated server install at:
+
+```text
+~/srcds/tf2
+```
+
+`tools/run-server.sh` defaults to `~/srcds/tf2` and uses the OpenVibe mod directory at `game/openvibe.games`.
 
 ## Architecture
 
-See [`docs/architecture.md`](docs/architecture.md) for the full service diagram.
+```text
+Source client
+  -> OpenVibe VGUI menu / launcher
+  -> Steam auth ticket or dev auth
+  -> OpenVibe.Games API
+  -> Hub SRCDS
+  -> portal pads
+  -> Minigame SRCDS shards
 
-### VScript event protocol
+OpenVibe.Games API
+  -> PostgreSQL for durable game data
+  -> Redis for sessions when configured
+  -> CDN/static asset manifest for cosmetics
+```
 
-VScript prints `[OV]`-prefixed lines to the SRCDS console/log.
-The sidecar (`tools/ov-sidecar.mjs`) tails the log file and routes events to the API.
+Gameplay remains Source-style authoritative SRCDS instances. The MMO-style part is the shared OpenVibe.Games account, inventory, currency, travel, and server orchestration layer.
 
-| Event | Format | Action |
-|-------|--------|--------|
-| `BOOT` | `BOOT serverId mode` | register/re-register server |
-| `HEARTBEAT` | `HEARTBEAT serverId count max state` | update server state |
-| `REWARD` | `REWARD matchId serverId secret uid mode coins xp` | record match reward |
-| `SAY` | `SAY message…` | log message |
+Local Proton builds use direct portal connects so the maps work even when the Windows client DLL has not been rebuilt. The authenticated C++ travel path is still available by regenerating maps with `OPENVIBE_USE_OV_JOIN=1`.
 
-### API endpoints
+## API Endpoints
 
 | Method | Path | Description |
-|--------|------|-------------|
+| --- | --- | --- |
 | `GET` | `/health` | Health check |
-| `POST` | `/v1/auth/dev` | Dev player auth (local only) |
-| `POST` | `/v1/auth/steam` | Steam auth (future) |
+| `POST` | `/v1/auth/dev` | Local dev auth |
+| `POST` | `/v1/auth/steam` | Steam Web API ticket auth |
 | `GET` | `/v1/me?steamId=` | Player profile + inventory + shop |
 | `GET` | `/v1/shop` | Shop catalog |
+| `GET` | `/v1/assets/manifest` | CDN-backed cosmetic asset manifest |
 | `POST` | `/v1/shop/buy` | Purchase item |
 | `POST` | `/v1/equip` | Equip owned item |
 | `GET` | `/v1/leaderboard` | Top players by XP |
@@ -184,18 +186,48 @@ The sidecar (`tools/ov-sidecar.mjs`) tails the log file and routes events to the
 | `GET` | `/v1/servers` | List live servers |
 | `POST` | `/v1/travel/request` | Reserve travel token |
 | `POST` | `/v1/travel/validate` | Consume travel token |
+| `POST` | `/v1/parties` | Create party |
+| `GET` | `/v1/parties?partyId=` | Get party members |
+| `POST` | `/v1/parties/invite` | Invite friend to party |
+| `POST` | `/v1/parties/invite/accept` | Accept party invite |
+| `POST` | `/v1/parties/travel` | Reserve one server for the whole party |
 | `POST` | `/v1/matches/end` | Record match result + reward |
 | `POST` | `/v1/admin/shop/items` | Admin: upsert shop item |
+| `POST` | `/v1/admin/audit/events` | Admin: record moderation/audit event |
+| `GET` | `/v1/admin/audit/events` | Admin: list audit events |
+| `GET` | `/metrics` | Prometheus-style service metrics |
 
-## Next Steps
+## Production Configuration
 
-- **Custom C++ GameDLL** — implement `ov_join <mode>` ConCommand that calls `/v1/travel/request`,
-  receives the connect string + token, and initiates a proper authenticated server connection.
-- **Custom main menu** — VGUI panel or Panorama replacement that shows the OpenVibe hub selection
-  screen instead of the stock HL2MP server browser.
-- **Prop Hunt prop disguise** — C++ player model swap + scale for true prop disguise.
-- **Fort Wars prop placement** — C++ `prop_physics` spawning for the build phase.
-- **Steam auth** — integrate `ISteamUser::AuthenticateUserTicket` for production auth.
-- **CDN / asset hosting** — serve player model and trail assets via openvibe.games CDN.
-- **Production infra** — Kubernetes or Docker Swarm, persistent PostgreSQL, Redis for sessions.
+Production auth requires:
 
+- `STEAM_WEB_API_KEY`
+- `STEAM_APP_ID`
+- `OPENVIBE_ADMIN_SECRET`
+- `DATABASE_URL`
+- `SESSION_REDIS_URL`
+- `OPENVIBE_CDN_BASE_URL`
+
+Infrastructure templates live in:
+
+- `infra/docker-compose.yml`
+- `infra/production/docker-stack.yml`
+- `infra/kubernetes/openvibe.yaml`
+- `infra/cdn/nginx.conf`
+
+Local database backups:
+
+```bash
+cd ~/src/openvibe-source
+tools/backup-postgres.sh
+```
+
+## Remaining Work
+
+The foundation is running. The next real work is content and hardening:
+
+- Replace dev models/trails with real OpenVibe cosmetic assets.
+- Add real hosted CDN storage behind `openvibe.games`.
+- Wire Steam production credentials and app identity.
+- Expand Prop Hunt, Deathrun, Fort Wars, and Traitor Town into full game rules.
+- Add full admin web views, alert routing, and deployment secrets management.

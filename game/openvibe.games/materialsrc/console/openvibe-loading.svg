@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="45%" r="75%">
+      <stop offset="0" stop-color="#16334a"/>
+      <stop offset="0.45" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#05060b"/>
+    </radialGradient>
+    <linearGradient id="line" x1="0" x2="1">
+      <stop offset="0" stop-color="#00d8ff" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#00d8ff" stop-opacity="1"/>
+      <stop offset="1" stop-color="#a855f7" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#g)"/>
+  <g opacity="0.18" stroke="#00d8ff" fill="none">
+    <path d="M0 770 C300 630 520 890 850 730 C1190 560 1390 810 1920 610"/>
+    <path d="M0 830 C330 700 560 960 910 780 C1240 610 1480 860 1920 680"/>
+  </g>
+  <circle cx="960" cy="450" r="155" fill="none" stroke="#00d8ff" stroke-width="8" opacity="0.8"/>
+  <circle cx="960" cy="450" r="112" fill="none" stroke="#a855f7" stroke-width="4" opacity="0.7"/>
+  <text x="960" y="465" text-anchor="middle" font-family="Orbitron, Rajdhani, sans-serif" font-size="84" fill="#eaf8ff" font-weight="900">OPENVIBE</text>
+  <text x="960" y="530" text-anchor="middle" font-family="Rajdhani, sans-serif" font-size="38" fill="#00d8ff" font-weight="700">SOURCE</text>
+  <rect x="660" y="620" width="600" height="6" rx="3" fill="url(#line)"/>
+  <text x="960" y="680" text-anchor="middle" font-family="Inter, sans-serif" font-size="28" fill="#b9c7e8">Loading connected game session...</text>
+</svg>

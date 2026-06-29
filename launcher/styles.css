@@ -120,6 +120,24 @@ html, body {
 .status-sep { color: var(--text-muted); }
 .status-right { margin-left: auto; }
 
+.embedded-close-btn {
+  display: none;
+  padding: 4px 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border-lit);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.embedded-close-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(0,200,255,.12);
+}
+
 /* ── App layout ──────────────────────────────────────────────────── */
 .app-layout {
   display: flex;
@@ -677,3 +695,102 @@ html, body {
 .ping-ok   { color: var(--accent3); }
 .ping-mid  { color: #ffaa00; }
 .ping-bad  { color: var(--danger); }
+
+/* ── Embedded Source browser mode ───────────────────────────────── */
+html.embedded body {
+  background:
+    linear-gradient(180deg, rgba(5,7,12,.97), rgba(7,8,16,.94)),
+    var(--bg-deep);
+}
+
+html.embedded .titlebar {
+  display: none;
+}
+
+html.embedded .statusbar {
+  height: 34px;
+  padding: 0 18px;
+  background: rgba(6, 8, 15, .9);
+  border-bottom-color: rgba(0,200,255,.22);
+}
+
+html.embedded .embedded-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+html.embedded .app-layout {
+  height: calc(100vh - 34px);
+}
+
+html.embedded .sidebar {
+  width: 210px;
+  min-width: 210px;
+  background: rgba(9, 10, 19, .84);
+  border-right-color: rgba(0,200,255,.18);
+}
+
+html.embedded .content {
+  background:
+    radial-gradient(ellipse at 18% 10%, rgba(0,200,255,.08), transparent 48%),
+    radial-gradient(ellipse at 88% 88%, rgba(6,255,165,.045), transparent 42%),
+    rgba(9, 10, 19, .76);
+}
+
+html.embedded .portal-card,
+html.embedded .shop-item,
+html.embedded .server-table,
+html.embedded .leaderboard-list li {
+  background: rgba(17, 18, 32, .82);
+  backdrop-filter: blur(10px);
+}
+
+html.embedded .portal-card {
+  border-radius: 8px;
+}
+
+html.embedded .hero-sub {
+  color: #8aa0b8;
+}
+
+
+/* OpenVibe launch guard */
+.launch-help {
+  margin-top: 10px;
+  max-width: 620px;
+  color: rgba(220, 235, 255, 0.78);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+.launch-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+
+/* OpenVibe launcher-aware Source loading UX */
+.launch-focus {
+  margin-top: 10px;
+  border: 1px solid rgba(0, 216, 255, 0.55);
+  background: rgba(0, 216, 255, 0.14);
+  color: #eaf8ff;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.launch-focus:hover {
+  background: rgba(0, 216, 255, 0.22);
+}
+.launch-sub {
+  margin-top: 10px;
+  max-width: 560px;
+  color: rgba(230, 236, 255, 0.76);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}

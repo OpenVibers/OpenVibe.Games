@@ -1,0 +1,48 @@
+"Resource/LoadingDialog.res"
+{
+    "LoadingDialog"
+    {
+        "ControlName"       "Frame"
+        "fieldName"         "LoadingDialog"
+        "xpos"              "0"
+        "ypos"              "0"
+        "wide"              "f0"
+        "tall"              "f0"
+        "visible"           "1"
+        "enabled"           "1"
+        "title"             "OpenVibe: Source"
+        "proportionaltoparent" "1"
+        "PaintBackgroundType" "2"
+        "bgcolor_override"  "7 8 14 245"
+    }
+    "LoadingLabel"
+    {
+        "ControlName"       "Label"
+        "fieldName"         "LoadingLabel"
+        "xpos"              "cs-260"
+        "ypos"              "rs1-92"
+        "wide"              "520"
+        "tall"              "28"
+        "visible"           "1"
+        "enabled"           "1"
+        "labelText"         "OPENVIBE: SOURCE"
+        "textAlignment"     "center"
+        "font"              "DefaultLarge"
+        "fgcolor_override"  "0 216 255 255"
+    }
+    "ProgressLabel"
+    {
+        "ControlName"       "Label"
+        "fieldName"         "ProgressLabel"
+        "xpos"              "cs-260"
+        "ypos"              "rs1-58"
+        "wide"              "520"
+        "tall"              "24"
+        "visible"           "1"
+        "enabled"           "1"
+        "labelText"         "Loading OpenVibe session..."
+        "textAlignment"     "center"
+        "font"              "Default"
+        "fgcolor_override"  "230 236 255 255"
+    }
+}
