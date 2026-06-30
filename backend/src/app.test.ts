@@ -538,4 +538,61 @@ describe("OpenVibe API vertical slice", () => {
 
     await app.close();
   });
+
+  it("batch match rewards: rewards multiple players idempotently and rejects wrong secret", async () => {
+    const app = await testApp();
+    const player2 = "76561198000000010";
+    const player3 = "76561198000000011";
+
+    // Register players
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Batch Player 1" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: player2, displayName: "Batch Player 2" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: player3, displayName: "Batch Player 3" } });
+
+    // Register server
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "local-prophunt-batch", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27099, maxPlayers: 24 } });
+
+    const batchPayload = {
+      matchId: "prophunt-round-batch-1",
+      serverId: "local-prophunt-batch",
+      serverSecret,
+      mode: "prophunt",
+      results: [
+        { steamId, rewardCurrency: 50, rewardXp: 100, stats: { winner: true } },
+        { steamId: player2, rewardCurrency: 25, rewardXp: 50 },
+        { steamId: player3, rewardCurrency: 10, rewardXp: 20 },
+      ],
+    };
+
+    // Wrong secret is rejected
+    const badSecret = await app.inject({
+      method: "POST",
+      url: "/v1/matches/end/batch",
+      payload: { ...batchPayload, serverSecret: "wrong-secret" },
+    });
+    expect(badSecret.statusCode).toBe(403);
+
+    // First batch succeeds
+    const first = await app.inject({ method: "POST", url: "/v1/matches/end/batch", payload: batchPayload });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().rewarded).toBe(3);
+    expect(first.json().profiles).toHaveLength(3);
+
+    // Find player 1's profile in results
+    const p1 = first.json().profiles.find((p: { player: { steamId: string } }) => p.player.steamId === steamId);
+    expect(p1.player.currencyBalance).toBe(300); // 250 seed + 50
+    expect(p1.player.xp).toBe(100);
+
+    // Duplicate batch is idempotent (no double rewards)
+    const second = await app.inject({ method: "POST", url: "/v1/matches/end/batch", payload: batchPayload });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().rewarded).toBe(0);
+
+    await app.close();
+  });
 });

@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import {
+  BatchMatchRewardInput,
   GameMode,
   GameServer,
   HeartbeatInput,
@@ -574,6 +575,84 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     }
 
     return this.getProfile(input.steamId);
+  }
+
+  async recordBatchMatchRewards(input: BatchMatchRewardInput): Promise<PlayerProfile[] | null> {
+    const client = await this.pool.connect();
+    const rewarded: string[] = [];
+
+    try {
+      await client.query("BEGIN");
+
+      const serverResult = await client.query(
+        "SELECT 1 FROM game_servers WHERE server_id = $1 AND server_secret = $2",
+        [input.serverId, input.serverSecret],
+      );
+      if (serverResult.rowCount !== 1) {
+        await client.query("COMMIT");
+        return null;
+      }
+
+      for (const entry of input.results) {
+        const inserted = await client.query(
+          `
+          INSERT INTO match_results (
+            match_id, server_id, steam_id, mode, reward_currency, reward_xp, stats
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+          ON CONFLICT (match_id, steam_id) DO NOTHING
+          RETURNING result_id
+          `,
+          [
+            input.matchId,
+            input.serverId,
+            entry.steamId,
+            input.mode,
+            entry.rewardCurrency,
+            entry.rewardXp,
+            JSON.stringify(entry.stats ?? {}),
+          ],
+        );
+
+        if (inserted.rowCount === 1) {
+          await client.query(
+            `
+            UPDATE players
+            SET currency_balance = currency_balance + $2,
+                xp = xp + $3,
+                updated_at = now()
+            WHERE steam_id = $1
+            `,
+            [entry.steamId, entry.rewardCurrency, entry.rewardXp],
+          );
+
+          await client.query(
+            `
+            INSERT INTO currency_ledger (steam_id, delta, reason, idempotency_key)
+            VALUES ($1, $2, 'match_reward', $3)
+            ON CONFLICT DO NOTHING
+            `,
+            [entry.steamId, entry.rewardCurrency, `match:${input.matchId}:${entry.steamId}`],
+          );
+
+          rewarded.push(entry.steamId);
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const profiles: PlayerProfile[] = [];
+    for (const steamId of rewarded) {
+      const profile = await this.getProfile(steamId);
+      if (profile) profiles.push(profile);
+    }
+    return profiles;
   }
 
   async getLeaderboard(options: { limit: number; mode?: GameMode }): Promise<LeaderboardEntry[]> {

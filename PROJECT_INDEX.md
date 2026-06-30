@@ -42,6 +42,9 @@ openvibe-source/
 | Fort Wars placement | Implemented | `ov_fortwars_spawn` |
 | VScript game modes | Implemented prototypes | `game/openvibe.games/scripts/vscripts/ov_*.nut` |
 | Script packages API | Implemented | `GET /v1/scripts/packages`, `GET /v1/scripts/packages/:id`, `GET /v1/scripts/packages/:id/files`, admin upsert/enable/disable routes |
+| JS round system | Implemented | Base round state machine; Prop Hunt, Deathrun, Fort Wars, Traitor Town each with teams, timers, win conditions |
+| Batch match rewards | Implemented | `POST /v1/matches/end/batch` — rewards multiple players in one idempotent call |
+| C++ RoundStart/RoundEnd | Implemented | `OpenVibeJS_Server_RoundStart/End`, `ov_round_start`, `ov_round_end` ConCommands |
 | Maps | Compiled | `game/openvibe.games/maps/*.bsp` |
 | Production infra | Scaffolded | `infra/docker-compose.yml`, `infra/production/docker-stack.yml`, `infra/kubernetes/openvibe.yaml` |
 
@@ -89,10 +92,10 @@ node tools/smoke-api.mjs
 tools/dev-down.sh
 ```
 
-## Verified On June 29, 2026
+## Verified On June 30, 2026
 
 - Backend TypeScript build passed.
-- Backend Vitest suite passed: 12 tests.
+- Backend Vitest suite passed: 13 tests.
 - Source SDK 2013 Linux64 build passed with OpenVibe C++ patch applied.
 - SRCDS smoke test passed for all five maps.
 - Full dev stack registered all five servers and returned valid travel targets for every mode.

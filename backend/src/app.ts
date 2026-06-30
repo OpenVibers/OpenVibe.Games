@@ -8,6 +8,7 @@ import {
   acceptPartyInviteSchema,
   auditEventSchema,
   auditQuerySchema,
+  batchMatchEndSchema,
   buyItemSchema,
   createPartySchema,
   equipItemSchema,
@@ -275,6 +276,13 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     const profile = await options.repository.recordMatchReward(body);
     if (!profile) return reply.code(403).send({ error: "invalid_server_secret" });
     return profile;
+  });
+
+  app.post("/v1/matches/end/batch", async (request, reply) => {
+    const body = batchMatchEndSchema.parse(request.body);
+    const profiles = await options.repository.recordBatchMatchRewards(body);
+    if (profiles === null) return reply.code(403).send({ error: "invalid_server_secret" });
+    return { rewarded: profiles.length, profiles };
   });
 
   // GET /v1/leaderboard?limit=10&mode=prophunt

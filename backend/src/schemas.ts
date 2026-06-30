@@ -98,6 +98,24 @@ export const matchEndSchema = z.object({
   stats: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const batchMatchEndSchema = z.object({
+  matchId: z.string().min(3).max(120),
+  serverId,
+  serverSecret,
+  mode,
+  results: z
+    .array(
+      z.object({
+        steamId,
+        rewardCurrency: z.number().int().min(0).max(5000),
+        rewardXp: z.number().int().min(0).max(50000),
+        stats: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .min(1)
+    .max(64),
+});
+
 export const leaderboardQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   mode: mode.optional(),

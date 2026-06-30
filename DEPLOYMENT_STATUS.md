@@ -21,7 +21,7 @@
 
 | Component | Status | Notes |
 | --- | --- | --- |
-| Backend API | Complete for MVP | Dev auth, Steam ticket auth route, inventory, shop, travel, rewards, leaderboard, asset manifest. |
+| Backend API | Complete for MVP | Dev auth, Steam ticket auth route, inventory, shop, travel, rewards, leaderboard, asset manifest, batch match rewards. |
 | PostgreSQL schema | Complete for MVP | Durable players, currency, inventory, servers, join tokens, match results. |
 | Redis sessions | Implemented | Enabled when `SESSION_REDIS_URL` is set. |
 | C++ client travel | Implemented | `ov_join <mode>` calls `/v1/travel/request` and connects with token. |

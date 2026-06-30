@@ -204,6 +204,11 @@ EntityTakeDamage(entity, damageInfo)
 PlayerUse(ply, entity)
 PlayerCanPickupWeapon(ply, weapon)
 PlayerLoadout(ply)
-RoundStart
-RoundEnd
+```
+
+Already added via `ov_round_start` / `ov_round_end` ConCommands and direct C++ bridge calls:
+
+```text
+RoundStart(roundNumber)
+RoundEnd(roundNumber, reason)
 ```

@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import {
+  BatchMatchRewardInput,
   GameMode,
   GameServer,
   HeartbeatInput,
@@ -352,6 +353,27 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
     }
 
     return this.profileFor(input.steamId);
+  }
+
+  async recordBatchMatchRewards(input: BatchMatchRewardInput): Promise<PlayerProfile[] | null> {
+    const server = this.servers.get(input.serverId);
+    if (!server || server.serverSecret !== input.serverSecret) return null;
+
+    const profiles: PlayerProfile[] = [];
+    for (const entry of input.results) {
+      const player = this.players.get(entry.steamId);
+      if (!player) continue;
+
+      const key = `${input.matchId}:${entry.steamId}`;
+      if (!this.rewardKeys.has(key)) {
+        player.currencyBalance += entry.rewardCurrency;
+        player.xp += entry.rewardXp;
+        this.rewardKeys.add(key);
+        profiles.push(this.profileFor(entry.steamId));
+      }
+    }
+
+    return profiles;
   }
 
   private profileFor(steamId: string): PlayerProfile {

@@ -194,6 +194,19 @@ export interface MatchRewardInput {
   stats?: Record<string, unknown>;
 }
 
+export interface BatchMatchRewardInput {
+  matchId: string;
+  serverId: string;
+  serverSecret: string;
+  mode: GameMode;
+  results: Array<{
+    steamId: string;
+    rewardCurrency: number;
+    rewardXp: number;
+    stats?: Record<string, unknown>;
+  }>;
+}
+
 export interface UpsertShopItemInput {
   itemId: string;
   itemType: ItemType;
@@ -233,6 +246,7 @@ export interface OpenVibeRepository {
     serverId: string;
   }): Promise<JoinTokenValidation>;
   recordMatchReward(input: MatchRewardInput): Promise<PlayerProfile | null>;
+  recordBatchMatchRewards(input: BatchMatchRewardInput): Promise<PlayerProfile[] | null>;
   getLeaderboard(options: { limit: number; mode?: GameMode }): Promise<LeaderboardEntry[]>;
   upsertShopItem(input: UpsertShopItemInput): Promise<ShopItem>;
   recordAuditEvent(input: {

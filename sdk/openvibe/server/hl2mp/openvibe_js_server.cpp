@@ -80,6 +80,44 @@ static ConCommand ov_js_cmd(
     "Send a ConsoleCommand event into the embedded OpenVibe JavaScript runtime.",
     FCVAR_GAMEDLL
 );
+
+void OpenVibeJS_Server_RoundStart(int roundNumber)
+{
+    Msg("[OV JS] Windows server CI stub: RoundStart round=%d\n", roundNumber);
+}
+
+void OpenVibeJS_Server_RoundEnd(int roundNumber, const char *reason)
+{
+    Msg("[OV JS] Windows server CI stub: RoundEnd round=%d reason=%s\n",
+        roundNumber, reason ? reason : "");
+}
+
+static void OV_RoundStart_f(const CCommand &args)
+{
+    const int round = args.ArgC() >= 2 ? Q_atoi(args[1]) : 1;
+    OpenVibeJS_Server_RoundStart(round);
+}
+
+static ConCommand ov_round_start(
+    "ov_round_start",
+    OV_RoundStart_f,
+    "Fire the RoundStart hook into the OpenVibe JavaScript runtime.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_RoundEnd_f(const CCommand &args)
+{
+    const int round        = args.ArgC() >= 2 ? Q_atoi(args[1]) : 1;
+    const char *pszReason  = args.ArgC() >= 3 ? args[2] : "time";
+    OpenVibeJS_Server_RoundEnd(round, pszReason);
+}
+
+static ConCommand ov_round_end(
+    "ov_round_end",
+    OV_RoundEnd_f,
+    "Fire the RoundEnd hook into the OpenVibe JavaScript runtime. Usage: ov_round_end <round> [reason]",
+    FCVAR_GAMEDLL
+);
 #else
 #include "hl2mp_player.h"
 #include "openvibe_js_server.h"
@@ -345,6 +383,67 @@ static ConCommand ov_js_cmd(
     "ov_js_cmd",
     OV_JSCmd_f,
     "Send a ConsoleCommand event into the embedded OpenVibe JavaScript runtime.",
+    FCVAR_GAMEDLL
+);
+
+void OpenVibeJS_Server_RoundStart( int roundNumber )
+{
+    OpenVibeJS_EnsureStarted();
+
+    if ( !OpenVibeJS_IsRunning() )
+        return;
+
+    JSContext *ctx = g_OVServerJS.Context();
+    JSValue jsRound = JS_NewInt32( ctx, roundNumber );
+    JSValueConst argv[] = { jsRound };
+    g_OVServerJS.CallHookVoid( "RoundStart", 1, argv );
+    JS_FreeValue( ctx, jsRound );
+
+    Msg( "[OV JS] RoundStart fired round=%d\n", roundNumber );
+}
+
+void OpenVibeJS_Server_RoundEnd( int roundNumber, const char *reason )
+{
+    OpenVibeJS_EnsureStarted();
+
+    if ( !OpenVibeJS_IsRunning() )
+        return;
+
+    JSContext *ctx = g_OVServerJS.Context();
+    JSValue jsRound  = JS_NewInt32( ctx, roundNumber );
+    JSValue jsReason = JS_NewString( ctx, reason ? reason : "time" );
+    JSValueConst argv[] = { jsRound, jsReason };
+    g_OVServerJS.CallHookVoid( "RoundEnd", 2, argv );
+    JS_FreeValue( ctx, jsRound );
+    JS_FreeValue( ctx, jsReason );
+
+    Msg( "[OV JS] RoundEnd fired round=%d reason=%s\n", roundNumber, reason ? reason : "time" );
+}
+
+static void OV_RoundStart_f( const CCommand &args )
+{
+    const int round = args.ArgC() >= 2 ? Q_atoi( args[1] ) : 1;
+    OpenVibeJS_Server_RoundStart( round );
+}
+
+static ConCommand ov_round_start(
+    "ov_round_start",
+    OV_RoundStart_f,
+    "Fire the RoundStart hook into the OpenVibe JavaScript runtime.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_RoundEnd_f( const CCommand &args )
+{
+    const int round        = args.ArgC() >= 2 ? Q_atoi( args[1] ) : 1;
+    const char *pszReason  = args.ArgC() >= 3 ? args[2] : "time";
+    OpenVibeJS_Server_RoundEnd( round, pszReason );
+}
+
+static ConCommand ov_round_end(
+    "ov_round_end",
+    OV_RoundEnd_f,
+    "Fire the RoundEnd hook into the OpenVibe JavaScript runtime. Usage: ov_round_end <round> [reason]",
     FCVAR_GAMEDLL
 );
 #endif
