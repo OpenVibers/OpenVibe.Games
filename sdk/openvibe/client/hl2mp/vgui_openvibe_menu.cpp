@@ -22,7 +22,7 @@ using namespace vgui;
 
 static ConVar ov_menu_url(
 	"ov_menu_url",
-	"http://127.0.0.1:5173/client/?embedded=1&shell=source#portal",
+	"http://127.0.0.1:3000/client/?embedded=1&shell=source#portal",
 	FCVAR_ARCHIVE,
 	"OpenVibe HTML menu URL." );
 
@@ -288,6 +288,20 @@ private:
 			return;
 		}
 
+		if ( OV_URLStartsWith( pszURL, "openvibe://auth/steam" ) )
+		{
+			// Web page requests Steam authentication; trigger the C++ auth flow.
+			engine->ClientCmd_Unrestricted( "ov_auth_steam\n" );
+			return;
+		}
+
+		if ( OV_URLStartsWith( pszURL, "openvibe://ready" ) )
+		{
+			// Web page has loaded and exposed window.OV; push any stored session.
+			OpenVibe_OnHTMLReady();
+			return;
+		}
+
 		if ( OV_URLStartsWith( pszURL, "openvibe://external" ) )
 		{
 			char szUrl[512];
@@ -452,3 +466,88 @@ static ConCommand ov_menu_settings_route_cmd(
 	FCVAR_CLIENTDLL );
 // OPENVIBE_UNIFIED_UI_ROUTE_COMMANDS_END
 
+// OPENVIBE_STEAM_AUTH_BRIDGE_BEGIN
+
+// Forward declaration: implemented in openvibe_client.cpp.
+extern const char *OpenVibe_GetSessionToken();
+
+// Sanitise a string for safe embedding in a JS single-quoted literal:
+// strip characters that could break out of the string context.
+static void OV_SanitiseJSString( char *pszOut, size_t nOut, const char *pszIn )
+{
+	if ( !pszIn || !pszOut || nOut == 0 )
+	{
+		if ( pszOut && nOut ) pszOut[0] = '\0';
+		return;
+	}
+
+	size_t nWritten = 0;
+	for ( const char *p = pszIn; *p && nWritten < nOut - 1; ++p )
+	{
+		unsigned char c = (unsigned char)*p;
+		// Skip control chars, quotes, backslash, and angle brackets.
+		if ( c < 32 || c == '\'' || c == '"' || c == '\\' || c == '<' || c == '>' )
+			continue;
+		pszOut[nWritten++] = *p;
+	}
+	pszOut[nWritten] = '\0';
+}
+
+// Called by COpenVibeSteamAuthClient after Steam ticket validation completes.
+// Injects the result into the HTML page via RunJS.
+void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const char *pszSteamId, const char *pszDisplayName )
+{
+	COpenVibeHTMLPanel *pMenu = s_pOpenVibeMenu;
+	if ( !pMenu )
+		return;
+
+	char szToken[2048];
+	char szSteamId[64];
+	char szDisplayName[256];
+
+	OV_SanitiseJSString( szToken,       sizeof( szToken ),       pszToken       ? pszToken       : "" );
+	OV_SanitiseJSString( szSteamId,     sizeof( szSteamId ),     pszSteamId     ? pszSteamId     : "" );
+	OV_SanitiseJSString( szDisplayName, sizeof( szDisplayName ), pszDisplayName ? pszDisplayName : "" );
+
+	char szScript[4096];
+	if ( bSuccess )
+	{
+		Q_snprintf( szScript, sizeof( szScript ),
+			"if(typeof window.OV==='object'&&typeof window.OV.onSteamAuthResult==='function')"
+			"{window.OV.onSteamAuthResult({authenticated:true,sessionToken:'%s',steamId:'%s',displayName:'%s'});}",
+			szToken, szSteamId, szDisplayName );
+	}
+	else
+	{
+		Q_snprintf( szScript, sizeof( szScript ),
+			"if(typeof window.OV==='object'&&typeof window.OV.onSteamAuthResult==='function')"
+			"{window.OV.onSteamAuthResult({authenticated:false,error:'steam_auth_failed'});}" );
+	}
+
+	pMenu->RunJS( szScript );
+}
+
+// Called when the web page navigates to openvibe://ready.
+// Pushes any stored session token into the page so it can skip the auth screen.
+void OpenVibe_OnHTMLReady()
+{
+	COpenVibeHTMLPanel *pMenu = s_pOpenVibeMenu;
+	if ( !pMenu )
+		return;
+
+	const char *pszToken = OpenVibe_GetSessionToken();
+	if ( !pszToken || !pszToken[0] )
+		return;
+
+	char szToken[2048];
+	OV_SanitiseJSString( szToken, sizeof( szToken ), pszToken );
+
+	char szScript[3072];
+	Q_snprintf( szScript, sizeof( szScript ),
+		"if(typeof window.OV==='object'&&typeof window.OV.onSteamAuthResult==='function')"
+		"{window.OV.onSteamAuthResult({authenticated:true,sessionToken:'%s',steamId:'',displayName:''});}", szToken );
+
+	pMenu->RunJS( szScript );
+}
+
+// OPENVIBE_STEAM_AUTH_BRIDGE_END

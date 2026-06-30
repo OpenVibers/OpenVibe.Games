@@ -33,6 +33,8 @@ openvibe-source/
 | Backend API | Implemented | `backend/src/app.ts`, `backend/src/repository-pg.ts`, `backend/src/sessions.ts` |
 | Backend tests | Passing | `backend/src/app.test.ts` |
 | Steam auth route | Implemented | `POST /v1/auth/steam`; requires production Steam env vars |
+| Session verification | Implemented | `GET /v1/auth/session` — Bearer-token validation with Redis |
+| In-game Steam auth GUI | Implemented | `client/index.html` — embedded web UI served at `/client/`; `openvibe://auth/steam` + `openvibe://ready` bridge handlers |
 | Redis sessions | Implemented | `backend/src/sessions.ts` |
 | CDN asset manifest | Implemented | `GET /v1/assets/manifest` |
 | C++ client travel | Implemented | `sdk/openvibe/client/hl2mp/openvibe_client.cpp` |

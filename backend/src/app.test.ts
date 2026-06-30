@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { MemoryOpenVibeRepository } from "./repository-memory.js";
-import { SessionInput } from "./sessions.js";
+import { SessionData, SessionInput } from "./sessions.js";
 
 const steamId = "76561198000000000";
 const serverSecret = "dev-secret";
@@ -592,6 +592,56 @@ describe("OpenVibe API vertical slice", () => {
     const second = await app.inject({ method: "POST", url: "/v1/matches/end/batch", payload: batchPayload });
     expect(second.statusCode).toBe(200);
     expect(second.json().rewarded).toBe(0);
+
+    await app.close();
+  });
+
+  it("GET /v1/auth/session verifies a valid session token and rejects an invalid one", async () => {
+    const sessions = new Map<string, SessionInput>();
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      sessionStore: {
+        async createSession(input: SessionInput) {
+          sessions.set(input.token, input);
+        },
+        async getSession(token: string): Promise<SessionData | null> {
+          const s = sessions.get(token);
+          if (!s) return null;
+          return { steamId: s.steamId, provider: s.provider, createdAt: new Date().toISOString() };
+        },
+      },
+    });
+    await app.ready();
+
+    const auth = await app.inject({
+      method: "POST",
+      url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Session Check" },
+    });
+    expect(auth.statusCode).toBe(200);
+    const { sessionToken } = auth.json();
+
+
+    const valid = await app.inject({
+      method: "GET",
+      url: "/v1/auth/session",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json().valid).toBe(true);
+    expect(valid.json().steamId).toBe(steamId);
+    expect(valid.json().provider).toBe("dev");
+
+    const missing = await app.inject({ method: "GET", url: "/v1/auth/session" });
+    expect(missing.statusCode).toBe(401);
+
+    const invalid = await app.inject({
+      method: "GET",
+      url: "/v1/auth/session",
+      headers: { authorization: "not-a-valid-token-format" },
+    });
+    expect(invalid.statusCode).toBe(401);
 
     await app.close();
   });

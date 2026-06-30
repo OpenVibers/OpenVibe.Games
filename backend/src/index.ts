@@ -3,6 +3,11 @@ import { Pool } from "pg";
 import { createApp } from "./app.js";
 import { PgOpenVibeRepository } from "./repository-pg.js";
 import { RedisSessionStore } from "./sessions.js";
+import fastifyStatic from "@fastify/static";
+import { resolve } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 const pool = new Pool({
   connectionString:
@@ -15,6 +20,14 @@ const app = await createApp({
   sessionStore: process.env.SESSION_REDIS_URL
     ? new RedisSessionStore(process.env.SESSION_REDIS_URL)
     : undefined,
+});
+
+// Serve the in-game web client from the repo-root client/ directory.
+const clientRoot = resolve(__dirname, "../../client");
+await app.register(fastifyStatic, {
+  root: clientRoot,
+  prefix: "/client/",
+  decorateReply: false,
 });
 
 const host = process.env.HOST ?? "127.0.0.1";

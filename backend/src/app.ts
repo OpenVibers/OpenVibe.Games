@@ -100,6 +100,31 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
     };
   });
 
+  app.get("/v1/auth/session", async (request, reply) => {
+    const authHeader = (request.headers["authorization"] ?? "") as string;
+    if (!authHeader.startsWith("Bearer ")) {
+      return reply.code(401).send({ error: "missing_token" });
+    }
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return reply.code(401).send({ error: "missing_token" });
+    }
+
+    if (options.sessionStore?.getSession) {
+      const session = await options.sessionStore.getSession(token);
+      if (!session) return reply.code(401).send({ error: "invalid_token" });
+      return { valid: true, steamId: session.steamId, provider: session.provider };
+    }
+
+    // Fallback when no session store is configured: parse steamId from token format.
+    const parts = token.split(".");
+    if (parts.length >= 3 && (parts[0] === "dev" || parts[0] === "steam")) {
+      return { valid: true, provider: parts[0] as "dev" | "steam", steamId: parts[1] };
+    }
+
+    return reply.code(401).send({ error: "invalid_token" });
+  });
+
   app.post("/v1/auth/steam", async (request, reply) => {
     const body = authSteamSchema.parse(request.body ?? {});
     const apiKey = process.env.STEAM_WEB_API_KEY;

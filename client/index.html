@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenVibe: Source</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #070e14;
+      --bg-card:   #0d1a25;
+      --bg-hover:  #13263a;
+      --border:    #1c3348;
+      --accent:    #1a9fff;
+      --accent-dk: #1277c8;
+      --text:      #c6d4df;
+      --text-dim:  #7b9ab2;
+      --text-head: #e8f0f6;
+      --green:     #4caf50;
+      --red:       #e53935;
+      --gold:      #f5a623;
+      --radius:    6px;
+      --transition: 0.15s ease;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Screen switching ─────────────────────────────── */
+    .screen { display: none; flex-direction: column; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* ── Auth screen ──────────────────────────────────── */
+    #ov-auth {
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(ellipse at 30% 40%, rgba(26,159,255,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 70% 70%, rgba(20,100,180,0.06) 0%, transparent 60%),
+        var(--bg);
+    }
+
+    .auth-card {
+      width: 380px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 40px 36px 36px;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    .ov-logo {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: var(--text-head);
+      margin-bottom: 6px;
+    }
+
+    .ov-subtitle {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 28px;
+    }
+
+    .auth-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 24px 0;
+    }
+
+    .auth-label {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-bottom: 14px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 11px 22px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition), opacity var(--transition), transform var(--transition);
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn:active:not(:disabled) { transform: translateY(1px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-steam {
+      width: 100%;
+      background: linear-gradient(180deg, #4a9dd4 0%, #2a7ab9 100%);
+      color: #fff;
+    }
+    .btn-steam:hover:not(:disabled) { background: linear-gradient(180deg, #5aadde 0%, #3285c7 100%); }
+
+    .btn-dev {
+      width: 100%;
+      background: var(--bg-hover);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .btn-dev:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+
+    .steam-logo {
+      width: 20px;
+      height: 20px;
+      /* SVG steam logo embedded */
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M11.979 0C5.678 0 .511 4.86.022 11.037l6.432 2.658c.545-.371 1.203-.59 1.912-.59.063 0 .125.004.188.006l2.861-4.142V8.91c0-2.495 2.028-4.524 4.524-4.524 2.494 0 4.524 2.031 4.524 4.527s-2.03 4.525-4.524 4.525h-.105l-4.076 2.911c0 .052.004.105.004.159 0 1.875-1.515 3.396-3.39 3.396-1.635 0-3.016-1.173-3.331-2.727L.436 15.27C1.862 20.307 6.486 24 11.979 24c6.627 0 11.999-5.373 11.999-12S18.605 0 11.979 0zM7.54 18.21l-1.473-.61c.262.543.714.999 1.314 1.25 1.297.539 2.793-.076 3.332-1.375.263-.63.264-1.319.005-1.949s-.75-1.121-1.377-1.383c-.624-.26-1.29-.249-1.878-.03l1.523.63c.956.4 1.409 1.5 1.009 2.455-.397.957-1.497 1.41-2.454 1.012H7.54zm11.415-9.303c0-1.662-1.353-3.015-3.015-3.015-1.665 0-3.015 1.353-3.015 3.015 0 1.665 1.35 3.015 3.015 3.015 1.663 0 3.015-1.35 3.015-3.015zm-5.273-.005c0-1.252 1.013-2.266 2.265-2.266 1.249 0 2.266 1.014 2.266 2.266 0 1.251-1.017 2.265-2.266 2.265-1.252 0-2.265-1.014-2.265-2.265z'/%3E%3C/svg%3E") no-repeat center;
+      flex-shrink: 0;
+    }
+
+    .auth-status {
+      margin-top: 14px;
+      min-height: 20px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .auth-status.error { color: var(--red); }
+    .auth-status.success { color: var(--green); }
+
+    /* ── Main screen layout ───────────────────────────── */
+    #ov-main { flex: 1; }
+
+    /* Top bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      height: 44px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 12px;
+    }
+
+    .topbar-brand {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-head);
+      letter-spacing: 0.02em;
+      margin-right: 4px;
+    }
+
+    .topbar-nav {
+      display: flex;
+      gap: 2px;
+      flex: 1;
+    }
+
+    .nav-tab {
+      padding: 6px 13px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-dim);
+      cursor: pointer;
+      border: none;
+      background: none;
+      transition: background var(--transition), color var(--transition);
+      white-space: nowrap;
+    }
+    .nav-tab:hover { background: var(--bg-hover); color: var(--text); }
+    .nav-tab.active { background: rgba(26,159,255,0.15); color: var(--accent); }
+
+    .topbar-profile {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+    }
+
+    .profile-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--bg-hover);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .profile-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-head);
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .profile-currency {
+      font-size: 12px;
+      color: var(--gold);
+      font-weight: 600;
+    }
+
+    .profile-xp {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    .btn-signout {
+      padding: 4px 10px;
+      font-size: 12px;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: border-color var(--transition), color var(--transition);
+    }
+    .btn-signout:hover { border-color: var(--red); color: var(--red); }
+
+    /* Content area */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    /* Route panels */
+    .route { display: none; }
+    .route.active { display: block; }
+
+    /* ── Portal (game mode selection) ─────────────────── */
+    .modes-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 14px;
+      max-width: 1100px;
+    }
+
+    .mode-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      cursor: pointer;
+      transition: border-color var(--transition), background var(--transition), transform var(--transition);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mode-card:hover { border-color: var(--accent); background: var(--bg-hover); transform: translateY(-2px); }
+    .mode-card:active { transform: translateY(0); }
+
+    .mode-icon { font-size: 28px; }
+
+    .mode-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-head);
+    }
+
+    .mode-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.4;
+    }
+
+    .mode-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(26,159,255,0.15);
+      border: 1px solid rgba(26,159,255,0.3);
+      border-radius: 12px;
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 600;
+      margin-top: 4px;
+      align-self: flex-start;
+    }
+
+    /* ── Section headers ──────────────────────────────── */
+    .section-header {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-head);
+      margin-bottom: 16px;
+    }
+
+    /* ── Loading spinner ──────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Leaderboard ──────────────────────────────────── */
+    .lb-table {
+      width: 100%;
+      max-width: 700px;
+      border-collapse: collapse;
+    }
+    .lb-table th, .lb-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .lb-table th {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      background: var(--bg-card);
+    }
+    .lb-table tr:hover td { background: var(--bg-hover); }
+    .lb-rank { color: var(--text-dim); font-weight: 600; width: 40px; }
+    .lb-rank.top { color: var(--gold); }
+    .lb-xp { color: var(--accent); font-weight: 600; }
+
+    /* ── Shop / Inventory items ───────────────────────── */
+    .items-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 12px;
+      max-width: 1100px;
+    }
+
+    .item-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .item-type {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+    }
+
+    .item-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-head);
+    }
+
+    .item-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      flex: 1;
+    }
+
+    .item-price {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--gold);
+      margin-top: 4px;
+    }
+
+    .btn-buy {
+      margin-top: 6px;
+      padding: 6px 14px;
+      font-size: 12px;
+      background: rgba(26,159,255,0.1);
+      border: 1px solid rgba(26,159,255,0.3);
+      border-radius: var(--radius);
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 600;
+      transition: background var(--transition), border-color var(--transition);
+    }
+    .btn-buy:hover { background: rgba(26,159,255,0.2); border-color: var(--accent); }
+    .btn-buy:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .item-owned {
+      display: inline-block;
+      font-size: 11px;
+      color: var(--green);
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    /* ── Empty/error states ───────────────────────────── */
+    .empty-state {
+      padding: 40px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* ── Toast notification ───────────────────────────── */
+    #ov-toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 18px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--text);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      z-index: 9999;
+      transform: translateY(80px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      pointer-events: none;
+      max-width: 320px;
+    }
+    #ov-toast.show { transform: translateY(0); opacity: 1; }
+    #ov-toast.info { border-color: var(--accent); }
+    #ov-toast.success { border-color: var(--green); color: var(--green); }
+    #ov-toast.error { border-color: var(--red); color: var(--red); }
+
+    /* ── Servers list ─────────────────────────────────── */
+    .server-list { display: flex; flex-direction: column; gap: 8px; max-width: 800px; }
+
+    .server-row {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .server-mode {
+      width: 90px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .server-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-head); }
+
+    .server-players { font-size: 13px; color: var(--text-dim); white-space: nowrap; }
+
+    .server-state {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+    .server-state.open { background: rgba(76,175,80,0.15); color: var(--green); border: 1px solid rgba(76,175,80,0.3); }
+    .server-state.full { background: rgba(229,57,53,0.15); color: var(--red); border: 1px solid rgba(229,57,53,0.3); }
+    .server-state.starting { background: rgba(245,166,35,0.15); color: var(--gold); border: 1px solid rgba(245,166,35,0.3); }
+
+    .btn-join-server {
+      padding: 5px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(26,159,255,0.1);
+      border: 1px solid rgba(26,159,255,0.3);
+      border-radius: var(--radius);
+      color: var(--accent);
+      cursor: pointer;
+      transition: background var(--transition);
+    }
+    .btn-join-server:hover { background: rgba(26,159,255,0.2); }
+
+    /* ── Settings ─────────────────────────────────────── */
+    .settings-section { max-width: 500px; }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-label { font-size: 13px; color: var(--text); }
+    .settings-desc { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .settings-input {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 5px 10px;
+      font-size: 13px;
+      width: 220px;
+    }
+    .settings-input:focus { outline: none; border-color: var(--accent); }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+  </style>
+</head>
+<body>
+
+<!-- ───────────────────────────────────────────────────────── AUTH SCREEN -->
+<div id="ov-auth" class="screen active">
+  <div class="auth-card">
+    <div class="ov-logo">OpenVibe: Source</div>
+    <div class="ov-subtitle">Multiplayer experience — powered by Steam</div>
+
+    <div class="auth-divider"></div>
+    <div class="auth-label">Sign in to access all features and game modes.</div>
+
+    <button id="btn-steam-auth" class="btn btn-steam" onclick="OV.steamAuth()">
+      <span class="steam-logo"></span>
+      Sign in with Steam
+    </button>
+
+    <div id="auth-status" class="auth-status"></div>
+
+    <div id="devauth-section" style="display:none">
+      <div class="auth-divider" style="margin-top:14px;"></div>
+      <button id="btn-dev-auth" class="btn btn-dev" onclick="OV.devAuth()">
+        Dev / Local auth (no Steam)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────── MAIN SCREEN -->
+<div id="ov-main" class="screen">
+
+  <!-- Top bar -->
+  <div class="topbar">
+    <span class="topbar-brand">OpenVibe</span>
+
+    <nav class="topbar-nav" id="main-nav">
+      <button class="nav-tab active" data-route="portal">Play</button>
+      <button class="nav-tab" data-route="servers">Servers</button>
+      <button class="nav-tab" data-route="leaderboard">Leaderboard</button>
+      <button class="nav-tab" data-route="inventory">Inventory</button>
+      <button class="nav-tab" data-route="shop">Shop</button>
+      <button class="nav-tab" data-route="settings">Settings</button>
+    </nav>
+
+    <div class="topbar-profile">
+      <div id="profile-avatar" class="profile-avatar">?</div>
+      <span id="profile-name" class="profile-name">Player</span>
+      <span id="profile-currency" class="profile-currency">0 VC</span>
+      <span id="profile-xp" class="profile-xp">0 XP</span>
+      <button class="btn-signout" onclick="OV.signOut()">Sign out</button>
+    </div>
+  </div>
+
+  <!-- Scrollable content area -->
+  <div class="content">
+
+    <!-- Portal: game mode selection -->
+    <div id="route-portal" class="route active">
+      <div class="section-header">Choose Your Game Mode</div>
+      <div class="modes-grid">
+        <div class="mode-card" onclick="OV.joinMode('hub')">
+          <div class="mode-icon">🏠</div>
+          <div class="mode-title">Hub</div>
+          <div class="mode-desc">Central social hub. Meet other players, trade, and explore.</div>
+          <span class="mode-badge">Open Now</span>
+        </div>
+        <div class="mode-card" onclick="OV.joinMode('prophunt')">
+          <div class="mode-icon">🎭</div>
+          <div class="mode-title">Prop Hunt</div>
+          <div class="mode-desc">Disguise as objects or hunt the hidden props before time runs out.</div>
+          <span class="mode-badge">Popular</span>
+        </div>
+        <div class="mode-card" onclick="OV.joinMode('deathrun')">
+          <div class="mode-icon">💀</div>
+          <div class="mode-title">Deathrun</div>
+          <div class="mode-desc">Race through deadly obstacle courses. One wrong step and you're gone.</div>
+          <span class="mode-badge">Fast-paced</span>
+        </div>
+        <div class="mode-card" onclick="OV.joinMode('fortwars')">
+          <div class="mode-icon">🏰</div>
+          <div class="mode-title">Fort Wars</div>
+          <div class="mode-desc">Build your fortress and defend against enemy raids.</div>
+          <span class="mode-badge">Team Play</span>
+        </div>
+        <div class="mode-card" onclick="OV.joinMode('traitortown')">
+          <div class="mode-icon">🕵️</div>
+          <div class="mode-title">Traitor Town</div>
+          <div class="mode-desc">Trust no one. Identify and eliminate the hidden traitors.</div>
+          <span class="mode-badge">Social Deduction</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Servers -->
+    <div id="route-servers" class="route">
+      <div class="section-header">Server Browser</div>
+      <div id="server-list" class="server-list">
+        <div class="empty-state"><span class="spinner"></span> Loading servers…</div>
+      </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div id="route-leaderboard" class="route">
+      <div class="section-header">Leaderboard</div>
+      <div id="leaderboard-content">
+        <div class="empty-state"><span class="spinner"></span> Loading…</div>
+      </div>
+    </div>
+
+    <!-- Inventory -->
+    <div id="route-inventory" class="route">
+      <div class="section-header">Your Inventory</div>
+      <div id="inventory-content">
+        <div class="empty-state"><span class="spinner"></span> Loading…</div>
+      </div>
+    </div>
+
+    <!-- Shop -->
+    <div id="route-shop" class="route">
+      <div class="section-header">Item Shop</div>
+      <div id="shop-content">
+        <div class="empty-state"><span class="spinner"></span> Loading…</div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="route-settings" class="route">
+      <div class="section-header">Settings</div>
+      <div class="settings-section">
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">API Endpoint</div>
+            <div class="settings-desc">Backend API URL (advanced)</div>
+          </div>
+          <input id="settings-api-url" class="settings-input" type="text"
+                 onchange="OV.saveSettings()" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Display Name</div>
+            <div class="settings-desc">How you appear to other players</div>
+          </div>
+          <input id="settings-display-name" class="settings-input" type="text"
+                 placeholder="(from Steam)" readonly />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Steam ID</div>
+            <div class="settings-desc">Your unique identifier</div>
+          </div>
+          <input id="settings-steam-id" class="settings-input" type="text" readonly />
+        </div>
+        <div class="settings-row" style="border:none; margin-top:8px;">
+          <span></span>
+          <button class="btn btn-dev" style="width:auto; padding: 6px 18px;" onclick="OV.signOut()">
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /ov-main -->
+
+<!-- Toast notification -->
+<div id="ov-toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ── Detect embedded Source engine context ─────────────────────────────
+  var params   = new URLSearchParams(location.search);
+  var embedded = params.get('embedded') === '1';
+  var shell    = params.get('shell') || '';
+  var devMode  = params.get('devauth') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+  var apiBase  = localStorage.getItem('ov_api_url') || (location.origin);
+
+  // ── Internal state ────────────────────────────────────────────────────
+  var _session = null;     // { sessionToken, steamId, displayName, provider }
+  var _profile = null;     // full player profile from /v1/me
+
+  // ── Toast helper ──────────────────────────────────────────────────────
+  var _toastTimer = null;
+  function toast(msg, type, ms) {
+    var el = document.getElementById('ov-toast');
+    el.textContent = msg;
+    el.className   = 'show ' + (type || 'info');
+    clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function () { el.className = ''; }, ms || 3000);
+  }
+
+  // ── API helper ────────────────────────────────────────────────────────
+  function apiFetch(path, opts) {
+    var url      = apiBase.replace(/\/+$/, '') + path;
+    var headers  = Object.assign({ 'Content-Type': 'application/json' }, (opts || {}).headers || {});
+    if (_session && _session.sessionToken) {
+      headers['Authorization'] = 'Bearer ' + _session.sessionToken;
+    }
+    return fetch(url, Object.assign({ headers: headers }, opts || {}))
+      .then(function (r) { return r.json().then(function (b) { return { status: r.status, body: b }; }); });
+  }
+
+  // ── Auth helpers ──────────────────────────────────────────────────────
+  function setAuthStatus(msg, cls) {
+    var el = document.getElementById('auth-status');
+    el.textContent = msg;
+    el.className   = 'auth-status ' + (cls || '');
+  }
+
+  function saveSession(s) {
+    _session = s;
+    try { localStorage.setItem('ov_session', JSON.stringify(s)); } catch (e) {}
+  }
+
+  function clearSession() {
+    _session = null;
+    _profile = null;
+    try { localStorage.removeItem('ov_session'); } catch (e) {}
+  }
+
+  function loadStoredSession() {
+    try {
+      var raw = localStorage.getItem('ov_session');
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  // Load player profile after authentication
+  function loadProfile(steamId) {
+    if (!steamId) return;
+    apiFetch('/v1/me?steamId=' + encodeURIComponent(steamId))
+      .then(function (res) {
+        if (res.status === 200) {
+          _profile = res.body;
+          updateProfileBar(res.body);
+        }
+      })
+      .catch(function () {});
+  }
+
+  function updateProfileBar(profile) {
+    if (!profile || !profile.player) return;
+    var p = profile.player;
+
+    var nameEl = document.getElementById('profile-name');
+    var avatarEl = document.getElementById('profile-avatar');
+    var currEl = document.getElementById('profile-currency');
+    var xpEl = document.getElementById('profile-xp');
+    var nameInput = document.getElementById('settings-display-name');
+    var sidInput = document.getElementById('settings-steam-id');
+
+    if (nameEl) nameEl.textContent = p.displayName || 'Player';
+    if (avatarEl) avatarEl.textContent = (p.displayName || '?')[0].toUpperCase();
+    if (currEl) currEl.textContent = (p.currencyBalance || 0) + ' VC';
+    if (xpEl)   xpEl.textContent   = (p.xp || 0) + ' XP';
+    if (nameInput) nameInput.value  = p.displayName || '';
+    if (sidInput)  sidInput.value   = p.steamId || '';
+  }
+
+  // Verify session token with backend
+  function verifyToken(token) {
+    return apiFetch('/v1/auth/session', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(function (res) { return res.status === 200 && res.body.valid; })
+      .catch(function () { return false; });
+  }
+
+  // Show main authenticated UI
+  function showMainUI(session) {
+    _session = session;
+    document.getElementById('ov-auth').classList.remove('active');
+    document.getElementById('ov-main').classList.add('active');
+
+    if (session.steamId) {
+      loadProfile(session.steamId);
+    }
+
+    var apiInput = document.getElementById('settings-api-url');
+    if (apiInput) apiInput.value = apiBase;
+
+    routeTo(location.hash ? location.hash.slice(1) : 'portal');
+  }
+
+  // Show auth screen
+  function showAuthUI(msg) {
+    clearSession();
+    document.getElementById('ov-main').classList.remove('active');
+    document.getElementById('ov-auth').classList.add('active');
+    if (msg) setAuthStatus(msg, 'error');
+
+    var btn = document.getElementById('btn-steam-auth');
+    if (btn) { btn.disabled = false; }
+
+    if (devMode) {
+      var devSection = document.getElementById('devauth-section');
+      if (devSection) devSection.style.display = 'block';
+    }
+  }
+
+  // ── Routing ───────────────────────────────────────────────────────────
+  var _currentRoute = 'portal';
+  var _routeLoaded  = {};
+
+  function routeTo(routeName) {
+    var valid = ['portal','servers','leaderboard','inventory','shop','settings'];
+    if (valid.indexOf(routeName) === -1) routeName = 'portal';
+
+    _currentRoute = routeName;
+    location.replace('#' + routeName);
+
+    document.querySelectorAll('.route').forEach(function (el) {
+      el.classList.toggle('active', el.id === 'route-' + routeName);
+    });
+    document.querySelectorAll('.nav-tab').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.route === routeName);
+    });
+
+    if (!_routeLoaded[routeName]) {
+      _routeLoaded[routeName] = true;
+      loadRoute(routeName);
+    }
+  }
+
+  function loadRoute(route) {
+    switch (route) {
+      case 'servers':     loadServers();     break;
+      case 'leaderboard': loadLeaderboard(); break;
+      case 'inventory':   loadInventory();   break;
+      case 'shop':        loadShop();        break;
+    }
+  }
+
+  // Nav tab click handler
+  document.getElementById('main-nav').addEventListener('click', function (e) {
+    var tab = e.target.closest('.nav-tab');
+    if (tab && tab.dataset.route) routeTo(tab.dataset.route);
+  });
+
+  // ── Route loaders ─────────────────────────────────────────────────────
+  function loadServers() {
+    var el = document.getElementById('server-list');
+    apiFetch('/v1/servers').then(function (res) {
+      if (res.status !== 200 || !res.body.servers) {
+        el.innerHTML = '<div class="empty-state">Failed to load servers.</div>';
+        return;
+      }
+      var servers = res.body.servers;
+      if (!servers.length) {
+        el.innerHTML = '<div class="empty-state">No servers online right now.</div>';
+        return;
+      }
+      el.innerHTML = servers.map(function (s) {
+        var stateClass = ['starting','full'].indexOf(s.state) !== -1 ? s.state : 'open';
+        var canJoin = s.state === 'open';
+        return '<div class="server-row">' +
+          '<div class="server-mode">' + escHtml(s.mode) + '</div>' +
+          '<div class="server-name">' + escHtml(s.mapName) + '</div>' +
+          '<div class="server-players">' + s.playerCount + ' / ' + s.maxPlayers + '</div>' +
+          '<span class="server-state ' + stateClass + '">' + escHtml(s.state) + '</span>' +
+          (canJoin ? '<button class="btn-join-server" onclick="OV.joinMode(\'' + escHtml(s.mode) + '\')">Join</button>' : '<span></span>') +
+          '</div>';
+      }).join('');
+    }).catch(function () {
+      el.innerHTML = '<div class="empty-state">Could not reach API.</div>';
+    });
+  }
+
+  function loadLeaderboard() {
+    var el = document.getElementById('leaderboard-content');
+    apiFetch('/v1/leaderboard?limit=20').then(function (res) {
+      if (res.status !== 200 || !res.body.leaderboard) {
+        el.innerHTML = '<div class="empty-state">Failed to load leaderboard.</div>';
+        return;
+      }
+      var rows = res.body.leaderboard;
+      if (!rows.length) {
+        el.innerHTML = '<div class="empty-state">No entries yet. Play some matches!</div>';
+        return;
+      }
+      el.innerHTML = '<table class="lb-table"><thead><tr>' +
+        '<th>#</th><th>Player</th><th>XP</th><th>Balance</th>' +
+        '</tr></thead><tbody>' +
+        rows.map(function (e) {
+          var topClass = e.rank <= 3 ? ' top' : '';
+          return '<tr><td class="lb-rank' + topClass + '">' + e.rank + '</td>' +
+            '<td>' + escHtml(e.displayName) + '</td>' +
+            '<td class="lb-xp">' + e.xp + '</td>' +
+            '<td>' + e.currencyBalance + ' VC</td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }).catch(function () {
+      el.innerHTML = '<div class="empty-state">Could not reach API.</div>';
+    });
+  }
+
+  function loadInventory() {
+    if (!_session || !_session.steamId) {
+      document.getElementById('inventory-content').innerHTML =
+        '<div class="empty-state">Not signed in.</div>';
+      return;
+    }
+    var el = document.getElementById('inventory-content');
+    apiFetch('/v1/me?steamId=' + encodeURIComponent(_session.steamId)).then(function (res) {
+      if (res.status !== 200 || !res.body.inventory) {
+        el.innerHTML = '<div class="empty-state">Could not load inventory.</div>';
+        return;
+      }
+      var items = res.body.inventory;
+      if (!items.length) {
+        el.innerHTML = '<div class="empty-state">Your inventory is empty. Visit the Shop to get items!</div>';
+        return;
+      }
+      el.innerHTML = '<div class="items-grid">' + items.map(function (item) {
+        return '<div class="item-card">' +
+          '<div class="item-type">' + escHtml(item.itemType) + '</div>' +
+          '<div class="item-name">' + escHtml(item.displayName) + '</div>' +
+          '<div class="item-desc">' + escHtml(item.description || '') + '</div>' +
+          '<span class="item-owned">✓ Owned</span>' +
+          '</div>';
+      }).join('') + '</div>';
+    }).catch(function () {
+      el.innerHTML = '<div class="empty-state">Could not reach API.</div>';
+    });
+  }
+
+  function loadShop() {
+    var el = document.getElementById('shop-content');
+    apiFetch('/v1/shop').then(function (res) {
+      if (res.status !== 200 || !res.body.items) {
+        el.innerHTML = '<div class="empty-state">Could not load shop.</div>';
+        return;
+      }
+      var items = res.body.items.filter(function (i) { return i.enabled; });
+      var ownedIds = _profile ? (_profile.inventory || []).map(function (i) { return i.itemId; }) : [];
+      el.innerHTML = '<div class="items-grid">' + items.map(function (item) {
+        var owned = ownedIds.indexOf(item.itemId) !== -1;
+        return '<div class="item-card">' +
+          '<div class="item-type">' + escHtml(item.itemType) + '</div>' +
+          '<div class="item-name">' + escHtml(item.displayName) + '</div>' +
+          '<div class="item-desc">' + escHtml(item.description || '') + '</div>' +
+          '<div class="item-price">' + (item.price === 0 ? 'Free' : item.price + ' VC') + '</div>' +
+          (owned
+            ? '<span class="item-owned">✓ Owned</span>'
+            : '<button class="btn-buy" onclick="OV.buyItem(' + JSON.stringify(item.itemId) + ',' + item.price + ')" ' +
+              (!_session ? 'disabled' : '') + '>Buy</button>'
+          ) +
+          '</div>';
+      }).join('') + '</div>';
+    }).catch(function () {
+      el.innerHTML = '<div class="empty-state">Could not reach API.</div>';
+    });
+  }
+
+  // ── XSS helper ────────────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ── Public OV API (called by C++ and by page itself) ──────────────────
+  window.OV = {
+
+    // Called by C++ after GetTicketForWebApi + POST /v1/auth/steam succeed.
+    // data: { authenticated, sessionToken, steamId, displayName, error? }
+    onSteamAuthResult: function (data) {
+      var btn = document.getElementById('btn-steam-auth');
+      if (btn) btn.disabled = false;
+
+      if (data && data.authenticated && data.sessionToken) {
+        setAuthStatus('Authenticated!', 'success');
+        var session = {
+          sessionToken: data.sessionToken,
+          steamId:      data.steamId || '',
+          displayName:  data.displayName || '',
+          provider:     'steam'
+        };
+        saveSession(session);
+        setTimeout(function () { showMainUI(session); }, 300);
+      } else {
+        var errMsg = (data && data.error) ? data.error : 'Steam authentication failed.';
+        setAuthStatus(errMsg, 'error');
+      }
+    },
+
+    // Trigger Steam auth via C++ bridge.
+    steamAuth: function () {
+      var btn = document.getElementById('btn-steam-auth');
+      if (btn) btn.disabled = true;
+      setAuthStatus('Connecting to Steam\u2026');
+      // Navigate to bridge URL — C++ intercepts this and calls ov_auth_steam.
+      location.href = 'openvibe://auth/steam';
+    },
+
+    // Dev / local auth (no Steam) — uses POST /v1/auth/dev.
+    devAuth: function () {
+      var btn = document.getElementById('btn-dev-auth');
+      if (btn) btn.disabled = true;
+      setAuthStatus('Signing in (dev)\u2026');
+      apiFetch('/v1/auth/dev', {
+        method: 'POST',
+        body: JSON.stringify({ steamId: '76561198000000000', displayName: 'Dev Player' })
+      }).then(function (res) {
+        if (res.status === 200 && res.body.sessionToken) {
+          var session = {
+            sessionToken: res.body.sessionToken,
+            steamId:      res.body.player && res.body.player.steamId || '76561198000000000',
+            displayName:  res.body.player && res.body.player.displayName || 'Dev Player',
+            provider:     'dev'
+          };
+          saveSession(session);
+          setAuthStatus('Signed in!', 'success');
+          setTimeout(function () { showMainUI(session); }, 300);
+        } else {
+          setAuthStatus('Dev auth failed: ' + (res.body.error || 'unknown'), 'error');
+          if (btn) btn.disabled = false;
+        }
+      }).catch(function (e) {
+        setAuthStatus('Could not reach API.', 'error');
+        if (btn) btn.disabled = false;
+      });
+    },
+
+    // Join a game mode — uses openvibe:// bridge in-game, API otherwise.
+    joinMode: function (mode) {
+      if (embedded && shell === 'source') {
+        location.href = 'openvibe://join?mode=' + encodeURIComponent(mode);
+      } else {
+        toast('Connect to a Source server to play ' + mode + '.', 'info', 4000);
+      }
+    },
+
+    // Buy a shop item.
+    buyItem: function (itemId, price) {
+      if (!_session || !_session.steamId) { toast('Sign in first.', 'error'); return; }
+      apiFetch('/v1/shop/buy', {
+        method: 'POST',
+        body: JSON.stringify({ steamId: _session.steamId, itemId: itemId })
+      }).then(function (res) {
+        if (res.status === 200) {
+          toast('Purchased!', 'success');
+          _profile = res.body;
+          updateProfileBar(res.body);
+          _routeLoaded['shop'] = false;
+          _routeLoaded['inventory'] = false;
+          if (_currentRoute === 'shop') loadShop();
+        } else {
+          toast(res.body.error || 'Purchase failed.', 'error');
+        }
+      }).catch(function () { toast('Could not reach API.', 'error'); });
+    },
+
+    // Save settings from the settings panel.
+    saveSettings: function () {
+      var urlInput = document.getElementById('settings-api-url');
+      if (urlInput && urlInput.value) {
+        apiBase = urlInput.value.replace(/\/+$/, '');
+        try { localStorage.setItem('ov_api_url', apiBase); } catch (e) {}
+        toast('Settings saved.', 'success');
+      }
+    },
+
+    // Sign out.
+    signOut: function () {
+      clearSession();
+      _routeLoaded = {};
+      showAuthUI('');
+    },
+
+    // Called by C++ when the ready bridge is sent (openvibe://ready).
+    // C++ uses this to inject stored session tokens on page reload.
+    onReady: function () {}
+  };
+
+  // ── Startup: check stored session ─────────────────────────────────────
+  function init() {
+    if (devMode) {
+      var devSection = document.getElementById('devauth-section');
+      if (devSection) devSection.style.display = 'block';
+    }
+
+    var stored = loadStoredSession();
+    if (stored && stored.sessionToken) {
+      // Optimistically show main UI, verify in background.
+      _session = stored;
+      verifyToken(stored.sessionToken).then(function (valid) {
+        if (valid) {
+          showMainUI(stored);
+        } else {
+          showAuthUI('Your session expired. Please sign in again.');
+        }
+      });
+    } else {
+      showAuthUI('');
+    }
+
+    // Notify C++ that the page is ready (openvibe://ready bridge handler).
+    if (embedded && shell === 'source') {
+      var readyImg = new Image();
+      readyImg.src = 'openvibe://ready';
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+})();
+</script>
+</body>
+</html>

@@ -23,6 +23,9 @@
 
 extern CSteamAPIContext *steamapicontext;
 
+// Forward declaration: implemented in vgui_openvibe_menu.cpp.
+extern void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const char *pszSteamId, const char *pszDisplayName );
+
 static ConVar ov_api_url(
 	"ov_api_url",
 	"http://127.0.0.1:3000",
@@ -52,6 +55,19 @@ static ConVar ov_auth_identity(
 	"openvibe.games",
 	FCVAR_ARCHIVE,
 	"Steam Web API ticket identity for OpenVibe backend authentication." );
+
+static ConVar ov_session_token(
+	"ov_session_token",
+	"",
+	FCVAR_ARCHIVE | FCVAR_HIDDEN | FCVAR_PROTECTED,
+	"Stored OpenVibe session token (set after successful Steam auth)." );
+
+// Returns the current stored session token string.
+// Declared extern in vgui_openvibe_menu.cpp so the HTML bridge can read it.
+const char *OpenVibe_GetSessionToken()
+{
+	return ov_session_token.GetString();
+}
 
 static const char *s_OpenVibeModes[] =
 {
@@ -398,11 +414,30 @@ private:
 
 		if ( OV_ExtractJsonBool( szBody, "authenticated" ) )
 		{
-			Msg( "[OV Auth] Steam authentication accepted by OpenVibe API.\n" );
+			char szToken[512];
+			char szSteamId[32];
+			char szDisplayName[128];
+
+			szToken[0]       = '\0';
+			szSteamId[0]     = '\0';
+			szDisplayName[0] = '\0';
+
+			OV_ExtractJsonString( szBody, "sessionToken", szToken,       sizeof( szToken ) );
+			OV_ExtractJsonString( szBody, "steamId",      szSteamId,     sizeof( szSteamId ) );
+			// displayName is nested under "player"; OV_ExtractJsonString finds the
+			// first occurrence in the flat JSON text which is the player.displayName.
+			if ( !OV_ExtractJsonString( szBody, "displayName", szDisplayName, sizeof( szDisplayName ) ) )
+				Q_strncpy( szDisplayName, "Unknown", sizeof( szDisplayName ) );
+
+			ov_session_token.SetValue( szToken );
+
+			Msg( "[OV Auth] Steam authentication accepted by OpenVibe API. SteamID: %s\n", szSteamId );
+			OpenVibe_NotifyHTMLSteamAuth( true, szToken, szSteamId, szDisplayName );
 		}
 		else
 		{
 			Warning( "[OV Auth] OpenVibe API rejected or could not validate Steam ticket: %s\n", szBody );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "" );
 		}
 
 		ReleaseRequest();

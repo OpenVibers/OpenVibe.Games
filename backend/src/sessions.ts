@@ -8,8 +8,15 @@ export interface SessionInput {
   ttlSeconds: number;
 }
 
+export interface SessionData {
+  steamId: string;
+  provider: "dev" | "steam";
+  createdAt: string;
+}
+
 export interface OpenVibeSessionStore {
   createSession(input: SessionInput): Promise<void>;
+  getSession?(token: string): Promise<SessionData | null>;
   close?(): Promise<void>;
 }
 
@@ -57,6 +64,16 @@ export class RedisSessionStore implements OpenVibeSessionStore {
       "EX",
       input.ttlSeconds,
     );
+  }
+
+  async getSession(token: string): Promise<SessionData | null> {
+    if (this.redis.status === "wait") {
+      await this.redis.connect();
+    }
+
+    const raw = await this.redis.get(`openvibe:session:${token}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as SessionData;
   }
 
   async close(): Promise<void> {
