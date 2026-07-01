@@ -20,6 +20,12 @@
 
 using namespace vgui;
 
+// OPENVIBE_HTML_READY_FORWARD_DECLS
+// HandleBridgeURL() calls OpenVibe_OnHTMLReady() before its implementation later
+// in this file, so Linux/GCC needs an explicit forward declaration.
+void OpenVibe_OnHTMLReady();
+
+
 static ConVar ov_menu_url(
 	"ov_menu_url",
 	"http://127.0.0.1:3000/client/?embedded=1&shell=source#portal",
