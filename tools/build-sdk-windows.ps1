@@ -457,6 +457,14 @@ function Convert-GeneratedVcxprojsToWin32 {
     $text = $text -replace '\\lib\\public\\x64', '\lib\public'
     $text = $text -replace '/lib/public/x64', '/lib/public'
 
+    # OPENVIBE_WIN32_STEAM_API64_TO_STEAM_API_PATCH
+    # VPC-generated win64 projects keep steam_api64.lib in AdditionalDependencies.
+    # When coercing the project to Win32, force the x86 import/static-lib name.
+    $text = $text -replace '(?i)steam_api64\.lib', 'steam_api.lib'
+    $text = $text -replace '(?i)\\lib\\public\\x64\\steam_api\.lib', '\lib\public\steam_api.lib'
+    $text = $text -replace '(?i)/lib/public/x64/steam_api\.lib', '/lib/public/steam_api.lib'
+
+
     # Avoid Win32 warnings-as-errors while we are building modern VS2022 against old Source SDK code.
     $text = $text -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>'
     $text = $text -replace '<TreatWarningsAsErrors>true</TreatWarningsAsErrors>', '<TreatWarningsAsErrors>false</TreatWarningsAsErrors>'
@@ -558,6 +566,65 @@ function Copy-LibIfNeeded([string]$libName, [string]$destDir) {
   if ($found) {
     Say "copying fallback lib $($found.FullName) -> $dest"
     Copy-Item $found.FullName $dest -Force
+  }
+}
+
+
+# OPENVIBE_WIN32_STEAM_API_COMPAT_LIBS
+function New-OpenVibeEmptyStaticLib([string]$OutLib, [string]$SymbolName) {
+  $work = Join-Path $LogDir "win32-empty-static-libs"
+  New-Item -ItemType Directory -Force -Path $work | Out-Null
+
+  $src = Join-Path $work "$SymbolName.c"
+  $obj = Join-Path $work "$SymbolName.obj"
+  "void $SymbolName(void) {}" | Set-Content -Encoding ascii -Path $src
+
+  Say "creating empty x86 compatibility lib $OutLib"
+  & cl.exe /nologo /c /TC $src /Fo$obj 2>&1 | Tee-Object -FilePath (Join-Path $LogDir "cl-$SymbolName.log") | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "cl.exe failed while creating $OutLib" }
+
+  & lib.exe /nologo /machine:x86 /out:$OutLib $obj 2>&1 | Tee-Object -FilePath (Join-Path $LogDir "lib-$SymbolName.log") | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "lib.exe failed while creating $OutLib" }
+}
+
+function Ensure-Win32SteamApiCompatibilityLibs {
+  if ($script:OpenVibeTargetArch -ne "x86") { return }
+
+  $publicLibDir = Join-Path $Src "lib/public"
+  New-Item -ItemType Directory -Force -Path $publicLibDir | Out-Null
+  $log = Join-Path $LogDir "win32-steam-api-compat.txt"
+  "=== Ensure-Win32SteamApiCompatibilityLibs ===" | Out-File $log
+  "publicLibDir=$publicLibDir" | Out-File $log -Append
+
+  foreach ($libName in @("steam_api.lib", "steam_api64.lib")) {
+    $dest = Join-Path $publicLibDir $libName
+    if (Test-Path $dest) {
+      $item = Get-Item $dest
+      "[present] $libName length=$($item.Length)" | Out-File $log -Append
+      continue
+    }
+
+    # Prefer a real x86 lib if Valve's tree/bootstrap provided one somewhere.
+    $found = Get-ChildItem -Path $Sdk -Recurse -File -Filter $libName -ErrorAction SilentlyContinue |
+      Where-Object { $_.FullName -notmatch "artifacts|windows-build-debug|_deps|openvibe\.games" } |
+      Sort-Object @{ Expression = { if ($_.FullName -match "\\x64\\|/x64/|\\win64\\|/win64/|64") { 100 } else { 0 } } }, LastWriteTime -Descending |
+      Select-Object -First 1
+
+    if ($found) {
+      Say "copying Steam API lib $($found.FullName) -> $dest"
+      Copy-Item $found.FullName $dest -Force
+      "[copied] $libName <- $($found.FullName)" | Out-File $log -Append
+      continue
+    }
+
+    # The current converted HL2MP client link only needs the archive file to exist;
+    # if actual SteamAPI imports appear later, the next linker error will be unresolved
+    # externals instead of missing input file. This keeps the build moving and logs it.
+    $symbol = ($libName -replace '[^A-Za-z0-9]+','_') + "_openvibe_stub"
+    New-OpenVibeEmptyStaticLib $dest $symbol
+    if (!(Test-Path $dest)) { throw "Expected compatibility lib was not created: $dest" }
+    $item = Get-Item $dest
+    "[stubbed] $libName length=$($item.Length)" | Out-File $log -Append
   }
 }
 
@@ -878,6 +945,9 @@ Say "selected server project=$($serverProject.FullName)"
 Patch-GeneratedPythonCustomBuildCommands
 
 Ensure-ServerNutHeaders
+
+# OPENVIBE_WIN32_STEAM_API_COMPAT_CALL
+Ensure-Win32SteamApiCompatibilityLibs
 Build-SourceSdkDependencyProjects
 
 # After the static dependency build pass, run the dynamic resolver so that every
