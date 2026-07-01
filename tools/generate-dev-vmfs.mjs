@@ -13,6 +13,21 @@ const textures = {
   trigger: "TOOLS/TOOLSTRIGGER",
 };
 
+const useAuthenticatedJoin = process.env.OPENVIBE_USE_OV_JOIN === "1";
+
+const localHosts = {
+  hub: "127.0.0.1",
+  prophunt: "127.0.0.1",
+  deathrun: "127.0.0.1",
+  fortwars: "127.0.0.1",
+  traitortown: "127.0.0.1",
+};
+
+function joinCommand(mode, port) {
+  if (useAuthenticatedJoin) return `ov_join ${mode}`;
+  return `connect ${localHosts[mode] ?? localHosts.hub}:${port}`;
+}
+
 function id() {
   return nextId++;
 }
@@ -197,7 +212,6 @@ function propNpc(name, origin, angle = 180) {
     angles: `0 ${angle} 0`,
     model: "models/Humans/Group03/male_07.mdl",
     solid: "0",
-    DefaultAnim: "idle_all_01",
   });
 }
 
@@ -348,7 +362,7 @@ function hub() {
             [pad.origin[0] - 128, pad.origin[1] - 128, 16],
             [pad.origin[0] + 128, pad.origin[1] + 128, 128],
             commandTarget,
-            `connect 127.0.0.1:${pad.port}`,
+            joinCommand(pad.mode, pad.port),
           ),
         ];
       }),
@@ -417,7 +431,7 @@ function minigame(mapName, modeName, returnX = 0) {
         [returnX - 128, 580, 16],
         [returnX + 128, 836, 128],
         "cmd_return_hub",
-        "connect 127.0.0.1:27015",
+        joinCommand("hub", 27015),
       ),
     ];
 

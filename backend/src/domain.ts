@@ -4,7 +4,62 @@ export type GameMode = (typeof modes)[number];
 
 export type ServerState = "starting" | "open" | "full" | "ending" | "offline";
 
-export type ItemType = "player_model" | "trail" | "nameplate";
+export type ItemType =
+  | "player_model"
+  | "trail"
+  | "nameplate"
+  | "title"
+  | "spray"
+  | "emote"
+  | "fortwars_part"
+  | "traitortown_cosmetic";
+
+export type PackageType = "gamemode" | "addon" | "library";
+export type PackageRealm = "server" | "client" | "shared";
+
+export interface ScriptPackage {
+  packageId: string;
+  packageType: PackageType;
+  displayName: string;
+  description: string;
+  version: string;
+  authorSteamId: string | null;
+  manifestJson: Record<string, unknown>;
+  trusted: boolean;
+  enabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScriptPackageFile {
+  packageId: string;
+  path: string;
+  sha256: string;
+  sizeBytes: number;
+  realm: PackageRealm;
+  content: string;
+  createdAt: string;
+}
+
+export interface UpsertScriptPackageInput {
+  packageId: string;
+  packageType: PackageType;
+  displayName: string;
+  description: string;
+  version: string;
+  authorSteamId?: string | null;
+  manifestJson?: Record<string, unknown>;
+  trusted?: boolean;
+}
+
+export interface UpsertScriptPackageFileInput {
+  packageId: string;
+  path: string;
+  sha256: string;
+  sizeBytes: number;
+  realm: PackageRealm;
+  content: string;
+}
 
 export interface Player {
   steamId: string;
@@ -82,6 +137,45 @@ export interface TravelReservation {
   expiresAt: string;
 }
 
+export interface PartyMember {
+  steamId: string;
+  displayName: string;
+  leader: boolean;
+  joinedAt: string;
+}
+
+export interface Party {
+  partyId: string;
+  leaderSteamId: string;
+  members: PartyMember[];
+}
+
+export interface PartyInvite {
+  inviteId: string;
+  partyId: string;
+  invitedSteamId: string;
+  invitedBySteamId: string;
+  status: "pending" | "accepted" | "declined" | "expired";
+  expiresAt: string;
+}
+
+export interface PartyTravelReservation {
+  partyId: string;
+  mode: GameMode;
+  serverId: string;
+  connect: string;
+  reservations: TravelReservation[];
+}
+
+export interface AuditEvent {
+  auditId: string;
+  actorSteamId: string;
+  action: string;
+  targetSteamId: string | null;
+  reason: string;
+  createdAt: string;
+}
+
 export interface JoinTokenValidation {
   valid: boolean;
   serverId?: string;
@@ -98,6 +192,19 @@ export interface MatchRewardInput {
   rewardCurrency: number;
   rewardXp: number;
   stats?: Record<string, unknown>;
+}
+
+export interface BatchMatchRewardInput {
+  matchId: string;
+  serverId: string;
+  serverSecret: string;
+  mode: GameMode;
+  results: Array<{
+    steamId: string;
+    rewardCurrency: number;
+    rewardXp: number;
+    stats?: Record<string, unknown>;
+  }>;
 }
 
 export interface UpsertShopItemInput {
@@ -120,12 +227,41 @@ export interface OpenVibeRepository {
   heartbeat(input: HeartbeatInput): Promise<GameServer | null>;
   listServers(mode?: GameMode): Promise<GameServer[]>;
   reserveTravel(input: { steamId: string; mode: GameMode }): Promise<TravelReservation | null>;
+  createParty(input: { leaderSteamId: string }): Promise<Party>;
+  inviteToParty(input: {
+    partyId: string;
+    invitedBySteamId: string;
+    invitedSteamId: string;
+  }): Promise<PartyInvite>;
+  acceptPartyInvite(input: { inviteId: string; steamId: string }): Promise<Party>;
+  getParty(partyId: string): Promise<Party | null>;
+  reservePartyTravel(input: {
+    partyId: string;
+    leaderSteamId: string;
+    mode: GameMode;
+  }): Promise<PartyTravelReservation | null>;
   validateJoinToken(input: {
     token: string;
     steamId: string;
     serverId: string;
   }): Promise<JoinTokenValidation>;
   recordMatchReward(input: MatchRewardInput): Promise<PlayerProfile | null>;
+  recordBatchMatchRewards(input: BatchMatchRewardInput): Promise<PlayerProfile[] | null>;
   getLeaderboard(options: { limit: number; mode?: GameMode }): Promise<LeaderboardEntry[]>;
   upsertShopItem(input: UpsertShopItemInput): Promise<ShopItem>;
+  recordAuditEvent(input: {
+    actorSteamId: string;
+    action: string;
+    targetSteamId?: string | null;
+    reason: string;
+  }): Promise<AuditEvent>;
+  listAuditEvents(options: { limit: number }): Promise<AuditEvent[]>;
+
+  // Script packages
+  listScriptPackages(): Promise<ScriptPackage[]>;
+  getScriptPackage(packageId: string): Promise<ScriptPackage | null>;
+  listScriptPackageFiles(packageId: string): Promise<ScriptPackageFile[]>;
+  upsertScriptPackage(input: UpsertScriptPackageInput): Promise<ScriptPackage>;
+  upsertScriptPackageFile(input: UpsertScriptPackageFileInput): Promise<ScriptPackageFile>;
+  setScriptPackageEnabled(packageId: string, enabled: boolean): Promise<ScriptPackage | null>;
 }

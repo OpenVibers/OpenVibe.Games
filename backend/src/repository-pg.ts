@@ -1,18 +1,27 @@
 import { Pool } from "pg";
 import {
+  BatchMatchRewardInput,
   GameMode,
   GameServer,
   HeartbeatInput,
   InventoryItem,
+  AuditEvent,
   JoinTokenValidation,
   LeaderboardEntry,
   MatchRewardInput,
   OpenVibeRepository,
+  Party,
+  PartyInvite,
+  PartyTravelReservation,
   Player,
   PlayerProfile,
   RegisterServerInput,
+  ScriptPackage,
+  ScriptPackageFile,
   ShopItem,
   TravelReservation,
+  UpsertScriptPackageFileInput,
+  UpsertScriptPackageInput,
   UpsertShopItemInput,
 } from "./domain.js";
 import { RepositoryError } from "./repository-memory.js";
@@ -316,6 +325,165 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     };
   }
 
+  async createParty(input: { leaderSteamId: string }): Promise<Party> {
+    const partyId = nanoid(16);
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        "INSERT INTO parties (party_id, leader_steam_id) VALUES ($1, $2)",
+        [partyId, input.leaderSteamId],
+      );
+      await client.query(
+        "INSERT INTO party_members (party_id, steam_id) VALUES ($1, $2)",
+        [partyId, input.leaderSteamId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    const party = await this.getParty(partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    return party;
+  }
+
+  async inviteToParty(input: {
+    partyId: string;
+    invitedBySteamId: string;
+    invitedSteamId: string;
+  }): Promise<PartyInvite> {
+    const member = await this.pool.query(
+      "SELECT 1 FROM party_members WHERE party_id = $1 AND steam_id = $2",
+      [input.partyId, input.invitedBySteamId],
+    );
+    if (member.rowCount !== 1) throw new RepositoryError("not_party_member", 403);
+
+    const inviteId = nanoid(16);
+    const result = await this.pool.query(
+      `
+      INSERT INTO party_invites (
+        invite_id, party_id, invited_by_steam_id, invited_steam_id, status, expires_at
+      )
+      VALUES ($1, $2, $3, $4, 'pending', now() + interval '5 minutes')
+      RETURNING invite_id, party_id, invited_by_steam_id, invited_steam_id, status, expires_at
+      `,
+      [inviteId, input.partyId, input.invitedBySteamId, input.invitedSteamId],
+    );
+    return mapPartyInvite(result.rows[0]);
+  }
+
+  async acceptPartyInvite(input: { inviteId: string; steamId: string }): Promise<Party> {
+    const client = await this.pool.connect();
+    let partyId = "";
+    try {
+      await client.query("BEGIN");
+      const invite = await client.query(
+        `
+        UPDATE party_invites
+        SET status = 'accepted'
+        WHERE invite_id = $1
+          AND invited_steam_id = $2
+          AND status = 'pending'
+          AND expires_at > now()
+        RETURNING party_id
+        `,
+        [input.inviteId, input.steamId],
+      );
+      if (invite.rowCount !== 1) throw new RepositoryError("invite_not_found", 404);
+      partyId = String(invite.rows[0].party_id);
+      await client.query(
+        `
+        INSERT INTO party_members (party_id, steam_id)
+        VALUES ($1, $2)
+        ON CONFLICT DO NOTHING
+        `,
+        [partyId, input.steamId],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+    const party = await this.getParty(partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    return party;
+  }
+
+  async getParty(partyId: string): Promise<Party | null> {
+    const result = await this.pool.query(
+      `
+      SELECT p.party_id, p.leader_steam_id, pm.steam_id, pm.joined_at, pl.display_name
+      FROM parties p
+      JOIN party_members pm ON pm.party_id = p.party_id
+      JOIN players pl ON pl.steam_id = pm.steam_id
+      WHERE p.party_id = $1
+      ORDER BY pm.joined_at
+      `,
+      [partyId],
+    );
+    if (result.rowCount === 0) return null;
+    return mapParty(result.rows);
+  }
+
+  async reservePartyTravel(input: {
+    partyId: string;
+    leaderSteamId: string;
+    mode: GameMode;
+  }): Promise<PartyTravelReservation | null> {
+    const party = await this.getParty(input.partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    if (party.leaderSteamId !== input.leaderSteamId) throw new RepositoryError("party_leader_required", 403);
+
+    const serverResult = await this.pool.query(
+      `
+      SELECT server_id, public_host, port
+      FROM game_servers
+      WHERE mode = $1
+        AND state = 'open'
+        AND max_players - player_count >= $2
+        AND last_heartbeat > now() - interval '60 seconds'
+      ORDER BY player_count DESC, last_heartbeat DESC
+      LIMIT 1
+      `,
+      [input.mode, party.members.length],
+    );
+    if (serverResult.rowCount !== 1) return null;
+
+    const server = serverResult.rows[0];
+    const reservations: TravelReservation[] = [];
+    for (const member of party.members) {
+      const token = nanoid(32);
+      const tokenResult = await this.pool.query(
+        `
+        INSERT INTO join_tokens (token, steam_id, server_id, mode, expires_at)
+        VALUES ($1, $2, $3, $4, now() + interval '90 seconds')
+        RETURNING expires_at
+        `,
+        [token, member.steamId, server.server_id, input.mode],
+      );
+      reservations.push({
+        mode: input.mode,
+        serverId: String(server.server_id),
+        connect: `${server.public_host}:${server.port}`,
+        joinToken: token,
+        expiresAt: new Date(tokenResult.rows[0].expires_at).toISOString(),
+      });
+    }
+
+    return {
+      partyId: input.partyId,
+      mode: input.mode,
+      serverId: String(server.server_id),
+      connect: `${server.public_host}:${server.port}`,
+      reservations,
+    };
+  }
+
   async validateJoinToken(input: {
     token: string;
     steamId: string;
@@ -409,6 +577,84 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     return this.getProfile(input.steamId);
   }
 
+  async recordBatchMatchRewards(input: BatchMatchRewardInput): Promise<PlayerProfile[] | null> {
+    const client = await this.pool.connect();
+    const rewarded: string[] = [];
+
+    try {
+      await client.query("BEGIN");
+
+      const serverResult = await client.query(
+        "SELECT 1 FROM game_servers WHERE server_id = $1 AND server_secret = $2",
+        [input.serverId, input.serverSecret],
+      );
+      if (serverResult.rowCount !== 1) {
+        await client.query("COMMIT");
+        return null;
+      }
+
+      for (const entry of input.results) {
+        const inserted = await client.query(
+          `
+          INSERT INTO match_results (
+            match_id, server_id, steam_id, mode, reward_currency, reward_xp, stats
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
+          ON CONFLICT (match_id, steam_id) DO NOTHING
+          RETURNING result_id
+          `,
+          [
+            input.matchId,
+            input.serverId,
+            entry.steamId,
+            input.mode,
+            entry.rewardCurrency,
+            entry.rewardXp,
+            JSON.stringify(entry.stats ?? {}),
+          ],
+        );
+
+        if (inserted.rowCount === 1) {
+          await client.query(
+            `
+            UPDATE players
+            SET currency_balance = currency_balance + $2,
+                xp = xp + $3,
+                updated_at = now()
+            WHERE steam_id = $1
+            `,
+            [entry.steamId, entry.rewardCurrency, entry.rewardXp],
+          );
+
+          await client.query(
+            `
+            INSERT INTO currency_ledger (steam_id, delta, reason, idempotency_key)
+            VALUES ($1, $2, 'match_reward', $3)
+            ON CONFLICT DO NOTHING
+            `,
+            [entry.steamId, entry.rewardCurrency, `match:${input.matchId}:${entry.steamId}`],
+          );
+
+          rewarded.push(entry.steamId);
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    const profiles: PlayerProfile[] = [];
+    for (const steamId of rewarded) {
+      const profile = await this.getProfile(steamId);
+      if (profile) profiles.push(profile);
+    }
+    return profiles;
+  }
+
   async getLeaderboard(options: { limit: number; mode?: GameMode }): Promise<LeaderboardEntry[]> {
     const result = await this.pool.query(
       `
@@ -456,6 +702,128 @@ export class PgOpenVibeRepository implements OpenVibeRepository {
     );
     return mapShopItem(result.rows[0]);
   }
+
+  async recordAuditEvent(input: {
+    actorSteamId: string;
+    action: string;
+    targetSteamId?: string | null;
+    reason: string;
+  }): Promise<AuditEvent> {
+    const result = await this.pool.query(
+      `
+      INSERT INTO audit_events (audit_id, actor_steam_id, action, target_steam_id, reason)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING audit_id, actor_steam_id, action, target_steam_id, reason, created_at
+      `,
+      [nanoid(16), input.actorSteamId, input.action, input.targetSteamId ?? null, input.reason],
+    );
+    return mapAuditEvent(result.rows[0]);
+  }
+
+  async listAuditEvents(options: { limit: number }): Promise<AuditEvent[]> {
+    const result = await this.pool.query(
+      `
+      SELECT audit_id, actor_steam_id, action, target_steam_id, reason, created_at
+      FROM audit_events
+      ORDER BY created_at DESC
+      LIMIT $1
+      `,
+      [options.limit],
+    );
+    return result.rows.map(mapAuditEvent);
+  }
+
+  async listScriptPackages(): Promise<ScriptPackage[]> {
+    const result = await this.pool.query(
+      `SELECT package_id, package_type, display_name, description, version,
+              author_steam_id, manifest_json, trusted, enabled, created_at, updated_at
+       FROM script_packages
+       ORDER BY created_at ASC`,
+    );
+    return result.rows.map(mapScriptPackage);
+  }
+
+  async getScriptPackage(packageId: string): Promise<ScriptPackage | null> {
+    const result = await this.pool.query(
+      `SELECT package_id, package_type, display_name, description, version,
+              author_steam_id, manifest_json, trusted, enabled, created_at, updated_at
+       FROM script_packages WHERE package_id = $1`,
+      [packageId],
+    );
+    return result.rows[0] ? mapScriptPackage(result.rows[0]) : null;
+  }
+
+  async upsertScriptPackage(input: UpsertScriptPackageInput): Promise<ScriptPackage> {
+    const result = await this.pool.query(
+      `
+      INSERT INTO script_packages
+        (package_id, package_type, display_name, description, version, author_steam_id, manifest_json, trusted)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      ON CONFLICT (package_id) DO UPDATE SET
+        package_type    = EXCLUDED.package_type,
+        display_name    = EXCLUDED.display_name,
+        description     = EXCLUDED.description,
+        version         = EXCLUDED.version,
+        author_steam_id = EXCLUDED.author_steam_id,
+        manifest_json   = EXCLUDED.manifest_json,
+        trusted         = EXCLUDED.trusted,
+        updated_at      = now()
+      RETURNING package_id, package_type, display_name, description, version,
+                author_steam_id, manifest_json, trusted, enabled, created_at, updated_at
+      `,
+      [
+        input.packageId,
+        input.packageType,
+        input.displayName,
+        input.description,
+        input.version,
+        input.authorSteamId ?? null,
+        JSON.stringify(input.manifestJson ?? {}),
+        input.trusted ?? false,
+      ],
+    );
+    return mapScriptPackage(result.rows[0]);
+  }
+
+  async listScriptPackageFiles(packageId: string): Promise<ScriptPackageFile[]> {
+    const result = await this.pool.query(
+      `SELECT package_id, path, sha256, size_bytes, realm, content, created_at
+       FROM script_package_files
+       WHERE package_id = $1
+       ORDER BY path`,
+      [packageId],
+    );
+    return result.rows.map(mapScriptPackageFile);
+  }
+
+  async upsertScriptPackageFile(input: UpsertScriptPackageFileInput): Promise<ScriptPackageFile> {
+    const result = await this.pool.query(
+      `
+      INSERT INTO script_package_files (package_id, path, sha256, size_bytes, realm, content)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (package_id, path) DO UPDATE SET
+        sha256     = EXCLUDED.sha256,
+        size_bytes = EXCLUDED.size_bytes,
+        realm      = EXCLUDED.realm,
+        content    = EXCLUDED.content
+      RETURNING package_id, path, sha256, size_bytes, realm, content, created_at
+      `,
+      [input.packageId, input.path, input.sha256, input.sizeBytes, input.realm, input.content],
+    );
+    return mapScriptPackageFile(result.rows[0]);
+  }
+
+  async setScriptPackageEnabled(packageId: string, enabled: boolean): Promise<ScriptPackage | null> {
+    const result = await this.pool.query(
+      `UPDATE script_packages
+       SET enabled = $2, updated_at = now()
+       WHERE package_id = $1
+       RETURNING package_id, package_type, display_name, description, version,
+                 author_steam_id, manifest_json, trusted, enabled, created_at, updated_at`,
+      [packageId, enabled],
+    );
+    return result.rows[0] ? mapScriptPackage(result.rows[0]) : null;
+  }
 }
 
 function mapPlayer(row: Record<string, unknown>): Player {
@@ -499,5 +867,73 @@ function mapServer(row: Record<string, unknown>): GameServer {
     playerCount: Number(row.player_count),
     state: row.state as GameServer["state"],
     lastHeartbeat: new Date(row.last_heartbeat as string | Date).toISOString(),
+  };
+}
+
+function mapPartyInvite(row: Record<string, unknown>): PartyInvite {
+  return {
+    inviteId: String(row.invite_id),
+    partyId: String(row.party_id),
+    invitedBySteamId: String(row.invited_by_steam_id),
+    invitedSteamId: String(row.invited_steam_id),
+    status: row.status as PartyInvite["status"],
+    expiresAt: new Date(row.expires_at as string | Date).toISOString(),
+  };
+}
+
+function mapParty(rows: Record<string, unknown>[]): Party {
+  const first = rows[0];
+  const leaderSteamId = String(first.leader_steam_id);
+  return {
+    partyId: String(first.party_id),
+    leaderSteamId,
+    members: rows.map((row) => {
+      const steamId = String(row.steam_id);
+      return {
+        steamId,
+        displayName: String(row.display_name),
+        leader: steamId === leaderSteamId,
+        joinedAt: new Date(row.joined_at as string | Date).toISOString(),
+      };
+    }),
+  };
+}
+
+function mapAuditEvent(row: Record<string, unknown>): AuditEvent {
+  return {
+    auditId: String(row.audit_id),
+    actorSteamId: String(row.actor_steam_id),
+    action: String(row.action),
+    targetSteamId: row.target_steam_id ? String(row.target_steam_id) : null,
+    reason: String(row.reason),
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+  };
+}
+
+function mapScriptPackage(row: Record<string, unknown>): ScriptPackage {
+  return {
+    packageId: String(row.package_id),
+    packageType: row.package_type as ScriptPackage["packageType"],
+    displayName: String(row.display_name),
+    description: String(row.description),
+    version: String(row.version),
+    authorSteamId: row.author_steam_id ? String(row.author_steam_id) : null,
+    manifestJson: (row.manifest_json ?? {}) as Record<string, unknown>,
+    trusted: Boolean(row.trusted),
+    enabled: Boolean(row.enabled),
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
+    updatedAt: new Date(row.updated_at as string | Date).toISOString(),
+  };
+}
+
+function mapScriptPackageFile(row: Record<string, unknown>): ScriptPackageFile {
+  return {
+    packageId: String(row.package_id),
+    path: String(row.path),
+    sha256: String(row.sha256),
+    sizeBytes: Number(row.size_bytes),
+    realm: row.realm as ScriptPackageFile["realm"],
+    content: String(row.content),
+    createdAt: new Date(row.created_at as string | Date).toISOString(),
   };
 }

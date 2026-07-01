@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { MemoryOpenVibeRepository } from "./repository-memory.js";
+import { SessionData, SessionInput } from "./sessions.js";
 
 const steamId = "76561198000000000";
 const serverSecret = "dev-secret";
@@ -29,6 +30,73 @@ describe("OpenVibe API vertical slice", () => {
     expect(body.player.displayName).toBe("Mapper");
     expect(body.player.currencyBalance).toBe(250);
     expect(body.inventory.map((item: { itemId: string }) => item.itemId)).toContain("model_rebel");
+
+    await app.close();
+  });
+
+  it("writes auth sessions to the configured session store", async () => {
+    const sessions: SessionInput[] = [];
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      sessionStore: {
+        async createSession(input) {
+          sessions.push(input);
+        },
+      },
+    });
+    await app.ready();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Session Tester" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sessionToken).toMatch(/^dev\.76561198000000000\./);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({
+      steamId,
+      provider: "dev",
+      ttlSeconds: 86400,
+    });
+
+    await app.close();
+  });
+
+  it("keeps Steam auth disabled until Steam credentials are configured", async () => {
+    const app = await testApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/auth/steam",
+      payload: {
+        ticket: "0123456789abcdef",
+        identity: "openvibe.games",
+      },
+    });
+
+    expect(response.statusCode).toBe(501);
+    expect(response.json().error).toBe("steam_auth_not_configured");
+
+    await app.close();
+  });
+
+  it("returns a CDN asset manifest for shop-backed cosmetics", async () => {
+    const app = await testApp();
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/assets/manifest",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.cdnBaseUrl).toBe("https://openvibe.games/cdn");
+    expect(body.assets.some((asset: { itemId: string; url: string }) =>
+      asset.itemId === "trail_blue" && asset.url.includes("https://openvibe.games/cdn/"),
+    )).toBe(true);
 
     await app.close();
   });
@@ -241,6 +309,340 @@ describe("OpenVibe API vertical slice", () => {
     });
 
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("supports party invites and capacity-aware party travel", async () => {
+    const app = await testApp();
+    const friendSteamId = "76561198000000003";
+
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Party Leader" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: friendSteamId, displayName: "Party Friend" } });
+
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "party-prophunt-1", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27016, maxPlayers: 1 } });
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "party-prophunt-2", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27026, maxPlayers: 4 } });
+
+    const partyRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties",
+      payload: { leaderSteamId: steamId },
+    });
+    expect(partyRes.statusCode).toBe(200);
+    const party = partyRes.json();
+
+    const inviteRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/invite",
+      payload: { partyId: party.partyId, invitedBySteamId: steamId, invitedSteamId: friendSteamId },
+    });
+    expect(inviteRes.statusCode).toBe(200);
+
+    const acceptRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/invite/accept",
+      payload: { inviteId: inviteRes.json().inviteId, steamId: friendSteamId },
+    });
+    expect(acceptRes.json().members).toHaveLength(2);
+
+    const travelRes = await app.inject({
+      method: "POST",
+      url: "/v1/parties/travel",
+      payload: { partyId: party.partyId, leaderSteamId: steamId, mode: "prophunt" },
+    });
+    expect(travelRes.statusCode).toBe(200);
+    expect(travelRes.json().serverId).toBe("party-prophunt-2");
+    expect(travelRes.json().reservations).toHaveLength(2);
+
+    await app.close();
+  });
+
+  it("records and lists admin audit events", async () => {
+    const adminSecret = "test-admin-secret";
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      adminSecret,
+    });
+    await app.ready();
+
+    const event = await app.inject({
+      method: "POST",
+      url: "/v1/admin/audit/events",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        actorSteamId: steamId,
+        action: "moderation.note",
+        targetSteamId: "76561198000000004",
+        reason: "Testing moderation audit trail.",
+      },
+    });
+    expect(event.statusCode).toBe(200);
+    expect(event.json().action).toBe("moderation.note");
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/v1/admin/audit/events?limit=10",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().events).toHaveLength(1);
+
+    await app.close();
+  });
+
+  it("script packages: create, list, get, upload files, enable/disable, and 404 on missing", async () => {
+    const adminSecret = "test-admin-secret";
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      adminSecret,
+    });
+    await app.ready();
+
+    // List returns empty initially
+    const empty = await app.inject({ method: "GET", url: "/v1/scripts/packages" });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json().packages).toHaveLength(0);
+
+    // GET unknown package returns 404
+    const miss = await app.inject({ method: "GET", url: "/v1/scripts/packages/no-such-pkg" });
+    expect(miss.statusCode).toBe(404);
+
+    // GET files for unknown package returns 404
+    const missFils = await app.inject({
+      method: "GET",
+      url: "/v1/scripts/packages/no-such-pkg/files",
+    });
+    expect(missFils.statusCode).toBe(404);
+
+    // Admin: create a package
+    const create = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        packageId: "test-gamemode",
+        packageType: "gamemode",
+        displayName: "Test Gamemode",
+        description: "A test gamemode package.",
+        version: "1.0.0",
+      },
+    });
+    expect(create.statusCode).toBe(200);
+    expect(create.json().packageId).toBe("test-gamemode");
+    expect(create.json().enabled).toBe(false);
+
+    // List now returns the package
+    const listed = await app.inject({ method: "GET", url: "/v1/scripts/packages" });
+    expect(listed.json().packages).toHaveLength(1);
+
+    // GET by id works
+    const got = await app.inject({ method: "GET", url: "/v1/scripts/packages/test-gamemode" });
+    expect(got.statusCode).toBe(200);
+    expect(got.json().displayName).toBe("Test Gamemode");
+
+    // Files list is empty before upload
+    const emptyFiles = await app.inject({
+      method: "GET",
+      url: "/v1/scripts/packages/test-gamemode/files",
+    });
+    expect(emptyFiles.statusCode).toBe(200);
+    expect(emptyFiles.json().files).toHaveLength(0);
+
+    // Upload a file with wrong admin secret fails
+    const badUpload = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/files",
+      headers: { "x-admin-secret": "wrong" },
+      payload: {
+        path: "gamemodes/test/server.js",
+        sha256: "abc123",
+        sizeBytes: 42,
+        realm: "server",
+        content: "OV.log('hello');",
+      },
+    });
+    expect(badUpload.statusCode).toBe(403);
+
+    // Upload a file to unknown package returns 404
+    const unknownPkg = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/no-such-pkg/files",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        path: "gamemodes/test/server.js",
+        sha256: "a".repeat(64),
+        sizeBytes: 42,
+        realm: "server",
+        content: "OV.log('hello');",
+      },
+    });
+    expect(unknownPkg.statusCode).toBe(404);
+
+    // Upload a file successfully
+    const upload = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/files",
+      headers: { "x-admin-secret": adminSecret },
+      payload: {
+        path: "gamemodes/test/server.js",
+        sha256: "a".repeat(64),
+        sizeBytes: 42,
+        realm: "server",
+        content: "OV.log('hello');",
+      },
+    });
+    expect(upload.statusCode).toBe(200);
+    expect(upload.json().path).toBe("gamemodes/test/server.js");
+    expect(upload.json().realm).toBe("server");
+
+    // Files list now has the uploaded file
+    const withFile = await app.inject({
+      method: "GET",
+      url: "/v1/scripts/packages/test-gamemode/files",
+    });
+    expect(withFile.json().files).toHaveLength(1);
+    expect(withFile.json().files[0].sha256).toBe("a".repeat(64));
+
+    // Enable the package
+    const enabled = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/enable",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(enabled.statusCode).toBe(200);
+    expect(enabled.json().enabled).toBe(true);
+
+    // Disable the package
+    const disabled = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/test-gamemode/disable",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().enabled).toBe(false);
+
+    // Enable/disable on unknown package returns 404
+    const enableMiss = await app.inject({
+      method: "POST",
+      url: "/v1/admin/scripts/packages/no-such-pkg/enable",
+      headers: { "x-admin-secret": adminSecret },
+    });
+    expect(enableMiss.statusCode).toBe(404);
+
+    await app.close();
+  });
+
+  it("batch match rewards: rewards multiple players idempotently and rejects wrong secret", async () => {
+    const app = await testApp();
+    const player2 = "76561198000000010";
+    const player3 = "76561198000000011";
+
+    // Register players
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Batch Player 1" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: player2, displayName: "Batch Player 2" } });
+    await app.inject({ method: "POST", url: "/v1/auth/dev",
+      payload: { steamId: player3, displayName: "Batch Player 3" } });
+
+    // Register server
+    await app.inject({ method: "POST", url: "/v1/servers/register",
+      payload: { serverId: "local-prophunt-batch", serverSecret, mode: "prophunt",
+        mapName: "ph_openvibe_dev", publicHost: "127.0.0.1", port: 27099, maxPlayers: 24 } });
+
+    const batchPayload = {
+      matchId: "prophunt-round-batch-1",
+      serverId: "local-prophunt-batch",
+      serverSecret,
+      mode: "prophunt",
+      results: [
+        { steamId, rewardCurrency: 50, rewardXp: 100, stats: { winner: true } },
+        { steamId: player2, rewardCurrency: 25, rewardXp: 50 },
+        { steamId: player3, rewardCurrency: 10, rewardXp: 20 },
+      ],
+    };
+
+    // Wrong secret is rejected
+    const badSecret = await app.inject({
+      method: "POST",
+      url: "/v1/matches/end/batch",
+      payload: { ...batchPayload, serverSecret: "wrong-secret" },
+    });
+    expect(badSecret.statusCode).toBe(403);
+
+    // First batch succeeds
+    const first = await app.inject({ method: "POST", url: "/v1/matches/end/batch", payload: batchPayload });
+    expect(first.statusCode).toBe(200);
+    expect(first.json().rewarded).toBe(3);
+    expect(first.json().profiles).toHaveLength(3);
+
+    // Find player 1's profile in results
+    const p1 = first.json().profiles.find((p: { player: { steamId: string } }) => p.player.steamId === steamId);
+    expect(p1.player.currencyBalance).toBe(300); // 250 seed + 50
+    expect(p1.player.xp).toBe(100);
+
+    // Duplicate batch is idempotent (no double rewards)
+    const second = await app.inject({ method: "POST", url: "/v1/matches/end/batch", payload: batchPayload });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().rewarded).toBe(0);
+
+    await app.close();
+  });
+
+  it("GET /v1/auth/session verifies a valid session token and rejects an invalid one", async () => {
+    const sessions = new Map<string, SessionInput>();
+    const app = await createApp({
+      repository: new MemoryOpenVibeRepository(),
+      devAuthEnabled: true,
+      sessionStore: {
+        async createSession(input: SessionInput) {
+          sessions.set(input.token, input);
+        },
+        async getSession(token: string): Promise<SessionData | null> {
+          const s = sessions.get(token);
+          if (!s) return null;
+          return { steamId: s.steamId, provider: s.provider, createdAt: new Date().toISOString() };
+        },
+      },
+    });
+    await app.ready();
+
+    const auth = await app.inject({
+      method: "POST",
+      url: "/v1/auth/dev",
+      payload: { steamId, displayName: "Session Check" },
+    });
+    expect(auth.statusCode).toBe(200);
+    const { sessionToken } = auth.json();
+
+
+    const valid = await app.inject({
+      method: "GET",
+      url: "/v1/auth/session",
+      headers: { authorization: `Bearer ${sessionToken}` },
+    });
+    expect(valid.statusCode).toBe(200);
+    expect(valid.json().valid).toBe(true);
+    expect(valid.json().steamId).toBe(steamId);
+    expect(valid.json().provider).toBe("dev");
+
+    const missing = await app.inject({ method: "GET", url: "/v1/auth/session" });
+    expect(missing.statusCode).toBe(401);
+
+    const invalid = await app.inject({
+      method: "GET",
+      url: "/v1/auth/session",
+      headers: { authorization: "not-a-valid-token-format" },
+    });
+    expect(invalid.statusCode).toBe(401);
+
     await app.close();
   });
 });

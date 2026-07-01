@@ -1,0 +1,2 @@
+// OpenVibe: Source startup script.
+// Intentionally small; mode-specific server config is passed with +exec.

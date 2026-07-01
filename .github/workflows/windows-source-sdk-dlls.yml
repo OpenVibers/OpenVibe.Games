@@ -1,0 +1,140 @@
+name: Build Windows Source DLLs
+
+on:
+  workflow_dispatch:
+    inputs:
+      diagnostics:
+        description: "Upload verbose build diagnostics"
+        required: false
+        default: "1"
+  push:
+    branches:
+      - codex/openvibe-next-steps
+      - copilot/continue-windows-dll-work
+    paths:
+      - ".github/workflows/windows-source-sdk-dlls.yml"
+      - "tools/bootstrap-source-sdk-2013-windows.ps1"
+      - "tools/build-sdk-windows.ps1"
+      - "tools/build-quickjs-lib-windows.ps1"
+      - "tools/apply-openvibe-sdk.sh"
+      - "sdk/openvibe/**"
+      - "game/openvibe.games/js/**"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  windows-dlls:
+    name: Windows client.dll/server.dll
+    runs-on: windows-2022
+    env:
+      OPENVIBE_WINDOWS_TARGET_ARCH: x86
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout OpenVibe
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Configure git line endings
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+          git status --short
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Show toolchain and tree
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path artifacts/windows-build-debug | Out-Null
+          Write-Host "pwd=$(Get-Location)"
+          git rev-parse --short HEAD
+          where.exe msbuild
+          where.exe cl
+          where.exe link
+          where.exe bash
+          where.exe git
+          Get-ChildItem -Force | Select-Object Mode,Length,Name | Tee-Object -FilePath artifacts/windows-build-debug/repo-root-before-build.txt
+          if (Test-Path engine) { Get-ChildItem -Force engine | Select-Object Mode,Length,Name | Tee-Object -FilePath artifacts/windows-build-debug/engine-before-build.txt } else { Write-Host "[miss] engine directory" }
+
+
+      - name: Checkout Valve Source SDK 2013
+        uses: actions/checkout@v4
+        with:
+          repository: ValveSoftware/source-sdk-2013
+          path: _deps/source-sdk-2013-upstream
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Bootstrap Source SDK 2013
+        run: |
+          $ErrorActionPreference = 'Stop'
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/bootstrap-source-sdk-2013-windows.ps1 *>&1 | Tee-Object -FilePath artifacts/windows-build-debug/bootstrap-source-sdk-2013.log
+
+      - name: Build Windows Source SDK DLLs
+        id: build
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path artifacts/windows-build-debug | Out-Null
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-sdk-windows.ps1 *>&1 | Tee-Object -FilePath artifacts/windows-build-debug/build-sdk-windows.log
+
+      - name: Stage build outputs and diagnostics
+        if: always()
+        run: |
+          $ErrorActionPreference = 'Continue'
+          New-Item -ItemType Directory -Force -Path artifacts/windows-dlls | Out-Null
+          New-Item -ItemType Directory -Force -Path artifacts/windows-build-debug | Out-Null
+
+          "=== repo ===" | Out-File artifacts/windows-build-debug/tree.txt
+          Get-ChildItem -Force | Format-Table -AutoSize | Out-File artifacts/windows-build-debug/tree.txt -Append
+          "=== dll search ===" | Out-File artifacts/windows-build-debug/dll-search.txt
+          Get-ChildItem -Recurse -Force -Include client.dll,server.dll -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Format-List | Out-File artifacts/windows-build-debug/dll-search.txt -Append
+          "=== project/log search ===" | Out-File artifacts/windows-build-debug/project-search.txt
+          Get-ChildItem -Recurse -Force -Include *.sln,*.vcxproj,*.vcproj,*.log -ErrorAction SilentlyContinue |
+            Select-Object FullName,Length,LastWriteTime |
+            Format-List | Out-File artifacts/windows-build-debug/project-search.txt -Append
+
+          $client = "game/openvibe.games/bin/client.dll"
+          $server = "game/openvibe.games/bin/server.dll"
+          $clientOk = $false
+          if (Test-Path $client) {
+            $text = strings.exe $client 2>$null | Select-String -Pattern "ov_join|ov_menu|OpenVibe" -Quiet
+            if ($text) { $clientOk = $true }
+          }
+          if ($clientOk -and (Test-Path $server)) {
+            Copy-Item $client artifacts/windows-dlls/client.dll -Force
+            Copy-Item $server artifacts/windows-dlls/server.dll -Force
+            Write-Host "[ok] staged patched OpenVibe Windows DLLs"
+          } else {
+            Write-Host "[miss] not staging DLLs because patched OpenVibe client.dll was not produced"
+            "No patched OpenVibe DLLs staged. Check build logs." | Out-File artifacts/windows-build-debug/no-patched-dlls.txt
+          }
+
+      - name: Upload Windows DLL artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvibe-windows-dlls
+          path: artifacts/windows-dlls/**
+          if-no-files-found: warn
+
+      - name: Upload Windows build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openvibe-windows-build-debug
+          path: artifacts/windows-build-debug/**
+          if-no-files-found: warn

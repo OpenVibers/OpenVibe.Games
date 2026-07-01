@@ -1,18 +1,27 @@
 import { nanoid } from "nanoid";
 import {
+  BatchMatchRewardInput,
   GameMode,
   GameServer,
   HeartbeatInput,
   InventoryItem,
+  AuditEvent,
   JoinTokenValidation,
   LeaderboardEntry,
   MatchRewardInput,
   OpenVibeRepository,
+  Party,
+  PartyInvite,
+  PartyTravelReservation,
   Player,
   PlayerProfile,
   RegisterServerInput,
+  ScriptPackage,
+  ScriptPackageFile,
   ShopItem,
   TravelReservation,
+  UpsertScriptPackageFileInput,
+  UpsertScriptPackageInput,
   UpsertShopItemInput,
 } from "./domain.js";
 
@@ -27,6 +36,13 @@ interface StoredToken {
   mode: GameMode;
   expiresAt: string;
   consumedAt: string | null;
+}
+
+interface StoredParty {
+  partyId: string;
+  leaderSteamId: string;
+  members: Set<string>;
+  joinedAt: Map<string, string>;
 }
 
 const seedShop: ShopItem[] = [
@@ -56,7 +72,12 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
   private inventory = new Map<string, Set<string>>();
   private servers = new Map<string, StoredServer>();
   private tokens = new Map<string, StoredToken>();
+  private parties = new Map<string, StoredParty>();
+  private invites = new Map<string, PartyInvite>();
+  private auditEvents: AuditEvent[] = [];
   private rewardKeys = new Set<string>();
+  private scriptPackages = new Map<string, ScriptPackage>();
+  private scriptPackageFiles = new Map<string, ScriptPackageFile[]>();
 
   async upsertDevPlayer(input: { steamId: string; displayName: string }): Promise<PlayerProfile> {
     const existing = this.players.get(input.steamId);
@@ -194,6 +215,110 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
     };
   }
 
+  async createParty(input: { leaderSteamId: string }): Promise<Party> {
+    this.requirePlayer(input.leaderSteamId);
+    const now = new Date().toISOString();
+    const party: StoredParty = {
+      partyId: nanoid(16),
+      leaderSteamId: input.leaderSteamId,
+      members: new Set([input.leaderSteamId]),
+      joinedAt: new Map([[input.leaderSteamId, now]]),
+    };
+    this.parties.set(party.partyId, party);
+    return this.publicParty(party);
+  }
+
+  async inviteToParty(input: {
+    partyId: string;
+    invitedBySteamId: string;
+    invitedSteamId: string;
+  }): Promise<PartyInvite> {
+    const party = this.requireParty(input.partyId);
+    this.requirePlayer(input.invitedBySteamId);
+    this.requirePlayer(input.invitedSteamId);
+    if (!party.members.has(input.invitedBySteamId)) throw new RepositoryError("not_party_member", 403);
+
+    const invite: PartyInvite = {
+      inviteId: nanoid(16),
+      partyId: input.partyId,
+      invitedBySteamId: input.invitedBySteamId,
+      invitedSteamId: input.invitedSteamId,
+      status: "pending",
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    };
+    this.invites.set(invite.inviteId, invite);
+    return { ...invite };
+  }
+
+  async acceptPartyInvite(input: { inviteId: string; steamId: string }): Promise<Party> {
+    const invite = this.invites.get(input.inviteId);
+    if (!invite || invite.status !== "pending") throw new RepositoryError("invite_not_found", 404);
+    if (invite.invitedSteamId !== input.steamId) throw new RepositoryError("invite_forbidden", 403);
+    if (new Date(invite.expiresAt).getTime() <= Date.now()) {
+      invite.status = "expired";
+      throw new RepositoryError("invite_expired", 409);
+    }
+
+    const party = this.requireParty(invite.partyId);
+    party.members.add(input.steamId);
+    party.joinedAt.set(input.steamId, new Date().toISOString());
+    invite.status = "accepted";
+    return this.publicParty(party);
+  }
+
+  async getParty(partyId: string): Promise<Party | null> {
+    const party = this.parties.get(partyId);
+    return party ? this.publicParty(party) : null;
+  }
+
+  async reservePartyTravel(input: {
+    partyId: string;
+    leaderSteamId: string;
+    mode: GameMode;
+  }): Promise<PartyTravelReservation | null> {
+    const party = this.requireParty(input.partyId);
+    if (party.leaderSteamId !== input.leaderSteamId) {
+      throw new RepositoryError("party_leader_required", 403);
+    }
+
+    const members = [...party.members];
+    const server = [...this.servers.values()]
+      .filter((candidate) => candidate.mode === input.mode)
+      .filter((candidate) => candidate.state === "open")
+      .filter((candidate) => candidate.maxPlayers - candidate.playerCount >= members.length)
+      .sort((a, b) => b.playerCount - a.playerCount)[0];
+
+    if (!server) return null;
+
+    const reservations = members.map((steamId) => {
+      const expiresAt = new Date(Date.now() + 90_000).toISOString();
+      const token = nanoid(32);
+      this.tokens.set(token, {
+        token,
+        steamId,
+        serverId: server.serverId,
+        mode: input.mode,
+        expiresAt,
+        consumedAt: null,
+      });
+      return {
+        mode: input.mode,
+        serverId: server.serverId,
+        connect: `${server.publicHost}:${server.port}`,
+        joinToken: token,
+        expiresAt,
+      };
+    });
+
+    return {
+      partyId: input.partyId,
+      mode: input.mode,
+      serverId: server.serverId,
+      connect: `${server.publicHost}:${server.port}`,
+      reservations,
+    };
+  }
+
   async validateJoinToken(input: {
     token: string;
     steamId: string;
@@ -228,6 +353,27 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
     }
 
     return this.profileFor(input.steamId);
+  }
+
+  async recordBatchMatchRewards(input: BatchMatchRewardInput): Promise<PlayerProfile[] | null> {
+    const server = this.servers.get(input.serverId);
+    if (!server || server.serverSecret !== input.serverSecret) return null;
+
+    const profiles: PlayerProfile[] = [];
+    for (const entry of input.results) {
+      const player = this.players.get(entry.steamId);
+      if (!player) continue;
+
+      const key = `${input.matchId}:${entry.steamId}`;
+      if (!this.rewardKeys.has(key)) {
+        player.currencyBalance += entry.rewardCurrency;
+        player.xp += entry.rewardXp;
+        this.rewardKeys.add(key);
+        profiles.push(this.profileFor(entry.steamId));
+      }
+    }
+
+    return profiles;
   }
 
   private profileFor(steamId: string): PlayerProfile {
@@ -273,9 +419,31 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
     return item;
   }
 
+  private requireParty(partyId: string): StoredParty {
+    const party = this.parties.get(partyId);
+    if (!party) throw new RepositoryError("party_not_found", 404);
+    return party;
+  }
+
   private publicServer(server: StoredServer): GameServer {
     const { serverSecret: _serverSecret, ...safe } = server;
     return { ...safe };
+  }
+
+  private publicParty(party: StoredParty): Party {
+    return {
+      partyId: party.partyId,
+      leaderSteamId: party.leaderSteamId,
+      members: [...party.members].map((steamId) => {
+        const player = this.requirePlayer(steamId);
+        return {
+          steamId,
+          displayName: player.displayName,
+          leader: steamId === party.leaderSteamId,
+          joinedAt: party.joinedAt.get(steamId) ?? new Date(0).toISOString(),
+        };
+      }),
+    };
   }
 
   async getLeaderboard(options: { limit: number; mode?: GameMode }): Promise<LeaderboardEntry[]> {
@@ -297,6 +465,83 @@ export class MemoryOpenVibeRepository implements OpenVibeRepository {
     const item: ShopItem = { ...input };
     this.shop.set(item.itemId, item);
     return { ...item };
+  }
+
+  async recordAuditEvent(input: {
+    actorSteamId: string;
+    action: string;
+    targetSteamId?: string | null;
+    reason: string;
+  }): Promise<AuditEvent> {
+    const event: AuditEvent = {
+      auditId: nanoid(16),
+      actorSteamId: input.actorSteamId,
+      action: input.action,
+      targetSteamId: input.targetSteamId ?? null,
+      reason: input.reason,
+      createdAt: new Date().toISOString(),
+    };
+    this.auditEvents.unshift(event);
+    return { ...event };
+  }
+
+  async listAuditEvents(options: { limit: number }): Promise<AuditEvent[]> {
+    return this.auditEvents.slice(0, options.limit).map((event) => ({ ...event }));
+  }
+
+  async listScriptPackages(): Promise<ScriptPackage[]> {
+    return Array.from(this.scriptPackages.values()).map((p) => ({ ...p }));
+  }
+
+  async getScriptPackage(packageId: string): Promise<ScriptPackage | null> {
+    const pkg = this.scriptPackages.get(packageId);
+    return pkg ? { ...pkg } : null;
+  }
+
+  async upsertScriptPackage(input: UpsertScriptPackageInput): Promise<ScriptPackage> {
+    const now = new Date().toISOString();
+    const existing = this.scriptPackages.get(input.packageId);
+    const pkg: ScriptPackage = {
+      packageId: input.packageId,
+      packageType: input.packageType,
+      displayName: input.displayName,
+      description: input.description,
+      version: input.version,
+      authorSteamId: input.authorSteamId ?? null,
+      manifestJson: input.manifestJson ?? {},
+      trusted: input.trusted ?? false,
+      enabled: existing?.enabled ?? false,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.scriptPackages.set(pkg.packageId, pkg);
+    return { ...pkg };
+  }
+
+  async listScriptPackageFiles(packageId: string): Promise<ScriptPackageFile[]> {
+    return (this.scriptPackageFiles.get(packageId) ?? []).map((f) => ({ ...f }));
+  }
+
+  async upsertScriptPackageFile(input: UpsertScriptPackageFileInput): Promise<ScriptPackageFile> {
+    const now = new Date().toISOString();
+    const file: ScriptPackageFile = { ...input, createdAt: now };
+    const files = this.scriptPackageFiles.get(input.packageId) ?? [];
+    const idx = files.findIndex((f) => f.path === input.path);
+    if (idx >= 0) {
+      files[idx] = file;
+    } else {
+      files.push(file);
+    }
+    this.scriptPackageFiles.set(input.packageId, files);
+    return { ...file };
+  }
+
+  async setScriptPackageEnabled(packageId: string, enabled: boolean): Promise<ScriptPackage | null> {
+    const pkg = this.scriptPackages.get(packageId);
+    if (!pkg) return null;
+    const updated: ScriptPackage = { ...pkg, enabled, updatedAt: new Date().toISOString() };
+    this.scriptPackages.set(packageId, updated);
+    return { ...updated };
   }
 }
 

@@ -11,6 +11,12 @@ export const authDevSchema = z.object({
   displayName: z.string().trim().min(1).max(64).default("OpenVibe Dev"),
 });
 
+export const authSteamSchema = z.object({
+  ticket: z.string().regex(/^[0-9a-fA-F]+$/).min(16).max(8192),
+  identity: z.string().trim().min(1).max(128).default("openvibe.games"),
+  displayName: z.string().trim().min(1).max(64).optional(),
+});
+
 export const getMeQuerySchema = z.object({
   steamId,
 });
@@ -50,6 +56,31 @@ export const travelRequestSchema = z.object({
   mode,
 });
 
+export const createPartySchema = z.object({
+  leaderSteamId: steamId,
+});
+
+export const partyInviteSchema = z.object({
+  partyId: z.string().min(8).max(64),
+  invitedBySteamId: steamId,
+  invitedSteamId: steamId,
+});
+
+export const acceptPartyInviteSchema = z.object({
+  inviteId: z.string().min(8).max(64),
+  steamId,
+});
+
+export const getPartyQuerySchema = z.object({
+  partyId: z.string().min(8).max(64),
+});
+
+export const partyTravelSchema = z.object({
+  partyId: z.string().min(8).max(64),
+  leaderSteamId: steamId,
+  mode,
+});
+
 export const validateJoinTokenSchema = z.object({
   token: z.string().min(16).max(128),
   steamId,
@@ -67,6 +98,24 @@ export const matchEndSchema = z.object({
   stats: z.record(z.string(), z.unknown()).optional(),
 });
 
+export const batchMatchEndSchema = z.object({
+  matchId: z.string().min(3).max(120),
+  serverId,
+  serverSecret,
+  mode,
+  results: z
+    .array(
+      z.object({
+        steamId,
+        rewardCurrency: z.number().int().min(0).max(5000),
+        rewardXp: z.number().int().min(0).max(50000),
+        stats: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .min(1)
+    .max(64),
+});
+
 export const leaderboardQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   mode: mode.optional(),
@@ -74,10 +123,53 @@ export const leaderboardQuerySchema = z.object({
 
 export const upsertShopItemSchema = z.object({
   itemId: z.string().min(1).max(80),
-  itemType: z.enum(["player_model", "trail", "nameplate"]),
+  itemType: z.enum([
+    "player_model",
+    "trail",
+    "nameplate",
+    "title",
+    "spray",
+    "emote",
+    "fortwars_part",
+    "traitortown_cosmetic",
+  ]),
   displayName: z.string().trim().min(1).max(120),
   description: z.string().max(500).default(""),
   assetPath: z.string().min(1).max(255),
   price: z.number().int().min(0).max(100_000),
   enabled: z.boolean().default(true),
+});
+
+export const auditEventSchema = z.object({
+  actorSteamId: steamId,
+  action: z.string().trim().min(1).max(80),
+  targetSteamId: steamId.optional(),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const auditQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+export const packageIdParamSchema = z.object({
+  packageId: z.string().min(1).max(80),
+});
+
+export const upsertScriptPackageSchema = z.object({
+  packageId: z.string().min(1).max(80),
+  packageType: z.enum(["gamemode", "addon", "library"]),
+  displayName: z.string().trim().min(1).max(120),
+  description: z.string().max(500).default(""),
+  version: z.string().trim().min(1).max(40),
+  authorSteamId: steamId.optional().nullable(),
+  manifestJson: z.record(z.string(), z.unknown()).optional(),
+  trusted: z.boolean().optional(),
+});
+
+export const upsertScriptPackageFileSchema = z.object({
+  path: z.string().min(1).max(255),
+  sha256: z.string().regex(/^[0-9a-fA-F]{64}$/, "sha256 must be 64 hex chars"),
+  sizeBytes: z.number().int().min(0).max(1_048_576),
+  realm: z.enum(["server", "client", "shared"]),
+  content: z.string().max(1_048_576),
 });

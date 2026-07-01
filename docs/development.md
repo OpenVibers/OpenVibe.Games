@@ -89,7 +89,20 @@ Z:\home\workstation\src\openvibe-source\game\openvibe.games\maps
 
 ## Source Binaries
 
-The first OpenVibe binary staging uses the SDK HL2MP Linux64 output and compatibility links for TF2-branch dedicated server module names.
+OpenVibe keeps its custom Source SDK patch sources in `sdk/openvibe/` so the large Valve SDK checkout can stay local and ignored. Apply and build the patch with:
+
+```bash
+cd ~/src/openvibe-source
+tools/build-sdk-linux.sh
+```
+
+That script:
+
+1. Copies the tracked OpenVibe C++ files into `engine/source-sdk-2013/src/game/...`.
+2. Patches the HL2MP client/server VPC files.
+3. Builds the Linux64 client/server game DLLs through the Source SDK Steam Runtime container.
+
+Stage the compiled DLLs into the OpenVibe mod folder:
 
 Run:
 
@@ -114,11 +127,11 @@ game/openvibe.games/bin/linux64/client_srv.so
 game/openvibe.games/bin/linux64/server_srv.so
 ```
 
-This is a temporary base until custom OpenVibe C++ code is added.
+The `_srv` compatibility links are required by the TF2-branch Linux64 SRCDS runtime.
 
 ## SRCDS
 
-The Source SDK Base 2013 Dedicated Server AppID `244310` installed, but its Linux depot only provided a 32-bit `srcds_linux` launcher in this environment. The current SDK build outputs Linux64 game DLLs, so OpenVibe uses Team Fortress 2 Dedicated Server AppID `232250`, which provides `srcds_linux64`.
+The Source SDK Base 2013 Dedicated Server install at `/mnt/6tb/ssd_offload/home/workstation/.steam/debian-installation/steamapps/common/Source SDK Base 2013 Dedicated Server` contains Windows server binaries in this environment. The current SDK build outputs Linux64 game DLLs, so OpenVibe uses Team Fortress 2 Dedicated Server AppID `232250`, which provides `srcds_linux64`.
 
 Installed location:
 
@@ -147,4 +160,18 @@ tools/run-prophunt.sh
 tools/run-deathrun.sh
 tools/run-fortwars.sh
 tools/run-traitortown.sh
+```
+
+Full local stack:
+
+```bash
+cd ~/src/openvibe-source
+OPENVIBE_SRCDS_MAP_DELAY=3 tools/dev-up.sh
+```
+
+Stop everything:
+
+```bash
+cd ~/src/openvibe-source
+tools/dev-down.sh
 ```

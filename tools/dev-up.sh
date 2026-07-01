@@ -13,8 +13,12 @@ fi
 if tmux has-session -t ov-api 2>/dev/null; then
   tmux kill-session -t ov-api
 fi
+if tmux has-session -t ov-client-ui 2>/dev/null; then
+  tmux kill-session -t ov-client-ui
+fi
 
 tmux new-session -d -s ov-api "$ROOT/tools/dev-api.sh"
+tmux new-session -d -s ov-client-ui "$ROOT/tools/run-client-ui.sh"
 
 echo "[openvibe] waiting for api"
 for _ in {1..60}; do

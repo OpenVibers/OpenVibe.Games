@@ -11,6 +11,13 @@ const MODES = {
   traitortown:  { label: 'Traitor Town', port: 27019, color: '#a855f7' },
 };
 
+const API_BASE = 'http://127.0.0.1:3000';
+const isElectron = !!window.OV;
+const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === '1' || !isElectron;
+
+document.documentElement.classList.toggle('embedded', isEmbedded);
+document.body.classList.toggle('embedded', isEmbedded);
+
 const PLAYER_IDS = {
   hub: 'hub-players', prophunt: 'ph-players',
   deathrun: 'dr-players', fortwars: 'fw-players', traitortown: 'tt-players',
@@ -19,6 +26,46 @@ const PLAYER_IDS = {
 let currentTab = 'portal';
 let serverData  = [];
 let apiOnline   = false;
+
+async function apiFetch(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      'Accept': 'application/json',
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+const Bridge = {
+  health: () => isElectron ? window.OV.health() : apiFetch('/health'),
+  servers: async () => {
+    if (isElectron) return window.OV.servers();
+    const data = await apiFetch('/v1/servers');
+    return Array.isArray(data) ? data : (data.servers ?? []);
+  },
+  leaderboard: async (limit) => {
+    if (isElectron) return window.OV.leaderboard(limit);
+    const data = await apiFetch(`/v1/leaderboard?limit=${limit}`);
+    return Array.isArray(data) ? data : (data.players ?? []);
+  },
+  launchMode: async (mode) => {
+    if (isElectron) return window.OV.launchMode(mode);
+    window.location.href = `openvibe://join?mode=${encodeURIComponent(mode)}`;
+    return true;
+  },
+  gameStatus: () => isElectron ? window.OV.gameStatus() : Promise.resolve({ running: true, pid: null }),
+  focusGame: () => isElectron ? window.OV.focusGame() : Promise.resolve(false),
+  close: () => {
+    if (isElectron) window.OV.close();
+    else window.location.href = 'openvibe://close';
+  },
+  minimize: () => { if (isElectron) window.OV.minimize(); },
+  maximize: () => { if (isElectron) window.OV.maximize(); },
+};
 
 // ── Toast helper ─────────────────────────────────────────────────────────────
 const toastEl = document.getElementById('toast');
@@ -52,9 +99,10 @@ function setTab(tab) {
 }
 
 // ── Titlebar controls ────────────────────────────────────────────────────────
-document.getElementById('btn-min')?.addEventListener('click', () => window.OV.minimize());
-document.getElementById('btn-max')?.addEventListener('click', () => window.OV.maximize());
-document.getElementById('btn-close')?.addEventListener('click', () => window.OV.close());
+document.getElementById('btn-min')?.addEventListener('click', () => Bridge.minimize());
+document.getElementById('btn-max')?.addEventListener('click', () => Bridge.maximize());
+document.getElementById('btn-close')?.addEventListener('click', () => Bridge.close());
+document.getElementById('embedded-close')?.addEventListener('click', () => Bridge.close());
 
 // ── Launch overlay ───────────────────────────────────────────────────────────
 const launchOverlay = document.getElementById('launch-overlay');
@@ -62,6 +110,11 @@ const launchLabel   = document.getElementById('launch-label');
 
 document.getElementById('launch-cancel')?.addEventListener('click', () => {
   launchOverlay.classList.remove('show');
+});
+
+document.getElementById('launch-focus-game')?.addEventListener('click', async () => {
+  const ok = await Bridge.focusGame();
+  toast(ok ? 'Focused Source window.' : 'Source window not found yet.', !ok);
 });
 
 function showLaunchOverlay(msg) {
@@ -81,7 +134,7 @@ async function launchMode(mode) {
   toast(`Connecting to ${info.label}…`);
 
   try {
-    const ok = await window.OV.launchMode(mode);
+    const ok = await Bridge.launchMode(mode);
     if (ok) {
       toast(`✓ ${info.label} launched — port ${info.port}`);
       updateGameStatus(true);
@@ -115,11 +168,31 @@ document.getElementById('settings-launch')?.addEventListener('click', () => {
 });
 
 // Game exit callback
-window.OV.onGameExit((code) => {
-  hideLaunchOverlay();
-  updateGameStatus(false);
-  toast(`Game exited (code ${code})`);
-});
+if (isElectron) {
+  window.OV.onGameStart?.(() => {
+    updateGameStatus(true);
+  });
+  window.OV.onLaunchPhase?.((info) => {
+    const label = document.getElementById('launch-label');
+    const help = document.getElementById('launch-help');
+    if (label && info?.message) label.textContent = info.message;
+    if (help) {
+      if (info?.phase === 'ready') {
+        help.textContent = 'The game window is available. Because the Proton client may not load the custom client DLL, keep this launcher open as the reliable OpenVibe UI.';
+      } else if (info?.phase === 'slow') {
+        help.textContent = 'The game may still be loading or frozen. The launcher is staying visible so you can retry, focus the game, or inspect logs.';
+      } else {
+        help.textContent = 'OpenVibe is waiting for the Source window to appear and stabilize before switching focus.';
+      }
+    }
+    launchOverlay?.classList.add('show');
+  });
+  window.OV.onGameExit((code) => {
+    hideLaunchOverlay();
+    updateGameStatus(false);
+    toast(`Game exited (code ${code})`);
+  });
+}
 
 // ── API health ────────────────────────────────────────────────────────────────
 const apiDot    = document.getElementById('api-dot');
@@ -128,7 +201,7 @@ const srvCount  = document.getElementById('server-count');
 
 async function checkApiHealth() {
   try {
-    const data = await window.OV.health();
+    const data = await Bridge.health();
     if (data.ok) {
       apiOnline = true;
       apiDot.className = 'status-dot up';
@@ -155,7 +228,7 @@ async function refreshServers() {
   tbody.innerHTML = '<tr><td colspan="6" class="loading-row">Loading…</td></tr>';
 
   try {
-    const servers = await window.OV.servers();
+    const servers = await Bridge.servers();
     serverData = servers;
 
     if (!servers || servers.length === 0) {
@@ -220,7 +293,7 @@ async function refreshLeaderboard() {
   list.innerHTML = '<li class="loading-row">Loading…</li>';
 
   try {
-    const data = await window.OV.leaderboard(20);
+    const data = await Bridge.leaderboard(20);
 
     if (!data || data.length === 0) {
       list.innerHTML = '<li class="loading-row">No rankings yet — play some games!</li>';
@@ -262,7 +335,7 @@ async function init() {
 
   // Load server player counts for portal cards
   try {
-    const servers = await window.OV.servers();
+    const servers = await Bridge.servers();
     serverData = servers;
     srvCount.textContent = `${servers.length} server${servers.length !== 1 ? 's' : ''}`;
     servers.forEach((s) => {
@@ -279,10 +352,27 @@ async function init() {
   setInterval(async () => {
     await checkApiHealth();
     try {
-      const status = await window.OV.gameStatus();
+      const status = await Bridge.gameStatus();
       updateGameStatus(status.running);
     } catch {}
   }, 10_000);
 }
 
 init();
+
+
+// Launcher-aware Source startup status. This keeps Electron useful while Proton
+// shows the default Source loading window and before a native client DLL exists.
+if (isElectron && window.OV.onLaunchState) {
+  window.OV.onLaunchState((state) => {
+    const label = document.getElementById('launch-label');
+    const sub = document.getElementById('launch-sub');
+    if (label && state?.message) label.textContent = state.message;
+    if (sub) {
+      sub.textContent = state?.phase === 'ready'
+        ? 'Game window is ready. Use Focus Game Window, or keep Electron open as the custom menu.'
+        : 'Electron remains open so you are not left staring at a frozen/default Source loading screen.';
+    }
+    if (state?.phase && state.phase !== 'idle') launchOverlay?.classList.add('show');
+  });
+}

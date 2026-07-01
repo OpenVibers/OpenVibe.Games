@@ -25,12 +25,21 @@ if [[ -d "$ROOT/game/openvibe.games/logs" ]]; then
   LOG_DIR="$ROOT/game/openvibe.games/logs"
 fi
 
+case "$MODE" in
+  hub) DEFAULT_PUBLIC_HOST="127.0.0.1" ;;
+  prophunt) DEFAULT_PUBLIC_HOST="127.0.0.1" ;;
+  deathrun) DEFAULT_PUBLIC_HOST="127.0.0.1" ;;
+  fortwars) DEFAULT_PUBLIC_HOST="127.0.0.1" ;;
+  traitortown) DEFAULT_PUBLIC_HOST="127.0.0.1" ;;
+  *) DEFAULT_PUBLIC_HOST="127.0.0.1" ;;
+esac
+
 exec node "$ROOT/tools/ov-sidecar.mjs" \
   --server-id  "$SERVER_ID" \
   --server-secret "${OPENVIBE_SERVER_SECRET:-dev-secret}" \
   --mode       "$MODE" \
   --port       "$PORT" \
   --max-players "$MAX_PLAYERS" \
-  --host       "${OPENVIBE_PUBLIC_HOST:-127.0.0.1}" \
+  --host       "${OPENVIBE_PUBLIC_HOST:-$DEFAULT_PUBLIC_HOST}" \
   --api-url    "${OPENVIBE_API_URL:-http://127.0.0.1:3000}" \
   --log-dir    "$LOG_DIR"
