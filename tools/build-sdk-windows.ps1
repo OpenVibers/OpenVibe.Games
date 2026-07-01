@@ -947,6 +947,122 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
   }
 }
 
+
+# OPENVIBE_WIN32_GENERATE_ALL_MISSING_PLACEHOLDER_LIBS
+# Last-resort compatibility layer for Proton Win32 DLL builds.
+# VPC on current Windows runners can emit HL2MP projects that reference old SDK import/static
+# libraries that are not shipped in ValveSoftware/source-sdk-2013's Win32 public lib folder.
+# We first build/copy real libs. For remaining missing .lib inputs, create tiny x86 archives so
+# the linker can continue. If the DLL actually uses a missing symbol, the link will still fail
+# later with an unresolved external, which is more useful than one-at-a-time LNK1181 missing-file
+# failures.
+function Get-OpenVibeAdditionalDependencyLibNames {
+  param([System.IO.FileInfo[]]$Projects)
+
+  $systemLibs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($lib in @(
+    'kernel32.lib','user32.lib','gdi32.lib','winspool.lib','comdlg32.lib',
+    'advapi32.lib','shell32.lib','ole32.lib','oleaut32.lib','uuid.lib',
+    'odbc32.lib','odbccp32.lib','winmm.lib','ws2_32.lib','dbghelp.lib',
+    'psapi.lib','comctl32.lib','shlwapi.lib','imm32.lib','version.lib',
+    'Rpcrt4.lib','opengl32.lib','legacy_stdio_definitions.lib',
+    'libcmt.lib','libcmtd.lib','msvcrt.lib','msvcrtd.lib',
+    'libcpmt.lib','libcpmtd.lib','libc.lib','msvcprt.lib','msvcprtd.lib',
+    'setupapi.lib','dxguid.lib','dinput8.lib','d3d9.lib','d3dx9.lib',
+    'Strmiids.lib','delayimp.lib','ntdll.lib','wldap32.lib','crypt32.lib'
+  )) { [void]$systemLibs.Add($lib) }
+
+  $libs = [System.Collections.Generic.SortedSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+  foreach ($proj in $Projects) {
+    if (-not $proj -or !(Test-Path $proj.FullName)) { continue }
+    $text = Get-Content -Raw $proj.FullName
+    $matches = [regex]::Matches($text, '<AdditionalDependencies>(.*?)</AdditionalDependencies>', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    foreach ($m in $matches) {
+      foreach ($tokRaw in ($m.Groups[1].Value -split ';')) {
+        $tok = ([string]$tokRaw).Trim()
+        if ($tok -eq '' -or $tok -match '^%\(' -or $tok -match '^\$\(') { continue }
+        $lm = [regex]::Match($tok, '([^\\/;<>]+\.lib)\s*$', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+        if (-not $lm.Success) { continue }
+        $leaf = $lm.Groups[1].Value
+        if ($leaf -and -not $systemLibs.Contains($leaf)) { [void]$libs.Add($leaf) }
+      }
+    }
+  }
+  return @($libs)
+}
+
+function New-OpenVibeX86PlaceholderLib {
+  param(
+    [string]$LibName,
+    [string]$DestPath,
+    [string]$StubDir,
+    [string]$LogPath
+  )
+
+  New-Item -ItemType Directory -Force -Path $StubDir | Out-Null
+  $base = [System.IO.Path]::GetFileNameWithoutExtension($LibName)
+  $safe = ($base -replace '[^A-Za-z0-9_]+','_')
+  if (-not $safe) { $safe = 'lib' }
+  $c = Join-Path $StubDir "$safe.c"
+  $obj = Join-Path $StubDir "$safe.obj"
+  $symbol = "openvibe_placeholder_${safe}"
+
+  "void $symbol(void) {}" | Set-Content -Encoding ascii -Path $c
+  "[placeholder] creating $LibName at $DestPath" | Out-File $LogPath -Append
+  & cl.exe /nologo /TC /c $c "/Fo$obj" 2>&1 | Tee-Object -FilePath $LogPath -Append | Out-Host
+  if ($LASTEXITCODE -ne 0 -or !(Test-Path $obj)) {
+    throw "cl.exe failed while creating placeholder object for $LibName. Check win32-placeholder-libs.txt."
+  }
+
+  & lib.exe /nologo /machine:X86 "/out:$DestPath" $obj 2>&1 | Tee-Object -FilePath $LogPath -Append | Out-Host
+  if ($LASTEXITCODE -ne 0 -or !(Test-Path $DestPath)) {
+    throw "lib.exe failed while creating placeholder library $DestPath. Check win32-placeholder-libs.txt."
+  }
+}
+
+function Ensure-OpenVibeWin32PlaceholderLibsForRemainingDeps {
+  param(
+    [System.IO.FileInfo[]]$Projects,
+    [string]$PublicLibDir
+  )
+
+  if ($script:OpenVibeTargetArch -ne 'x86') { return }
+
+  $log = Join-Path $LogDir 'win32-placeholder-libs.txt'
+  "=== Ensure-OpenVibeWin32PlaceholderLibsForRemainingDeps ===" | Out-File $log
+  "publicLibDir=$PublicLibDir" | Out-File $log -Append
+  "targetArch=$script:OpenVibeTargetArch" | Out-File $log -Append
+
+  New-Item -ItemType Directory -Force -Path $PublicLibDir | Out-Null
+  $stubDir = Join-Path $LogDir 'win32-placeholder-lib-objs'
+  $libs = @(Get-OpenVibeAdditionalDependencyLibNames -Projects $Projects)
+
+  "referenced non-system libs ($($libs.Count)):" | Out-File $log -Append
+  $libs | ForEach-Object { "  $_" | Out-File $log -Append }
+
+  $created = New-Object System.Collections.Generic.List[string]
+  foreach ($lib in $libs) {
+    # Previous conversion should have rewritten steam_api64.lib to steam_api.lib, but guard anyway.
+    if ($lib -ieq 'steam_api64.lib') { $lib = 'steam_api.lib' }
+    $dest = Join-Path $PublicLibDir $lib
+    if (Test-Path $dest) {
+      $item = Get-Item $dest
+      "[present] $lib length=$($item.Length)" | Out-File $log -Append
+      continue
+    }
+
+    New-OpenVibeX86PlaceholderLib -LibName $lib -DestPath $dest -StubDir $stubDir -LogPath $log
+    [void]$created.Add($lib)
+  }
+
+  if ($created.Count -gt 0) {
+    Say "created x86 placeholder lib(s): $($created -join ', ')"
+  } else {
+    Say "no Win32 placeholder libs were needed"
+  }
+}
+
+
 # Generate projects if no relevant vcxproj files exist yet.
 $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
 $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
@@ -1023,6 +1139,9 @@ Build-SourceSdkDependencyProjects
 # OPENVIBE_RESOLVE_WIN32_PUBLIC_LIB_DEPS_CALL
 $resolvePublicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
 Resolve-OpenVibeWin32PublicLibDependencies -Projects @($clientProject, $serverProject) -PublicLibDir $resolvePublicLibDir
+# OPENVIBE_WIN32_GENERATE_ALL_MISSING_PLACEHOLDER_LIBS_CALL
+Ensure-OpenVibeWin32PlaceholderLibsForRemainingDeps -Projects @($clientProject, $serverProject) -PublicLibDir $resolvePublicLibDir
+
 
 # OPENVIBE_WIN32_IMPORT_COMPAT_LIB_STUBS_CALL
 Ensure-OpenVibeWin32ImportCompatibilityLibs
