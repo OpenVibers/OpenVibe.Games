@@ -65,6 +65,11 @@ fi
 echo "[openvibe] linux bin/linux64 compatibility links ready"
 
 # Windows/Proton modules. These are optional on Linux until a Windows build has run.
+# OPENVIBE_GUARDED_WINDOWS_DLL_COPY_BEGIN
+# Do NOT blindly copy any client.dll/server.dll found under the SDK tree. The
+# Linux build produces client.so/server.so; Proton needs a separate 32-bit
+# Windows PE client.dll from the GitHub Actions Windows workflow. Copying a
+# stock/stale DLL here makes Proton launch but leaves ov_join/ov_menu unknown.
 win_client_candidates=(
   "$SDK_HL2MP_WIN_BIN/client.dll"
   "$SDK_HL2MP_WIN_BIN/win32/client.dll"
@@ -78,21 +83,69 @@ win_server_candidates=(
   "$ROOT/engine/source-sdk-2013/src/game/server/Release/server.dll"
 )
 
-for src in "${win_client_candidates[@]}"; do
-  if copy_if_exists "$src" "$MOD_BIN/client.dll"; then break; fi
-done
-for src in "${win_server_candidates[@]}"; do
-  if copy_if_exists "$src" "$MOD_BIN/server.dll"; then break; fi
+is_patched_openvibe_client_dll() {
+  local dll="$1"
+  [[ -f "$dll" ]] || return 1
+  command -v strings >/dev/null 2>&1 || return 1
+  strings -a "$dll" | grep -Eq 'ov_join|ov_menu|OpenVibe'
+}
+
+is_patched_openvibe_server_dll() {
+  local dll="$1"
+  [[ -f "$dll" ]] || return 1
+  command -v strings >/dev/null 2>&1 || return 1
+  strings -a "$dll" | grep -Eq 'ov_js_status|ov_js_cmd|OpenVibe'
+}
+
+try_copy_windows_pair() {
+  local client="$1" server="$2"
+  [[ -f "$client" && -f "$server" ]] || return 1
+  if ! is_patched_openvibe_client_dll "$client"; then
+    echo "[openvibe] skipping stale Windows client.dll candidate: $client"
+    return 1
+  fi
+  if ! is_patched_openvibe_server_dll "$server"; then
+    echo "[openvibe] skipping stale Windows server.dll candidate: $server"
+    return 1
+  fi
+  install -D -m 0644 "$client" "$MOD_BIN/client.dll"
+  install -D -m 0644 "$server" "$MOD_BIN/server.dll"
+  echo "[openvibe] copied patched Windows/Proton DLL pair"
+  return 0
+}
+
+copied_windows=0
+for client in "${win_client_candidates[@]}"; do
+  for server in "${win_server_candidates[@]}"; do
+    if try_copy_windows_pair "$client" "$server"; then
+      copied_windows=1
+      break 2
+    fi
+  done
 done
 
+if [[ "$copied_windows" != "1" ]]; then
+  echo "[openvibe] no patched Windows/Proton DLL pair found in SDK outputs; leaving existing game/openvibe.games/bin/*.dll alone"
+fi
+
 if [[ -f "$MOD_BIN/client.dll" ]]; then
-  echo "[openvibe] Windows/Proton client.dll present"
+  if is_patched_openvibe_client_dll "$MOD_BIN/client.dll"; then
+    echo "[openvibe] Windows/Proton client.dll present and patched"
+  else
+    echo "[openvibe] WARNING: Windows/Proton client.dll present but lacks ov_join/ov_menu/OpenVibe; install CI artifact before Proton testing" >&2
+  fi
 else
-  echo "[openvibe] Windows/Proton client.dll not present yet; build on Windows to enable Proton in-game client DLL commands"
+  echo "[openvibe] Windows/Proton client.dll not present yet; install the GitHub Actions Windows DLL artifact to enable Proton in-game commands"
 fi
 
 if [[ -f "$MOD_BIN/server.dll" ]]; then
-  echo "[openvibe] Windows server.dll present"
+  if is_patched_openvibe_server_dll "$MOD_BIN/server.dll"; then
+    echo "[openvibe] Windows server.dll present and patched"
+  else
+    echo "[openvibe] WARNING: Windows server.dll present but lacks OpenVibe server strings" >&2
+  fi
 else
   echo "[openvibe] Windows server.dll not present yet"
 fi
+# OPENVIBE_GUARDED_WINDOWS_DLL_COPY_END
+
