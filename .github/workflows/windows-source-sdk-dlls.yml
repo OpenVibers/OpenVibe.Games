@@ -9,6 +9,7 @@ on:
         default: "1"
   push:
     branches:
+      - main
       - codex/openvibe-next-steps
       - copilot/continue-windows-dll-work
     paths:

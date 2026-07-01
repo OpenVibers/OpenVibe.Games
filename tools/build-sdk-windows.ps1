@@ -771,6 +771,49 @@ function Resolve-OpenVibeWin32PublicLibDependencies {
     Format-Table -AutoSize | Out-File $log -Append
 }
 
+
+# OPENVIBE_WIN32_LIBZ_STUB_FOR_PROTON
+function Ensure-OpenVibeWin32LibZStub {
+  param([string]$PublicLibDir)
+
+  if ($script:OpenVibeTargetArch -ne "x86") { return }
+
+  $log = Join-Path $LogDir "win32-libz-stub.txt"
+  "=== Ensure-OpenVibeWin32LibZStub ===" | Out-File $log
+  "publicLibDir=$PublicLibDir" | Out-File $log -Append
+
+  New-Item -ItemType Directory -Force -Path $PublicLibDir | Out-Null
+  $dest = Join-Path $PublicLibDir "libz.lib"
+  if (Test-Path $dest) {
+    "present=$dest" | Out-File $log -Append
+    Say "libz.lib already present: $dest"
+    return
+  }
+
+  # VPC's HL2MP Windows client project references ..\..\lib\public\libz.lib for Win32,
+  # but Valve's public GitHub SDK checkout does not ship/build that x86 library. The current
+  # OpenVibe HL2MP client path does not use zlib symbols; the missing input file alone breaks
+  # the link. Provide a tiny inert COFF library so link.exe can continue. If future code starts
+  # requiring real zlib symbols, the link will fail with unresolved externals and this stub must
+  # be replaced with a real zlib build.
+  $stubDir = Join-Path $LogDir "libz-stub"
+  New-Item -ItemType Directory -Force -Path $stubDir | Out-Null
+  $stubC = Join-Path $stubDir "openvibe_libz_stub.c"
+  $stubObj = Join-Path $stubDir "openvibe_libz_stub.obj"
+  Set-Content -Encoding ascii -Path $stubC -Value "int openvibe_libz_placeholder_symbol = 0;`r`n"
+
+  Say "creating Win32 placeholder libz.lib for Source SDK public lib dir"
+  & cl.exe /nologo /c /TC /Fo$stubObj $stubC 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+  if ($LASTEXITCODE -ne 0 -or !(Test-Path $stubObj)) { throw "Failed to compile libz stub object. Check win32-libz-stub.txt." }
+
+  & lib.exe /nologo /machine:X86 /out:$dest $stubObj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+  if ($LASTEXITCODE -ne 0 -or !(Test-Path $dest)) { throw "Failed to create placeholder libz.lib. Check win32-libz-stub.txt." }
+
+  $item = Get-Item $dest
+  "created=$dest length=$($item.Length)" | Out-File $log -Append
+  Say "created $dest"
+}
+
 # Generate projects if no relevant vcxproj files exist yet.
 $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
 $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
@@ -844,6 +887,7 @@ Build-SourceSdkDependencyProjects
 # OPENVIBE_RESOLVE_WIN32_PUBLIC_LIB_DEPS_CALL
 $resolvePublicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
 Resolve-OpenVibeWin32PublicLibDependencies -Projects @($clientProject, $serverProject) -PublicLibDir $resolvePublicLibDir
+Ensure-OpenVibeWin32LibZStub -PublicLibDir $resolvePublicLibDir
 
 # OPENVIBE_WIN32_PRE_CLIENT_LINK_LIB_AUDIT
 $publicLibDirAudit = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
@@ -851,7 +895,7 @@ $publicLibDirAudit = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src 
 "target arch=$script:OpenVibeTargetArch" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
 "dir=$publicLibDirAudit" | Out-File (Join-Path $LogDir "public-libs-before-client-link.txt") -Append
 # Spot-check known required libs
-foreach ($lib in @("bitmap.lib","choreoobjects.lib","tier1.lib","tier2.lib","mathlib.lib","raytrace.lib","dmxloader.lib","dmserializers.lib","datamodel.lib","particles.lib","appframework.lib","vgui_controls.lib","vgui_surfacelib.lib","matsys_controls.lib")) {
+foreach ($lib in @("bitmap.lib","choreoobjects.lib","tier1.lib","tier2.lib","mathlib.lib","raytrace.lib","dmxloader.lib","dmserializers.lib","datamodel.lib","particles.lib","appframework.lib","vgui_controls.lib","vgui_surfacelib.lib","matsys_controls.lib","libz.lib")) {
   $lp = Join-Path $publicLibDirAudit $lib
   if (Test-Path $lp) {
     $item = Get-Item $lp
