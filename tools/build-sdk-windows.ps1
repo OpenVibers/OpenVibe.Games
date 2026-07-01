@@ -457,6 +457,14 @@ function Convert-GeneratedVcxprojsToWin32 {
     $text = $text -replace '\\lib\\public\\x64', '\lib\public'
     $text = $text -replace '/lib/public/x64', '/lib/public'
 
+    # OPENVIBE_WIN32_REWRITE_64BIT_IMPORT_LIB_NAMES
+    # VPC can keep 64-bit import-library names even after platform conversion.
+    # Source SDK Base 2013's Proton hl2.exe is 32-bit, so the converted Win32
+    # project must link the normal x86 import names.
+    $text = $text -replace '(?i)steam_api64\.lib', 'steam_api.lib'
+    $text = $text -replace '(?i)tier0_64\.lib', 'tier0.lib'
+    $text = $text -replace '(?i)vstdlib_64\.lib', 'vstdlib.lib'
+
     # OPENVIBE_WIN32_STEAM_API64_TO_STEAM_API_PATCH
     # VPC-generated win64 projects keep steam_api64.lib in AdditionalDependencies.
     # When coercing the project to Win32, force the x86 import/static-lib name.
@@ -881,6 +889,64 @@ function Ensure-OpenVibeWin32LibZStub {
   Say "created $dest"
 }
 
+
+# OPENVIBE_WIN32_IMPORT_COMPAT_LIB_STUBS
+function Ensure-OpenVibeWin32ImportCompatibilityLibs {
+  if ($script:OpenVibeTargetArch -ne "x86") { return }
+
+  $publicLibDir = Join-Path $Src "lib/public"
+  New-Item -ItemType Directory -Force -Path $publicLibDir | Out-Null
+
+  $log = Join-Path $LogDir "win32-import-compat-libs.txt"
+  "=== Ensure-OpenVibeWin32ImportCompatibilityLibs ===" | Out-File $log
+  "publicLibDir=$publicLibDir" | Out-File $log -Append
+
+  $libCmd = Get-Command lib.exe -ErrorAction SilentlyContinue
+  if (-not $libCmd) { $libCmd = Get-Command lib -ErrorAction SilentlyContinue }
+  if (-not $libCmd) { throw "lib.exe not found in MSVC dev shell; cannot create Win32 compatibility libraries" }
+
+  $clCmd = Get-Command cl.exe -ErrorAction SilentlyContinue
+  if (-not $clCmd) { $clCmd = Get-Command cl -ErrorAction SilentlyContinue }
+  if (-not $clCmd) { throw "cl.exe not found in MSVC dev shell; cannot create Win32 compatibility libraries" }
+
+  # These are VPC/linker inputs for the game DLLs. Modern public Valve SDK
+  # checkouts do not always include their 32-bit import libs, but the generated
+  # Win32 project still expects the filenames to exist. Create tiny x86 archives
+  # only when the correct file is absent so the linker can continue to the real
+  # object/link validation step.
+  $compatLibs = @(
+    "tier0.lib",
+    "vstdlib.lib",
+    "steam_api.lib",
+    "libz.lib"
+  )
+
+  foreach ($libName in $compatLibs) {
+    $dest = Join-Path $publicLibDir $libName
+    if (Test-Path $dest) {
+      $item = Get-Item $dest
+      "[present] $libName $($item.Length)" | Out-File $log -Append
+      continue
+    }
+
+    $safe = ($libName -replace '[^A-Za-z0-9]+','_')
+    $src = Join-Path $LogDir "openvibe_${safe}_compat_stub.c"
+    $obj = Join-Path $LogDir "openvibe_${safe}_compat_stub.obj"
+    "void openvibe_${safe}_compat_stub(void) {}" | Set-Content -Encoding ascii -Path $src
+
+    Say "creating Win32 compatibility library $dest"
+    & $clCmd.Source /nologo /c $src /Fo$obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "cl.exe failed while creating $libName compatibility object" }
+
+    & $libCmd.Source /nologo /machine:x86 /out:$dest $obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "lib.exe failed while creating $libName compatibility library" }
+
+    if (!(Test-Path $dest)) { throw "Expected compatibility library was not created: $dest" }
+    $item = Get-Item $dest
+    "[created] $libName $($item.Length)" | Out-File $log -Append
+  }
+}
+
 # Generate projects if no relevant vcxproj files exist yet.
 $clientProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*client*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
 $serverProjects = @(Get-ChildItem -Path $Src -Recurse -File -Filter "*server*hl2mp*.vcxproj" -ErrorAction SilentlyContinue)
@@ -957,6 +1023,9 @@ Build-SourceSdkDependencyProjects
 # OPENVIBE_RESOLVE_WIN32_PUBLIC_LIB_DEPS_CALL
 $resolvePublicLibDir = if ($script:OpenVibeTargetArch -eq "x86") { Join-Path $Src "lib/public" } else { Join-Path $Src "lib/public/x64" }
 Resolve-OpenVibeWin32PublicLibDependencies -Projects @($clientProject, $serverProject) -PublicLibDir $resolvePublicLibDir
+
+# OPENVIBE_WIN32_IMPORT_COMPAT_LIB_STUBS_CALL
+Ensure-OpenVibeWin32ImportCompatibilityLibs
 Ensure-OpenVibeWin32LibZStub -PublicLibDir $resolvePublicLibDir
 
 # OPENVIBE_WIN32_PRE_CLIENT_LINK_LIB_AUDIT
