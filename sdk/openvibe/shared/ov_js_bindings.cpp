@@ -59,6 +59,11 @@ static JSValue OVJS_getMode(JSContext *ctx, JSValueConst thisVal, int argc, JSVa
     return JS_NewString(ctx, g_OVRuntime ? g_OVRuntime->GetMode() : "unknown");
 }
 
+static JSValue OVJS_isServer(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
+{
+    return (g_OVRuntime && g_OVRuntime->IsServerRealm()) ? JS_TRUE : JS_FALSE;
+}
+
 static JSValue OVJS_getMapName(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
 {
     return JS_NewString(ctx, gpGlobals ? STRING(gpGlobals->mapname) : "");
@@ -211,7 +216,9 @@ static JSValue OVJS_fileExists(JSContext *ctx, JSValueConst thisVal, int argc, J
     const char *path = JS_ToCString(ctx, argv[0]);
     if (!path) return JS_FALSE;
 
-    bool exists = OVJS_IsSafeModPath(path) && filesystem->FileExists(path, "MOD");
+    bool exists = OVJS_IsSafeModPath(path)
+        && filesystem->FileExists(path, "MOD")
+        && !filesystem->IsDirectory(path, "MOD");
     JS_FreeCString(ctx, path);
     return exists ? JS_TRUE : JS_FALSE;
 }
@@ -262,6 +269,7 @@ static const JSCFunctionListEntry OVFuncs[] =
     JS_CFUNC_DEF("warn", 1, OVJS_warn),
     JS_CFUNC_DEF("error", 1, OVJS_error),
     JS_CFUNC_DEF("getMode", 0, OVJS_getMode),
+    JS_CFUNC_DEF("isServer", 0, OVJS_isServer),
     JS_CFUNC_DEF("getMapName", 0, OVJS_getMapName),
     JS_CFUNC_DEF("time", 0, OVJS_time),
     JS_CFUNC_DEF("players", 0, OVJS_players),

@@ -99,4 +99,17 @@
 
   gamemode.setBase(GM);
   gamemode.set(GM, { base: true });
+
+  // Load addons now that all core systems (require, hook, command, timer,
+  // gamemode) are available. Runs in both realms; Addon.loadAll() picks the
+  // right per-realm entry files via OV.isServer(). The active gamemode file
+  // loads immediately after this, so addon hooks are registered first and can
+  // override gamemode behavior — matching GMod's addon-over-gamemode ordering.
+  try {
+    if (globalThis.Addon && typeof Addon.loadAll === "function") {
+      Addon.loadAll();
+    }
+  } catch (e) {
+    if (globalThis.OV && OV.error) OV.error("base: addon load failed: " + (e && e.message ? e.message : e));
+  }
 })();

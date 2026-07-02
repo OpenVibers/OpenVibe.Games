@@ -31,6 +31,7 @@ public:
 
     JSContext *Context() { return nullptr; }
     const char *GetMode() const { return m_szMode; }
+    bool IsServerRealm() const { return m_bServerRealm; }
 
 private:
     bool m_bServerRealm = false;
@@ -57,6 +58,7 @@ public:
 
     JSContext *Context() { return m_pCtx; }
     const char *GetMode() const { return m_szMode; }
+    bool IsServerRealm() const { return m_bServerRealm; }
 
 private:
     void PrintException(const char *pszWhere);
