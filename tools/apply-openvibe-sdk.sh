@@ -54,6 +54,10 @@ copy_file "$ROOT/sdk/openvibe/shared/ov_js_player.h" \
   "$SDK/src/game/shared/openvibe/ov_js_player.h"
 copy_file "$ROOT/sdk/openvibe/shared/ov_js_player.cpp" \
   "$SDK/src/game/shared/openvibe/ov_js_player.cpp"
+copy_file "$ROOT/sdk/openvibe/shared/ovjs_core.h" \
+  "$SDK/src/game/shared/openvibe/ovjs_core.h"
+copy_file "$ROOT/sdk/openvibe/shared/ovjs_core.c" \
+  "$SDK/src/game/shared/openvibe/ovjs_core.c"
 
 copy_file "$ROOT/sdk/openvibe/server/hl2mp/openvibe_js_server.h" \
   "$SDK/src/game/server/hl2mp/openvibe_js_server.h"
@@ -79,8 +83,9 @@ perl -0pi -e '
   s/^.*hl2mp\\vgui_openvibe_menu\.cpp.*\n//mg;
   s/^.*hl2mp\\openvibe_js_client\.cpp.*\n//mg;
   s/^.*openvibe\\ov_js_runtime\.cpp.*\n//mg;
+  s/^.*openvibe\\ovjs_core\.c".*\n//mg;
   s/^.*libquickjs_openvibe(?:\.a)?".*\n//mg;
-  s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_client.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_runtime.cpp"\n\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s;
+  s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_client.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ovjs_core.c" [\$LINUXALL]\n\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s;
 ' "$CLIENT_VPC"
 echo "[openvibe-sdk] patched client_hl2mp.vpc"
 

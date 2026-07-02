@@ -282,6 +282,25 @@ foreach ($src in $sources) {
   $objects += $obj
 }
 
+# Also compile the OpenVibe host-agnostic JS core (ovjs_core.c) with the SAME
+# clang-cl toolchain and pack it into libquickjs_openvibe.lib. ovjs_core.c is C
+# and includes quickjs.h, so it must NOT be compiled by cl.exe in C++ mode — this
+# is exactly why the client glue talks to it through the plain C ABI in
+# ovjs_core.h. Compiling it here means the client project just links this lib.
+$SdkOpenvibe = Join-Path $Sdk 'src/game/shared/openvibe'
+$OvjsCoreSrc = Join-Path $SdkOpenvibe 'ovjs_core.c'
+if (Test-Path $OvjsCoreSrc) {
+  $ovjsObj = Join-Path $Out 'ovjs_core.obj'
+  $CoreArgs = $Common + @("/I$SdkOpenvibe")
+  Say "$([IO.Path]::GetFileName($Compiler)) ovjs_core.c -> $ovjsObj"
+  & $Compiler @CoreArgs /c "$OvjsCoreSrc" "/Fo$ovjsObj"
+  if ($LASTEXITCODE -ne 0) { throw "$Compiler failed for ovjs_core.c" }
+  if (!(Test-Path $ovjsObj)) { throw "$Compiler reported success but did not produce $ovjsObj" }
+  $objects += $ovjsObj
+} else {
+  Say "ovjs_core.c not present at $OvjsCoreSrc; skipping (client JS core will be unresolved)"
+}
+
 $outLib = Join-Path $Out 'libquickjs_openvibe.lib'
 Say "lib -> $outLib"
 & lib.exe /nologo "/OUT:$outLib" $objects

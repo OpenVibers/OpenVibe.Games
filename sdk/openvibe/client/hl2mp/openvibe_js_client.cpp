@@ -1,260 +1,142 @@
 #include "cbase.h"
 #include "openvibe_js_client.h"
 
-// The client always uses the real QuickJS runtime (the Windows *server* stub
-// guard keys on GAME_DLL, which is not defined in the client build).
+// Host-side glue for the client JavaScript runtime. Deliberately includes only
+// the pure C-ABI core header (never quickjs.h), so MSVC cl.exe never parses
+// QuickJS's C headers in C++ mode. All QuickJS work lives in ovjs_core.c
+// (compiled as C / clang-cl on Windows).
+#include "openvibe/ovjs_core.h"
 #include "filesystem.h"
-#include "openvibe/ov_js_runtime.h"
-#include "openvibe/ov_js_bindings.h"
 #include "usermessages.h"
-#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "tier0/memdbgon.h"
 
-// ---------------------------------------------------------------------------
-// Client JS runtime instance + mode.
-// ---------------------------------------------------------------------------
-static COpenVibeJSRuntime g_OVClientJS;
-static bool g_OVClientJSStarted = false;
+static OVJSCore *g_pClientCore = NULL;
 
 static ConVar ov_client_js_enabled(
     "ov_client_js_enabled", "1", FCVAR_CLIENTDLL,
     "Enable the OpenVibe client-side JavaScript runtime." );
-
-// Which gamemode's client.js to load. The server pushes its mode to the client
-// (ov_client_mode <mode>; then the runtime reloads), defaulting to hub.
 static ConVar ov_client_mode(
     "ov_client_mode", "hub", FCVAR_CLIENTDLL,
     "OpenVibe client gamemode realm: hub, prophunt, deathrun, fortwars, traitortown, sandbox." );
 
-static bool OpenVibeClientJS_IsRunning()
-{
-    return ov_client_js_enabled.GetBool() && g_OVClientJS.Context() != nullptr;
-}
-
 // ---------------------------------------------------------------------------
-// Client OV.* native bindings. Client-safe subset (no server player list /
-// ServerCommand). File I/O + logging + net + realm info, matching the server
-// bridge so the shared core JS (require/net/addon/timer/hook) runs unchanged.
+// Host callbacks (C ABI). Source SDK lives entirely on this side.
 // ---------------------------------------------------------------------------
-static bool OVCJS_IsSafeModPath( const char *pszPath )
+static bool OVC_IsSafeModPath( const char *p )
 {
-    if ( !pszPath || !pszPath[0] ) return false;
-    if ( pszPath[0] == '/' || pszPath[0] == '\\' ) return false;
-    if ( Q_strstr( pszPath, ".." ) ) return false;
-    if ( Q_strstr( pszPath, ":" ) ) return false;
+    if ( !p || !p[0] ) return false;
+    if ( p[0] == '/' || p[0] == '\\' ) return false;
+    if ( strstr( p, ".." ) ) return false;
+    if ( strstr( p, ":" ) ) return false;
     return true;
 }
 
-static JSValue OVCJS_log( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
+static void OVC_log( const char *m )  { Msg( "[OV JS/client] %s\n", m ); }
+static void OVC_warn( const char *m ) { Warning( "[OV JS/client] %s\n", m ); }
+static void OVC_error( const char *m ){ Warning( "[OV JS/client ERROR] %s\n", m ); }
+
+static char *OVC_readFile( const char *path )
 {
-    if ( argc < 1 ) return JS_UNDEFINED;
-    const char *msg = JS_ToCString( ctx, argv[0] );
-    if ( msg ) { Msg( "[OV JS/client] %s\n", msg ); JS_FreeCString( ctx, msg ); }
-    return JS_UNDEFINED;
+    if ( !OVC_IsSafeModPath( path ) ) return NULL;
+    FileHandle_t f = filesystem->Open( path, "rb", "MOD" );
+    if ( !f ) return NULL;
+    int size = filesystem->Size( f );
+    if ( size < 0 || size > 8 * 1024 * 1024 ) { filesystem->Close( f ); return NULL; }
+    char *buf = (char *)malloc( size + 1 );
+    if ( !buf ) { filesystem->Close( f ); return NULL; }
+    filesystem->Read( buf, size, f );
+    filesystem->Close( f );
+    buf[size] = '\0';
+    return buf;
 }
 
-static JSValue OVCJS_warn( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
+static int OVC_fileExists( const char *path )
 {
-    if ( argc < 1 ) return JS_UNDEFINED;
-    const char *msg = JS_ToCString( ctx, argv[0] );
-    if ( msg ) { Warning( "[OV JS/client] %s\n", msg ); JS_FreeCString( ctx, msg ); }
-    return JS_UNDEFINED;
-}
-
-static JSValue OVCJS_error( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
-{
-    if ( argc < 1 ) return JS_UNDEFINED;
-    const char *msg = JS_ToCString( ctx, argv[0] );
-    if ( msg ) { Warning( "[OV JS/client ERROR] %s\n", msg ); JS_FreeCString( ctx, msg ); }
-    return JS_UNDEFINED;
-}
-
-static JSValue OVCJS_isServer( JSContext *ctx, JSValueConst, int, JSValueConst * )
-{
-    return JS_FALSE; // client realm
-}
-
-static JSValue OVCJS_getMode( JSContext *ctx, JSValueConst, int, JSValueConst * )
-{
-    return JS_NewString( ctx, g_OVClientJS.GetMode() );
-}
-
-static JSValue OVCJS_getMapName( JSContext *ctx, JSValueConst, int, JSValueConst * )
-{
-    return JS_NewString( ctx, engine ? engine->GetLevelName() : "" );
-}
-
-static JSValue OVCJS_time( JSContext *ctx, JSValueConst, int, JSValueConst * )
-{
-    return JS_NewFloat64( ctx, gpGlobals ? gpGlobals->curtime : 0.0 );
-}
-
-static JSValue OVCJS_readFile( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
-{
-    if ( argc < 1 ) return JS_NULL;
-    const char *path = JS_ToCString( ctx, argv[0] );
-    if ( !path ) return JS_NULL;
-
-    if ( !OVCJS_IsSafeModPath( path ) )
-    {
-        Warning( "[OV JS/client] readFile refused unsafe path: %s\n", path );
-        JS_FreeCString( ctx, path );
-        return JS_NULL;
-    }
-
-    FileHandle_t file = filesystem->Open( path, "rb", "MOD" );
-    if ( !file ) { JS_FreeCString( ctx, path ); return JS_NULL; }
-
-    int size = filesystem->Size( file );
-    if ( size < 0 || size > 8 * 1024 * 1024 )
-    {
-        filesystem->Close( file );
-        JS_FreeCString( ctx, path );
-        return JS_NULL;
-    }
-
-    char *buffer = new char[size + 1];
-    filesystem->Read( buffer, size, file );
-    filesystem->Close( file );
-    buffer[size] = '\0';
-
-    JSValue out = JS_NewStringLen( ctx, buffer, size );
-    delete[] buffer;
-    JS_FreeCString( ctx, path );
-    return out;
-}
-
-static JSValue OVCJS_fileExists( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
-{
-    if ( argc < 1 ) return JS_FALSE;
-    const char *path = JS_ToCString( ctx, argv[0] );
-    if ( !path ) return JS_FALSE;
-    bool exists = OVCJS_IsSafeModPath( path )
+    return OVC_IsSafeModPath( path )
         && filesystem->FileExists( path, "MOD" )
-        && !filesystem->IsDirectory( path, "MOD" );
-    JS_FreeCString( ctx, path );
-    return exists ? JS_TRUE : JS_FALSE;
+        && !filesystem->IsDirectory( path, "MOD" ) ? 1 : 0;
 }
 
-static JSValue OVCJS_listDir( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
+static char *OVC_listDir( const char *dir, const char *wildcard )
 {
-    JSValue arr = JS_NewArray( ctx );
-    if ( argc < 1 ) return arr;
-
-    const char *dir = JS_ToCString( ctx, argv[0] );
-    if ( !dir ) return arr;
-
-    const char *wildcardArg = ( argc >= 2 && JS_IsString( argv[1] ) ) ? JS_ToCString( ctx, argv[1] ) : nullptr;
-    const char *wildcard = ( wildcardArg && wildcardArg[0] ) ? wildcardArg : "*";
-
-    if ( !OVCJS_IsSafeModPath( dir ) )
-    {
-        if ( wildcardArg ) JS_FreeCString( ctx, wildcardArg );
-        JS_FreeCString( ctx, dir );
-        return arr;
-    }
-
+    if ( !OVC_IsSafeModPath( dir ) ) return NULL;
     char search[512];
-    Q_snprintf( search, sizeof( search ), "%s/%s", dir, wildcard );
+    Q_snprintf( search, sizeof( search ), "%s/%s", dir, ( wildcard && wildcard[0] ) ? wildcard : "*" );
 
-    FileFindHandle_t findHandle;
-    const char *name = filesystem->FindFirstEx( search, "MOD", &findHandle );
-    uint32 index = 0;
+    CUtlString out;
+    FileFindHandle_t h;
+    const char *name = filesystem->FindFirstEx( search, "MOD", &h );
+    bool first = true;
     while ( name )
     {
         if ( Q_strcmp( name, "." ) != 0 && Q_strcmp( name, ".." ) != 0 )
-            JS_SetPropertyUint32( ctx, arr, index++, JS_NewString( ctx, name ) );
-        name = filesystem->FindNext( findHandle );
+        {
+            if ( !first ) out += "\n";
+            out += name;
+            first = false;
+        }
+        name = filesystem->FindNext( h );
     }
-    filesystem->FindClose( findHandle );
+    filesystem->FindClose( h );
 
-    if ( wildcardArg ) JS_FreeCString( ctx, wildcardArg );
-    JS_FreeCString( ctx, dir );
-    return arr;
+    const char *s = out.Get();
+    if ( !s || !s[0] ) return NULL;
+    size_t len = strlen( s );
+    char *buf = (char *)malloc( len + 1 );
+    if ( !buf ) return NULL;
+    memcpy( buf, s, len + 1 );
+    return buf;
 }
 
-// client -> server: forward as the ov_net command the server JS dispatches.
-static JSValue OVCJS_netSendToServer( JSContext *ctx, JSValueConst, int argc, JSValueConst *argv )
+static int OVC_isServer( void ) { return 0; }
+static const char *OVC_getMode( void ) { return ov_client_mode.GetString(); }
+
+static const char *OVC_getMapName( void )
 {
-    if ( argc < 2 ) return JS_UNDEFINED;
-    const char *name = JS_ToCString( ctx, argv[0] );
-    const char *payload = JS_ToCString( ctx, argv[1] );
-    if ( name && payload && engine )
-    {
-        char cmd[16384];
-        Q_snprintf( cmd, sizeof( cmd ), "ov_net %s %s\n", name, payload );
-        engine->ClientCmd_Unrestricted( cmd );
-    }
-    if ( name ) JS_FreeCString( ctx, name );
-    if ( payload ) JS_FreeCString( ctx, payload );
-    return JS_UNDEFINED;
+    static char s_map[128];
+    const char *lvl = engine ? engine->GetLevelName() : "";
+    Q_strncpy( s_map, lvl ? lvl : "", sizeof( s_map ) );
+    return s_map;
 }
 
-// broadcast/serverCommand are server-only; provide inert client stubs so shared
-// JS that references them doesn't throw on the client.
-static JSValue OVCJS_noop( JSContext *ctx, JSValueConst, int, JSValueConst * )
+static double OVC_getTime( void ) { return gpGlobals ? gpGlobals->curtime : 0.0; }
+
+static void OVC_netSendToServer( const char *name, const char *payloadB64 )
 {
-    return JS_UNDEFINED;
+    if ( !name || !payloadB64 || !engine ) return;
+    char cmd[16384];
+    Q_snprintf( cmd, sizeof( cmd ), "ov_net %s %s\n", name, payloadB64 );
+    engine->ClientCmd_Unrestricted( cmd );
 }
 
-// Register imperatively with JS_NewCFunction instead of a JS_CFUNC_DEF table.
-// JS_CFUNC_DEF expands to C designated initializers (.u = { .func = ... }),
-// which MSVC rejects before /std:c++20 (C7555/C7556); JS_NewCFunction is plain
-// function calls that compile cleanly on both gcc and MSVC.
-static void OVCJS_Bind( JSContext *ctx, JSValue ov, const char *name, JSCFunction *fn, int length )
+static void OVC_netEmit( const char *, const char *, const char * )
 {
-    JS_SetPropertyStr( ctx, ov, name, JS_NewCFunction( ctx, fn, name, length ) );
+    // server->client emit is server-only; inert on the client.
 }
 
-// This is the symbol ov_js_runtime.cpp calls; the client project compiles this
-// file instead of the server ov_js_bindings.cpp.
-void OVJS_RegisterNativeBindings( JSContext *ctx, COpenVibeJSRuntime * )
+static OVJSHost g_ClientHost =
 {
-    JSValue global = JS_GetGlobalObject( ctx );
-    JSValue ov = JS_NewObject( ctx );
-
-    OVCJS_Bind( ctx, ov, "log", OVCJS_log, 1 );
-    OVCJS_Bind( ctx, ov, "warn", OVCJS_warn, 1 );
-    OVCJS_Bind( ctx, ov, "error", OVCJS_error, 1 );
-    OVCJS_Bind( ctx, ov, "isServer", OVCJS_isServer, 0 );
-    OVCJS_Bind( ctx, ov, "getMode", OVCJS_getMode, 0 );
-    OVCJS_Bind( ctx, ov, "getMapName", OVCJS_getMapName, 0 );
-    OVCJS_Bind( ctx, ov, "time", OVCJS_time, 0 );
-    OVCJS_Bind( ctx, ov, "readFile", OVCJS_readFile, 1 );
-    OVCJS_Bind( ctx, ov, "fileExists", OVCJS_fileExists, 1 );
-    OVCJS_Bind( ctx, ov, "listDir", OVCJS_listDir, 2 );
-    OVCJS_Bind( ctx, ov, "netSendToServer", OVCJS_netSendToServer, 2 );
-    OVCJS_Bind( ctx, ov, "broadcast", OVCJS_noop, 1 );
-    OVCJS_Bind( ctx, ov, "serverCommand", OVCJS_noop, 1 );
-
-    JS_SetPropertyStr( ctx, global, "OV", ov );
-    JS_FreeValue( ctx, global );
-}
+    OVC_log, OVC_warn, OVC_error,
+    OVC_readFile, OVC_fileExists, OVC_listDir,
+    OVC_isServer, OVC_getMode, OVC_getMapName, OVC_getTime,
+    OVC_netSendToServer, OVC_netEmit
+};
 
 // ---------------------------------------------------------------------------
 // server -> client: OVNet usermessage -> OVNetReceive hook into client JS.
 // ---------------------------------------------------------------------------
 void __MsgFunc_OVNet( bf_read &msg )
 {
-    if ( !OpenVibeClientJS_IsRunning() )
-        return;
-
+    if ( !g_pClientCore ) return;
     char name[128];
     char payload[16384];
     msg.ReadString( name, sizeof( name ) );
     msg.ReadString( payload, sizeof( payload ) );
-
-    JSContext *ctx = g_OVClientJS.Context();
-    JSValue jsName    = JS_NewString( ctx, name );
-    JSValue jsPayload = JS_NewString( ctx, payload );
-    JSValue jsPly     = JS_NULL; // server->client has no "sending player"
-
-    JSValueConst argv[] = { jsName, jsPayload, jsPly };
-    g_OVClientJS.CallHookVoid( "OVNetReceive", 3, argv );
-
-    JS_FreeValue( ctx, jsName );
-    JS_FreeValue( ctx, jsPayload );
+    // ply arg is null on the client (server->client has no sending player).
+    ovjs_fire_hook_s( g_pClientCore, "OVNetReceive", name, payload, NULL );
 }
 
 // ---------------------------------------------------------------------------
@@ -262,20 +144,17 @@ void __MsgFunc_OVNet( bf_read &msg )
 // ---------------------------------------------------------------------------
 void OpenVibeJS_Client_Init()
 {
-    if ( g_OVClientJSStarted )
-        return;
-    g_OVClientJSStarted = true;
-
+    if ( g_pClientCore ) return;
     if ( !ov_client_js_enabled.GetBool() )
     {
         Msg( "[OV JS/client] disabled by ov_client_js_enabled=0\n" );
         return;
     }
-
-    if ( g_OVClientJS.Init( false /*client realm*/, ov_client_mode.GetString() ) )
+    g_pClientCore = ovjs_create( &g_ClientHost, 0 /*client*/, ov_client_mode.GetString() );
+    if ( g_pClientCore )
     {
         Msg( "[OV JS/client] client runtime initialized for mode '%s'\n", ov_client_mode.GetString() );
-        g_OVClientJS.CallHookVoid( "Initialize" );
+        ovjs_fire_hook( g_pClientCore, "Initialize" );
     }
     else
     {
@@ -285,27 +164,28 @@ void OpenVibeJS_Client_Init()
 
 void OpenVibeJS_Client_Shutdown()
 {
-    if ( OpenVibeClientJS_IsRunning() )
-        g_OVClientJS.CallHookVoid( "Shutdown" );
-    g_OVClientJS.Shutdown();
-    g_OVClientJSStarted = false;
+    if ( g_pClientCore )
+    {
+        ovjs_fire_hook( g_pClientCore, "Shutdown" );
+        ovjs_destroy( g_pClientCore );
+        g_pClientCore = NULL;
+    }
 }
 
 void OpenVibeJS_Client_Think()
 {
-    if ( OpenVibeClientJS_IsRunning() )
-        g_OVClientJS.CallHookVoid( "Think" );
+    if ( g_pClientCore )
+        ovjs_fire_hook( g_pClientCore, "Think" );
 }
 
 // ---------------------------------------------------------------------------
-// Client concommands (mirror the server ones for parity/debugging).
+// Client concommands.
 // ---------------------------------------------------------------------------
 static void OV_ClientJSStatus_f()
 {
-    Msg( "[OV JS/client] enabled=%d started=%d running=%d mode=%s\n",
+    Msg( "[OV JS/client] enabled=%d running=%d mode=%s\n",
         ov_client_js_enabled.GetBool() ? 1 : 0,
-        g_OVClientJSStarted ? 1 : 0,
-        OpenVibeClientJS_IsRunning() ? 1 : 0,
+        g_pClientCore ? 1 : 0,
         ov_client_mode.GetString() );
 }
 static ConCommand ov_client_js_status( "ov_client_js_status", OV_ClientJSStatus_f,
@@ -320,33 +200,25 @@ static void OV_ClientJSReload_f()
 static ConCommand ov_client_js_reload( "ov_client_js_reload", OV_ClientJSReload_f,
     "Reload the OpenVibe client JavaScript runtime.", FCVAR_CLIENTDLL );
 
-// Drives the client JS runtime: hooks the OVNet usermessage at load, starts the
-// runtime once the level/systems are up, and pumps Think() each frame (for JS
-// timers). Self-contained so no external init-call patching is needed.
+// Drives the runtime: hook OVNet at load, start on level enter, Think per frame.
 class COpenVibeClientJSSystem : public CAutoGameSystemPerFrame
 {
 public:
     COpenVibeClientJSSystem() : CAutoGameSystemPerFrame( "COpenVibeClientJSSystem" ) {}
-
     bool Init() OVERRIDE
     {
         usermessages->HookMessage( "OVNet", __MsgFunc_OVNet );
         return true;
     }
-
     void LevelInitPostEntity() OVERRIDE
     {
-        // (Re)start the runtime when a level is entered so <mode>/client.js and
-        // client addons load fresh for the connected server.
         OpenVibeJS_Client_Shutdown();
         OpenVibeJS_Client_Init();
     }
-
     void LevelShutdownPostEntity() OVERRIDE
     {
         OpenVibeJS_Client_Shutdown();
     }
-
     void Update( float frametime ) OVERRIDE
     {
         OpenVibeJS_Client_Think();
