@@ -124,7 +124,8 @@
       receivers[String(name)] = fn;
     },
 
-    // server -> client
+    // server -> client. ids are passed to C++ as a comma-separated list of
+    // player userIds; -1 means "broadcast to everyone".
     Send: function (target) {
       if (!writeBuf) return;
       if (!isServer) { OV.warn("net.Send is server-only; use SendToServer on the client"); return; }
@@ -132,15 +133,15 @@
       if (target == null) { ids = [-1]; }
       else if (Array.isArray(target)) { ids = target.map(function (p) { return p && p.userId ? p.userId() : (p | 0); }); }
       else { ids = [target && target.userId ? target.userId() : (target | 0)]; }
-      var payload = serialize();
-      if (OV.netEmit) OV.netEmit(JSON.stringify(ids), writeBuf.name, payload);
+      var name = writeBuf.name, payload = serialize();
+      if (OV.netEmit) OV.netEmit(ids.join(","), name, payload);
       writeBuf = null;
     },
     Broadcast: function () {
       if (!writeBuf) return;
       if (!isServer) { OV.warn("net.Broadcast is server-only"); return; }
-      var payload = serialize();
-      if (OV.netEmit) OV.netEmit(JSON.stringify([-1]), writeBuf.name, payload);
+      var name = writeBuf.name, payload = serialize();
+      if (OV.netEmit) OV.netEmit("-1", name, payload);
       writeBuf = null;
     },
 

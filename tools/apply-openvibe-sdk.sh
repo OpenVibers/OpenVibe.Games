@@ -35,6 +35,10 @@ copy_file "$ROOT/sdk/openvibe/client/hl2mp/openvibe_client.cpp" \
   "$SDK/src/game/client/hl2mp/openvibe_client.cpp"
 copy_file "$ROOT/sdk/openvibe/client/hl2mp/vgui_openvibe_menu.cpp" \
   "$SDK/src/game/client/hl2mp/vgui_openvibe_menu.cpp"
+copy_file "$ROOT/sdk/openvibe/client/hl2mp/openvibe_js_client.cpp" \
+  "$SDK/src/game/client/hl2mp/openvibe_js_client.cpp"
+copy_file "$ROOT/sdk/openvibe/client/hl2mp/openvibe_js_client.h" \
+  "$SDK/src/game/client/hl2mp/openvibe_js_client.h"
 copy_file "$ROOT/sdk/openvibe/server/hl2mp/openvibe_server.cpp" \
   "$SDK/src/game/server/hl2mp/openvibe_server.cpp"
 
@@ -73,9 +77,20 @@ HL2MP_PLAYER="$SDK/src/game/server/hl2mp/hl2mp_player.cpp"
 perl -0pi -e '
   s/^.*hl2mp\\openvibe_client\.cpp.*\n//mg;
   s/^.*hl2mp\\vgui_openvibe_menu\.cpp.*\n//mg;
-  s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n/s;
+  s/^.*hl2mp\\openvibe_js_client\.cpp.*\n//mg;
+  s/^.*openvibe\\ov_js_runtime\.cpp.*\n//mg;
+  s/^.*libquickjs_openvibe(?:\.a)?".*\n//mg;
+  s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_client.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_runtime.cpp"\n\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s;
 ' "$CLIENT_VPC"
 echo "[openvibe-sdk] patched client_hl2mp.vpc"
+
+# Register the OVNet usermessage (server->client net library transport) in the
+# shared HL2 usermessage table so both realms agree on it.
+HL2_USERMSG="$SDK/src/game/shared/hl2/hl2_usermessages.cpp"
+if [[ -f "$HL2_USERMSG" ]] && ! grep -q '"OVNet"' "$HL2_USERMSG"; then
+  perl -0pi -e 's/(usermessages->Register\(\s*"AchievementEvent",\s*-1\s*\);\n)/$1\tusermessages->Register( "OVNet", -1 );\t\/\/ OpenVibe net library server->client\n/s;' "$HL2_USERMSG"
+  echo "[openvibe-sdk] registered OVNet usermessage"
+fi
 
 perl -0pi -e '
   s/^.*hl2mp\\openvibe_server\.cpp.*\n//mg;

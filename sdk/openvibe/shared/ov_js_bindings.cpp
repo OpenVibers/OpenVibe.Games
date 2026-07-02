@@ -13,6 +13,7 @@ void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime) {}
 #include "hl2mp_player.h"
 #include "util.h"
 #include "filesystem.h"
+#include "recipientfilter.h"
 
 #include "tier0/memdbgon.h"
 
@@ -263,6 +264,70 @@ static JSValue OVJS_listDir(JSContext *ctx, JSValueConst thisVal, int argc, JSVa
     return arr;
 }
 
+// OV.netEmit(idsCsv, name, payloadB64) — server->client transport for the net
+// library. idsCsv is a comma-separated list of player userIds; -1 = broadcast.
+// Sends the "OVNet" usermessage which the client hooks and dispatches to
+// net.Receive. (Payload is bounded by the usermessage string size.)
+static JSValue OVJS_netEmit(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
+{
+    if (argc < 3) return JS_UNDEFINED;
+
+    const char *idsCsv  = JS_ToCString(ctx, argv[0]);
+    const char *name    = JS_ToCString(ctx, argv[1]);
+    const char *payload = JS_ToCString(ctx, argv[2]);
+
+    if (!idsCsv || !name || !payload)
+    {
+        if (idsCsv)  JS_FreeCString(ctx, idsCsv);
+        if (name)    JS_FreeCString(ctx, name);
+        if (payload) JS_FreeCString(ctx, payload);
+        return JS_UNDEFINED;
+    }
+
+    bool broadcast = false;
+    CUtlVector<int> userIds;
+    {
+        // Portable comma-separated int parse (no strtok_s/strtok_r).
+        const char *p = idsCsv;
+        while (*p)
+        {
+            while (*p == ',' || *p == ' ') ++p;
+            if (!*p) break;
+            int id = atoi(p);
+            if (id < 0) { broadcast = true; break; }
+            userIds.AddToTail(id);
+            while (*p && *p != ',') ++p;
+        }
+    }
+
+    if (broadcast)
+    {
+        CBroadcastRecipientFilter filter;
+        UserMessageBegin(filter, "OVNet");
+        WRITE_STRING(name);
+        WRITE_STRING(payload);
+        MessageEnd();
+    }
+    else
+    {
+        for (int i = 0; i < userIds.Count(); ++i)
+        {
+            CBasePlayer *base = UTIL_PlayerByUserId(userIds[i]);
+            if (!base) continue;
+            CSingleUserRecipientFilter filter(base);
+            UserMessageBegin(filter, "OVNet");
+            WRITE_STRING(name);
+            WRITE_STRING(payload);
+            MessageEnd();
+        }
+    }
+
+    JS_FreeCString(ctx, idsCsv);
+    JS_FreeCString(ctx, name);
+    JS_FreeCString(ctx, payload);
+    return JS_UNDEFINED;
+}
+
 static const JSCFunctionListEntry OVFuncs[] =
 {
     JS_CFUNC_DEF("log", 1, OVJS_log),
@@ -282,6 +347,7 @@ static const JSCFunctionListEntry OVFuncs[] =
     JS_CFUNC_DEF("readFile", 1, OVJS_readFile),
     JS_CFUNC_DEF("fileExists", 1, OVJS_fileExists),
     JS_CFUNC_DEF("listDir", 2, OVJS_listDir),
+    JS_CFUNC_DEF("netEmit", 3, OVJS_netEmit),
 };
 
 void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime)
