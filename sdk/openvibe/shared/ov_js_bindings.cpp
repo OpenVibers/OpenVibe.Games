@@ -12,10 +12,23 @@ void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime) {}
 #include "ov_js_player.h"
 #include "hl2mp_player.h"
 #include "util.h"
+#include "filesystem.h"
 
 #include "tier0/memdbgon.h"
 
 static COpenVibeJSRuntime *g_OVRuntime = nullptr;
+
+// Reject paths that could escape the mod directory. The "MOD" search path
+// already sandboxes reads to the game folder, but we defensively block
+// absolute paths and parent traversal so JS can only touch mod-relative files.
+static bool OVJS_IsSafeModPath(const char *pszPath)
+{
+    if (!pszPath || !pszPath[0]) return false;
+    if (pszPath[0] == '/' || pszPath[0] == '\\') return false;
+    if (Q_strstr(pszPath, "..")) return false;
+    if (Q_strstr(pszPath, ":")) return false; // drive-letter / alt stream
+    return true;
+}
 
 static JSValue OVJS_log(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
 {
@@ -145,6 +158,104 @@ static JSValue OVJS_endMatch(JSContext *ctx, JSValueConst thisVal, int argc, JSV
     return JS_UNDEFINED;
 }
 
+// ---------------------------------------------------------------------------
+// File I/O bridge — foundation for the JS require()/addon/npm module loader.
+// All reads are sandboxed to the mod ("MOD") search path.
+// ---------------------------------------------------------------------------
+
+// OV.readFile(path) -> string | null
+static JSValue OVJS_readFile(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
+{
+    if (argc < 1) return JS_NULL;
+    const char *path = JS_ToCString(ctx, argv[0]);
+    if (!path) return JS_NULL;
+
+    if (!OVJS_IsSafeModPath(path))
+    {
+        Warning("[OV JS] OV.readFile refused unsafe path: %s\n", path);
+        JS_FreeCString(ctx, path);
+        return JS_NULL;
+    }
+
+    FileHandle_t file = filesystem->Open(path, "rb", "MOD");
+    if (!file)
+    {
+        JS_FreeCString(ctx, path);
+        return JS_NULL;
+    }
+
+    int size = filesystem->Size(file);
+    if (size < 0 || size > 8 * 1024 * 1024)
+    {
+        filesystem->Close(file);
+        Warning("[OV JS] OV.readFile refusing %s size=%d\n", path, size);
+        JS_FreeCString(ctx, path);
+        return JS_NULL;
+    }
+
+    char *buffer = new char[size + 1];
+    filesystem->Read(buffer, size, file);
+    filesystem->Close(file);
+    buffer[size] = '\0';
+
+    JSValue out = JS_NewStringLen(ctx, buffer, size);
+    delete[] buffer;
+    JS_FreeCString(ctx, path);
+    return out;
+}
+
+// OV.fileExists(path) -> bool
+static JSValue OVJS_fileExists(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
+{
+    if (argc < 1) return JS_FALSE;
+    const char *path = JS_ToCString(ctx, argv[0]);
+    if (!path) return JS_FALSE;
+
+    bool exists = OVJS_IsSafeModPath(path) && filesystem->FileExists(path, "MOD");
+    JS_FreeCString(ctx, path);
+    return exists ? JS_TRUE : JS_FALSE;
+}
+
+// OV.listDir(dir, wildcard="*") -> string[] (names only, files and dirs)
+static JSValue OVJS_listDir(JSContext *ctx, JSValueConst thisVal, int argc, JSValueConst *argv)
+{
+    JSValue arr = JS_NewArray(ctx);
+    if (argc < 1) return arr;
+
+    const char *dir = JS_ToCString(ctx, argv[0]);
+    if (!dir) return arr;
+
+    // Optional wildcard arg; owned separately so freeing is unambiguous.
+    const char *wildcardArg = (argc >= 2 && JS_IsString(argv[1])) ? JS_ToCString(ctx, argv[1]) : nullptr;
+    const char *wildcard = (wildcardArg && wildcardArg[0]) ? wildcardArg : "*";
+
+    if (!OVJS_IsSafeModPath(dir))
+    {
+        Warning("[OV JS] OV.listDir refused unsafe path: %s\n", dir);
+        if (wildcardArg) JS_FreeCString(ctx, wildcardArg);
+        JS_FreeCString(ctx, dir);
+        return arr;
+    }
+
+    char search[512];
+    Q_snprintf(search, sizeof(search), "%s/%s", dir, wildcard);
+
+    FileFindHandle_t findHandle;
+    const char *name = filesystem->FindFirstEx(search, "MOD", &findHandle);
+    uint32 index = 0;
+    while (name)
+    {
+        if (Q_strcmp(name, ".") != 0 && Q_strcmp(name, "..") != 0)
+            JS_SetPropertyUint32(ctx, arr, index++, JS_NewString(ctx, name));
+        name = filesystem->FindNext(findHandle);
+    }
+    filesystem->FindClose(findHandle);
+
+    if (wildcardArg) JS_FreeCString(ctx, wildcardArg);
+    JS_FreeCString(ctx, dir);
+    return arr;
+}
+
 static const JSCFunctionListEntry OVFuncs[] =
 {
     JS_CFUNC_DEF("log", 1, OVJS_log),
@@ -160,6 +271,9 @@ static const JSCFunctionListEntry OVFuncs[] =
     JS_CFUNC_DEF("fireHook", 1, OVJS_fireHook),
     JS_CFUNC_DEF("reward", 4, OVJS_reward),
     JS_CFUNC_DEF("endMatch", 1, OVJS_endMatch),
+    JS_CFUNC_DEF("readFile", 1, OVJS_readFile),
+    JS_CFUNC_DEF("fileExists", 1, OVJS_fileExists),
+    JS_CFUNC_DEF("listDir", 2, OVJS_listDir),
 };
 
 void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime)
