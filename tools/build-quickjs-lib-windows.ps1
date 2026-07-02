@@ -225,6 +225,8 @@ Say "msvc forced include=$MsvcCompat"
 $sources = @('quickjs.c','libregexp.c','libunicode.c','cutils.c')
 if (Test-Path (Join-Path $SdkQjs 'dtoa.c')) { $sources += 'dtoa.c' }
 if (Test-Path (Join-Path $SdkQjs 'libbf.c')) { $sources += 'libbf.c' }
+# 128-bit division builtins (__udivti3 etc.) QuickJS BigInt needs under clang-cl.
+if (Test-Path (Join-Path $SdkQjs 'ovjs_win_builtins.c')) { $sources += 'ovjs_win_builtins.c' }
 
 Remove-Item (Join-Path $Out '*.obj') -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $Out 'libquickjs_openvibe.lib') -Force -ErrorAction SilentlyContinue
