@@ -214,6 +214,20 @@ if (Test-Path $QuickJsC) {
   } else {
     Say 'CONFIG_ATOMICS define not found in quickjs.c copy; pthread shim remains available'
   }
+
+  # Force switch-based interpreter dispatch (DIRECT_DISPATCH 0). QuickJS's
+  # computed-goto dispatch (labels-as-values) miscompiles under clang-cl and
+  # crashes JS_CallInternal on the very first JS_Eval — pinpointed via the
+  # flushed client log (readFile ok -> eval begin -> crash on hook.js). This is
+  # the same safe path QuickJS itself uses for Emscripten.
+  $q = Get-Content -Raw $QuickJsC
+  $q3 = $q.Replace("#define DIRECT_DISPATCH  1", "#define DIRECT_DISPATCH  0 /* OpenVibe: clang-cl computed-goto miscompile */")
+  if ($q3 -ne $q) {
+    Set-Content -Encoding ascii $QuickJsC $q3
+    Say 'forced DIRECT_DISPATCH 0 (switch dispatch) for clang-cl'
+  } else {
+    Say 'WARNING: DIRECT_DISPATCH define not found to patch'
+  }
 }
 
 Say "compat include=$CompatInclude"
