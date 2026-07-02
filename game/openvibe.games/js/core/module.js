@@ -12,6 +12,14 @@
 // QuickJS. Safe browser/node-agnostic npm packages run fine.
 (function () {
   if (globalThis.require && globalThis.require.__openvibe) return;
+  // In the Node runtime a real native require is already provided (with .load/
+  // .reload for the addon loader). Defer to it so npm packages resolve through
+  // Node — full ecosystem incl. native modules — instead of this OV.readFile
+  // reimplementation (which the embedded QuickJS build needs).
+  if (globalThis.require && globalThis.require.__ovNodeNative) {
+    if (globalThis.OV && globalThis.OV.log) globalThis.OV.log("module system: using native Node require");
+    return;
+  }
 
   var OV = globalThis.OV;
   function readFile(p) { return OV && OV.readFile ? OV.readFile(p) : null; }
