@@ -34,9 +34,28 @@ static bool OVC_IsSafeModPath( const char *p )
     return true;
 }
 
-static void OVC_log( const char *m )  { Msg( "[OV JS/client] %s\n", m ); }
-static void OVC_warn( const char *m ) { Warning( "[OV JS/client] %s\n", m ); }
-static void OVC_error( const char *m ){ Warning( "[OV JS/client ERROR] %s\n", m ); }
+// Crash-safe logger: Msg() -> console.log is buffered under Proton, so lines
+// right before a crash are lost. Also append each line to a MOD file that we
+// flush (Open/Write/Close) every call, guaranteeing the last line before any
+// crash is on disk. This is the reliable end-to-end client JS log.
+static void OVC_LogLine( const char *tag, const char *m )
+{
+    Msg( "[OV JS/client]%s %s\n", tag, m );
+    if ( filesystem )
+    {
+        FileHandle_t f = filesystem->Open( "ovjs_client.log", "a", "MOD" );
+        if ( f )
+        {
+            char line[8192];
+            int n = Q_snprintf( line, sizeof( line ), "[OV JS/client]%s %s\n", tag, m );
+            if ( n > 0 ) filesystem->Write( line, n, f );
+            filesystem->Close( f ); // close each line = flush to disk
+        }
+    }
+}
+static void OVC_log( const char *m )  { OVC_LogLine( "", m ); }
+static void OVC_warn( const char *m ) { OVC_LogLine( " WARN", m ); }
+static void OVC_error( const char *m ){ OVC_LogLine( " ERROR", m ); }
 
 static char *OVC_readFile( const char *path )
 {
@@ -154,6 +173,8 @@ void OpenVibeJS_Client_Init()
         Msg( "[OV JS/client] disabled by ov_client_js_enabled=0\n" );
         return;
     }
+    // Fresh crash-safe log each init.
+    if ( filesystem ) { FileHandle_t f = filesystem->Open( "ovjs_client.log", "w", "MOD" ); if ( f ) filesystem->Close( f ); }
     g_pClientCore = ovjs_create( &g_ClientHost, 0 /*client*/, ov_client_mode.GetString() );
     if ( g_pClientCore )
     {

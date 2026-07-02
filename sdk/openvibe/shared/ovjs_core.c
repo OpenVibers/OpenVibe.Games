@@ -219,6 +219,7 @@ static int OVJS_LoadFile(OVJSCore *c, const char *path)
     if (!c->host || !c->host->readFile) return 0;
     if (c->host->log) { char b[256]; snprintf(b, sizeof(b), "core: loading %s", path); c->host->log(b); }
     char *code = c->host->readFile(path);
+    if (c->host->log) { char b[256]; snprintf(b, sizeof(b), "core: readFile %s -> %s", path, code ? "ok" : "NULL"); c->host->log(b); }
     if (!code) {
         if (c->host->warn) {
             char buf[512];
@@ -227,7 +228,9 @@ static int OVJS_LoadFile(OVJSCore *c, const char *path)
         }
         return 0;
     }
+    if (c->host->log) { char b[256]; snprintf(b, sizeof(b), "core: eval begin %s", path); c->host->log(b); }
     int ok = ovjs_eval(c, code, path);
+    if (c->host->log) { char b[256]; snprintf(b, sizeof(b), "core: eval done %s ok=%d", path, ok); c->host->log(b); }
     OVJS_HostFree(c->host, code);
     return ok;
 }
