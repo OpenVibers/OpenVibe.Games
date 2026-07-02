@@ -295,6 +295,11 @@ OVJSCore *ovjs_create(const OVJSHost *host, int isServerRealm, const char *mode)
 
     OVJS_RegisterBindings(c);
     OVJS_Trace(host, "core: bindings registered");
+    /* Probe: does ANY eval work? Distinguishes an interpreter miscompile from a
+     * hook.js-specific problem. */
+    OVJS_Trace(host, "core: probe eval begin");
+    ovjs_eval(c, "var __ovjs_probe = 1 + 1;", "<probe>");
+    OVJS_Trace(host, "core: probe eval done");
     if (!OVJS_LoadCoreFiles(c)) { OVJS_Trace(host, "core: LoadCoreFiles FAILED"); ovjs_destroy(c); return NULL; }
     OVJS_Trace(host, "core: core files loaded");
     OVJS_LoadGamemode(c);

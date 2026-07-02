@@ -250,7 +250,10 @@ if ($ClangCl) {
   $Common = @(
     '/nologo',
     '/TC',
-    '/O2',
+    # Diagnostic: no optimization. QuickJS's interpreter crashed on the first
+    # JS_Eval under clang-cl /O2 despite -fno-strict-aliasing/-fwrapv and switch
+    # dispatch. /Od isolates whether it's an optimizer miscompile.
+    '/Od',
     '/MT',
     '/W3',
     '/D_CRT_SECURE_NO_WARNINGS',
