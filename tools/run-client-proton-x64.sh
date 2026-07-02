@@ -26,6 +26,14 @@ if [ "${1:-}" != "" ] && [ "${2:-}" != "" ]; then
   CONNECT_ARGS="+connect $1:$2"
 fi
 
+# Load straight into a local listen-server world (bypasses the dedicated-server
+# travel/token flow) for reliable local testing and crash reproduction:
+#   OPENVIBE_STARTUP_MAP=ov_hub tools/run-client-proton-x64.sh
+STARTUP_MAP_ARGS=""
+if [ -n "${OPENVIBE_STARTUP_MAP:-}" ]; then
+  STARTUP_MAP_ARGS="+map ${OPENVIBE_STARTUP_MAP}"
+fi
+
 echo "Launching OpenVibe: Source via Proton..."
 echo "  Game:   $GAME_DIR"
 echo "  Proton: $GE_PROTON"
@@ -67,4 +75,4 @@ exec "$GE_PROTON/proton" waitforexitandrun \
   +exec openvibe_proton_stability.cfg \
   +con_logfile openvibe_proton_console.log \
   +exec openvibe_proton_client.cfg \
-  $CONNECT_ARGS
+  $CONNECT_ARGS $STARTUP_MAP_ARGS

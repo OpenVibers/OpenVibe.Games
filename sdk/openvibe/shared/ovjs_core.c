@@ -207,6 +207,7 @@ int ovjs_eval(OVJSCore *c, const char *code, const char *filename)
 static int OVJS_LoadFile(OVJSCore *c, const char *path)
 {
     if (!c->host || !c->host->readFile) return 0;
+    if (c->host->log) { char b[256]; snprintf(b, sizeof(b), "core: loading %s", path); c->host->log(b); }
     char *code = c->host->readFile(path);
     if (!code) {
         if (c->host->warn) {
@@ -250,8 +251,14 @@ static void OVJS_RegisterBindings(OVJSCore *c)
     JS_FreeValue(c->ctx, global);
 }
 
+static void OVJS_Trace(const OVJSHost *host, const char *msg)
+{
+    if (host && host->log) host->log(msg);
+}
+
 OVJSCore *ovjs_create(const OVJSHost *host, int isServerRealm, const char *mode)
 {
+    OVJS_Trace(host, "core: ovjs_create begin");
     OVJSCore *c = (OVJSCore *)calloc(1, sizeof(OVJSCore));
     if (!c) return NULL;
     c->host = host;
@@ -262,15 +269,23 @@ OVJSCore *ovjs_create(const OVJSHost *host, int isServerRealm, const char *mode)
     c->rt = JS_NewRuntime();
     if (!c->rt) { free(c); return NULL; }
     JS_SetMemoryLimit(c->rt, 32 * 1024 * 1024);
-    JS_SetMaxStackSize(c->rt, 1024 * 1024);
+    /* Keep well under the OS thread stack (Windows main thread ~1MB): if the JS
+     * recursion limit exceeds the real C stack, deep calls overflow and crash
+     * the process instead of raising a catchable JS error. */
+    JS_SetMaxStackSize(c->rt, 256 * 1024);
+    OVJS_Trace(host, "core: runtime created");
 
     c->ctx = JS_NewContext(c->rt);
     if (!c->ctx) { JS_FreeRuntime(c->rt); free(c); return NULL; }
     JS_SetContextOpaque(c->ctx, c);
+    OVJS_Trace(host, "core: context created");
 
     OVJS_RegisterBindings(c);
-    if (!OVJS_LoadCoreFiles(c)) { ovjs_destroy(c); return NULL; }
+    OVJS_Trace(host, "core: bindings registered");
+    if (!OVJS_LoadCoreFiles(c)) { OVJS_Trace(host, "core: LoadCoreFiles FAILED"); ovjs_destroy(c); return NULL; }
+    OVJS_Trace(host, "core: core files loaded");
     OVJS_LoadGamemode(c);
+    OVJS_Trace(host, "core: gamemode loaded — create done");
     return c;
 }
 

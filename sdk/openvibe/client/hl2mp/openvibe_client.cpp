@@ -76,6 +76,7 @@ static const char *s_OpenVibeModes[] =
 	"deathrun",
 	"fortwars",
 	"traitortown",
+	"sandbox",
 };
 
 static bool OV_IsModeAllowed( const char *pszMode )
@@ -95,6 +96,7 @@ static const char *OV_LocalConnectForMode( const char *pszMode )
 	if ( !Q_stricmp( pszMode, "deathrun" ) ) return "127.0.0.1:27017";
 	if ( !Q_stricmp( pszMode, "fortwars" ) ) return "127.0.0.1:27018";
 	if ( !Q_stricmp( pszMode, "traitortown" ) ) return "127.0.0.1:27019";
+	if ( !Q_stricmp( pszMode, "sandbox" ) ) return "127.0.0.1:27020";
 	return "127.0.0.1:27015";
 }
 
