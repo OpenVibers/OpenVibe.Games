@@ -100,6 +100,7 @@
   function registerNet() {
     if (!globalThis.net) return;
     util.AddNetworkString("OV_Sandbox_Spawn");
+    util.AddNetworkString("OV_Sandbox_Welcome");
     net.Receive("OV_Sandbox_Spawn", function (len, ply) {
       var id = net.ReadString();
       if (!ply) { OV.warn("OV_Sandbox_Spawn with no player; ignoring"); return; }
@@ -132,6 +133,12 @@
 
     PlayerInitialSpawn(ply) {
       ply.chat("Welcome to OpenVibe Sandbox! Press Q (or type !q) for the spawn menu.");
+      // server -> client net: push a welcome the client JS receives & logs.
+      if (globalThis.net && ply) {
+        net.Start("OV_Sandbox_Welcome");
+        net.WriteString("Hello " + ply.name() + " from the server via net.Send!");
+        net.Send(ply);
+      }
     },
 
     PlayerSpawn(ply) {
