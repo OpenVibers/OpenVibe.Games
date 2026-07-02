@@ -250,7 +250,13 @@ if ($ClangCl) {
     "/I$CompatInclude",
     "/I$SdkQjs",
     '/clang:-std=gnu11',
-    '/clang:-Wno-everything'
+    '/clang:-Wno-everything',
+    # QuickJS REQUIRES these or -O2 miscompiles the interpreter and crashes on
+    # the first JS_Eval (the Linux SDK build sets them globally, which is why
+    # Linux works). -fno-strict-aliasing is the critical one; -fwrapv matches
+    # QuickJS's signed-overflow assumptions.
+    '/clang:-fno-strict-aliasing',
+    '/clang:-fwrapv'
   )
 } else {
   $Compiler = $ClExe
