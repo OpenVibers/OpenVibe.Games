@@ -960,7 +960,7 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
     }
   }
 
-  $placeholderLibs = @("libz.lib", "tier3.lib", "vtf.lib")
+  $placeholderLibs = @("libz.lib", "vtf.lib")
 
   foreach ($libName in $defBackedLibs.Keys) {
     $dest = Join-Path $publicLibDir $libName
@@ -988,6 +988,52 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
     $item = Get-Item $dest
     "[created-def] $libName $($item.Length)" | Out-File $log -Append
   }
+
+  # tier3.lib is not a DLL import lib like tier0/vstdlib/steam_api - public/tier3/tier3.h
+  # forward-declares its own interface types and just `extern`s a handful of global
+  # interface pointers ("These tier3 libraries must be set by any users of this
+  # library... by calling ConnectTier3Libraries"). Real Source SDK builds provide
+  # these via a real tier3.lib static archive; the public checkout doesn't ship one.
+  # Compile a real (if inert, null-initialized) definition of each declared global
+  # against the actual header so the mangled C++ names match exactly, and archive
+  # that - not a DEF-based import lib, since these are static data, not DLL imports.
+  $tier3Dest = Join-Path $publicLibDir "tier3.lib"
+  if (Test-Path $tier3Dest) { Remove-Item -Force $tier3Dest }
+  $tier3Src = Join-Path $LogDir "openvibe_tier3_globals.cpp"
+  $tier3Obj = Join-Path $LogDir "openvibe_tier3_globals.obj"
+  @'
+#include "tier3/tier3.h"
+IStudioRender *g_pStudioRender = 0;
+IStudioRender *studiorender = 0;
+IMatSystemSurface *g_pMatSystemSurface = 0;
+vgui::ISurface *g_pVGuiSurface = 0;
+vgui::IInput *g_pVGuiInput = 0;
+vgui::IVGui *g_pVGui = 0;
+vgui::IPanel *g_pVGuiPanel = 0;
+vgui::ILocalize *g_pVGuiLocalize = 0;
+vgui::ISchemeManager *g_pVGuiSchemeManager = 0;
+vgui::ISystem *g_pVGuiSystem = 0;
+IDataCache *g_pDataCache = 0;
+IMDLCache *g_pMDLCache = 0;
+IMDLCache *mdlcache = 0;
+IVideoServices *g_pVideo = 0;
+IDmeMakefileUtils *g_pDmeMakefileUtils = 0;
+IPhysicsCollision *g_pPhysicsCollision = 0;
+ISoundEmitterSystemBase *g_pSoundEmitterSystem = 0;
+IVTex *g_pVTex = 0;
+'@ | Set-Content -Encoding ascii -Path $tier3Src
+
+  $publicInclude = Join-Path $Src "public"
+  Say "creating Win32 tier3.lib from real tier3.h globals ($tier3Dest)"
+  & $clCmd.Source /nologo /c /TP "/I$publicInclude" $tier3Src /Fo$tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "cl.exe failed while compiling tier3.lib globals" }
+
+  & $libCmd.Source /nologo /machine:x86 "/out:$tier3Dest" $tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw "lib.exe failed while creating tier3.lib" }
+
+  if (!(Test-Path $tier3Dest)) { throw "Expected tier3.lib was not created: $tier3Dest" }
+  $item = Get-Item $tier3Dest
+  "[created-globals] tier3.lib $($item.Length)" | Out-File $log -Append
 
   foreach ($libName in $placeholderLibs) {
     $dest = Join-Path $publicLibDir $libName
