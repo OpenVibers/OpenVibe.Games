@@ -1,0 +1,10 @@
+{
+  "id": "sandbox",
+  "name": "OpenVibe Sandbox",
+  "base": "base",
+  "entry": {
+    "shared": "shared.js",
+    "server": "server.js",
+    "client": "client.js"
+  }
+}
