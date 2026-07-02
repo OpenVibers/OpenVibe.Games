@@ -28,6 +28,7 @@
   }
 
   bootstrap("js/core/module.js"); // defines globalThis.require
+  bootstrap("js/core/net.js");    // defines globalThis.net + util.AddNetworkString
   bootstrap("js/core/addon.js");  // defines globalThis.Addon
 
   // NOTE: Addon.loadAll() is intentionally NOT called here. bridge.js loads

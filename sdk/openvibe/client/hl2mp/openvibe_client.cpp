@@ -645,4 +645,25 @@ static ConCommand ov_fortwars_spawn_client_cmd(
 	OV_FortWarsSpawn_Client_f,
 	"Forward Fort Wars prop-spawn command to the connected OpenVibe server.",
 	FCVAR_CLIENTDLL );
+
+// net library client->server transport. Forwards ov_net <name> <payloadB64>
+// to the server, where the embedded JS runtime dispatches it to net.Receive.
+// Bindable, e.g.: bind q "ov_net Q_OpenMenu <payload>". Until the client gains
+// its own JS runtime, this C++ forwarder is how the client speaks net.
+static void OV_Net_Client_f( const CCommand &args )
+{
+	if ( args.ArgC() < 3 )
+	{
+		Msg( "Usage: ov_net <name> <payloadBase64>\n" );
+		return;
+	}
+
+	OV_ClientForwardServerCommand( "ov_net", args );
+}
+
+static ConCommand ov_net_client_cmd(
+	"ov_net",
+	OV_Net_Client_f,
+	"Forward an OpenVibe net message to the connected server: ov_net <name> <payloadBase64>.",
+	FCVAR_CLIENTDLL );
 // OPENVIBE_CLIENT_SERVER_COMMAND_FORWARDERS_END

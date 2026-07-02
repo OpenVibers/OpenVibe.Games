@@ -7,3 +7,14 @@ if (globalThis.command) {
     return false;
   });
 }
+
+// net library demo: receive a client->server message and log it.
+if (globalThis.net) {
+  net.Receive("HW_Ping", function (len, ply) {
+    var who = ply ? ply.name() : "server-console";
+    var text = net.ReadString();
+    var n = net.ReadInt();
+    OV.log("net RECV HW_Ping from " + who + " text=" + text + " n=" + n);
+  });
+  OV.log("hello-world registered net.Receive('HW_Ping')");
+}

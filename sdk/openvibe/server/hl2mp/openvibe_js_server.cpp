@@ -386,6 +386,50 @@ static ConCommand ov_js_cmd(
     FCVAR_GAMEDLL
 );
 
+// ---------------------------------------------------------------------------
+// net library — client->server transport.
+// The client forwards net messages as: ov_net <name> <payloadBase64>
+// We fire the "OVNetReceive" hook into server JS with the sending player, and
+// net.js dispatches to the matching net.Receive(name, fn) handler.
+// ---------------------------------------------------------------------------
+static void OV_Net_f( const CCommand &args )
+{
+    if ( args.ArgC() < 3 )
+    {
+        Msg( "Usage: ov_net <name> <payloadBase64>\n" );
+        return;
+    }
+
+    OpenVibeJS_EnsureStarted();
+    if ( !OpenVibeJS_IsRunning() )
+        return;
+
+    JSContext *ctx = g_OVServerJS.Context();
+
+    JSValue name    = JS_NewString( ctx, args[1] );
+    JSValue payload = JS_NewString( ctx, args[2] );
+
+    // UTIL_GetCommandClient() is the player who ran the command (null on the
+    // server console). DON'T TRUST THE CLIENT — net.Receive handlers must
+    // validate, per the GMod net guide.
+    CHL2MP_Player *player = ToHL2MPPlayer( UTIL_GetCommandClient() );
+    JSValue ply = player ? OVJS_NewPlayer( ctx, player ) : JS_NULL;
+
+    JSValueConst argv[] = { name, payload, ply };
+    g_OVServerJS.CallHookVoid( "OVNetReceive", 3, argv );
+
+    JS_FreeValue( ctx, name );
+    JS_FreeValue( ctx, payload );
+    JS_FreeValue( ctx, ply );
+}
+
+static ConCommand ov_net(
+    "ov_net",
+    OV_Net_f,
+    "OpenVibe net library client->server transport: ov_net <name> <payloadBase64>.",
+    FCVAR_GAMEDLL
+);
+
 void OpenVibeJS_Server_RoundStart( int roundNumber )
 {
     OpenVibeJS_EnsureStarted();

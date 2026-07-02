@@ -30,7 +30,11 @@ jobs:
     name: Windows client.dll/server.dll
     runs-on: windows-2022
     env:
-      OPENVIBE_WINDOWS_TARGET_ARCH: x86
+      # x64, not x86: the public Valve source-sdk-2013 ships only x64 (and
+      # linux64) prebuilt libs — there are no 32-bit Windows tier0/vstdlib/etc,
+      # so a Win32 link is unsatisfiable. The game runs via hl2_win64.exe with
+      # bin/x64 DLLs. This is also the arch of the last known-good build.
+      OPENVIBE_WINDOWS_TARGET_ARCH: x64
     defaults:
       run:
         shell: pwsh
