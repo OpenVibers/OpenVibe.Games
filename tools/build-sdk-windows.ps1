@@ -964,10 +964,14 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
 
   foreach ($libName in $defBackedLibs.Keys) {
     $dest = Join-Path $publicLibDir $libName
+    # Unlike the placeholder libs below, always (re)generate these: an earlier
+    # pipeline stage (dependency-project builds, the dynamic resolver) can
+    # drop in a single-dummy-symbol stub at this same path before this
+    # function runs, and that stale stub silently wins if we only create
+    # on-absence. These three need the real DEF-based export table every
+    # time, so overwrite unconditionally.
     if (Test-Path $dest) {
-      $item = Get-Item $dest
-      "[present] $libName $($item.Length)" | Out-File $log -Append
-      continue
+      Remove-Item -Force $dest
     }
 
     $info = $defBackedLibs[$libName]
