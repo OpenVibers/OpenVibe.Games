@@ -62,7 +62,9 @@ exec "$GE_PROTON/proton" waitforexitandrun \
   -game "$GAME_DIR" \
   -console -dev -condebug -novid -sw -w 1280 -h 720 \
   -port 27115 -clientport 27105 \
+  -nojoy -insecure -nohltv \
   +developer 1 \
+  +exec openvibe_proton_stability.cfg \
   +con_logfile openvibe_proton_console.log \
   +exec openvibe_proton_client.cfg \
   $CONNECT_ARGS
