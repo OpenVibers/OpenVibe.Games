@@ -24,7 +24,10 @@ game/openvibe.games/cfg/settings.scr
 backups/
 
 *.core
-core
+# core dumps: match a root-level `core` file and pid-suffixed dumps, but NOT
+# directories named "core" (e.g. game/openvibe.games/js/core/).
+/core
+core.[0-9]*
 debug.log
 steam_appid.txt
 
