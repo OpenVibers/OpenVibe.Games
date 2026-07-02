@@ -51,7 +51,11 @@ export STEAM_COMPAT_CLIENT_INSTALL_PATH="$STEAM_PATH"
 export STEAM_COMPAT_DATA_PATH="$STEAM_COMPAT_DATA"
 export SteamAppId="${SteamAppId:-243750}"
 export PROTON_LOG="${OPENVIBE_PROTON_LOG:-${PROTON_LOG:-1}}"
-export DXVK_ASYNC="${DXVK_ASYNC:-1}"
+
+# DXVK_ASYNC=1 races async shader pipeline compilation against DXVK swapchain
+# teardown on first launch; hl2.exe intermittently dies right after the first
+# frame with no error trace. Default off for reliability.
+export DXVK_ASYNC="${DXVK_ASYNC:-0}"
 
 exec "$GE_PROTON/proton" waitforexitandrun \
   "$HL2_EXE" \

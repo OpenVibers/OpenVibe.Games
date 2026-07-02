@@ -918,7 +918,8 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
     "tier0.lib",
     "vstdlib.lib",
     "steam_api.lib",
-    "libz.lib"
+    "libz.lib",
+    "tier3.lib"
   )
 
   foreach ($libName in $compatLibs) {
