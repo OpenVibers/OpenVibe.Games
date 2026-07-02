@@ -91,6 +91,10 @@ static char *OVC_listDir( const char *dir, const char *wildcard )
     return buf;
 }
 
+// Free buffers OVC_readFile/OVC_listDir allocated, using THIS module's CRT
+// (must match the malloc that created them; the core must not free them).
+static void OVC_freeMem( void *p ) { free( p ); }
+
 static int OVC_isServer( void ) { return 0; }
 static const char *OVC_getMode( void ) { return ov_client_mode.GetString(); }
 
@@ -120,7 +124,7 @@ static void OVC_netEmit( const char *, const char *, const char * )
 static OVJSHost g_ClientHost =
 {
     OVC_log, OVC_warn, OVC_error,
-    OVC_readFile, OVC_fileExists, OVC_listDir,
+    OVC_readFile, OVC_fileExists, OVC_listDir, OVC_freeMem,
     OVC_isServer, OVC_getMode, OVC_getMapName, OVC_getTime,
     OVC_netSendToServer, OVC_netEmit
 };

@@ -1,2 +1,5 @@
 // OpenVibe: Source startup script.
-// Intentionally small; mode-specific server config is passed with +exec.
+// stuffcmds runs the command-line "+" commands (e.g. +connect / +map) that the
+// launcher passes. Without it those are ignored and the client sits at the menu
+// — which is why launching didn't auto-connect.
+stuffcmds

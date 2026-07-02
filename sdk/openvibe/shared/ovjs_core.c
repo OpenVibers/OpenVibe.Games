@@ -21,6 +21,16 @@ static OVJSCore *OVJS_FromCtx(JSContext *ctx)
     return (OVJSCore *)JS_GetContextOpaque(ctx);
 }
 
+/* Release a buffer the host allocated (readFile/listDir). Must use the host's
+ * allocator, never the core's free(): on Windows the glue and this core can be
+ * built against different C runtimes, and freeing across CRTs crashes. */
+static void OVJS_HostFree(const OVJSHost *host, void *p)
+{
+    if (!p) return;
+    if (host && host->freeMem) host->freeMem(p);
+    /* else: leak rather than risk a cross-CRT free() crash. */
+}
+
 /* ------------------------------------------------------------------ */
 /* OV.* native bindings — thin shims over the host callbacks.          */
 /* ------------------------------------------------------------------ */
@@ -83,7 +93,7 @@ static JSValue ov_readFile(JSContext *ctx, JSValueConst t, int argc, JSValueCons
     JS_FreeCString(ctx, path);
     if (!buf) return JS_NULL;
     JSValue out = JS_NewString(ctx, buf);
-    free(buf);
+    OVJS_HostFree(c->host, buf);
     return out;
 }
 static JSValue ov_fileExists(JSContext *ctx, JSValueConst t, int argc, JSValueConst *argv)
@@ -118,7 +128,7 @@ static JSValue ov_listDir(JSContext *ctx, JSValueConst t, int argc, JSValueConst
                     start = p + 1;
                 }
             }
-            free(joined);
+            OVJS_HostFree(c->host, joined);
         }
     }
     if (dir) JS_FreeCString(ctx, dir);
@@ -218,7 +228,7 @@ static int OVJS_LoadFile(OVJSCore *c, const char *path)
         return 0;
     }
     int ok = ovjs_eval(c, code, path);
-    free(code);
+    OVJS_HostFree(c->host, code);
     return ok;
 }
 

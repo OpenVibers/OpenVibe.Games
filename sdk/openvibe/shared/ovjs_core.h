@@ -26,11 +26,16 @@ typedef struct OVJSHost
     void (*warn)(const char *msg);
     void (*error)(const char *msg);
 
-    /* Returns malloc'd NUL-terminated file contents (core frees), or NULL. */
+    /* Returns host-allocated NUL-terminated file contents, or NULL. The core
+     * releases it via freeMem() below — NOT free() — because the host (MSVC
+     * CRT) and core (clang-cl /MT CRT) may use different heaps on Windows, and
+     * freeing across CRTs corrupts the heap and crashes. */
     char *(*readFile)(const char *path);
     int   (*fileExists)(const char *path);
-    /* Returns malloc'd newline-joined entry names (core frees), or NULL. */
+    /* Returns host-allocated newline-joined entry names (freed via freeMem). */
     char *(*listDir)(const char *dir, const char *wildcard);
+    /* Frees a buffer returned by readFile/listDir, using the host's allocator. */
+    void  (*freeMem)(void *p);
 
     int          (*isServer)(void);
     const char  *(*getMode)(void);      /* host-owned static */

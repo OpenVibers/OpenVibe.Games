@@ -34,6 +34,22 @@ if [ -n "${OPENVIBE_STARTUP_MAP:-}" ]; then
   STARTUP_MAP_ARGS="+map ${OPENVIBE_STARTUP_MAP}"
 fi
 
+# Auto-target: with no explicit connect/map, connect to a running local dev
+# server (sandbox 27020, else hub 27015); if none is up, load a local world so
+# launching always drops you in-game instead of sitting at the menu.
+if [ -z "$CONNECT_ARGS" ] && [ -z "$STARTUP_MAP_ARGS" ]; then
+  if ss -uln 2>/dev/null | grep -q '127.0.0.1:27020'; then
+    CONNECT_ARGS="+connect 127.0.0.1:27020"
+    echo "  Auto-target: sandbox dedicated server 127.0.0.1:27020"
+  elif ss -uln 2>/dev/null | grep -q '127.0.0.1:27015'; then
+    CONNECT_ARGS="+connect 127.0.0.1:27015"
+    echo "  Auto-target: hub dedicated server 127.0.0.1:27015"
+  else
+    STARTUP_MAP_ARGS="+map ${OPENVIBE_DEFAULT_MAP:-ov_hub}"
+    echo "  Auto-target: local listen world (no dedicated server up)"
+  fi
+fi
+
 echo "Launching OpenVibe: Source via Proton..."
 echo "  Game:   $GAME_DIR"
 echo "  Proton: $GE_PROTON"
@@ -65,6 +81,9 @@ export PROTON_LOG="${OPENVIBE_PROTON_LOG:-${PROTON_LOG:-1}}"
 # frame with no error trace. Default off for reliability.
 export DXVK_ASYNC="${DXVK_ASYNC:-0}"
 
+# Single canonical log via -condebug (writes game/openvibe.games/console.log).
+# Do NOT also set +con_logfile: it hijacks the console log mid-startup, so the
+# two split and neither is complete. -condebug alone keeps one full log.
 exec "$GE_PROTON/proton" waitforexitandrun \
   "$HL2_EXE" \
   -game "$GAME_DIR" \
@@ -73,6 +92,5 @@ exec "$GE_PROTON/proton" waitforexitandrun \
   -nojoy -insecure -nohltv \
   +developer 1 \
   +exec openvibe_proton_stability.cfg \
-  +con_logfile openvibe_proton_console.log \
   +exec openvibe_proton_client.cfg \
   $CONNECT_ARGS $STARTUP_MAP_ARGS
