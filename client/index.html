@@ -1004,7 +1004,16 @@
         saveSession(session);
         setTimeout(function () { showMainUI(session); }, 300);
       } else {
-        var errMsg = (data && data.error) ? data.error : 'Steam authentication failed.';
+        var raw = data && data.error ? String(data.error) : '';
+        // Friendly, honest messages instead of raw backend error codes.
+        var errMsg;
+        if (raw === 'steam_auth_not_configured') {
+          errMsg = 'Steam sign-in isn’t set up on this server. Use "Dev / Local auth" below.';
+        } else if (raw === 'steam_auth_failed' || raw === '') {
+          errMsg = 'Steam sign-in unavailable here — use "Dev / Local auth" below.';
+        } else {
+          errMsg = raw;
+        }
         setAuthStatus(errMsg, 'error');
       }
     },
