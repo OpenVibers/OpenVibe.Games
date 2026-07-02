@@ -198,22 +198,14 @@ static JSValue OVCJS_noop( JSContext *ctx, JSValueConst, int, JSValueConst * )
     return JS_UNDEFINED;
 }
 
-static const JSCFunctionListEntry OVClientFuncs[] =
+// Register imperatively with JS_NewCFunction instead of a JS_CFUNC_DEF table.
+// JS_CFUNC_DEF expands to C designated initializers (.u = { .func = ... }),
+// which MSVC rejects before /std:c++20 (C7555/C7556); JS_NewCFunction is plain
+// function calls that compile cleanly on both gcc and MSVC.
+static void OVCJS_Bind( JSContext *ctx, JSValue ov, const char *name, JSCFunction *fn, int length )
 {
-    JS_CFUNC_DEF( "log", 1, OVCJS_log ),
-    JS_CFUNC_DEF( "warn", 1, OVCJS_warn ),
-    JS_CFUNC_DEF( "error", 1, OVCJS_error ),
-    JS_CFUNC_DEF( "isServer", 0, OVCJS_isServer ),
-    JS_CFUNC_DEF( "getMode", 0, OVCJS_getMode ),
-    JS_CFUNC_DEF( "getMapName", 0, OVCJS_getMapName ),
-    JS_CFUNC_DEF( "time", 0, OVCJS_time ),
-    JS_CFUNC_DEF( "readFile", 1, OVCJS_readFile ),
-    JS_CFUNC_DEF( "fileExists", 1, OVCJS_fileExists ),
-    JS_CFUNC_DEF( "listDir", 2, OVCJS_listDir ),
-    JS_CFUNC_DEF( "netSendToServer", 2, OVCJS_netSendToServer ),
-    JS_CFUNC_DEF( "broadcast", 1, OVCJS_noop ),
-    JS_CFUNC_DEF( "serverCommand", 1, OVCJS_noop ),
-};
+    JS_SetPropertyStr( ctx, ov, name, JS_NewCFunction( ctx, fn, name, length ) );
+}
 
 // This is the symbol ov_js_runtime.cpp calls; the client project compiles this
 // file instead of the server ov_js_bindings.cpp.
@@ -221,7 +213,21 @@ void OVJS_RegisterNativeBindings( JSContext *ctx, COpenVibeJSRuntime * )
 {
     JSValue global = JS_GetGlobalObject( ctx );
     JSValue ov = JS_NewObject( ctx );
-    JS_SetPropertyFunctionList( ctx, ov, OVClientFuncs, ARRAYSIZE( OVClientFuncs ) );
+
+    OVCJS_Bind( ctx, ov, "log", OVCJS_log, 1 );
+    OVCJS_Bind( ctx, ov, "warn", OVCJS_warn, 1 );
+    OVCJS_Bind( ctx, ov, "error", OVCJS_error, 1 );
+    OVCJS_Bind( ctx, ov, "isServer", OVCJS_isServer, 0 );
+    OVCJS_Bind( ctx, ov, "getMode", OVCJS_getMode, 0 );
+    OVCJS_Bind( ctx, ov, "getMapName", OVCJS_getMapName, 0 );
+    OVCJS_Bind( ctx, ov, "time", OVCJS_time, 0 );
+    OVCJS_Bind( ctx, ov, "readFile", OVCJS_readFile, 1 );
+    OVCJS_Bind( ctx, ov, "fileExists", OVCJS_fileExists, 1 );
+    OVCJS_Bind( ctx, ov, "listDir", OVCJS_listDir, 2 );
+    OVCJS_Bind( ctx, ov, "netSendToServer", OVCJS_netSendToServer, 2 );
+    OVCJS_Bind( ctx, ov, "broadcast", OVCJS_noop, 1 );
+    OVCJS_Bind( ctx, ov, "serverCommand", OVCJS_noop, 1 );
+
     JS_SetPropertyStr( ctx, global, "OV", ov );
     JS_FreeValue( ctx, global );
 }
