@@ -94,6 +94,20 @@
     });
   }
 
+  // Networked Q-menu spawn: the client sends the chosen prop via the net
+  // library (ov_net OV_Sandbox_Spawn <payload>). spawnProp already validates
+  // the prop id against the allowlist, so we never trust the client's value.
+  function registerNet() {
+    if (!globalThis.net) return;
+    util.AddNetworkString("OV_Sandbox_Spawn");
+    net.Receive("OV_Sandbox_Spawn", function (len, ply) {
+      var id = net.ReadString();
+      if (!ply) { OV.warn("OV_Sandbox_Spawn with no player; ignoring"); return; }
+      spawnProp(ply, id);
+    });
+    OV.log("sandbox: net.Receive('OV_Sandbox_Spawn') ready");
+  }
+
   const GM = {
     mode: "sandbox",
     name: "OpenVibe Sandbox",
@@ -101,6 +115,7 @@
     Initialize() {
       OV.log("Sandbox Initialize fired");
       registerCommands();
+      registerNet();
       ensureBuildEnabled();
     },
 
