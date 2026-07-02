@@ -1,252 +1,178 @@
 #include "cbase.h"
 #include "openvibe_js_client.h"
 
-// Host-side glue for the client JavaScript runtime. Deliberately includes only
-// the pure C-ABI core header (never quickjs.h), so MSVC cl.exe never parses
-// QuickJS's C headers in C++ mode. All QuickJS work lives in ovjs_core.c
-// (compiled as C / clang-cl on Windows).
-#include "openvibe/ovjs_core.h"
-#include "filesystem.h"
+// Client realm bridge to the OpenVibe Node.js runtime. The client no longer
+// embeds a JS engine (that crashed under clang-cl); instead this forwards engine
+// events to ov-runtime.js over a local TCP socket and applies the commands it
+// sends back. Client-side JS/npm/hooks run in real Node; UI runs in the HTML
+// panel. This is a thin, crash-proof bridge.
+#include "openvibe/ov_ipc.h"
 #include "usermessages.h"
 #include <stdlib.h>
 #include <string.h>
 
 #include "tier0/memdbgon.h"
 
-static OVJSCore *g_pClientCore = NULL;
-
 static ConVar ov_client_js_enabled(
     "ov_client_js_enabled", "1", FCVAR_CLIENTDLL,
-    "Enable the OpenVibe client-side JavaScript runtime." );
+    "Enable the OpenVibe client-side Node.js runtime bridge." );
+static ConVar ov_client_js_port(
+    "ov_client_js_port", "41998", FCVAR_CLIENTDLL,
+    "TCP port of the OpenVibe client Node.js runtime host." );
 static ConVar ov_client_mode(
-    "ov_client_mode", "hub", FCVAR_CLIENTDLL,
-    "OpenVibe client gamemode realm: hub, prophunt, deathrun, fortwars, traitortown, sandbox." );
+    "ov_client_mode", "sandbox", FCVAR_CLIENTDLL,
+    "OpenVibe client gamemode realm hint sent to the runtime." );
 
-// ---------------------------------------------------------------------------
-// Host callbacks (C ABI). Source SDK lives entirely on this side.
-// ---------------------------------------------------------------------------
-static bool OVC_IsSafeModPath( const char *p )
+static COpenVibeIPC g_ClientIPC;
+static bool g_bClientBridgeStarted = false;
+
+// ---- tiny JSON helpers (build + extract) ----
+static void OVJSON_AppendEscaped( char *dst, int dstSize, const char *src )
 {
-    if ( !p || !p[0] ) return false;
-    if ( p[0] == '/' || p[0] == '\\' ) return false;
-    if ( strstr( p, ".." ) ) return false;
-    if ( strstr( p, ":" ) ) return false;
+    int len = Q_strlen( dst );
+    for ( const char *p = src; p && *p && len < dstSize - 2; ++p )
+    {
+        char c = *p;
+        if ( c == '"' || c == '\\' ) { if ( len < dstSize - 3 ) { dst[len++] = '\\'; dst[len++] = c; } }
+        else if ( c == '\n' ) { dst[len++] = ' '; }
+        else if ( c == '\r' ) { /* skip */ }
+        else { dst[len++] = c; }
+    }
+    dst[len] = '\0';
+}
+
+static bool OVJSON_GetString( const char *json, const char *key, char *out, int outSize )
+{
+    char needle[64];
+    Q_snprintf( needle, sizeof( needle ), "\"%s\":\"", key );
+    const char *s = Q_strstr( json, needle );
+    if ( !s ) return false;
+    s += Q_strlen( needle );
+    int i = 0;
+    while ( *s && *s != '"' && i < outSize - 1 )
+    {
+        if ( *s == '\\' && s[1] ) s++;
+        out[i++] = *s++;
+    }
+    out[i] = '\0';
     return true;
 }
 
-// Crash-safe logger: Msg() -> console.log is buffered under Proton, so lines
-// right before a crash are lost. Also append each line to a MOD file that we
-// flush (Open/Write/Close) every call, guaranteeing the last line before any
-// crash is on disk. This is the reliable end-to-end client JS log.
-static void OVC_LogLine( const char *tag, const char *m )
+// ---- inbound: commands from the Node runtime ----
+static void OVClient_OnLine( const char *line )
 {
-    Msg( "[OV JS/client]%s %s\n", tag, m );
-    if ( filesystem )
+    char t[32];
+    if ( !OVJSON_GetString( line, "t", t, sizeof( t ) ) ) return;
+
+    if ( !Q_strcmp( t, "chat" ) )
     {
-        FileHandle_t f = filesystem->Open( "ovjs_client.log", "a", "MOD" );
-        if ( f )
+        char msg[512];
+        if ( OVJSON_GetString( line, "msg", msg, sizeof( msg ) ) )
+            Msg( "[OV] %s\n", msg );
+    }
+    else if ( !Q_strcmp( t, "concmd" ) || !Q_strcmp( t, "runcmd" ) )
+    {
+        char cmd[1024];
+        if ( OVJSON_GetString( line, "cmd", cmd, sizeof( cmd ) ) )
         {
-            char line[8192];
-            int n = Q_snprintf( line, sizeof( line ), "[OV JS/client]%s %s\n", tag, m );
-            if ( n > 0 ) filesystem->Write( line, n, f );
-            filesystem->Close( f ); // close each line = flush to disk
+            char full[1100];
+            Q_snprintf( full, sizeof( full ), "%s\n", cmd );
+            engine->ClientCmd_Unrestricted( full );
         }
     }
-}
-static void OVC_log( const char *m )  { OVC_LogLine( "", m ); }
-static void OVC_warn( const char *m ) { OVC_LogLine( " WARN", m ); }
-static void OVC_error( const char *m ){ OVC_LogLine( " ERROR", m ); }
-
-static char *OVC_readFile( const char *path )
-{
-    if ( !OVC_IsSafeModPath( path ) ) return NULL;
-    FileHandle_t f = filesystem->Open( path, "rb", "MOD" );
-    if ( !f ) return NULL;
-    int size = filesystem->Size( f );
-    if ( size < 0 || size > 8 * 1024 * 1024 ) { filesystem->Close( f ); return NULL; }
-    char *buf = (char *)malloc( size + 1 );
-    if ( !buf ) { filesystem->Close( f ); return NULL; }
-    filesystem->Read( buf, size, f );
-    filesystem->Close( f );
-    buf[size] = '\0';
-    return buf;
-}
-
-static int OVC_fileExists( const char *path )
-{
-    return OVC_IsSafeModPath( path )
-        && filesystem->FileExists( path, "MOD" )
-        && !filesystem->IsDirectory( path, "MOD" ) ? 1 : 0;
-}
-
-static char *OVC_listDir( const char *dir, const char *wildcard )
-{
-    if ( !OVC_IsSafeModPath( dir ) ) return NULL;
-    char search[512];
-    Q_snprintf( search, sizeof( search ), "%s/%s", dir, ( wildcard && wildcard[0] ) ? wildcard : "*" );
-
-    CUtlString out;
-    FileFindHandle_t h;
-    const char *name = filesystem->FindFirstEx( search, "MOD", &h );
-    bool first = true;
-    while ( name )
+    else if ( !Q_strcmp( t, "net" ) )
     {
-        if ( Q_strcmp( name, "." ) != 0 && Q_strcmp( name, ".." ) != 0 )
+        // client runtime -> server: forward as ov_net
+        char name[128], payload[8192];
+        if ( OVJSON_GetString( line, "name", name, sizeof( name ) ) &&
+             OVJSON_GetString( line, "payload", payload, sizeof( payload ) ) )
         {
-            if ( !first ) out += "\n";
-            out += name;
-            first = false;
+            char cmd[9000];
+            Q_snprintf( cmd, sizeof( cmd ), "ov_net %s %s\n", name, payload );
+            engine->ClientCmd_Unrestricted( cmd );
         }
-        name = filesystem->FindNext( h );
     }
-    filesystem->FindClose( h );
-
-    const char *s = out.Get();
-    if ( !s || !s[0] ) return NULL;
-    size_t len = strlen( s );
-    char *buf = (char *)malloc( len + 1 );
-    if ( !buf ) return NULL;
-    memcpy( buf, s, len + 1 );
-    return buf;
+    else if ( !Q_strcmp( t, "menu" ) )
+    {
+        char action[32];
+        OVJSON_GetString( line, "action", action, sizeof( action ) );
+        engine->ClientCmd_Unrestricted( !Q_strcmp( action, "close" ) ? "ov_menu_close\n" : "ov_menu\n" );
+    }
 }
 
-// Free buffers OVC_readFile/OVC_listDir allocated, using THIS module's CRT
-// (must match the malloc that created them; the core must not free them).
-static void OVC_freeMem( void *p ) { free( p ); }
-
-static int OVC_isServer( void ) { return 0; }
-static const char *OVC_getMode( void ) { return ov_client_mode.GetString(); }
-
-static const char *OVC_getMapName( void )
-{
-    static char s_map[128];
-    const char *lvl = engine ? engine->GetLevelName() : "";
-    Q_strncpy( s_map, lvl ? lvl : "", sizeof( s_map ) );
-    return s_map;
-}
-
-static double OVC_getTime( void ) { return gpGlobals ? gpGlobals->curtime : 0.0; }
-
-static void OVC_netSendToServer( const char *name, const char *payloadB64 )
-{
-    if ( !name || !payloadB64 || !engine ) return;
-    char cmd[16384];
-    Q_snprintf( cmd, sizeof( cmd ), "ov_net %s %s\n", name, payloadB64 );
-    engine->ClientCmd_Unrestricted( cmd );
-}
-
-static void OVC_netEmit( const char *, const char *, const char * )
-{
-    // server->client emit is server-only; inert on the client.
-}
-
-static OVJSHost g_ClientHost =
-{
-    OVC_log, OVC_warn, OVC_error,
-    OVC_readFile, OVC_fileExists, OVC_listDir, OVC_freeMem,
-    OVC_isServer, OVC_getMode, OVC_getMapName, OVC_getTime,
-    OVC_netSendToServer, OVC_netEmit
-};
-
-// ---------------------------------------------------------------------------
-// server -> client: OVNet usermessage -> OVNetReceive hook into client JS.
-// ---------------------------------------------------------------------------
+// ---- outbound: server->client net usermessage -> runtime ----
 void __MsgFunc_OVNet( bf_read &msg )
 {
-    if ( !g_pClientCore ) return;
-    char name[128];
-    char payload[16384];
+    if ( !g_ClientIPC.IsConnected() ) return;
+    char name[128]; char payload[8192];
     msg.ReadString( name, sizeof( name ) );
     msg.ReadString( payload, sizeof( payload ) );
-    // ply arg is null on the client (server->client has no sending player).
-    ovjs_fire_hook_s( g_pClientCore, "OVNetReceive", name, payload, NULL );
+    char out[9000] = "{\"t\":\"net\",\"name\":\"";
+    OVJSON_AppendEscaped( out, sizeof( out ), name );
+    Q_strncat( out, "\",\"payload\":\"", sizeof( out ), COPY_ALL_CHARACTERS );
+    OVJSON_AppendEscaped( out, sizeof( out ), payload );
+    Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+    g_ClientIPC.SendLine( out );
 }
 
-// ---------------------------------------------------------------------------
-// Lifecycle.
-// ---------------------------------------------------------------------------
+// ---- lifecycle ----
 void OpenVibeJS_Client_Init()
 {
-    if ( g_pClientCore ) return;
+    if ( g_bClientBridgeStarted ) return;
+    g_bClientBridgeStarted = true;
     if ( !ov_client_js_enabled.GetBool() )
     {
-        Msg( "[OV JS/client] disabled by ov_client_js_enabled=0\n" );
+        Msg( "[OV JS/client] bridge disabled by ov_client_js_enabled=0\n" );
         return;
     }
-    // Fresh crash-safe log each init.
-    if ( filesystem ) { FileHandle_t f = filesystem->Open( "ovjs_client.log", "w", "MOD" ); if ( f ) filesystem->Close( f ); }
-    g_pClientCore = ovjs_create( &g_ClientHost, 0 /*client*/, ov_client_mode.GetString() );
-    if ( g_pClientCore )
-    {
-        Msg( "[OV JS/client] client runtime initialized for mode '%s'\n", ov_client_mode.GetString() );
-        ovjs_fire_hook( g_pClientCore, "Initialize" );
-    }
-    else
-    {
-        Warning( "[OV JS/client] client runtime failed to initialize\n" );
-    }
+    g_ClientIPC.Configure( "127.0.0.1", ov_client_js_port.GetInt(), OVClient_OnLine );
+    g_ClientIPC.Poll(); // attempt initial connect
+
+    char hello[256];
+    Q_snprintf( hello, sizeof( hello ), "{\"t\":\"hello\",\"realm\":\"client\",\"mode\":\"%s\",\"map\":\"%s\"}",
+        ov_client_mode.GetString(), engine ? engine->GetLevelName() : "" );
+    g_ClientIPC.SendLine( hello );
+    Msg( "[OV JS/client] Node runtime bridge started (port %d)\n", ov_client_js_port.GetInt() );
 }
 
 void OpenVibeJS_Client_Shutdown()
 {
-    if ( g_pClientCore )
-    {
-        ovjs_fire_hook( g_pClientCore, "Shutdown" );
-        ovjs_destroy( g_pClientCore );
-        g_pClientCore = NULL;
-    }
+    if ( g_ClientIPC.IsConnected() ) g_ClientIPC.SendLine( "{\"t\":\"bye\"}" );
+    g_ClientIPC.Close();
+    g_bClientBridgeStarted = false;
 }
 
 void OpenVibeJS_Client_Think()
 {
-    if ( g_pClientCore )
-        ovjs_fire_hook( g_pClientCore, "Think" );
+    g_ClientIPC.Poll();
 }
 
-// ---------------------------------------------------------------------------
-// Client concommands.
-// ---------------------------------------------------------------------------
 static void OV_ClientJSStatus_f()
 {
-    Msg( "[OV JS/client] enabled=%d running=%d mode=%s\n",
+    Msg( "[OV JS/client] enabled=%d connected=%d port=%d mode=%s\n",
         ov_client_js_enabled.GetBool() ? 1 : 0,
-        g_pClientCore ? 1 : 0,
-        ov_client_mode.GetString() );
+        g_ClientIPC.IsConnected() ? 1 : 0,
+        ov_client_js_port.GetInt(), ov_client_mode.GetString() );
 }
 static ConCommand ov_client_js_status( "ov_client_js_status", OV_ClientJSStatus_f,
-    "Print OpenVibe client JavaScript runtime status.", FCVAR_CLIENTDLL );
+    "Print OpenVibe client Node runtime bridge status.", FCVAR_CLIENTDLL );
 
-static void OV_ClientJSReload_f()
+static void OV_ClientJSReconnect_f()
 {
     OpenVibeJS_Client_Shutdown();
     OpenVibeJS_Client_Init();
-    Msg( "[OV JS/client] reloaded\n" );
 }
-static ConCommand ov_client_js_reload( "ov_client_js_reload", OV_ClientJSReload_f,
-    "Reload the OpenVibe client JavaScript runtime.", FCVAR_CLIENTDLL );
+static ConCommand ov_client_js_reconnect( "ov_client_js_reconnect", OV_ClientJSReconnect_f,
+    "Reconnect the OpenVibe client Node runtime bridge.", FCVAR_CLIENTDLL );
 
-// Drives the runtime: hook OVNet at load, start on level enter, Think per frame.
+// Drives the bridge: hook OVNet, connect on level enter, poll each frame.
 class COpenVibeClientJSSystem : public CAutoGameSystemPerFrame
 {
 public:
     COpenVibeClientJSSystem() : CAutoGameSystemPerFrame( "COpenVibeClientJSSystem" ) {}
-    bool Init() OVERRIDE
-    {
-        usermessages->HookMessage( "OVNet", __MsgFunc_OVNet );
-        return true;
-    }
-    void LevelInitPostEntity() OVERRIDE
-    {
-        OpenVibeJS_Client_Shutdown();
-        OpenVibeJS_Client_Init();
-    }
-    void LevelShutdownPostEntity() OVERRIDE
-    {
-        OpenVibeJS_Client_Shutdown();
-    }
-    void Update( float frametime ) OVERRIDE
-    {
-        OpenVibeJS_Client_Think();
-    }
+    bool Init() OVERRIDE { usermessages->HookMessage( "OVNet", __MsgFunc_OVNet ); return true; }
+    void LevelInitPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); OpenVibeJS_Client_Init(); }
+    void LevelShutdownPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); }
+    void Update( float ) OVERRIDE { OpenVibeJS_Client_Think(); }
 };
 static COpenVibeClientJSSystem g_OpenVibeClientJSSystem;

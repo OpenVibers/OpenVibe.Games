@@ -123,6 +123,9 @@ static ConCommand ov_round_end(
 #include "openvibe_js_server.h"
 #include "openvibe/ov_js_runtime.h"
 #include "openvibe/ov_js_player.h"
+#include "openvibe/ov_ipc.h"
+#include "recipientfilter.h"
+#include "openvibe/third_party/quickjs/quickjs.h"
 
 #include "tier0/memdbgon.h"
 
@@ -138,8 +141,116 @@ static ConVar ov_js_enabled(
     FCVAR_GAMEDLL,
     "Enable OpenVibe JavaScript runtime." );
 
+// Backend for the server JS framework: "embedded" = in-process QuickJS (default,
+// always works on Linux); "node" = forward events to the Node.js runtime host
+// (ov-runtime.js) over IPC for full npm + hot-reload.
+static ConVar ov_js_backend(
+    "ov_js_backend", "embedded", FCVAR_GAMEDLL,
+    "OpenVibe server JS backend: embedded | node" );
+static ConVar ov_js_node_port(
+    "ov_js_node_port", "41999", FCVAR_GAMEDLL,
+    "TCP port of the OpenVibe server Node.js runtime host." );
+
 static COpenVibeJSRuntime g_OVServerJS;
 static bool g_OVServerJSStarted = false;
+
+// ---------------------------------------------------------------------------
+// Node.js runtime bridge (server realm). Active when ov_js_backend == "node".
+// ---------------------------------------------------------------------------
+static COpenVibeIPC g_ServerIPC;
+static bool OVServer_UseNode() { return !Q_stricmp( ov_js_backend.GetString(), "node" ); }
+
+static bool OVJSONGetStr( const char *json, const char *key, char *out, int outSize )
+{
+    char needle[64]; Q_snprintf( needle, sizeof( needle ), "\"%s\":\"", key );
+    const char *s = Q_strstr( json, needle );
+    if ( !s ) return false;
+    s += Q_strlen( needle );
+    int i = 0;
+    while ( *s && *s != '"' && i < outSize - 1 ) { if ( *s == '\\' && s[1] ) s++; out[i++] = *s++; }
+    out[i] = '\0';
+    return true;
+}
+static int OVJSONGetInt( const char *json, const char *key, int def )
+{
+    char needle[64]; Q_snprintf( needle, sizeof( needle ), "\"%s\":", key );
+    const char *s = Q_strstr( json, needle );
+    if ( !s ) return def;
+    return atoi( s + Q_strlen( needle ) );
+}
+static void OVJSONAppendEsc( char *dst, int cap, const char *src )
+{
+    int len = Q_strlen( dst );
+    for ( const char *p = src; p && *p && len < cap - 3; ++p )
+    {
+        char c = *p;
+        if ( c == '"' || c == '\\' ) { dst[len++] = '\\'; dst[len++] = c; }
+        else if ( c == '\n' || c == '\r' ) { dst[len++] = ' '; }
+        else dst[len++] = c;
+    }
+    dst[len] = '\0';
+}
+
+// Apply a command line from the Node runtime.
+static void OVServer_OnLine( const char *line )
+{
+    char t[32];
+    if ( !OVJSONGetStr( line, "t", t, sizeof( t ) ) ) return;
+
+    if ( !Q_strcmp( t, "chat" ) )
+    {
+        char msg[512]; if ( !OVJSONGetStr( line, "msg", msg, sizeof( msg ) ) ) return;
+        int uid = OVJSONGetInt( line, "userId", -1 );
+        if ( uid >= 0 ) { CBasePlayer *p = UTIL_PlayerByUserId( uid ); if ( p ) ClientPrint( p, HUD_PRINTTALK, msg ); }
+        else UTIL_ClientPrintAll( HUD_PRINTTALK, msg );
+    }
+    else if ( !Q_strcmp( t, "concmd" ) )
+    {
+        char cmd[512]; if ( OVJSONGetStr( line, "cmd", cmd, sizeof( cmd ) ) ) engine->ServerCommand( UTIL_VarArgs( "%s\n", cmd ) );
+    }
+    else if ( !Q_strcmp( t, "runcmd" ) )
+    {
+        // Run an ov_* command as a specific player (e.g. ov_fortwars_spawn crate).
+        char cmd[512]; int uid = OVJSONGetInt( line, "userId", -1 );
+        if ( uid >= 0 && OVJSONGetStr( line, "cmd", cmd, sizeof( cmd ) ) )
+        {
+            CBasePlayer *p = UTIL_PlayerByUserId( uid );
+            if ( p ) { engine->ClientCommand( p->edict(), "%s", cmd ); }
+        }
+    }
+    else if ( !Q_strcmp( t, "net" ) )
+    {
+        // server -> client net: OVNet usermessage. ids: CSV of userIds, -1 = all.
+        char ids[256], name[128], payload[8192];
+        OVJSONGetStr( line, "ids", ids, sizeof( ids ) );
+        if ( !OVJSONGetStr( line, "name", name, sizeof( name ) ) ) return;
+        OVJSONGetStr( line, "payload", payload, sizeof( payload ) );
+        bool broadcast = ( Q_strstr( ids, "-1" ) != NULL ) || ids[0] == '\0';
+        if ( broadcast )
+        {
+            CBroadcastRecipientFilter f;
+            UserMessageBegin( f, "OVNet" ); WRITE_STRING( name ); WRITE_STRING( payload ); MessageEnd();
+        }
+        else
+        {
+            for ( char *tok = strtok( ids, "," ); tok; tok = strtok( NULL, "," ) )
+            {
+                CBasePlayer *p = UTIL_PlayerByUserId( atoi( tok ) );
+                if ( !p ) continue;
+                CSingleUserRecipientFilter f( p );
+                UserMessageBegin( f, "OVNet" ); WRITE_STRING( name ); WRITE_STRING( payload ); MessageEnd();
+            }
+        }
+    }
+}
+
+static void OVServer_SendHello()
+{
+    char hello[256];
+    Q_snprintf( hello, sizeof( hello ), "{\"t\":\"hello\",\"realm\":\"server\",\"mode\":\"%s\",\"map\":\"%s\"}",
+        ov_mode.GetString(), gpGlobals ? STRING( gpGlobals->mapname ) : "" );
+    g_ServerIPC.SendLine( hello );
+}
 
 static bool OpenVibeJS_IsRunning()
 {
@@ -157,6 +268,15 @@ static void OpenVibeJS_EnsureStarted()
     {
         Msg( "[OV JS] disabled by ov_js_enabled=0\n" );
         return;
+    }
+
+    if ( OVServer_UseNode() )
+    {
+        g_ServerIPC.Configure( "127.0.0.1", ov_js_node_port.GetInt(), OVServer_OnLine );
+        g_ServerIPC.Poll();
+        OVServer_SendHello();
+        Msg( "[OV JS] server backend=node (runtime bridge port %d)\n", ov_js_node_port.GetInt() );
+        return; // embedded QuickJS not used in node mode
     }
 
     if ( g_OVServerJS.Init( true, ov_mode.GetString() ) )
@@ -212,6 +332,18 @@ void OpenVibeJS_ServerShutdown()
 void OpenVibeJS_ServerThink()
 {
     OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        g_ServerIPC.Poll();
+        static float s_flNextThink = 0.0f;
+        if ( gpGlobals && gpGlobals->curtime >= s_flNextThink )
+        {
+            s_flNextThink = gpGlobals->curtime + 0.1f; // 10Hz think to Node
+            if ( g_ServerIPC.IsConnected() ) g_ServerIPC.SendLine( "{\"t\":\"think\"}" );
+        }
+        return;
+    }
 
     if ( !OpenVibeJS_IsRunning() )
         return;
@@ -292,6 +424,20 @@ void OpenVibeJS_Server_PlayerDisconnected( CHL2MP_Player *player )
 bool OpenVibeJS_Server_PlayerSay( CHL2MP_Player *player, const char *text )
 {
     OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !player || !text || !g_ServerIPC.IsConnected() ) return false;
+        char out[1024] = "{\"t\":\"say\",\"userId\":";
+        char num[16]; Q_snprintf( num, sizeof( num ), "%d", player->GetUserID() );
+        Q_strncat( out, num, sizeof( out ), COPY_ALL_CHARACTERS );
+        Q_strncat( out, ",\"text\":\"", sizeof( out ), COPY_ALL_CHARACTERS );
+        OVJSONAppendEsc( out, sizeof( out ), text );
+        Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        // Chat commands (leading '!') are handled by JS; suppress them from public chat.
+        return text[0] == '!';
+    }
 
     if ( !OpenVibeJS_IsRunning() || !player || !text )
         return false;
@@ -401,6 +547,24 @@ static void OV_Net_f( const CCommand &args )
     }
 
     OpenVibeJS_EnsureStarted();
+
+    CHL2MP_Player *cmdPlayer = ToHL2MPPlayer( UTIL_GetCommandClient() );
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !g_ServerIPC.IsConnected() ) return;
+        char out[9000] = "{\"t\":\"net\",\"userId\":";
+        char num[16]; Q_snprintf( num, sizeof( num ), "%d", cmdPlayer ? cmdPlayer->GetUserID() : -1 );
+        Q_strncat( out, num, sizeof( out ), COPY_ALL_CHARACTERS );
+        Q_strncat( out, ",\"name\":\"", sizeof( out ), COPY_ALL_CHARACTERS );
+        OVJSONAppendEsc( out, sizeof( out ), args[1] );
+        Q_strncat( out, "\",\"payload\":\"", sizeof( out ), COPY_ALL_CHARACTERS );
+        OVJSONAppendEsc( out, sizeof( out ), args[2] );
+        Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        return;
+    }
+
     if ( !OpenVibeJS_IsRunning() )
         return;
 
@@ -412,7 +576,7 @@ static void OV_Net_f( const CCommand &args )
     // UTIL_GetCommandClient() is the player who ran the command (null on the
     // server console). DON'T TRUST THE CLIENT — net.Receive handlers must
     // validate, per the GMod net guide.
-    CHL2MP_Player *player = ToHL2MPPlayer( UTIL_GetCommandClient() );
+    CHL2MP_Player *player = cmdPlayer;
     JSValue ply = player ? OVJS_NewPlayer( ctx, player ) : JS_NULL;
 
     JSValueConst argv[] = { name, payload, ply };

@@ -58,6 +58,10 @@ copy_file "$ROOT/sdk/openvibe/shared/ovjs_core.h" \
   "$SDK/src/game/shared/openvibe/ovjs_core.h"
 copy_file "$ROOT/sdk/openvibe/shared/ovjs_core.c" \
   "$SDK/src/game/shared/openvibe/ovjs_core.c"
+copy_file "$ROOT/sdk/openvibe/shared/ov_ipc.h" \
+  "$SDK/src/game/shared/openvibe/ov_ipc.h"
+copy_file "$ROOT/sdk/openvibe/shared/ov_ipc.cpp" \
+  "$SDK/src/game/shared/openvibe/ov_ipc.cpp"
 
 copy_file "$ROOT/sdk/openvibe/server/hl2mp/openvibe_js_server.h" \
   "$SDK/src/game/server/hl2mp/openvibe_js_server.h"
@@ -84,10 +88,11 @@ perl -0pi -e '
   s/^.*hl2mp\\openvibe_js_client\.cpp.*\n//mg;
   s/^.*openvibe\\ov_js_runtime\.cpp.*\n//mg;
   s/^.*openvibe\\ovjs_core\.c".*\n//mg;
+  s/^.*openvibe\\ov_ipc\.cpp.*\n//mg;
   s/^.*libquickjs_openvibe(?:\.a)?".*\n//mg;
-  s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_client.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ovjs_core.c" [\$LINUXALL]\n\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s;
+  s/(\$File\s+"hl2mp\\clientmode_hl2mpnormal\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_client.cpp"\n\t\t\t\$File\t"hl2mp\\vgui_openvibe_menu.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_client.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_ipc.cpp"\n/s;
 ' "$CLIENT_VPC"
-echo "[openvibe-sdk] patched client_hl2mp.vpc"
+echo "[openvibe-sdk] patched client_hl2mp.vpc (Node IPC bridge; no embedded QuickJS)"
 
 # Register the OVNet usermessage (server->client net library transport) in the
 # shared HL2 usermessage table so both realms agree on it.
@@ -103,6 +108,7 @@ perl -0pi -e '
   s/^.*openvibe\\ov_js_runtime\.cpp.*\n//mg;
   s/^.*openvibe\\ov_js_bindings\.cpp.*\n//mg;
   s/^.*openvibe\\ov_js_player\.cpp.*\n//mg;
+  s/^.*openvibe\\ov_ipc\.cpp.*\n//mg;
   s/^.*quickjs\\quickjs\.c.*\n//mg;
   s/^.*quickjs\\libregexp\.c.*\n//mg;
   s/^.*quickjs\\libunicode\.c.*\n//mg;
@@ -110,7 +116,7 @@ perl -0pi -e '
   s/^.*quickjs\\dtoa\.c.*\n//mg;
   s/^.*quickjs\\libbf\.c.*\n//mg;
   s/^.*libquickjs_openvibe(?:\.a)?".*\n//mg;
-  s/(\$File\s+"hl2mp\\hl2mp_player\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_server.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_server.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_runtime.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_bindings.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_player.cpp"\n\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s;
+  s/(\$File\s+"hl2mp\\hl2mp_player\.h"\n)/$1\t\t\t\$File\t"hl2mp\\openvibe_server.cpp"\n\t\t\t\$File\t"hl2mp\\openvibe_js_server.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_runtime.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_bindings.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_js_player.cpp"\n\t\t\t\$File\t"..\\shared\\openvibe\\ov_ipc.cpp"\n\t\t\t\$Lib\t"..\\shared\\openvibe\\third_party\\quickjs\\build\\libquickjs_openvibe"\n/s;
 ' "$SERVER_VPC"
 echo "[openvibe-sdk] patched server_hl2mp.vpc"
 

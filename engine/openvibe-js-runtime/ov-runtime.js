@@ -85,6 +85,14 @@ function buildOV() {
 
 // Live game state mirrored from IPC events.
 const state = { map: '', players: {} /* userId -> {userId,name,steamId,...} */ };
+// Return a wrapped player, registering a minimal record if we haven't seen a
+// full connect event yet (so chat replies / net handlers always have a target).
+function ensurePlayer(userId, name) {
+  if (userId == null || userId < 0) return null;
+  if (!state.players[userId]) state.players[userId] = { userId, name: name || ('Player' + userId) };
+  else if (name) state.players[userId].name = name;
+  return wrapPlayer(state.players[userId]);
+}
 function wrapPlayer(p) {
   return {
     userId: () => p.userId, entIndex: () => p.entIndex || p.userId,
@@ -194,13 +202,13 @@ function onGameMessage(msg) {
       break;
     case 'net': {
       // client->server (or server->client) net message -> OVNetReceive hook
-      const ply = msg.userId != null && state.players[msg.userId] ? wrapPlayer(state.players[msg.userId]) : null;
+      const ply = ensurePlayer(msg.userId, msg.name_) ;
       if (ctx && ctx.hook) { try { ctx.hook.Run('OVNetReceive', msg.name, msg.payload, ply); } catch (e) { warn(e.message); } }
       break;
     }
     case 'say':
       if (ctx && ctx.hook) {
-        const ply = state.players[msg.userId] ? wrapPlayer(state.players[msg.userId]) : null;
+        const ply = ensurePlayer(msg.userId, msg.playerName);
         try { ctx.hook.Run('PlayerSay', ply, msg.text); } catch (e) { warn(e.message); }
       }
       break;
