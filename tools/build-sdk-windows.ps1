@@ -1025,7 +1025,7 @@ IVTex *g_pVTex = 0;
 
   $publicInclude = Join-Path $Src "public"
   Say "creating Win32 tier3.lib from real tier3.h globals ($tier3Dest)"
-  & $clCmd.Source /nologo /c /TP "/I$publicInclude" $tier3Src /Fo$tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+  & $clCmd.Source /nologo /c /TP /DCOMPILER_MSVC /DCOMPILER_MSVC32 /DWIN32 /D_WIN32 "/I$publicInclude" $tier3Src /Fo$tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "cl.exe failed while compiling tier3.lib globals" }
 
   & $libCmd.Source /nologo /machine:x86 "/out:$tier3Dest" $tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
