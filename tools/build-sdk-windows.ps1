@@ -990,19 +990,41 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
   }
 
   # tier3.lib is not a DLL import lib like tier0/vstdlib/steam_api - public/tier3/tier3.h
-  # forward-declares its own interface types and just `extern`s a handful of global
-  # interface pointers ("These tier3 libraries must be set by any users of this
-  # library... by calling ConnectTier3Libraries"). Real Source SDK builds provide
-  # these via a real tier3.lib static archive; the public checkout doesn't ship one.
-  # Compile a real (if inert, null-initialized) definition of each declared global
-  # against the actual header so the mangled C++ names match exactly, and archive
-  # that - not a DEF-based import lib, since these are static data, not DLL imports.
+  # just `extern`s a handful of global interface pointers ("These tier3 libraries must be
+  # set by any users of this library... by calling ConnectTier3Libraries"). Real Source SDK
+  # builds provide these via a real tier3.lib static archive; the public checkout doesn't
+  # ship one. We only need to define those globals (null-initialized) so the linker resolves
+  # them - the game connects the real interfaces at runtime via ConnectTier3Libraries.
+  #
+  # We deliberately do NOT #include "tier3/tier3.h" here: that drags in the whole tier2 ->
+  # tier1 header chain (memdbgon.h, compiler-macro gates in platform.h, etc.) which is a
+  # rabbit hole to satisfy for a standalone cl.exe TU. A C++ symbol's decorated (mangled)
+  # name depends only on the identifier's name, its type name, and enclosing namespace -
+  # not on the type's definition - so bare forward declarations produce byte-identical
+  # symbol names to the ones the SDK objects reference. That's all the linker needs.
   $tier3Dest = Join-Path $publicLibDir "tier3.lib"
   if (Test-Path $tier3Dest) { Remove-Item -Force $tier3Dest }
   $tier3Src = Join-Path $LogDir "openvibe_tier3_globals.cpp"
   $tier3Obj = Join-Path $LogDir "openvibe_tier3_globals.obj"
   @'
-#include "tier3/tier3.h"
+class IStudioRender;
+class IMatSystemSurface;
+class IDataCache;
+class IMDLCache;
+class IVideoServices;
+class IDmeMakefileUtils;
+class IPhysicsCollision;
+class ISoundEmitterSystemBase;
+class IVTex;
+namespace vgui {
+  class ISurface;
+  class IVGui;
+  class IInput;
+  class IPanel;
+  class ILocalize;
+  class ISchemeManager;
+  class ISystem;
+}
 IStudioRender *g_pStudioRender = 0;
 IStudioRender *studiorender = 0;
 IMatSystemSurface *g_pMatSystemSurface = 0;
@@ -1023,9 +1045,8 @@ ISoundEmitterSystemBase *g_pSoundEmitterSystem = 0;
 IVTex *g_pVTex = 0;
 '@ | Set-Content -Encoding ascii -Path $tier3Src
 
-  $publicInclude = Join-Path $Src "public"
-  Say "creating Win32 tier3.lib from real tier3.h globals ($tier3Dest)"
-  & $clCmd.Source /nologo /c /TP /DCOMPILER_MSVC /DCOMPILER_MSVC32 /DWIN32 /D_WIN32 "/I$publicInclude" $tier3Src /Fo$tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+  Say "creating Win32 tier3.lib from forward-declared tier3 globals ($tier3Dest)"
+  & $clCmd.Source /nologo /c /TP $tier3Src /Fo$tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
   if ($LASTEXITCODE -ne 0) { throw "cl.exe failed while compiling tier3.lib globals" }
 
   & $libCmd.Source /nologo /machine:x86 "/out:$tier3Dest" $tier3Obj 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
