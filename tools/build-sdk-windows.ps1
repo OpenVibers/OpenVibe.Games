@@ -914,16 +914,78 @@ function Ensure-OpenVibeWin32ImportCompatibilityLibs {
   # Win32 project still expects the filenames to exist. Create tiny x86 archives
   # only when the correct file is absent so the linker can continue to the real
   # object/link validation step.
-  $compatLibs = @(
-    "tier0.lib",
-    "vstdlib.lib",
-    "steam_api.lib",
-    "libz.lib",
-    "tier3.lib",
-    "vtf.lib"
-  )
+  #
+  # tier0/vstdlib/steam_api are pervasively called by real Source engine code
+  # (Msg, Warning, g_pMemAlloc, SteamAPI_*, ...). A single-dummy-symbol static
+  # archive satisfies the linker's "file exists" check but leaves every real
+  # call unresolved (LNK2001). Instead build genuine DEF-based *import*
+  # libraries: the resulting .lib has no code of its own, just import thunks
+  # that redirect to the real tier0.dll/vstdlib.dll/steam_api.dll the target
+  # machine already has installed (any Source SDK 2013 game ships these next
+  # to hl2.exe/hl2_win64.exe). tier3/vtf/libz have no observed real symbol
+  # usage from this client, so a trivial placeholder archive is enough for
+  # those - only file presence is required, not import thunks.
+  $defBackedLibs = @{
+    "tier0.lib" = @{
+      Dll = "tier0"
+      Exports = @(
+        "CallAssertFailedNotifyFunc","CommandLine_Tier0","COM_TimestampedLog",
+        "CreateSimpleThread","DestroyThreadPool","DevMsg","DevWarning",
+        "DoNewAssertDialog","Error","ETWBegin","ETWEnd","_ExitOnFatalAssert",
+        "g_ClockSpeed","GetCPUFrequencyResults","GetCPUInformation",
+        "GetMemoryInformation","GetThreadedLoadLibraryFunc","g_pMemAlloc",
+        "g_pThreadPool","g_VProfCurrentProfile","HushAsserts",
+        "MemAllocScratch","MemFreeScratch","Msg","Plat_ExitProcess",
+        "Plat_FloatTime","Plat_IsInDebugSession","Plat_localtime",
+        "Plat_MSTime","ReleaseThreadHandle","ShouldUseNewAssertDialog",
+        "_SpewInfo","_SpewMessage","ThreadInMainThread",
+        "ThreadInterlockedAssignIf64","ThreadInterlockedDecrement64",
+        "ThreadInterlockedExchange64","ThreadInterlockedIncrement64",
+        "ThreadSetAffinity","ThreadWaitForObjects","Warning","WriteMiniDump"
+      )
+    }
+    "vstdlib.lib" = @{
+      Dll = "vstdlib"
+      Exports = @("KeyValuesSystem","RandomFloat","RandomInt","RandomSeed")
+    }
+    "steam_api.lib" = @{
+      Dll = "steam_api"
+      Exports = @(
+        "SteamAPI_GetHSteamPipe","SteamAPI_GetHSteamUser","SteamAPI_InitSafe",
+        "SteamAPI_RegisterCallback","SteamAPI_RegisterCallResult",
+        "SteamAPI_SetTryCatchCallbacks","SteamAPI_UnregisterCallback",
+        "SteamAPI_UnregisterCallResult","SteamInternal_ContextInit",
+        "SteamInternal_CreateInterface","SteamInternal_FindOrCreateUserInterface"
+      )
+    }
+  }
 
-  foreach ($libName in $compatLibs) {
+  $placeholderLibs = @("libz.lib", "tier3.lib", "vtf.lib")
+
+  foreach ($libName in $defBackedLibs.Keys) {
+    $dest = Join-Path $publicLibDir $libName
+    if (Test-Path $dest) {
+      $item = Get-Item $dest
+      "[present] $libName $($item.Length)" | Out-File $log -Append
+      continue
+    }
+
+    $info = $defBackedLibs[$libName]
+    $safe = ($libName -replace '[^A-Za-z0-9]+','_')
+    $defPath = Join-Path $LogDir "openvibe_${safe}_compat.def"
+    $defLines = @("LIBRARY $($info.Dll)", "EXPORTS") + $info.Exports
+    Set-Content -Encoding ascii -Path $defPath -Value $defLines
+
+    Say "creating Win32 import-compatibility library $dest (DLL=$($info.Dll), $($info.Exports.Count) exports)"
+    & $libCmd.Source /nologo /machine:x86 "/def:$defPath" "/out:$dest" 2>&1 | Tee-Object -FilePath $log -Append | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "lib.exe failed while creating $libName import-compatibility library" }
+
+    if (!(Test-Path $dest)) { throw "Expected compatibility library was not created: $dest" }
+    $item = Get-Item $dest
+    "[created-def] $libName $($item.Length)" | Out-File $log -Append
+  }
+
+  foreach ($libName in $placeholderLibs) {
     $dest = Join-Path $publicLibDir $libName
     if (Test-Path $dest) {
       $item = Get-Item $dest
