@@ -27,6 +27,9 @@ case "$MODE" in
 esac
 
 BIND_IP="${OPENVIBE_BIND_IP:-$DEFAULT_BIND_IP}"
+CLIENTPORT="${OPENVIBE_CLIENTPORT:-$((PORT + 1000))}"
+TVPORT="${OPENVIBE_TV_PORT:-$((PORT + 2000))}"
+STEAMPORT="${OPENVIBE_STEAMPORT:-$((PORT - 115))}"
 
 if [[ ! -x "$SRCDS/srcds_linux64" ]]; then
   echo "Missing 64-bit SRCDS at $SRCDS/srcds_linux64" >&2
@@ -63,9 +66,18 @@ server_cmd=(
   -usercon
   -ip "$BIND_IP"
   -port "$PORT"
-  +clientport "$((PORT + 1000))"
+  -steamport "$STEAMPORT"
+)
+
+if [[ "${OPENVIBE_SRCDS_MASTER:-0}" != "1" ]]; then
+  server_cmd+=(-nomaster)
+fi
+
+server_cmd+=(
+  +clientport "$CLIENTPORT"
   +maxplayers "$MAXPLAYERS"
-  +tv_port "$((PORT + 2000))"
+  +tv_port "$TVPORT"
+  +sv_master_share_game_socket 1
   +exec "$CFG"
 )
 
@@ -79,7 +91,9 @@ if [[ "${OPENVIBE_SRCDS_PIPE_MAP:-1}" == "1" ]]; then
   filter_output() {
     sed -u \
       -e '/WARNING: Failed to load 32-bit libtinfo\.so\.5 or libncurses\.so\.5\./d' \
-      -e '/Please install (lib32tinfo5 \/ ncurses-libs\.i686 \/ equivalent) to enable readline\./d'
+      -e '/Please install (lib32tinfo5 \/ ncurses-libs\.i686 \/ equivalent) to enable readline\./d' \
+      -e '/^Socket bound to non-default port 269[0-9][0-9] because original port was already in use\./d' \
+      -e '/^WARNING: Port 26900 was unavailable - bound to port 269[0-9][0-9] instead/d'
   }
 
   if command -v script >/dev/null 2>&1; then

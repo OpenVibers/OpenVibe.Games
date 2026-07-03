@@ -16,6 +16,9 @@ PORT="${OPENVIBE_SANDBOX_PORT:-27020}"
 MAP="${OPENVIBE_SANDBOX_MAP:-ov_hub}"
 MAXPLAYERS="${OPENVIBE_SANDBOX_MAXPLAYERS:-24}"
 BIND_IP="${OPENVIBE_BIND_IP:-127.0.0.1}"
+CLIENTPORT="${OPENVIBE_CLIENTPORT:-$((PORT + 1000))}"
+TVPORT="${OPENVIBE_TV_PORT:-$((PORT + 2000))}"
+STEAMPORT="${OPENVIBE_STEAMPORT:-$((PORT - 115))}"
 MAP_DELAY="${OPENVIBE_SRCDS_MAP_DELAY:-6}"
 RELOAD_DELAY="${OPENVIBE_SANDBOX_RELOAD_DELAY:-8}"
 
@@ -50,9 +53,18 @@ server_cmd=(
   -usercon
   -ip "$BIND_IP"
   -port "$PORT"
-  +clientport "$((PORT + 1000))"
+  -steamport "$STEAMPORT"
+)
+
+if [[ "${OPENVIBE_SRCDS_MASTER:-0}" != "1" ]]; then
+  server_cmd+=(-nomaster)
+fi
+
+server_cmd+=(
+  +clientport "$CLIENTPORT"
   +maxplayers "$MAXPLAYERS"
-  +tv_port "$((PORT + 2000))"
+  +tv_port "$TVPORT"
+  +sv_master_share_game_socket 1
   +exec openvibe_sandbox.cfg
 )
 
@@ -71,7 +83,9 @@ console_input() {
 filter_output() {
   sed -u \
     -e '/WARNING: Failed to load 32-bit libtinfo\.so\.5 or libncurses\.so\.5\./d' \
-    -e '/Please install (lib32tinfo5 \/ ncurses-libs\.i686 \/ equivalent) to enable readline\./d'
+    -e '/Please install (lib32tinfo5 \/ ncurses-libs\.i686 \/ equivalent) to enable readline\./d' \
+    -e '/^Socket bound to non-default port 269[0-9][0-9] because original port was already in use\./d' \
+    -e '/^WARNING: Port 26900 was unavailable - bound to port 269[0-9][0-9] instead/d'
 }
 
 if command -v script >/dev/null 2>&1; then
