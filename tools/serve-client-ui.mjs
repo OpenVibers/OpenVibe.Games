@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 
 const root = resolve(process.env.OPENVIBE_ROOT || join(process.env.HOME || '.', 'src/openvibe-source'));
+const clientRoot = join(root, 'client');
 const launcherRoot = join(root, 'launcher');
 const host = process.env.OPENVIBE_CLIENT_UI_HOST || '127.0.0.1';
 const port = Number(process.env.OPENVIBE_CLIENT_UI_PORT || 5173);
@@ -45,14 +46,14 @@ function fileForUrl(url) {
   const parsed = new URL(url, `http://${host}:${port}`);
   let pathname = decodeURIComponent(parsed.pathname);
 
+  // The unified OpenVibe app (repo-root client/) is served for /client/*.
+  // This matches the backend's static mapping (backend serves client/ at /client/).
   if (pathname === '/' || pathname === '/client' || pathname === '/client/') {
-    return join(launcherRoot, 'index.html');
+    return join(clientRoot, 'index.html');
   }
 
   if (!pathname.startsWith('/client/')) {
-    if (pathname === '/styles.css' || pathname === '/renderer.js' || pathname === '/preload.js') {
-      return join(launcherRoot, pathname.slice(1));
-    }
+    // Launcher assets (icons etc.) stay available for anything that still references them.
     if (pathname.startsWith('/assets/')) {
       const asset = normalize(join(launcherRoot, pathname.slice(1)));
       return asset.startsWith(launcherRoot + sep) ? asset : null;
@@ -61,8 +62,8 @@ function fileForUrl(url) {
   }
 
   pathname = pathname.slice('/client/'.length);
-  const file = normalize(join(launcherRoot, pathname));
-  if (!file.startsWith(launcherRoot + sep)) {
+  const file = normalize(join(clientRoot, pathname));
+  if (!file.startsWith(clientRoot + sep)) {
     return null;
   }
 
@@ -104,5 +105,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`[openvibe-ui] serving ${launcherRoot} at http://${host}:${port}/client`);
+  console.log(`[openvibe-ui] serving ${clientRoot} at http://${host}:${port}/client`);
 });

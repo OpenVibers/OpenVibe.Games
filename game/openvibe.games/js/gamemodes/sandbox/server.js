@@ -92,15 +92,45 @@
         return false;
       });
     });
+
+    // Entity-system spawn: !ent <class> — demonstrates ents.Create end to end
+    // (scripted entities like ov_bouncy_crate, or allowlisted engine classes
+    // when the native entity bridge is compiled in).
+    command.add("ent", "Spawn an entity: !ent ov_bouncy_crate", function ({ ply, args, reply }) {
+      const cls = String(args[0] || "ov_bouncy_crate");
+      const ent = ents.Create(cls);
+      if (!IsValid(ent)) {
+        reply(ply, `Unknown entity class: ${cls}`);
+        return false;
+      }
+      if (ply) {
+        const p = ply.GetPos ? ply.GetPos() : { x: 0, y: 0, z: 0 };
+        const fwd = ply.GetForward ? ply.GetForward() : { x: 1, y: 0, z: 0 };
+        ent.SetPos({ x: p.x + fwd.x * 96, y: p.y + fwd.y * 96, z: p.z + 32 });
+      }
+      ent.Spawn();
+      ent.Activate();
+      reply(ply, `Spawned ${cls} (entindex ${ent.EntIndex()})`);
+      return false;
+    });
+
+    command.add("ents", "Count live entities", function ({ ply, reply }) {
+      reply(ply, `Entities: ${ents.GetCount()} (${ents.FindByClass("ov_*").length} scripted ov_*)`);
+      return false;
+    });
   }
 
   // Networked Q-menu spawn: the client sends the chosen prop via the net
   // library (ov_net OV_Sandbox_Spawn <payload>). spawnProp already validates
   // the prop id against the allowlist, so we never trust the client's value.
-  function registerNet() {
-    if (!globalThis.net) return;
+  // Pool at file scope (GMod convention: before any net.Start can run).
+  if (globalThis.util && util.AddNetworkString) {
     util.AddNetworkString("OV_Sandbox_Spawn");
     util.AddNetworkString("OV_Sandbox_Welcome");
+  }
+
+  function registerNet() {
+    if (!globalThis.net) return;
     net.Receive("OV_Sandbox_Spawn", function (len, ply) {
       var id = net.ReadString();
       if (!ply) { OV.warn("OV_Sandbox_Spawn with no player; ignoring"); return; }

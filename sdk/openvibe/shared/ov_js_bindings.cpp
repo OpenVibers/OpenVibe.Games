@@ -10,6 +10,9 @@ void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime) {}
 #include "ov_js_bindings.h"
 #include "ov_js_runtime.h"
 #include "ov_js_player.h"
+#ifdef GAME_DLL
+#include "ov_js_entity.h"
+#endif
 #include "hl2mp_player.h"
 #include "util.h"
 #include "filesystem.h"
@@ -348,6 +351,11 @@ static const JSCFunctionListEntry OVFuncs[] =
     JS_CFUNC_DEF("fileExists", 1, OVJS_fileExists),
     JS_CFUNC_DEF("listDir", 2, OVJS_listDir),
     JS_CFUNC_DEF("netEmit", 3, OVJS_netEmit),
+#ifdef GAME_DLL
+    // Entity natives (server realm only) — implemented in ov_js_entity.cpp.
+    JS_CFUNC_DEF("entCreate", 1, OVJS_entCreate),
+    JS_CFUNC_DEF("entCall", 3, OVJS_entCall),
+#endif
 };
 
 void OVJS_RegisterNativeBindings(JSContext *ctx, COpenVibeJSRuntime *runtime)

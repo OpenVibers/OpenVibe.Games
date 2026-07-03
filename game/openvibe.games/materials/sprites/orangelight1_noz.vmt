@@ -1,0 +1,11 @@
+// Shadow material: stock HL2 charger glow sprite that the dedicated server's
+// mounted content doesn't expose to precache. Mirrors hl2/materials/sprites/
+// orangelight1_noz.vmt using a base texture that ships with HL2MP content.
+"UnlitGeneric"
+{
+	"$basetexture" "sprites/glow01"
+	"$spriteorientation" "vp_parallel"
+	"$spriterendermode" "9"
+	"$ignorez" "1"
+	"$nofog" "1"
+}

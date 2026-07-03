@@ -66,6 +66,29 @@
     tick,
     list() {
       return Object.keys(timers).sort();
+    },
+
+    // GMod-style aliases (https://wiki.facepunch.com/gmod/timer)
+    Create(id, delay, reps, fn) {
+      return create(id, delay, reps, fn);
+    },
+    Simple(delay, fn) {
+      return create(`simple_${nextAutoId++}`, delay, 1, fn);
+    },
+    Remove(id) {
+      return remove(id);
+    },
+    Exists(id) {
+      return !!timers[String(id || "")];
+    },
+    Adjust(id, delay, reps, fn) {
+      const item = timers[String(id || "")];
+      if (!item) return false;
+      if (delay !== undefined && delay !== null) item.delay = Math.max(0, Number(delay) || 0);
+      if (reps !== undefined && reps !== null) item.reps = Number(reps) || 0;
+      if (typeof fn === "function") item.fn = fn;
+      item.next = now() + item.delay;
+      return true;
     }
   };
 

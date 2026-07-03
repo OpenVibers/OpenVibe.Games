@@ -1,22 +1,13 @@
-export const GM = {
-  mode: "base",
-  name: "OpenVibe Base",
+// OpenVibe base gamemode — shared realm (both server and client).
+// Identity + shared constants live here; realm entries build on them.
+(function () {
+  globalThis.OVBase = {
+    TEAM_UNASSIGNED: 0,
+    TEAM_SPECTATOR: 1,
+    // Modes define their own playable teams as 2/3.
+    HUD_NET: "OV_HudState",
+    hudState: null // last known round/HUD snapshot (client keeps it fresh)
+  };
 
-  Initialize() {
-    console.log("Base gamemode initialized");
-  },
-
-  PlayerInitialSpawn(ply) {
-    ply.chat("Welcome to OpenVibe: Source");
-  },
-
-  PlayerSpawn(_ply) {},
-
-  PlayerDeath(_victim, _attacker, _inflictor) {},
-
-  PlayerSay(_ply, text) {
-    return undefined;
-  }
-};
-
-gamemode.set(GM);
+  if (globalThis.OV && OV.log) OV.log("base shared.js loaded (realm=" + (globalThis.SERVER ? "server" : "client") + ")");
+})();

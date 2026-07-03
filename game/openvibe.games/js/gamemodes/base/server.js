@@ -17,9 +17,18 @@
     // Round tracking (do not override)
     _roundState: "idle",   // "idle" | "countdown" | "active" | "ended"
     _roundNumber: 0,
+    _roundEndsAt: 0,
 
     Initialize() {
       OV.log("Base Initialize fired");
+    },
+
+    // Define teams via team.SetUp here (submodes override).
+    CreateTeams() {
+      if (globalThis.team) {
+        team.SetUp(0, "Unassigned", Color(200, 200, 200));
+        team.SetUp(1, "Spectator", Color(150, 150, 150), false);
+      }
     },
 
     MapInitialize(mapName) {
@@ -29,9 +38,14 @@
 
     PlayerInitialSpawn(ply) {
       ply.chat("Welcome to OpenVibe: Source.");
+      this.broadcastHudState();
     },
 
-    PlayerSpawn(_ply) {},
+    PlayerSpawn(ply) {
+      hook.Run("PlayerLoadout", ply);
+    },
+
+    PlayerLoadout(_ply) {},
 
     PlayerDeath(_victim, _attacker) {},
 
@@ -47,9 +61,11 @@
     startRound() {
       this._roundNumber += 1;
       this._roundState = "active";
+      this._roundEndsAt = OV.time() + this.roundDuration;
       OV.log(`[OV Round] RoundStart round=${this._roundNumber}`);
       hook.Run("RoundStart", this._roundNumber);
       OV.broadcast(`Round ${this._roundNumber} — begin!`);
+      this.broadcastHudState();
 
       const roundDuration = this.roundDuration;
       const roundNumber = this._roundNumber;
@@ -65,11 +81,52 @@
     endRound(reason) {
       if (this._roundState !== "active") return;
       this._roundState = "ended";
+      this._roundEndsAt = 0;
       OV.log(`[OV Round] RoundEnd round=${this._roundNumber} reason=${reason}`);
       hook.Run("RoundEnd", this._roundNumber, reason || "time");
       OV.broadcast(`Round ${this._roundNumber} ended (${reason || "time"}).`);
+      this.broadcastHudState();
       timer.remove(`ov_round_end_${this._roundNumber}`);
       this.scheduleRoundStart();
+    },
+
+    // ---- HUD state replication (drives the HTML HUD overlay) ----
+    // Broadcasts a compact snapshot over the net library; the client realm
+    // forwards it into the GUI (window.OV.onHudState).
+    buildHudState() {
+      const teams = [];
+      if (globalThis.team && team.GetAllTeams) {
+        const all = team.GetAllTeams();
+        for (const id in all) {
+          teams.push({
+            id: id | 0, name: all[id].name, color: all[id].color,
+            score: all[id].score, players: team.NumPlayers(id | 0)
+          });
+        }
+      }
+      return {
+        mode: this.mode, name: this.name,
+        state: this._roundState, round: this._roundNumber,
+        timeLeft: this._roundEndsAt ? Math.max(0, Math.round(this._roundEndsAt - OV.time())) : 0,
+        players: (OV.players ? OV.players() : []).length,
+        teams
+      };
+    },
+
+    broadcastHudState() {
+      if (!globalThis.net || !net.__openvibe) return;
+      try {
+        net.Start(globalThis.OVBase ? OVBase.HUD_NET : "OV_HudState");
+        net.WriteTable(this.buildHudState());
+        net.Broadcast();
+      } catch (e) { /* net transport not up yet */ }
+    },
+
+    _startHudTicker() {
+      const self = this;
+      if (globalThis.timer && timer.create) {
+        timer.create("ov_hud_state", 3, 0, function () { self.broadcastHudState(); });
+      }
     },
 
     // Begin countdown then start round.
@@ -99,6 +156,17 @@
 
   gamemode.setBase(GM);
   gamemode.set(GM, { base: true });
+
+  // Base setup that must run for EVERY mode, even ones that override
+  // GM.Initialize without calling up the chain (hook.Add'd hooks always run
+  // before the GM method and cannot be shadowed by submodes).
+  hook.Add("Initialize", "OpenVibeBaseSetup", function () {
+    if (globalThis.util && util.AddNetworkString) util.AddNetworkString(globalThis.OVBase ? OVBase.HUD_NET : "OV_HudState");
+    hook.Run("CreateTeams");
+    const gm = gamemode.get();
+    if (gm && typeof gm._startHudTicker === "function") gm._startHudTicker();
+    return undefined;
+  });
 
   // Load addons now that all core systems (require, hook, command, timer,
   // gamemode) are available. Runs in both realms; Addon.loadAll() picks the

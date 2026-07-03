@@ -30,13 +30,26 @@ function arg(name, def) {
 const REALM = arg('realm', 'server');           // "server" | "client"
 const MODE = arg('mode', 'sandbox');
 const PORT = Number(arg('port', REALM === 'client' ? 41998 : 41999));
+const CTRL_PORT = Number(arg('ctrl-port', REALM === 'client' ? 41996 : 41997));
 const ROOT = path.resolve(arg('root', path.join(__dirname, '..', '..')));
 const MOD = path.join(ROOT, 'game', 'openvibe.games');
 const JS = path.join(MOD, 'js');
 const IS_SERVER = REALM === 'server';
 
-function log(...a) { console.log(`[ov-runtime/${REALM}]`, ...a); }
-function warn(...a) { console.warn(`[ov-runtime/${REALM}] WARN`, ...a); }
+// ---- log ring buffer + SSE fanout (consumed by the GUI console) ----
+const LOG_RING_MAX = 500;
+const logRing = [];
+const sseClients = new Set();
+let logSeq = 0;
+function pushLog(level, text) {
+  const entry = { seq: ++logSeq, t: Date.now(), level, text: String(text), realm: REALM };
+  logRing.push(entry);
+  if (logRing.length > LOG_RING_MAX) logRing.shift();
+  const data = `data: ${JSON.stringify(entry)}\n\n`;
+  for (const res of sseClients) { try { res.write(data); } catch { sseClients.delete(res); } }
+}
+function log(...a) { console.log(`[ov-runtime/${REALM}]`, ...a); pushLog('info', a.join(' ')); }
+function warn(...a) { console.warn(`[ov-runtime/${REALM}] WARN`, ...a); pushLog('warn', a.join(' ')); }
 
 // ---- IPC: one connected game client at a time ----
 let sock = null;
@@ -62,29 +75,47 @@ function buildOV() {
   return {
     log: (m) => { log('[js]', m); },
     warn: (m) => { warn('[js]', m); },
-    error: (m) => { console.error(`[ov-runtime/${REALM}] [js ERROR]`, m); },
+    error: (m) => { console.error(`[ov-runtime/${REALM}] [js ERROR]`, m); pushLog('error', String(m)); },
     isServer: () => IS_SERVER,
     getMode: () => MODE,
     getMapName: () => state.map,
     time: () => Date.now() / 1000,
     readFile: (p) => { try { return fs.readFileSync(modRel(p), 'utf8'); } catch { return null; } },
-    fileExists: (p) => { try { return fs.statSync(modRel(p)).isFile(); } catch { return false; } },
+    fileExists: (p) => { try { fs.statSync(modRel(p)); return true; } catch { return false; } },
     listDir: (d /*, wildcard */) => { try { return fs.readdirSync(modRel(d)); } catch { return []; } },
+    // Write access is jailed to the client download cache + data dir.
+    writeFile: (p, content) => {
+      const norm = path.normalize(String(p)).replace(/^([/\\]|\.\.)+/, '');
+      if (!norm.startsWith(path.join('js', 'ov_downloads')) && !norm.startsWith('data')) {
+        warn('writeFile blocked outside js/ov_downloads|data:', norm);
+        return false;
+      }
+      try {
+        const full = modRel(norm);
+        fs.mkdirSync(path.dirname(full), { recursive: true });
+        fs.writeFileSync(full, String(content));
+        return true;
+      } catch (e) { warn('writeFile', e.message); return false; }
+    },
     freeMem: () => {},
     players: () => Object.values(state.players).map(wrapPlayer),
     playerByUserId: (id) => state.players[id] ? wrapPlayer(state.players[id]) : null,
+    localPlayer: () => (!IS_SERVER && state.localUserId != null && state.players[state.localUserId])
+      ? wrapPlayer(state.players[state.localUserId]) : null,
     broadcast: (msg) => sendToGame({ t: 'chat', msg: String(msg) }),
     serverCommand: (cmd) => sendToGame({ t: 'concmd', cmd: String(cmd) }),
     netEmit: (idsCsv, name, payloadB64) => sendToGame({ t: 'net', ids: String(idsCsv), name: String(name), payload: String(payloadB64) }),
     netSendToServer: (name, payloadB64) => sendToGame({ t: 'net', toServer: true, name: String(name), payload: String(payloadB64) }),
     fireHook: (name, ...args) => { try { return ctx.hook.Run(name, ...args); } catch (e) { warn('fireHook', e.message); } },
+    // Push JS into the in-game HTML panel (client realm): runs ov_menu_js.
+    menuJS: (script) => sendToGame({ t: 'concmd', cmd: 'ov_menu_js ' + String(script) }),
     reward: () => {},
     endMatch: () => {},
   };
 }
 
 // Live game state mirrored from IPC events.
-const state = { map: '', players: {} /* userId -> {userId,name,steamId,...} */ };
+const state = { map: '', players: {} /* userId -> {userId,name,steamId,...} */, localUserId: null };
 // Return a wrapped player, registering a minimal record if we haven't seen a
 // full connect event yet (so chat replies / net handlers always have a target).
 function ensurePlayer(userId, name) {
@@ -94,14 +125,22 @@ function ensurePlayer(userId, name) {
   return wrapPlayer(state.players[userId]);
 }
 function wrapPlayer(p) {
-  return {
+  const native = {
     userId: () => p.userId, entIndex: () => p.entIndex || p.userId,
     steamId: () => p.steamId || '', name: () => p.name || ('Player' + p.userId),
-    health: () => p.health || 100, setHealth: (v) => sendToGame({ t: 'player', userId: p.userId, setHealth: v }),
+    health: () => p.health || 100, setHealth: (v) => { p.health = v; sendToGame({ t: 'player', userId: p.userId, setHealth: v }); },
     team: () => p.team || 0, setTeam: (v) => { p.team = v; sendToGame({ t: 'player', userId: p.userId, setTeam: v }); },
     chat: (m) => sendToGame({ t: 'chat', userId: p.userId, msg: String(m) }),
     runCommand: (c) => sendToGame({ t: 'runcmd', userId: p.userId, cmd: String(c) }),
+    getPos: () => p.pos || null,
+    kill: () => sendToGame({ t: 'player', userId: p.userId, kill: true }),
   };
+  // Upgrade to the framework Player class when loaded (gamemodes then get the
+  // full GMod surface: Nick/SetTeam/ChatPrint/NW vars/...).
+  if (ctx && ctx.Player && typeof ctx.Player.fromNative === 'function') {
+    try { return ctx.Player.fromNative(native); } catch { /* fall through */ }
+  }
+  return native;
 }
 
 // Build the Node require npm + the addon loader use. Resolved from the mod's js
@@ -130,18 +169,20 @@ function buildRequire() {
 function loadFramework() {
   // Clear framework globals so re-eval redefines them (core files guard against
   // re-init, which would otherwise no-op a hot-reload).
-  for (const g of ['hook', 'gamemode', 'GM', 'GAMEMODE', 'net', 'util', 'command', 'concommand', 'timer', 'Addon', 'module', 'OVSandbox']) {
+  for (const g of ['hook', 'gamemode', 'GM', 'GAMEMODE', 'net', 'util', 'command', 'concommand',
+    'timer', 'Addon', 'module', 'OVSandbox', 'Entity', 'Player', 'player', 'ents',
+    'scripted_ents', 'file', 'OVLoader', 'include', 'AddCSJSFile', 'AddCSLuaFile',
+    'SERVER', 'CLIENT', 'MENU', 'NULL', 'LocalPlayer', 'RunConsoleCommand',
+    'DeriveGamemode', 'baseclass', 'IsValid', 'CurTime', 'ENT']) {
     try { delete global[g]; } catch {}
   }
   global.OV = buildOV();
   global.require = buildRequire();
 
-  const order = [
-    'core/hook.js', 'core/gamemode.js', 'bridge.js', 'core/command.js', 'core/timer.js',
-    'gamemodes/base/server.js',
-    `gamemodes/${MODE}/shared.js`,
-    `gamemodes/${MODE}/${IS_SERVER ? 'server' : 'client'}.js`,
-  ];
+  // Core files in the same order the embedded C++ loader uses; bridge.js
+  // bootstraps the remaining core libraries (realm/util/net/entity/ents/
+  // player/file/concommand/addon/loader).
+  const order = ['core/hook.js', 'core/gamemode.js', 'bridge.js', 'core/command.js', 'core/timer.js'];
   for (const f of order) {
     const full = path.join(JS, f);
     if (!fs.existsSync(full)) continue;
@@ -149,6 +190,21 @@ function loadFramework() {
     catch (e) { warn(`load ${f}: ${e.message}`); }
   }
   ctx = global;
+
+  // GMod loading order: autorun -> gamemode chain -> entities -> addons.
+  if (ctx.OVLoader && typeof ctx.OVLoader.loadAll === 'function') {
+    try { ctx.OVLoader.loadAll({ mode: MODE }); }
+    catch (e) { warn('OVLoader.loadAll:', e.message); }
+  } else {
+    // Fallback for a stripped js/ tree (old layout).
+    for (const f of ['gamemodes/base/server.js', `gamemodes/${MODE}/shared.js`,
+      `gamemodes/${MODE}/${IS_SERVER ? 'server' : 'client'}.js`]) {
+      const full = path.join(JS, f);
+      if (!fs.existsSync(full)) continue;
+      try { vm.runInThisContext(fs.readFileSync(full, 'utf8'), { filename: f }); }
+      catch (e) { warn(`load ${f}: ${e.message}`); }
+    }
+  }
   log(`framework loaded (mode=${MODE}, realm=${REALM})`);
 }
 
@@ -195,10 +251,17 @@ function onGameMessage(msg) {
       break;
     }
     case 'player_connect':
-      state.players[msg.userId] = { userId: msg.userId, name: msg.name, steamId: msg.steamId };
+      state.players[msg.userId] = { userId: msg.userId, name: msg.name, steamId: msg.steamId, entIndex: msg.entIndex };
+      if (msg.local) state.localUserId = msg.userId;
+      fire('PlayerConnect', msg.name, msg.ip || '');
       break;
     case 'player_disconnect':
+      fire('PlayerDisconnected', state.players[msg.userId] ? wrapPlayer(state.players[msg.userId]) : null);
       delete state.players[msg.userId];
+      break;
+    case 'local_player':
+      state.localUserId = msg.userId;
+      if (!state.players[msg.userId]) state.players[msg.userId] = { userId: msg.userId, name: msg.name, steamId: msg.steamId, entIndex: msg.entIndex };
       break;
     case 'net': {
       // client->server (or server->client) net message -> OVNetReceive hook
@@ -215,10 +278,158 @@ function onGameMessage(msg) {
     case 'think':
       if (ctx && ctx.hook) { try { ctx.hook.Run('Think'); } catch {} }
       break;
+    case 'eval':
+      // js_run / js_run_cl from the game console.
+      if (ctx && ctx.OVLoader && typeof ctx.OVLoader.runString === 'function') {
+        try { ctx.OVLoader.runString(msg.code, 'console'); } catch (e) { warn('eval:', e.message); }
+      }
+      break;
+    case 'openscript':
+      // js_openscript / js_openscript_cl from the game console.
+      if (ctx && ctx.OVLoader && typeof ctx.OVLoader.openScript === 'function') {
+        try { ctx.OVLoader.openScript(msg.path); } catch (e) { warn('openscript:', e.message); }
+      }
+      break;
+    case 'npm':
+      // ov_npm from the game console (server realm).
+      runNpm(msg.args || [], () => {});
+      break;
     default:
       break;
   }
 }
+
+// ---- runtime control HTTP server (GUI console / options / tooling) ----
+// GET  /logs   SSE stream of runtime log lines (plus a small backlog)
+// GET  /state  realm/mode/map/players/gamemode/hooks summary
+// POST /eval   { code }            js_run equivalent in this realm
+// POST /exec   { command }         concommand dispatch or engine forward
+// POST /npm    { args: ["install", "pkg"] }  npm in the js/ tree + hot reload
+// GET  /health
+const http = require('http');
+const { execFile: cpExecFile } = require('child_process');
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let buf = '';
+    req.on('data', (c) => { buf += c; if (buf.length > 1 << 20) req.destroy(); });
+    req.on('end', () => { try { resolve(buf ? JSON.parse(buf) : {}); } catch { resolve({}); } });
+  });
+}
+function json(res, code, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  });
+  res.end(body);
+}
+
+let npmBusy = false;
+function runNpm(args, cb) {
+  if (npmBusy) return cb({ ok: false, error: 'npm already running' });
+  const allowed = ['install', 'i', 'update', 'uninstall', 'remove', 'ls', 'list'];
+  if (!args.length || !allowed.includes(args[0])) return cb({ ok: false, error: `npm subcommand not allowed: ${args[0] || '(none)'}` });
+  const safe = args.filter((a) => /^[-@a-zA-Z0-9._/^~:]+$/.test(String(a)));
+  npmBusy = true;
+  log('npm', safe.join(' '));
+  cpExecFile('npm', [...safe, '--no-fund', '--no-audit'], { cwd: JS, timeout: 120000 }, (err, stdout, stderr) => {
+    npmBusy = false;
+    const out = String(stdout || '') + String(stderr || '');
+    out.split('\n').filter(Boolean).slice(0, 40).forEach((l) => pushLog('npm', l));
+    if (err) return cb({ ok: false, error: err.message, output: out });
+    // fs.watch on js/ picks up node_modules changes and hot-reloads; force one
+    // anyway so `npm ls`-style no-op writes still refresh requires.
+    loadFramework();
+    fire('Initialize');
+    fire('OnReloaded');
+    cb({ ok: true, output: out });
+  });
+}
+
+const ctrl = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1');
+  if (req.method === 'OPTIONS') return json(res, 200, { ok: true });
+  if (req.method === 'GET' && url.pathname === '/health') {
+    return json(res, 200, { ok: true, service: 'ov-runtime', realm: REALM, mode: MODE });
+  }
+  if (req.method === 'GET' && url.pathname === '/logs') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+    for (const entry of logRing.slice(-100)) res.write(`data: ${JSON.stringify(entry)}\n\n`);
+    sseClients.add(res);
+    req.on('close', () => sseClients.delete(res));
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/state') {
+    let gm = null, hooks = 0, entities = 0;
+    try {
+      gm = ctx && ctx.GAMEMODE ? { mode: ctx.GAMEMODE.mode, name: ctx.GAMEMODE.name } : null;
+      if (ctx && ctx.hook) hooks = Object.keys(ctx.hook.GetTable()).length;
+      if (ctx && ctx.ents) entities = ctx.ents.GetCount();
+    } catch {}
+    return json(res, 200, {
+      ok: true, realm: REALM, mode: MODE, map: state.map, gameConnected: !!(sock && !sock.destroyed),
+      players: Object.values(state.players).map((p) => ({ userId: p.userId, name: p.name, team: p.team || 0 })),
+      gamemode: gm, hookEvents: hooks, entities,
+    });
+  }
+  if (req.method === 'POST' && url.pathname === '/eval') {
+    const body = await readBody(req);
+    if (typeof body.code !== 'string') return json(res, 400, { ok: false, error: 'missing code' });
+    let out;
+    if (ctx && ctx.OVLoader && ctx.OVLoader.runString) out = ctx.OVLoader.runString(body.code, 'console-eval');
+    else { try { out = { ok: true, result: vm.runInThisContext(body.code, { filename: 'console-eval' }) }; } catch (e) { out = { ok: false, error: e.message }; } }
+    let rendered = null;
+    try { rendered = out.result === undefined ? null : JSON.parse(JSON.stringify(out.result)); }
+    catch { rendered = String(out.result); }
+    pushLog('eval', `> ${body.code}`);
+    if (out.ok) pushLog('eval', `= ${rendered === null ? 'undefined' : JSON.stringify(rendered)}`);
+    else pushLog('error', out.error);
+    return json(res, 200, { ok: out.ok, result: rendered, error: out.error || null });
+  }
+  if (req.method === 'POST' && url.pathname === '/exec') {
+    const body = await readBody(req);
+    const line = String(body.command || '').trim();
+    if (!line) return json(res, 400, { ok: false, error: 'missing command' });
+    pushLog('cmd', `] ${line}`);
+    let handled = false;
+    try {
+      if (ctx && ctx.concommand && ctx.concommand.Dispatch) handled = !!ctx.concommand.Dispatch(null, line);
+      if (!handled && ctx && ctx.command && ctx.command.dispatchConsole) {
+        const r = ctx.command.dispatchConsole(line);
+        handled = r !== undefined;
+      }
+    } catch (e) { return json(res, 200, { ok: false, error: e.message }); }
+    if (!handled) {
+      // Forward to the engine (the DLL applies its ov_*/say allowlist).
+      sendToGame({ t: 'concmd', cmd: line });
+      handled = 'forwarded';
+    }
+    return json(res, 200, { ok: true, handled });
+  }
+  if (req.method === 'POST' && url.pathname === '/npm') {
+    const body = await readBody(req);
+    const args = Array.isArray(body.args) ? body.args.map(String) : [];
+    return runNpm(args, (result) => json(res, result.ok ? 200 : 400, result));
+  }
+  if (req.method === 'POST' && url.pathname === '/openscript') {
+    const body = await readBody(req);
+    const p = String(body.path || '');
+    if (!p) return json(res, 400, { ok: false, error: 'missing path' });
+    const ok = !!(ctx && ctx.OVLoader && ctx.OVLoader.openScript(p));
+    return json(res, 200, { ok });
+  }
+  return json(res, 404, { ok: false, error: 'not found' });
+});
+ctrl.on('error', (e) => warn('control server error:', e.message));
+ctrl.listen(CTRL_PORT, '127.0.0.1', () => log(`control server on 127.0.0.1:${CTRL_PORT}`));
 
 // ---- TCP server ----
 const server = net.createServer((s) => {

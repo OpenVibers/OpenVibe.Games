@@ -43,6 +43,15 @@ openvibe-source/
 | Prop Hunt disguise | Implemented | `ov_prophunt_disguise`, `ov_prophunt_reset_disguise` |
 | Fort Wars placement | Implemented | `ov_fortwars_spawn` |
 | VScript game modes | Implemented prototypes | `game/openvibe.games/scripts/vscripts/ov_*.nut` |
+| GModJS framework | Implemented | `game/openvibe.games/js/core/*` — hook/net/entity/ents/player/team/file/concommand/loader (GMod API shapes in JS); design in `docs/GMODJS_ARCHITECTURE.md`, guide in `docs/OPENVIBE_JS_SCRIPTING.md` |
+| net library (JS) | Implemented | `js/core/net.js` — full GMod surface, pooling, chunked transport, per-player rate limits |
+| Entity system (JS + native) | Implemented | `js/core/entity.js`, `js/core/ents.js`, `sdk/openvibe/shared/ov_js_entity.cpp` (`OV.entCreate`/`OV.entCall`); scripted entities in `js/entities/` |
+| Client realm runtime | Implemented | `engine/openvibe-js-runtime/ov-runtime.js --realm client` + `sdk/openvibe/client/hl2mp/openvibe_js_client.cpp` |
+| Script exec commands | Implemented | `js_run`, `js_openscript`, `js_run_cl`, `js_openscript_cl` (gated by `sv_allowcsjs`), `ov_npm` |
+| AddCSJSFile + client sync | Implemented | `js/core/file.js` — manifest + net-based download into `js/ov_downloads/` |
+| npm hotloading | Implemented | runtime control server `POST /npm`, `ov_npm`, fs.watch reload; `js/package.json` + `js/vendor/` |
+| Unified GUI (launcher + in-game) | Implemented | `client/index.html` + `client/ui-sync.js` served to Electron (5173), backend (3000), and the CEF panel; routes incl. `console`, `options`, `hud` |
+| In-game console + options GUI | Implemented | Console route (SSE logs, js_run/exec/npm), Options route (`openvibe://convar` bridge), HUD overlay (`OV_HudState`) |
 | Script packages API | Implemented | `GET /v1/scripts/packages`, `GET /v1/scripts/packages/:id`, `GET /v1/scripts/packages/:id/files`, admin upsert/enable/disable routes |
 | JS round system | Implemented | Base round state machine; Prop Hunt, Deathrun, Fort Wars, Traitor Town each with teams, timers, win conditions |
 | Batch match rewards | Implemented | `POST /v1/matches/end/batch` — rewards multiple players in one idempotent call |
@@ -94,13 +103,32 @@ node tools/smoke-api.mjs
 tools/dev-down.sh
 ```
 
-## Verified On June 30, 2026
+GModJS framework (no C++ build needed):
 
-- Backend TypeScript build passed.
-- Backend Vitest suite passed: 13 tests.
-- Source SDK 2013 Linux64 build passed with OpenVibe C++ patch applied.
-- SRCDS smoke test passed for all five maps.
-- Full dev stack registered all five servers and returned valid travel targets for every mode.
+```bash
+cd ~/src/openvibe-source
+node tools/test-gmodjs.mjs        # 131-check suite: hooks/net/entities/players/files/gamemodes
+node tools/smoke-js-core-node.mjs
+node tools/smoke-js-gamemodes.mjs
+node tools/smoke-runtime-ipc.mjs  # both Node runtimes over real TCP IPC
+node tools/smoke-ui.mjs           # unified GUI serving + route markers
+```
+
+## Verified On July 2, 2026
+
+- Backend TypeScript build passed; Vitest suite passed: 14 tests.
+- Source SDK 2013 Linux64 build passed with the OpenVibe C++ patch incl. the
+  GModJS additions (`ov_js_entity.cpp`, `js_run`/`js_openscript`/`ov_npm`,
+  client runtime events, `openvibe://cmd|convar` bridge, console spew tap).
+- SRCDS smoke passed for all five maps with the rebuilt server.so; the
+  embedded QuickJS boots the full GModJS core (net/entity/player/team/file/
+  concommand/loader + addons + npm require).
+- Live SRCDS console test: `js_run` evaluated in-engine, `js_openscript`
+  ran a script from `js/`, `ents.Create("ov_bouncy_crate")` spawned and was
+  queryable via `ents.FindByClass`.
+- GModJS suite: 131/131 checks; runtime IPC smoke and UI smoke passed.
+- npm hotloading verified live: `POST /npm install is-odd` into the running
+  runtime, then `require("is-odd")(7)` returned true without a restart.
 
 ## Production Readiness
 

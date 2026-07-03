@@ -27,6 +27,16 @@
     OV.broadcast(`Fort Wars: Red (${redAlive}) vs Blue (${blueAlive})`);
   }
 
+  function broadcastPhase(name, seconds) {
+    if (!globalThis.net || !net.__openvibe) return;
+    try {
+      net.Start("OV_FW_Phase");
+      net.WriteString(name);
+      net.WriteInt(seconds | 0);
+      net.Broadcast();
+    } catch (e) { /* transport not up */ }
+  }
+
   function registerCommands() {
     if (!globalThis.command) return;
 
@@ -58,6 +68,14 @@
     Initialize() {
       OV.log("Fort Wars Initialize fired");
       registerCommands();
+      if (globalThis.util && util.AddNetworkString) util.AddNetworkString("OV_FW_Phase");
+    },
+
+    CreateTeams() {
+      if (!globalThis.team) return;
+      team.SetUp(0, "Unassigned", Color(200, 200, 200));
+      team.SetUp(TEAM_RED, "Red", Color(235, 75, 60));
+      team.SetUp(TEAM_BLUE, "Blue", Color(60, 130, 235));
     },
 
     MapInitialize(mapName) {
@@ -72,7 +90,9 @@
     startRound() {
       this._roundNumber += 1;
       this._roundState = "active";
+      this._roundEndsAt = OV.time() + BUILD_DURATION + FIGHT_DURATION;
       phase = "build";
+      broadcastPhase("build", BUILD_DURATION);
 
       assignTeams();
 
@@ -91,6 +111,7 @@
         OV.broadcast("BUILD PHASE OVER! FIGHT!");
         OV.serverCommand("ov_fortwars_build_enabled 0");
         hook.Run("FW_FightPhaseStart", roundNum);
+        broadcastPhase("fight", FIGHT_DURATION);
       });
 
       // End of round timer
@@ -110,6 +131,7 @@
     endRound(reason) {
       if (this._roundState !== "active") return;
       this._roundState = "ended";
+      this._roundEndsAt = 0;
       timer.remove(`ov_fw_round_end_${this._roundNumber}`);
       phase = "build";
       OV.serverCommand("ov_fortwars_build_enabled 1");

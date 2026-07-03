@@ -368,7 +368,7 @@ ipcMain.handle('launcher:show', async () => {
 ipcMain.on('open-url', (_e, url) => shell.openExternal(url));
 
 ipcMain.on('ui:set-route', (_e, route) => {
-  const safe = ['portal', 'servers', 'leaderboard', 'inventory', 'shop', 'settings'].includes(route) ? route : 'portal';
+  const safe = ['portal', 'servers', 'leaderboard', 'inventory', 'shop', 'settings', 'options', 'console'].includes(route) ? route : 'portal';
   mainWindow?.webContents.send('ui:set-route', safe);
 });
 

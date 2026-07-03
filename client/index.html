@@ -514,6 +514,217 @@
     }
     .settings-input:focus { outline: none; border-color: var(--accent); }
 
+    /* ── Electron titlebar (launcher chrome, shell=electron only) ── */
+    .ov-titlebar {
+      display: none;
+      align-items: center;
+      height: 34px;
+      padding-left: 12px;
+      gap: 8px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+      user-select: none;
+    }
+    html.ov-host-electron .ov-titlebar { display: flex; }
+    .tb-title { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; color: var(--text-head); }
+    .tb-sub { font-size: 11px; color: var(--text-dim); }
+    .tb-controls { margin-left: auto; display: flex; -webkit-app-region: no-drag; }
+    .tb-btn {
+      width: 44px; height: 34px;
+      border: none; background: none;
+      color: var(--text-dim);
+      font-size: 13px;
+      cursor: pointer;
+      transition: background var(--transition), color var(--transition);
+    }
+    .tb-btn:hover { background: var(--bg-hover); color: var(--text-head); }
+    .tb-btn.close:hover { background: var(--red); color: #fff; }
+
+    /* Screens flex under the (optional) titlebar instead of fixed 100% height */
+    .screen.active { flex: 1; min-height: 0; height: auto; }
+
+    /* ── Console route ────────────────────────────────── */
+    :root { --console-font: 12px; --hud-scale: 1; }
+
+    .console-wrap { max-width: 1100px; display: flex; flex-direction: column; gap: 10px; }
+    .console-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .console-spacer { flex: 1; }
+
+    .pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+    .pill.on { color: var(--green); border-color: rgba(76,175,80,0.4); background: rgba(76,175,80,0.1); }
+    .pill.off { color: var(--red); border-color: rgba(229,57,53,0.4); background: rgba(229,57,53,0.08); }
+    .pill.bridge { color: var(--orange, #ffb74d); border-color: rgba(255,183,77,0.4); background: rgba(255,183,77,0.08); }
+
+    .console-log {
+      background: #04080c;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+      font-size: var(--console-font);
+      line-height: 1.45;
+      overflow-y: auto;
+      height: calc(100vh - 320px);
+      min-height: 220px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .console-line { color: var(--text); }
+    .console-line.echo { color: var(--text-head); font-weight: 600; }
+    .console-line.ok { color: var(--green); }
+    .console-line.err { color: var(--red); }
+    .console-line .tag { color: var(--text-dim); }
+    .console-line .tag-server { color: var(--accent); }
+    .console-line .tag-client { color: var(--gold); }
+    .console-line .tag-engine { color: #a855f7; }
+
+    .console-input-row { display: flex; gap: 8px; align-items: center; }
+    .console-prompt { color: var(--accent); font-weight: 700; font-family: ui-monospace, Consolas, monospace; }
+    .console-input {
+      flex: 1;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-head);
+      padding: 7px 10px;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+      font-size: var(--console-font);
+    }
+    .console-input:focus { outline: none; border-color: var(--accent); }
+    .console-select {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+    .btn-console {
+      padding: 5px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(26,159,255,0.1);
+      border: 1px solid rgba(26,159,255,0.3);
+      border-radius: var(--radius);
+      color: var(--accent);
+      cursor: pointer;
+      transition: background var(--transition);
+      white-space: nowrap;
+    }
+    .btn-console:hover { background: rgba(26,159,255,0.2); }
+    .btn-console.toggled { background: rgba(245,166,35,0.15); border-color: rgba(245,166,35,0.4); color: var(--gold); }
+
+    /* ── Options route ────────────────────────────────── */
+    .options-section { max-width: 560px; margin-bottom: 28px; }
+    .options-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+    .opt-note {
+      font-size: 12px;
+      color: var(--gold);
+      background: rgba(245,166,35,0.08);
+      border: 1px solid rgba(245,166,35,0.3);
+      border-radius: var(--radius);
+      padding: 8px 12px;
+      margin-top: 10px;
+    }
+    .settings-input.narrow { width: 120px; }
+    input[type="range"].settings-input { padding: 0; height: 24px; }
+    input[type="color"].settings-input { width: 60px; height: 30px; padding: 2px; }
+    .opt-inline { display: flex; gap: 8px; align-items: center; }
+
+    /* ── HUD overlay (#hud / ?hud=1) ──────────────────── */
+    html.ov-hud-mode, body.ov-hud-mode { background: transparent !important; }
+    #ov-hud {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 5000;
+      pointer-events: none;
+      transform: scale(var(--hud-scale));
+      transform-origin: center center;
+    }
+    body.ov-hud-mode #ov-hud { display: block; }
+
+    .hud-banner { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); text-align: center; }
+    .hud-round {
+      display: inline-block;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      background: rgba(7,14,20,0.45);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 6px 18px;
+    }
+    .hud-sub {
+      margin-top: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #cfe3f3;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    }
+    .hud-health {
+      position: absolute;
+      left: 24px;
+      bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .hud-health-num {
+      font-size: 34px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      min-width: 60px;
+    }
+    .hud-health-bar {
+      width: 180px;
+      height: 10px;
+      background: rgba(7,14,20,0.55);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .hud-health-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--green), #8bc34a);
+      transition: width 0.25s ease, background 0.25s ease;
+    }
+    .hud-health-fill.low { background: linear-gradient(90deg, var(--red), #ff7043); }
+    .hud-gamemode {
+      position: absolute;
+      right: 24px;
+      bottom: 24px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #9fc3de;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+    }
+
     /* scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -522,6 +733,17 @@
   </style>
 </head>
 <body>
+
+<!-- ── Electron launcher chrome (visible only when shell=electron) ────── -->
+<div class="ov-titlebar" id="ov-titlebar">
+  <span class="tb-title">OPENVIBE</span>
+  <span class="tb-sub">: Source</span>
+  <div class="tb-controls">
+    <button class="tb-btn" id="tb-min" title="Minimise" onclick="OVApp.winMinimize()">─</button>
+    <button class="tb-btn" id="tb-max" title="Maximise" onclick="OVApp.winMaximize()">□</button>
+    <button class="tb-btn close" id="tb-close" title="Close" onclick="OVApp.winClose()">✕</button>
+  </div>
+</div>
 
 <!-- ───────────────────────────────────────────────────────── AUTH SCREEN -->
 <div id="ov-auth" class="screen active">
@@ -532,7 +754,7 @@
     <div class="auth-divider"></div>
     <div class="auth-label">Sign in to access all features and game modes.</div>
 
-    <button id="btn-steam-auth" class="btn btn-steam" onclick="OV.steamAuth()">
+    <button id="btn-steam-auth" class="btn btn-steam" onclick="OVApp.steamAuth()">
       <span class="steam-logo"></span>
       Sign in with Steam
     </button>
@@ -541,7 +763,7 @@
 
     <div id="devauth-section" style="display:none">
       <div class="auth-divider" style="margin-top:14px;"></div>
-      <button id="btn-dev-auth" class="btn btn-dev" onclick="OV.devAuth()">
+      <button id="btn-dev-auth" class="btn btn-dev" onclick="OVApp.devAuth()">
         Dev / Local auth (no Steam)
       </button>
     </div>
@@ -561,6 +783,8 @@
       <button class="nav-tab" data-route="leaderboard">Leaderboard</button>
       <button class="nav-tab" data-route="inventory">Inventory</button>
       <button class="nav-tab" data-route="shop">Shop</button>
+      <button class="nav-tab" data-route="options">Options</button>
+      <button class="nav-tab" data-route="console">Console</button>
       <button class="nav-tab" data-route="settings">Settings</button>
     </nav>
 
@@ -569,7 +793,7 @@
       <span id="profile-name" class="profile-name">Player</span>
       <span id="profile-currency" class="profile-currency">0 VC</span>
       <span id="profile-xp" class="profile-xp">0 XP</span>
-      <button class="btn-signout" onclick="OV.signOut()">Sign out</button>
+      <button class="btn-signout" onclick="OVApp.signOut()">Sign out</button>
     </div>
   </div>
 
@@ -580,31 +804,31 @@
     <div id="route-portal" class="route active">
       <div class="section-header">Choose Your Game Mode</div>
       <div class="modes-grid">
-        <div class="mode-card" onclick="OV.joinMode('hub')">
+        <div class="mode-card" onclick="OVApp.joinMode('hub')">
           <div class="mode-icon">🏠</div>
           <div class="mode-title">Hub</div>
           <div class="mode-desc">Central social hub. Meet other players, trade, and explore.</div>
           <span class="mode-badge">Open Now</span>
         </div>
-        <div class="mode-card" onclick="OV.joinMode('prophunt')">
+        <div class="mode-card" onclick="OVApp.joinMode('prophunt')">
           <div class="mode-icon">🎭</div>
           <div class="mode-title">Prop Hunt</div>
           <div class="mode-desc">Disguise as objects or hunt the hidden props before time runs out.</div>
           <span class="mode-badge">Popular</span>
         </div>
-        <div class="mode-card" onclick="OV.joinMode('deathrun')">
+        <div class="mode-card" onclick="OVApp.joinMode('deathrun')">
           <div class="mode-icon">💀</div>
           <div class="mode-title">Deathrun</div>
           <div class="mode-desc">Race through deadly obstacle courses. One wrong step and you're gone.</div>
           <span class="mode-badge">Fast-paced</span>
         </div>
-        <div class="mode-card" onclick="OV.joinMode('fortwars')">
+        <div class="mode-card" onclick="OVApp.joinMode('fortwars')">
           <div class="mode-icon">🏰</div>
           <div class="mode-title">Fort Wars</div>
           <div class="mode-desc">Build your fortress and defend against enemy raids.</div>
           <span class="mode-badge">Team Play</span>
         </div>
-        <div class="mode-card" onclick="OV.joinMode('traitortown')">
+        <div class="mode-card" onclick="OVApp.joinMode('traitortown')">
           <div class="mode-icon">🕵️</div>
           <div class="mode-title">Traitor Town</div>
           <div class="mode-desc">Trust no one. Identify and eliminate the hidden traitors.</div>
@@ -674,15 +898,173 @@
         </div>
         <div class="settings-row" style="border:none; margin-top:8px;">
           <span></span>
-          <button class="btn btn-dev" style="width:auto; padding: 6px 18px;" onclick="OV.signOut()">
+          <button class="btn btn-dev" style="width:auto; padding: 6px 18px;" onclick="OVApp.signOut()">
             Sign out
           </button>
         </div>
       </div>
     </div>
 
+    <!-- Options: game/UI settings (account auth stays on #settings) -->
+    <div id="route-options" class="route">
+      <div class="section-header">Options</div>
+
+      <div class="options-section">
+        <div class="options-title">Game</div>
+        <div id="options-engine-hint" class="opt-note" style="display:none">
+          Join a game to edit engine convars — these controls talk to the Source client in-game.
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Field of View</div>
+            <div class="settings-desc">fov_desired</div>
+          </div>
+          <input class="settings-input narrow opt-convar" data-convar="fov_desired" type="number"
+                 min="54" max="120" step="1" onchange="OVApp.convarChanged(this)" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Mouse Sensitivity</div>
+            <div class="settings-desc">sensitivity</div>
+          </div>
+          <input class="settings-input narrow opt-convar" data-convar="sensitivity" type="number"
+                 min="0.1" max="20" step="0.05" onchange="OVApp.convarChanged(this)" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Master Volume</div>
+            <div class="settings-desc">volume</div>
+          </div>
+          <input class="settings-input opt-convar" data-convar="volume" type="range"
+                 min="0" max="1" step="0.05" onchange="OVApp.convarChanged(this)" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Music Volume</div>
+            <div class="settings-desc">snd_musicvolume</div>
+          </div>
+          <input class="settings-input opt-convar" data-convar="snd_musicvolume" type="range"
+                 min="0" max="1" step="0.05" onchange="OVApp.convarChanged(this)" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Custom ov_* convar</div>
+            <div class="settings-desc">Allowlisted: names starting with ov_</div>
+          </div>
+          <div class="opt-inline">
+            <input id="opt-convar-name" class="settings-input narrow opt-convar" type="text" placeholder="ov_…" />
+            <input id="opt-convar-value" class="settings-input narrow opt-convar" type="text" placeholder="value" />
+            <button class="btn-console opt-convar" onclick="OVApp.setCustomConvar()">Set</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="options-section">
+        <div class="options-title">UI</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Theme Accent</div>
+            <div class="settings-desc">Accent color used across the UI</div>
+          </div>
+          <input id="opt-ui-accent" class="settings-input" type="color" value="#1a9fff"
+                 onchange="OVApp.uiPrefChanged()" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">HUD Scale</div>
+            <div class="settings-desc">Size of the in-game HUD overlay</div>
+          </div>
+          <input id="opt-ui-hudscale" class="settings-input" type="range" min="0.7" max="1.5" step="0.05" value="1"
+                 onchange="OVApp.uiPrefChanged()" />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Console Font Size</div>
+            <div class="settings-desc">px, applies to the Console route</div>
+          </div>
+          <input id="opt-ui-consolefont" class="settings-input narrow" type="number" min="10" max="20" step="1" value="12"
+                 onchange="OVApp.uiPrefChanged()" />
+        </div>
+        <div class="settings-row" style="border:none;">
+          <span></span>
+          <button class="btn-console" onclick="OVApp.resetUiPrefs()">Reset UI prefs</button>
+        </div>
+      </div>
+
+      <div class="options-section">
+        <div class="options-title">Account</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Display Name</div>
+            <div class="settings-desc">From your account (read-only)</div>
+          </div>
+          <input id="options-display-name" class="settings-input" type="text" readonly />
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">API Endpoint</div>
+            <div class="settings-desc">Backend API URL (advanced)</div>
+          </div>
+          <input id="options-api-url" class="settings-input" type="text" onchange="OVApp.saveApiUrl(this.value)" />
+        </div>
+        <div class="settings-row" style="border:none;">
+          <span></span>
+          <button class="btn-console" onclick="OVApp.routeTo('settings')">Open account settings</button>
+        </div>
+      </div>
+
+      <div class="options-section">
+        <div class="options-title">Gamemode</div>
+        <div id="options-gamemode">
+          <div class="empty-state"><span class="spinner"></span> Checking active gamemode…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Console: unified JS/engine console -->
+    <div id="route-console" class="route">
+      <div class="section-header">Console</div>
+      <div class="console-wrap">
+        <div class="console-toolbar">
+          <select id="console-realm" class="console-select" title="Execution realm">
+            <option value="server">Server JS</option>
+            <option value="client">Client JS</option>
+            <option value="engine">Engine</option>
+          </select>
+          <span id="pill-server" class="pill off">server: off</span>
+          <span id="pill-client" class="pill off">client: off</span>
+          <span class="console-spacer"></span>
+          <button class="btn-console" onclick="OVApp.consoleQuick('ov_js_status')">ov_js_status</button>
+          <button class="btn-console" onclick="OVApp.consoleQuick('js_openscript')">js_openscript</button>
+          <button class="btn-console" onclick="OVApp.consoleQuick('ov_npm ls')">ov_npm ls</button>
+          <button id="console-pause" class="btn-console" onclick="OVApp.consolePause()">Pause scroll</button>
+          <button class="btn-console" onclick="OVApp.consoleClear()">Clear</button>
+        </div>
+        <div id="console-log" class="console-log" aria-live="polite"></div>
+        <div class="console-input-row">
+          <span class="console-prompt">›</span>
+          <input id="console-input" class="console-input" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="JS code — or ]engine_command — or npm install <pkg>" />
+          <button class="btn-console" onclick="OVApp.consoleSubmit()">Run</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /ov-main -->
+
+<!-- ─────────────────────────────────────────────── HUD OVERLAY (#hud / ?hud=1) -->
+<div id="ov-hud">
+  <div class="hud-banner">
+    <div id="hud-round" class="hud-round">&nbsp;</div>
+    <div class="hud-sub"><span id="hud-team">—</span> · <span id="hud-timer">--:--</span></div>
+  </div>
+  <div class="hud-health">
+    <div id="hud-health-num" class="hud-health-num">100</div>
+    <div class="hud-health-bar"><div id="hud-health-fill" class="hud-health-fill"></div></div>
+  </div>
+  <div id="hud-gamemode" class="hud-gamemode"></div>
+</div>
 
 <!-- Toast notification -->
 <div id="ov-toast"></div>
@@ -691,12 +1073,27 @@
 (function () {
   'use strict';
 
-  // ── Detect embedded Source engine context ─────────────────────────────
+  // ── Detect host: Electron launcher / embedded Source panel / browser ──
   var params   = new URLSearchParams(location.search);
   var embedded = params.get('embedded') === '1';
   var shell    = params.get('shell') || '';
+  // In Electron, window.OV is the preload IPC bridge (contextBridge) and is
+  // already defined before this script runs. In-game / browser it is not,
+  // and we install our own window.OV below.
+  var electronOV = (window.OV && typeof window.OV.launchMode === 'function') ? window.OV : null;
+  var isElectron = shell === 'electron' || params.get('electron') === '1' || !!electronOV;
+  if (isElectron && !shell) shell = 'electron';
+  var hudMode  = params.get('hud') === '1' || location.hash === '#hud';
   var devMode  = params.get('devauth') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  var apiBase  = localStorage.getItem('ov_api_url') || (location.origin);
+  // Served from the dev UI server (:5173) or Electron, the backend lives on :3000.
+  var defaultApi = (isElectron || location.port === '5173') ? 'http://127.0.0.1:3000' : location.origin;
+  var apiBase  = localStorage.getItem('ov_api_url') || defaultApi;
+
+  // Runtime control servers (GModJS ov-runtime.js) per realm.
+  var RT = {
+    server: 'http://127.0.0.1:41997',
+    client: 'http://127.0.0.1:41996'
+  };
 
   // ── Internal state ────────────────────────────────────────────────────
   var _session = null;     // { sessionToken, steamId, displayName, provider }
@@ -825,11 +1222,14 @@
   var _routeLoaded  = {};
 
   function routeTo(routeName) {
-    var valid = ['portal','servers','leaderboard','inventory','shop','settings'];
+    if (routeName === 'hud') { enterHud(); return; }
+    exitHud();
+
+    var valid = ['portal','servers','leaderboard','inventory','shop','settings','options','console'];
     if (valid.indexOf(routeName) === -1) routeName = 'portal';
 
     _currentRoute = routeName;
-    location.replace('#' + routeName);
+    if (location.hash !== '#' + routeName) location.replace('#' + routeName);
 
     document.querySelectorAll('.route').forEach(function (el) {
       el.classList.toggle('active', el.id === 'route-' + routeName);
@@ -838,11 +1238,12 @@
       el.classList.toggle('active', el.dataset.route === routeName);
     });
 
-    if (!_routeLoaded[routeName]) {
+    if (!_routeLoaded[routeName] || routeName === 'options') {
       _routeLoaded[routeName] = true;
       loadRoute(routeName);
     }
   }
+  window.routeTo = routeTo; // used by ui-sync.js + ov_menu_* route commands
 
   function loadRoute(route) {
     switch (route) {
@@ -850,6 +1251,8 @@
       case 'leaderboard': loadLeaderboard(); break;
       case 'inventory':   loadInventory();   break;
       case 'shop':        loadShop();        break;
+      case 'console':     consoleEnsure();   break;
+      case 'options':     loadOptions();     break;
     }
   }
 
@@ -880,7 +1283,7 @@
           '<div class="server-name">' + escHtml(s.mapName) + '</div>' +
           '<div class="server-players">' + s.playerCount + ' / ' + s.maxPlayers + '</div>' +
           '<span class="server-state ' + stateClass + '">' + escHtml(s.state) + '</span>' +
-          (canJoin ? '<button class="btn-join-server" onclick="OV.joinMode(\'' + escHtml(s.mode) + '\')">Join</button>' : '<span></span>') +
+          (canJoin ? '<button class="btn-join-server" onclick="OVApp.joinMode(\'' + escHtml(s.mode) + '\')">Join</button>' : '<span></span>') +
           '</div>';
       }).join('');
     }).catch(function () {
@@ -964,7 +1367,7 @@
           '<div class="item-price">' + (item.price === 0 ? 'Free' : item.price + ' VC') + '</div>' +
           (owned
             ? '<span class="item-owned">✓ Owned</span>'
-            : '<button class="btn-buy" onclick="OV.buyItem(' + JSON.stringify(item.itemId) + ',' + item.price + ')" ' +
+            : '<button class="btn-buy" onclick="OVApp.buyItem(' + JSON.stringify(item.itemId) + ',' + item.price + ')" ' +
               (!_session ? 'disabled' : '') + '>Buy</button>'
           ) +
           '</div>';
@@ -984,8 +1387,456 @@
       .replace(/'/g, '&#39;');
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // Console route (#console) — SSE log merge + JS eval + engine commands
+  // ══════════════════════════════════════════════════════════════════════
+  var _con = {
+    started: false,
+    paused: false,
+    history: [],
+    hIdx: 0,
+    es: {},
+    retry: { server: 0, client: 0 },
+    timers: {},
+    up: { server: false, client: false }   // runtime control servers reachable?
+  };
+
+  // In-game the engine bridge (openvibe://cmd → js_run/js_run_cl, output back
+  // through the console spew tap) covers JS eval even with no Node runtimes.
+  function conHasEngineBridge() { return embedded && shell === 'source'; }
+
+  // state: 'live' (runtime ctrl server), 'bridge' (via engine), 'off'
+  function conPill(tag, state) {
+    _con.up[tag] = state === 'live';
+    if (state === 'off' && conHasEngineBridge()) state = 'bridge';
+    var el = document.getElementById('pill-' + tag);
+    if (el) {
+      el.className = 'pill ' + (state === 'live' ? 'on' : state === 'bridge' ? 'bridge' : 'off');
+      el.textContent = tag + ': ' + (state === 'live' ? 'runtime' : state === 'bridge' ? 'engine' : 'off');
+    }
+  }
+
+  function conAppend(tag, text, cls) {
+    var log = document.getElementById('console-log');
+    if (!log) return;
+    var line = document.createElement('div');
+    line.className = 'console-line' + (cls ? ' ' + cls : '');
+    var t = document.createElement('span');
+    t.className = 'tag tag-' + tag;
+    t.textContent = '[' + tag + '] ';
+    line.appendChild(t);
+    line.appendChild(document.createTextNode(String(text)));
+    log.appendChild(line);
+    while (log.childNodes.length > 2000) log.removeChild(log.firstChild);
+    if (!_con.paused) log.scrollTop = log.scrollHeight;
+  }
+
+  function conConnect(tag) {
+    if (!('EventSource' in window)) { conPill(tag, 'off'); return; }
+    try {
+      var es = new EventSource(RT[tag] + '/logs');
+      _con.es[tag] = es;
+      es.onopen = function () {
+        _con.retry[tag] = 0;
+        conPill(tag, 'live');
+      };
+      es.onmessage = function (ev) {
+        var text = ev.data;
+        try {
+          var obj = JSON.parse(ev.data);
+          if (obj && obj.text !== undefined) {
+            text = (obj.level && obj.level !== 'info' ? '[' + obj.level + '] ' : '') + obj.text;
+          }
+        } catch (e) { /* raw line */ }
+        conAppend(tag, text);
+      };
+      es.onerror = function () {
+        conPill(tag, 'off');
+        try { es.close(); } catch (e) {}
+        if (_con.es[tag] !== es) return; // superseded
+        var delay = Math.min(30000, 1000 * Math.pow(2, _con.retry[tag]++));
+        clearTimeout(_con.timers[tag]);
+        _con.timers[tag] = setTimeout(function () {
+          if (_con.started) conConnect(tag);
+        }, delay);
+      };
+    } catch (e) {
+      conPill(tag, 'off');
+    }
+  }
+
+  function consoleEnsure() {
+    var input = document.getElementById('console-input');
+    if (input) setTimeout(function () { input.focus(); }, 0);
+    if (_con.started) return;
+    _con.started = true;
+    conConnect('server');
+    conConnect('client');
+    if (conHasEngineBridge()) {
+      conAppend('engine', 'OpenVibe console ready. Engine output streams in below; Server/Client JS run via the runtimes when connected, otherwise through js_run / js_run_cl.', 'ok');
+    } else {
+      conAppend('engine', 'OpenVibe console ready — realms: Server JS (41997), Client JS (41996), Engine.', 'ok');
+    }
+
+    if (input) {
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          consoleSubmit();
+        } else if (ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          if (_con.hIdx > 0) {
+            _con.hIdx -= 1;
+            input.value = _con.history[_con.hIdx] || '';
+          }
+        } else if (ev.key === 'ArrowDown') {
+          ev.preventDefault();
+          if (_con.hIdx < _con.history.length) {
+            _con.hIdx += 1;
+            input.value = _con.history[_con.hIdx] || '';
+          }
+        }
+      });
+    }
+  }
+
+  function conEval(realm, code) {
+    // Runtime control server offline? In-game we go through the engine bridge:
+    // js_run / js_run_cl — the result comes back through the console spew tap.
+    if (!_con.up[realm] && conHasEngineBridge()) {
+      var cmd = (realm === 'client' ? 'js_run_cl ' : 'js_run ') + code;
+      conAppend(realm, 'via engine: ' + cmd, 'echo');
+      location.href = 'openvibe://cmd?c=' + encodeURIComponent(cmd);
+      return;
+    }
+    fetch(RT[realm] + '/eval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res && res.error) {
+        var err = res.error;
+        conAppend(realm, 'error: ' + (typeof err === 'object' ? (err.message || JSON.stringify(err)) : err), 'err');
+      } else if (res && ('result' in res)) {
+        conAppend(realm, '= ' + (typeof res.result === 'string' ? res.result : JSON.stringify(res.result)), 'ok');
+      } else {
+        conAppend(realm, '= ' + JSON.stringify(res), 'ok');
+      }
+    }).catch(function (e) {
+      if (conHasEngineBridge()) {
+        var cmd2 = (realm === 'client' ? 'js_run_cl ' : 'js_run ') + code;
+        conAppend(realm, 'runtime unreachable — via engine: ' + cmd2, 'echo');
+        location.href = 'openvibe://cmd?c=' + encodeURIComponent(cmd2);
+        return;
+      }
+      conAppend(realm, 'eval failed (' + RT[realm] + '): ' + e.message + ' — start the runtime: node engine/openvibe-js-runtime/ov-runtime.js --realm ' + realm, 'err');
+    });
+  }
+
+  function conEngine(cmd) {
+    if (!cmd) return;
+    if (embedded && shell === 'source') {
+      // In-game: allowlisted engine commands via the openvibe:// bridge.
+      location.href = 'openvibe://cmd?c=' + encodeURIComponent(cmd);
+      conAppend('engine', 'sent: ' + cmd, 'ok');
+      return;
+    }
+    // Electron / browser: forward through the server runtime control server.
+    fetch(RT.server + '/exec', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: cmd })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      conAppend('engine', typeof res === 'string' ? res : JSON.stringify(res), 'ok');
+    }).catch(function (e) {
+      conAppend('engine', 'exec failed (' + RT.server + '): ' + e.message, 'err');
+    });
+  }
+
+  function conNpm(rest) {
+    var args = rest.split(/\s+/).filter(Boolean);
+    if (!_con.up.server && conHasEngineBridge()) {
+      conAppend('server', 'via engine: ov_npm ' + args.join(' '), 'echo');
+      location.href = 'openvibe://cmd?c=' + encodeURIComponent('ov_npm ' + args.join(' '));
+      return;
+    }
+    conAppend('server', 'npm ' + args.join(' ') + ' …');
+    fetch(RT.server + '/npm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ args: args })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      conAppend('server', typeof res === 'string' ? res : JSON.stringify(res), 'ok');
+    }).catch(function (e) {
+      conAppend('server', 'npm failed (' + RT.server + '): ' + e.message, 'err');
+    });
+  }
+
+  function consoleSubmit() {
+    var input = document.getElementById('console-input');
+    if (!input) return;
+    var line = input.value.trim();
+    if (!line) return;
+    _con.history.push(line);
+    _con.hIdx = _con.history.length;
+    input.value = '';
+
+    var realm = (document.getElementById('console-realm') || {}).value || 'server';
+
+    if (line.charAt(0) === ']') {          // ]command → engine, any realm
+      conAppend('engine', '› ' + line, 'echo');
+      conEngine(line.slice(1).trim());
+      return;
+    }
+    if (/^npm(\s|$)/.test(line)) {         // npm … → runtime /npm
+      conAppend('server', '› ' + line, 'echo');
+      conNpm(line.replace(/^npm\s*/, ''));
+      return;
+    }
+    if (realm === 'engine') {
+      conAppend('engine', '› ' + line, 'echo');
+      conEngine(line);
+      return;
+    }
+    conAppend(realm, '› ' + line, 'echo');
+    conEval(realm, line);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Options route (#options) — convars, UI prefs, account, gamemode
+  // ══════════════════════════════════════════════════════════════════════
+  var OPT_KEY = 'openvibe.options.v1';
+  var CONVAR_ALLOWLIST = ['fov_desired', 'sensitivity', 'volume', 'snd_musicvolume'];
+  var canEditConvars = embedded && shell === 'source';
+
+  function loadOptPrefs() {
+    try {
+      var raw = localStorage.getItem(OPT_KEY);
+      var data = raw ? JSON.parse(raw) : {};
+      return data && typeof data === 'object' ? data : {};
+    } catch (e) { return {}; }
+  }
+
+  function applyOptPrefs(prefs) {
+    prefs = prefs || {};
+    var rootStyle = document.documentElement.style;
+    if (prefs.accent)      rootStyle.setProperty('--accent', prefs.accent);
+    if (prefs.hudScale)    rootStyle.setProperty('--hud-scale', String(prefs.hudScale));
+    if (prefs.consoleFont) rootStyle.setProperty('--console-font', prefs.consoleFont + 'px');
+
+    var accentEl = document.getElementById('opt-ui-accent');
+    var scaleEl  = document.getElementById('opt-ui-hudscale');
+    var fontEl   = document.getElementById('opt-ui-consolefont');
+    if (accentEl && prefs.accent)      accentEl.value = prefs.accent;
+    if (scaleEl  && prefs.hudScale)    scaleEl.value  = prefs.hudScale;
+    if (fontEl   && prefs.consoleFont) fontEl.value   = prefs.consoleFont;
+  }
+
+  function saveOptPrefs(prefs, broadcast) {
+    try { localStorage.setItem(OPT_KEY, JSON.stringify(prefs)); } catch (e) {}
+    applyOptPrefs(prefs);
+    if (broadcast !== false && window.OpenVibeShell && window.OpenVibeShell.syncOptions) {
+      window.OpenVibeShell.syncOptions(prefs);
+    }
+  }
+
+  function isAllowedConvar(name) {
+    return CONVAR_ALLOWLIST.indexOf(name) !== -1 || /^ov_[a-z0-9_]+$/i.test(name);
+  }
+
+  function setConvar(name, value) {
+    if (!isAllowedConvar(name)) {
+      toast('Convar not allowlisted: ' + name, 'error');
+      return false;
+    }
+    if (!canEditConvars) {
+      toast('Join a game to edit engine convars.', 'info');
+      return false;
+    }
+    location.href = 'openvibe://convar?name=' + encodeURIComponent(name) +
+                    '&value=' + encodeURIComponent(String(value));
+    return true;
+  }
+
+  function requestConvars() {
+    if (!canEditConvars) return;
+    // Non-navigating bridge request (like openvibe://ready); C++ answers by
+    // calling window.OV.onConvars({ name: value, … }).
+    var img = new Image();
+    img.src = 'openvibe://convar_get?names=' + encodeURIComponent(CONVAR_ALLOWLIST.join(','));
+  }
+
+  function loadOptions() {
+    // Engine section availability
+    var hint = document.getElementById('options-engine-hint');
+    if (hint) hint.style.display = canEditConvars ? 'none' : 'block';
+    document.querySelectorAll('.opt-convar').forEach(function (el) {
+      el.disabled = !canEditConvars;
+    });
+    requestConvars();
+
+    // UI prefs
+    applyOptPrefs(loadOptPrefs());
+
+    // Account mirror (reuses the same storage/session as #settings)
+    var apiEl = document.getElementById('options-api-url');
+    if (apiEl) apiEl.value = apiBase;
+    var nameEl = document.getElementById('options-display-name');
+    if (nameEl) nameEl.value = (_session && _session.displayName) || '';
+
+    // Gamemode manifest settings from the server runtime
+    loadGamemodeOptions();
+  }
+
+  function renderGamemodeForm(el, modeName, settings) {
+    var html = '<div class="settings-row" style="border-bottom:1px solid var(--border);">' +
+      '<div><div class="settings-label">Active gamemode</div></div>' +
+      '<span class="mode-badge">' + escHtml(modeName) + '</span></div>';
+
+    if (Array.isArray(settings) && settings.length) {
+      html += settings.map(function (s, i) {
+        var key   = escHtml(s.name || s.key || ('setting_' + i));
+        var label = escHtml(s.label || s.title || s.name || ('Setting ' + i));
+        var type  = String(s.type || 'text').toLowerCase();
+        var value = s.value != null ? s.value : (s.default != null ? s.default : '');
+        var input;
+        if (type === 'bool' || type === 'boolean' || type === 'checkbox') {
+          input = '<input class="settings-input narrow gm-setting" data-gm="' + key + '" type="checkbox" ' + (value ? 'checked' : '') + ' />';
+        } else if (type === 'number' || type === 'int' || type === 'float') {
+          input = '<input class="settings-input narrow gm-setting" data-gm="' + key + '" type="number" value="' + escHtml(String(value)) + '"' +
+            (s.min != null ? ' min="' + Number(s.min) + '"' : '') +
+            (s.max != null ? ' max="' + Number(s.max) + '"' : '') + ' />';
+        } else if (type === 'select' && Array.isArray(s.options)) {
+          input = '<select class="settings-input narrow gm-setting" data-gm="' + key + '">' +
+            s.options.map(function (o) {
+              var ov = typeof o === 'object' ? (o.value != null ? o.value : o.label) : o;
+              var ol = typeof o === 'object' ? (o.label != null ? o.label : o.value) : o;
+              return '<option value="' + escHtml(String(ov)) + '"' + (String(ov) === String(value) ? ' selected' : '') + '>' + escHtml(String(ol)) + '</option>';
+            }).join('') + '</select>';
+        } else {
+          input = '<input class="settings-input gm-setting" data-gm="' + key + '" type="text" value="' + escHtml(String(value)) + '" />';
+        }
+        return '<div class="settings-row"><div><div class="settings-label">' + label + '</div>' +
+          (s.description ? '<div class="settings-desc">' + escHtml(s.description) + '</div>' : '') +
+          '</div>' + input + '</div>';
+      }).join('');
+    } else {
+      html += '<div class="empty-state">This gamemode exposes no settings.</div>';
+    }
+    el.innerHTML = html;
+
+    el.querySelectorAll('.gm-setting').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var name = input.dataset.gm;
+        var value = input.type === 'checkbox' ? (input.checked ? 1 : 0) : input.value;
+        conEngine('ov_gm_set ' + name + ' ' + value);
+        toast('Gamemode setting sent: ' + name, 'success');
+      });
+    });
+  }
+
+  function loadGamemodeOptions() {
+    var el = document.getElementById('options-gamemode');
+    if (!el) return;
+    fetch(RT.server + '/state').then(function (r) { return r.json(); }).then(function (st) {
+      st = st || {};
+      var gm = st.gamemode != null ? st.gamemode : (st.mode != null ? st.mode : (st.state && st.state.gamemode));
+      if (!gm) {
+        el.innerHTML = '<div class="empty-state">No active gamemode reported by the runtime.</div>';
+        return;
+      }
+      var modeName = typeof gm === 'object' ? (gm.title || gm.name || 'unknown') : String(gm);
+      var settings = (typeof gm === 'object' && Array.isArray(gm.settings)) ? gm.settings
+                   : (Array.isArray(st.settings) ? st.settings
+                   : (st.manifest && Array.isArray(st.manifest.settings) ? st.manifest.settings : null));
+      renderGamemodeForm(el, modeName, settings);
+    }).catch(function () {
+      el.innerHTML = '<div class="empty-state">Server JS runtime offline (' + escHtml(RT.server) +
+        ') — start a game server to configure the active gamemode.</div>';
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // HUD overlay (#hud / ?hud=1) — translucent in-game overlay
+  // ══════════════════════════════════════════════════════════════════════
+  var _hudActive = false;
+  var _hudPollTimer = null;
+
+  function fmtTimer(v) {
+    if (v == null || v === '') return '--:--';
+    var n = Number(v);
+    if (isNaN(n)) return String(v);
+    n = Math.max(0, Math.floor(n));
+    var m = Math.floor(n / 60);
+    var s = n % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function applyHudState(st) {
+    if (!st || typeof st !== 'object') return;
+    var round = st.round != null ? st.round : (st.roundState != null ? st.roundState : st.state);
+    var team  = st.team != null ? st.team : (st.teamName != null ? st.teamName : null);
+    var timer = st.timer != null ? st.timer : (st.timeLeft != null ? st.timeLeft : st.time);
+    var hp    = st.health != null ? st.health : st.hp;
+    var mode  = st.gamemode != null ? st.gamemode : st.mode;
+
+    var el;
+    if (round != null && (el = document.getElementById('hud-round'))) el.textContent = String(round);
+    if (team  != null && (el = document.getElementById('hud-team')))  el.textContent = String(team);
+    if (timer != null && (el = document.getElementById('hud-timer'))) el.textContent = fmtTimer(timer);
+    if (mode  != null && (el = document.getElementById('hud-gamemode'))) {
+      el.textContent = typeof mode === 'object' ? (mode.title || mode.name || '') : String(mode);
+    }
+    if (hp != null) {
+      var n = Math.max(0, Math.round(Number(hp) || 0));
+      var num  = document.getElementById('hud-health-num');
+      var fill = document.getElementById('hud-health-fill');
+      if (num) num.textContent = String(n);
+      if (fill) {
+        fill.style.width = Math.min(100, n) + '%';
+        fill.className = 'hud-health-fill' + (n <= 25 ? ' low' : '');
+      }
+    }
+  }
+
+  function hudPollOnce() {
+    // Client runtime first (has LocalPlayer data), server runtime as fallback.
+    fetch(RT.client + '/state')
+      .then(function (r) { return r.json(); })
+      .then(applyHudState)
+      .catch(function () {
+        fetch(RT.server + '/state')
+          .then(function (r) { return r.json(); })
+          .then(applyHudState)
+          .catch(function () {});
+      });
+  }
+
+  function enterHud() {
+    if (_hudActive) return;
+    _hudActive = true;
+    document.documentElement.classList.add('ov-hud-mode');
+    document.body.classList.add('ov-hud-mode');
+    document.getElementById('ov-auth').classList.remove('active');
+    document.getElementById('ov-main').classList.remove('active');
+    if (location.hash !== '#hud') location.replace('#hud');
+    hudPollOnce();
+    _hudPollTimer = setInterval(hudPollOnce, 2000);
+  }
+
+  function exitHud() {
+    if (!_hudActive) return;
+    _hudActive = false;
+    document.documentElement.classList.remove('ov-hud-mode');
+    document.body.classList.remove('ov-hud-mode');
+    clearInterval(_hudPollTimer);
+    _hudPollTimer = null;
+    if (_session) document.getElementById('ov-main').classList.add('active');
+    else document.getElementById('ov-auth').classList.add('active');
+  }
+
   // ── Public OV API (called by C++ and by page itself) ──────────────────
-  window.OV = {
+  var OVApp = {
 
     // Called by C++ after GetTicketForWebApi + POST /v1/auth/steam succeed.
     // data: { authenticated, sessionToken, steamId, displayName, error? }
@@ -1056,8 +1907,18 @@
       });
     },
 
-    // Join a game mode — uses openvibe:// bridge in-game, API otherwise.
+    // Join a game mode — Electron launches the game, in-game uses the
+    // openvibe:// bridge, plain browser just explains.
     joinMode: function (mode) {
+      if (electronOV && electronOV.launchMode) {
+        toast('Launching ' + mode + '…', 'info', 4000);
+        Promise.resolve(electronOV.launchMode(mode)).then(function (ok) {
+          if (ok === false) toast('Launch failed — game binary not found. Build the SDK first.', 'error', 5000);
+        }).catch(function (e) {
+          toast('Launch failed: ' + e.message, 'error', 5000);
+        });
+        return;
+      }
       if (embedded && shell === 'source') {
         location.href = 'openvibe://join?mode=' + encodeURIComponent(mode);
       } else {
@@ -1104,11 +1965,170 @@
 
     // Called by C++ when the ready bridge is sent (openvibe://ready).
     // C++ uses this to inject stored session tokens on page reload.
-    onReady: function () {}
+    onReady: function () {},
+
+    // ── Navigation / window chrome ────────────────────────────────────
+    routeTo: routeTo,
+    winMinimize: function () { if (electronOV && electronOV.minimize) electronOV.minimize(); },
+    winMaximize: function () { if (electronOV && electronOV.maximize) electronOV.maximize(); },
+    winClose: function () {
+      if (electronOV && electronOV.close) electronOV.close();
+      else location.href = 'openvibe://close';
+    },
+
+    // ── Console ───────────────────────────────────────────────────────
+    consoleSubmit: consoleSubmit,
+    consoleClear: function () {
+      var log = document.getElementById('console-log');
+      if (log) log.innerHTML = '';
+    },
+    consolePause: function () {
+      _con.paused = !_con.paused;
+      var btn = document.getElementById('console-pause');
+      if (btn) {
+        btn.classList.toggle('toggled', _con.paused);
+        btn.textContent = _con.paused ? 'Resume scroll' : 'Pause scroll';
+      }
+      if (!_con.paused) {
+        var log = document.getElementById('console-log');
+        if (log) log.scrollTop = log.scrollHeight;
+      }
+    },
+    consoleQuick: function (cmd) {
+      consoleEnsure();
+      conAppend('engine', '› ' + cmd, 'echo');
+      conEngine(cmd);
+    },
+
+    // Called by the C++ console spew tap (vgui_openvibe_menu.cpp) to push
+    // engine console output into the console view. Accepts a string or an
+    // array of lines.
+    onConsoleLine: function (lines) {
+      if (lines == null) return;
+      var arr = Array.isArray(lines) ? lines : [lines];
+      for (var i = 0; i < arr.length; i++) conAppend('engine', arr[i]);
+    },
+
+    // ── Options ───────────────────────────────────────────────────────
+    // Called by C++ with current convar values, requested via
+    // openvibe://convar_get?names=…  → { fov_desired: "90", … }
+    onConvars: function (obj) {
+      if (!obj || typeof obj !== 'object') return;
+      document.querySelectorAll('.opt-convar[data-convar]').forEach(function (el) {
+        var name = el.dataset.convar;
+        if (name in obj) el.value = obj[name];
+      });
+    },
+
+    convarChanged: function (el) {
+      if (!el || !el.dataset.convar) return;
+      if (setConvar(el.dataset.convar, el.value)) {
+        toast(el.dataset.convar + ' = ' + el.value, 'success');
+      }
+    },
+
+    setCustomConvar: function () {
+      var nameEl = document.getElementById('opt-convar-name');
+      var valEl  = document.getElementById('opt-convar-value');
+      var name = nameEl ? nameEl.value.trim() : '';
+      if (!name) return;
+      if (!/^ov_[a-z0-9_]+$/i.test(name)) {
+        toast('Only ov_* convars are allowed here.', 'error');
+        return;
+      }
+      if (setConvar(name, valEl ? valEl.value : '')) {
+        toast(name + ' = ' + (valEl ? valEl.value : ''), 'success');
+      }
+    },
+
+    uiPrefChanged: function () {
+      var prefs = loadOptPrefs();
+      var accentEl = document.getElementById('opt-ui-accent');
+      var scaleEl  = document.getElementById('opt-ui-hudscale');
+      var fontEl   = document.getElementById('opt-ui-consolefont');
+      if (accentEl) prefs.accent = accentEl.value;
+      if (scaleEl)  prefs.hudScale = Number(scaleEl.value) || 1;
+      if (fontEl)   prefs.consoleFont = Math.min(20, Math.max(10, Number(fontEl.value) || 12));
+      saveOptPrefs(prefs);
+      toast('UI preferences saved.', 'success');
+    },
+
+    resetUiPrefs: function () {
+      saveOptPrefs({ accent: '#1a9fff', hudScale: 1, consoleFont: 12 });
+      toast('UI preferences reset.', 'success');
+    },
+
+    // Applied when the other host broadcasts option changes (ui-sync.js).
+    applyOptions: function (prefs, fromRemote) {
+      if (!prefs || typeof prefs !== 'object') return;
+      if (fromRemote) {
+        try { localStorage.setItem(OPT_KEY, JSON.stringify(prefs)); } catch (e) {}
+        applyOptPrefs(prefs);
+      } else {
+        saveOptPrefs(prefs);
+      }
+    },
+
+    saveApiUrl: function (value) {
+      if (!value) return;
+      apiBase = String(value).replace(/\/+$/, '');
+      try { localStorage.setItem('ov_api_url', apiBase); } catch (e) {}
+      var apiInput = document.getElementById('settings-api-url');
+      if (apiInput) apiInput.value = apiBase;
+      var optInput = document.getElementById('options-api-url');
+      if (optInput) optInput.value = apiBase;
+      toast('API endpoint saved.', 'success');
+    },
+
+    // ── HUD ───────────────────────────────────────────────────────────
+    // Called via ov_menu_js push (client runtime → C++ → this page) with
+    // { round, team, timer, health, gamemode }. Poll of /state is fallback.
+    onHudState: function (obj) {
+      applyHudState(obj);
+    }
   };
+
+  // Expose the app API. In-game / browser: window.OV is this object and C++
+  // calls window.OV.onSteamAuthResult / onConsoleLine / onConvars /
+  // onHudState on it. In Electron, window.OV is the preload IPC bridge
+  // (read-only contextBridge) and must be preserved — the app is reachable
+  // as window.OVApp in both hosts.
+  window.OVApp = OVApp;
+  if (!electronOV) {
+    window.OV = OVApp;
+  }
 
   // ── Startup: check stored session ─────────────────────────────────────
   function init() {
+    // UI prefs (accent / hud scale / console font) apply in every host.
+    applyOptPrefs(loadOptPrefs());
+
+    // Electron launcher wiring (preload IPC bridge).
+    if (electronOV) {
+      if (electronOV.onRoute) electronOV.onRoute(function (route) { routeTo(route); });
+      if (electronOV.onGameStart) electronOV.onGameStart(function (pid) {
+        toast('Game launched' + (pid ? ' (pid ' + pid + ')' : '') + '.', 'success');
+      });
+      if (electronOV.onGameExit) electronOV.onGameExit(function (code) {
+        toast('Game exited (code ' + code + ').', 'info');
+      });
+      if (electronOV.onLaunchState) electronOV.onLaunchState(function (state) {
+        if (state && state.message && state.phase && state.phase !== 'idle') {
+          toast(state.message, 'info', 4000);
+        }
+      });
+    }
+
+    // HUD overlay mode: no auth, no chrome — just the translucent overlay.
+    if (hudMode) {
+      enterHud();
+      if (embedded && shell === 'source') {
+        var hudReady = new Image();
+        hudReady.src = 'openvibe://ready';
+      }
+      return;
+    }
+
     if (devMode) {
       var devSection = document.getElementById('devauth-section');
       if (devSection) devSection.style.display = 'block';
@@ -1144,5 +2164,7 @@
 
 })();
 </script>
+<!-- Route/state sync shared with the other host (localStorage + BroadcastChannel) -->
+<script src="ui-sync.js"></script>
 </body>
 </html>

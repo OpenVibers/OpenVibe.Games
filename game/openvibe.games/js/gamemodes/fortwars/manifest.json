@@ -1,0 +1,11 @@
+{
+  "id": "fortwars",
+  "name": "OpenVibe Fort Wars",
+  "base": "base",
+  "category": "pvp",
+  "entry": { "shared": "shared.js", "server": "server.js", "client": "client.js" },
+  "settings": [
+    { "name": "ov_fw_build_duration", "text": "Build phase (s)", "type": "Numeric", "default": 60 },
+    { "name": "ov_fw_fight_duration", "text": "Fight phase (s)", "type": "Numeric", "default": 180 }
+  ]
+}

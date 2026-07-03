@@ -29,6 +29,13 @@
       } else {
         p.setTeam(TEAM_RUNNERS);
       }
+      if (globalThis.net && net.__openvibe) {
+        try {
+          net.Start("OV_DR_Role");
+          net.WriteInt(p.team());
+          net.Send(p);
+        } catch (e) { /* transport not up */ }
+      }
     });
 
     runnersAlive = players.filter((p) => p.team() === TEAM_RUNNERS).length;
@@ -54,6 +61,14 @@
     Initialize() {
       OV.log("Deathrun Initialize fired");
       registerCommands();
+      if (globalThis.util && util.AddNetworkString) util.AddNetworkString("OV_DR_Role");
+    },
+
+    CreateTeams() {
+      if (!globalThis.team) return;
+      team.SetUp(0, "Unassigned", Color(200, 200, 200));
+      team.SetUp(TEAM_RUNNERS, "Runners", Color(80, 160, 240));
+      team.SetUp(TEAM_ACTIVATORS, "Activator", Color(240, 80, 80));
     },
 
     MapInitialize(mapName) {
@@ -68,6 +83,7 @@
     startRound() {
       this._roundNumber += 1;
       this._roundState = "active";
+      this._roundEndsAt = OV.time() + ROUND_DURATION;
       activatorId = null;
 
       assignTeams();
@@ -92,6 +108,7 @@
     endRound(reason) {
       if (this._roundState !== "active") return;
       this._roundState = "ended";
+      this._roundEndsAt = 0;
       timer.remove(`ov_dr_round_end_${this._roundNumber}`);
 
       let msg;

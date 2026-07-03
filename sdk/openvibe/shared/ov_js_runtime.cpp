@@ -19,6 +19,12 @@ bool COpenVibeJSRuntime::Init(bool bServerRealm, const char *pszMode)
 void COpenVibeJSRuntime::Shutdown() {}
 bool COpenVibeJSRuntime::LoadFile(const char *pszPath) { return false; }
 bool COpenVibeJSRuntime::Eval(const char *pszCode, const char *pszFilename) { return false; }
+bool COpenVibeJSRuntime::RunString(const char *pszCode) { return false; }
+bool COpenVibeJSRuntime::RunStringResult(const char *pszCode, char *pszOut, int nOutLen)
+{
+    if (pszOut && nOutLen > 0) pszOut[0] = '\0';
+    return false;
+}
 JSValue COpenVibeJSRuntime::CallHookRaw(const char *pszHookName, int argc, JSValueConst *argv) { return JS_UNDEFINED; }
 void COpenVibeJSRuntime::CallHookVoid(const char *pszHookName, int argc, JSValueConst *argv) {}
 bool COpenVibeJSRuntime::CallHookBool(const char *pszHookName, bool *pOut, int argc, JSValueConst *argv)
@@ -117,6 +123,71 @@ bool COpenVibeJSRuntime::Eval(const char *pszCode, const char *pszFilename)
     return true;
 }
 
+// js_run backing: eval a console-supplied snippet and log its result/error.
+bool COpenVibeJSRuntime::RunString(const char *pszCode)
+{
+    return RunStringResult(pszCode, NULL, 0);
+}
+
+// Same, but also captures the stringified result / exception text so the
+// ConCommand can echo it back to the invoking client's console.
+bool COpenVibeJSRuntime::RunStringResult(const char *pszCode, char *pszOut, int nOutLen)
+{
+    if (pszOut && nOutLen > 0)
+        pszOut[0] = '\0';
+
+    if (!m_pCtx || !pszCode)
+    {
+        if (pszOut && nOutLen > 0)
+            Q_strncpy(pszOut, "runtime is not running", nOutLen);
+        return false;
+    }
+
+    JSValue result = JS_Eval(
+        m_pCtx,
+        pszCode,
+        Q_strlen(pszCode),
+        "<js_run>",
+        JS_EVAL_TYPE_GLOBAL
+    );
+
+    if (JS_IsException(result))
+    {
+        JSValue exc = JS_GetException(m_pCtx);
+        const char *pszExc = JS_ToCString(m_pCtx, exc);
+        Warning("[OV JS] <js_run> exception: %s\n", pszExc ? pszExc : "<unprintable>");
+        if (pszOut && nOutLen > 0)
+        {
+            Q_strncpy(pszOut, "ERROR: ", nOutLen);
+            Q_strncat(pszOut, pszExc ? pszExc : "<unprintable>", nOutLen, COPY_ALL_CHARACTERS);
+        }
+        if (pszExc)
+            JS_FreeCString(m_pCtx, pszExc);
+        JS_FreeValue(m_pCtx, exc);
+        JS_FreeValue(m_pCtx, result);
+        return false;
+    }
+
+    if (JS_IsUndefined(result))
+    {
+        Msg("[OV JS] undefined\n");
+        if (pszOut && nOutLen > 0)
+            Q_strncpy(pszOut, "undefined", nOutLen);
+    }
+    else
+    {
+        const char *pszResult = JS_ToCString(m_pCtx, result);
+        Msg("[OV JS] %s\n", pszResult ? pszResult : "<unprintable>");
+        if (pszOut && nOutLen > 0)
+            Q_strncpy(pszOut, pszResult ? pszResult : "<unprintable>", nOutLen);
+        if (pszResult)
+            JS_FreeCString(m_pCtx, pszResult);
+    }
+
+    JS_FreeValue(m_pCtx, result);
+    return true;
+}
+
 bool COpenVibeJSRuntime::LoadFile(const char *pszPath)
 {
     FileHandle_t file = filesystem->Open(pszPath, "rb", "MOD");
@@ -172,7 +243,14 @@ bool COpenVibeJSRuntime::LoadGamemode()
     char path[256];
     Q_snprintf(path, sizeof(path), "js/gamemodes/%s/%s.js", m_szMode, m_bServerRealm ? "server" : "client");
 
-    return LoadFile(path);
+    bool ok = LoadFile(path);
+
+    // GModJS loader: run autorun/entities/addons under the embedded backend
+    // too. Non-fatal — Eval prints the exception and a stripped js/ tree
+    // simply has no OVLoader.
+    Eval("globalThis.OVLoader && OVLoader.loadAll && OVLoader.loadAll({mode: OV.getMode()})", "<ov-loader>");
+
+    return ok;
 }
 
 JSValue COpenVibeJSRuntime::CallHookRaw(const char *pszHookName, int argc, JSValueConst *argv)

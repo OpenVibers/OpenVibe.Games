@@ -57,12 +57,20 @@ export PROTON_LOG="${OPENVIBE_PROTON_LOG:-${PROTON_LOG:-1}}"
 # frame with no error trace. Default off for reliability.
 export DXVK_ASYNC="${DXVK_ASYNC:-0}"
 
+# The OpenVibe HTML console replaces the stock Source console; pass
+# OPENVIBE_STOCK_CONSOLE=1 to get the engine console back for debugging.
+CONSOLE_ARGS=""
+if [[ "${OPENVIBE_STOCK_CONSOLE:-0}" == "1" ]]; then
+  CONSOLE_ARGS="-console"
+fi
+
 exec "$GE_PROTON/proton" waitforexitandrun \
   "$HL2_EXE" \
   -game "$GAME_DIR" \
-  -console -dev -condebug -novid -sw -w 1280 -h 720 \
+  $CONSOLE_ARGS -dev -condebug -novid -sw -w 1280 -h 720 \
   -port 27115 -clientport 27105 \
   +developer 1 \
   +con_logfile openvibe_proton_console.log \
   +exec openvibe_proton_client.cfg \
+  +exec openvibe_client_default.cfg \
   $CONNECT_ARGS

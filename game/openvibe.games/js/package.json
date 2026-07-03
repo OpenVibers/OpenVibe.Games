@@ -1,0 +1,9 @@
+{
+  "name": "openvibe-game-scripts",
+  "private": true,
+  "description": "npm root for the OpenVibe GModJS runtime (js/node_modules is require()-able from gamemodes, addons, and entities in both backends).",
+  "dependencies": {
+    "is-odd": "^3.0.1",
+    "ov-leftpad": "file:vendor/ov-leftpad"
+  }
+}

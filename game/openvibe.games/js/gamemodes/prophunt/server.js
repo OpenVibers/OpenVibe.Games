@@ -32,7 +32,17 @@
     const shuffled = players.slice().sort(() => Math.random() - 0.5);
 
     shuffled.forEach(function (p, i) {
-      p.setTeam(i < hunterCount ? TEAM_HUNTERS : TEAM_PROPS);
+      const t = i < hunterCount ? TEAM_HUNTERS : TEAM_PROPS;
+      p.setTeam(t);
+      // Private role notification over the net library (client HUD shows it).
+      if (globalThis.net && net.__openvibe) {
+        try {
+          net.Start("OV_PH_Role");
+          net.WriteInt(t);
+          net.WriteInt(HUNTER_LOCK_DURATION);
+          net.Send(p);
+        } catch (e) { /* transport not up */ }
+      }
     });
 
     countAlive();
@@ -66,6 +76,14 @@
     Initialize() {
       OV.log("Prop Hunt Initialize fired");
       registerCommands();
+      if (globalThis.util && util.AddNetworkString) util.AddNetworkString("OV_PH_Role");
+    },
+
+    CreateTeams() {
+      if (!globalThis.team) return;
+      team.SetUp(0, "Unassigned", Color(200, 200, 200));
+      team.SetUp(TEAM_PROPS, "Props", Color(80, 200, 120));
+      team.SetUp(TEAM_HUNTERS, "Hunters", Color(220, 90, 60));
     },
 
     MapInitialize(mapName) {
@@ -80,6 +98,7 @@
     startRound() {
       this._roundNumber += 1;
       this._roundState = "active";
+      this._roundEndsAt = OV.time() + ROUND_DURATION;
       locked = true;
 
       assignTeams();
@@ -112,6 +131,7 @@
     endRound(reason) {
       if (this._roundState !== "active") return;
       this._roundState = "ended";
+      this._roundEndsAt = 0;
       locked = false;
       timer.remove(`ov_ph_round_end_${this._roundNumber}`);
 

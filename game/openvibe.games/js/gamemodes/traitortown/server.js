@@ -32,9 +32,17 @@
     traitorsAlive  = shuffled.filter((p) => p.team() === TEAM_TRAITOR).length;
     rolesAssigned  = true;
 
-    // Tell traitors who they are (privately via chat)
-    shuffled.filter((p) => p.team() === TEAM_TRAITOR).forEach(function (p) {
-      p.chat("[TRAITOR] You are a traitor. Eliminate all innocents.");
+    // Tell everyone their role privately: chat for traitors + a net message
+    // per player so the client HUD can render it.
+    shuffled.forEach(function (p) {
+      if (p.team() === TEAM_TRAITOR) p.chat("[TRAITOR] You are a traitor. Eliminate all innocents.");
+      if (globalThis.net && net.__openvibe) {
+        try {
+          net.Start("OV_TTT_Role");
+          net.WriteInt(p.team());
+          net.Send(p);
+        } catch (e) { /* transport not up */ }
+      }
     });
 
     OV.broadcast(`Round ${gamemode.get()._roundNumber} — ${players.length} players. Find the traitor(s)!`);
@@ -69,6 +77,14 @@
     Initialize() {
       OV.log("Traitor Town Initialize fired");
       registerCommands();
+      if (globalThis.util && util.AddNetworkString) util.AddNetworkString("OV_TTT_Role");
+    },
+
+    CreateTeams() {
+      if (!globalThis.team) return;
+      team.SetUp(0, "Unassigned", Color(200, 200, 200));
+      team.SetUp(TEAM_INNOCENT, "Innocents", Color(60, 180, 90));
+      team.SetUp(TEAM_TRAITOR, "Traitors", Color(200, 40, 40));
     },
 
     MapInitialize(mapName) {
@@ -83,6 +99,7 @@
     startRound() {
       this._roundNumber += 1;
       this._roundState = "active";
+      this._roundEndsAt = OV.time() + ROUND_DURATION;
       rolesAssigned = false;
       innocentsAlive = 0;
       traitorsAlive = 0;
@@ -105,6 +122,7 @@
     endRound(reason) {
       if (this._roundState !== "active") return;
       this._roundState = "ended";
+      this._roundEndsAt = 0;
       rolesAssigned = false;
       timer.remove(`ov_ttt_round_end_${this._roundNumber}`);
 

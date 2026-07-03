@@ -27,9 +27,18 @@
     }
   }
 
-  bootstrap("js/core/module.js"); // defines globalThis.require
-  bootstrap("js/core/net.js");    // defines globalThis.net + util.AddNetworkString
-  bootstrap("js/core/addon.js");  // defines globalThis.Addon
+  bootstrap("js/core/realm.js");      // SERVER / CLIENT / IsValid / CurTime
+  bootstrap("js/core/module.js");     // globalThis.require (CommonJS + npm)
+  bootstrap("js/core/util.js");       // util.AddNetworkString pooling + helpers
+  bootstrap("js/core/net.js");        // GMod net library
+  bootstrap("js/core/entity.js");     // Entity class + NW/DT vars
+  bootstrap("js/core/ents.js");       // ents + scripted_ents
+  bootstrap("js/core/player.js");     // Player class + player library
+  bootstrap("js/core/team.js");       // team library
+  bootstrap("js/core/file.js");       // AddCSJSFile / include / client sync
+  bootstrap("js/core/concommand.js"); // concommand + RunConsoleCommand
+  bootstrap("js/core/addon.js");      // globalThis.Addon
+  bootstrap("js/core/loader.js");     // OVLoader (autorun/gamemodes/entities)
 
   // NOTE: Addon.loadAll() is intentionally NOT called here. bridge.js loads
   // before command.js/timer.js in the C++ core order, so addons that register

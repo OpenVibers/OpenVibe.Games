@@ -1,0 +1,11 @@
+{
+  "id": "traitortown",
+  "name": "OpenVibe Traitor Town",
+  "base": "base",
+  "category": "pvp",
+  "entry": { "shared": "shared.js", "server": "server.js", "client": "client.js" },
+  "settings": [
+    { "name": "ov_ttt_round_duration", "text": "Round duration (s)", "type": "Numeric", "default": 300 },
+    { "name": "ov_ttt_traitor_ratio", "text": "Players per traitor", "type": "Numeric", "default": 4 }
+  ]
+}

@@ -25,6 +25,11 @@ using namespace vgui;
 // in this file, so Linux/GCC needs an explicit forward declaration.
 void OpenVibe_OnHTMLReady();
 
+// HandleBridgeURL() / OnThink() also use these before their definitions below.
+static void OV_SanitiseJSString( char *pszOut, size_t nOut, const char *pszIn );
+static void OV_InstallConsoleTap();
+static void OV_ConsoleTapThink();
+
 
 static ConVar ov_menu_url(
 	"ov_menu_url",
@@ -77,6 +82,85 @@ static bool OV_IsSafeMode( const char *pszMode )
 		  !Q_stricmp( pszMode, "deathrun" ) ||
 		  !Q_stricmp( pszMode, "fortwars" ) ||
 		  !Q_stricmp( pszMode, "traitortown" ) );
+}
+
+// openvibe://cmd allowlist: the first token decides. ov_* commands (which
+// includes ov_npm and all OpenVibe dev commands) plus the GModJS script
+// commands and a few stock engine commands the GUI console needs.
+static bool OV_IsAllowedBridgeCommand( const char *pszCommand )
+{
+	if ( !pszCommand || !pszCommand[0] )
+		return false;
+
+	// No multi-command or newline smuggling through the bridge.
+	if ( Q_strstr( pszCommand, ";" ) || Q_strstr( pszCommand, "\n" ) || Q_strstr( pszCommand, "\r" ) )
+		return false;
+
+	char szToken[64];
+	int i = 0;
+	while ( pszCommand[i] && pszCommand[i] != ' ' && i < (int)sizeof( szToken ) - 1 )
+	{
+		szToken[i] = pszCommand[i];
+		++i;
+	}
+	szToken[i] = '\0';
+
+	if ( !Q_strnicmp( szToken, "ov_", 3 ) )
+		return true;
+
+	static const char *s_AllowedBridgeCommands[] =
+	{
+		"js_run",
+		"js_run_cl",
+		"js_openscript",
+		"js_openscript_cl",
+		"ov_npm",
+		"say",
+		"connect",
+		"disconnect",
+		"retry",
+		"status",
+	};
+
+	for ( int j = 0; j < ARRAYSIZE( s_AllowedBridgeCommands ); ++j )
+	{
+		if ( !Q_stricmp( szToken, s_AllowedBridgeCommands[j] ) )
+			return true;
+	}
+
+	return false;
+}
+
+// openvibe://convar[_get] allowlist: OpenVibe client settings plus the stock
+// game/video/audio convars the options route exposes.
+static const char *s_OVAllowedBridgeConvars[] =
+{
+	"ov_menu_url",
+	"ov_menu_auto_open",
+	"ov_menu_allow_remote",
+	"ov_api_url",
+	"ov_client_js_enabled",
+	"ov_js_backend",
+	"volume",
+	"snd_musicvolume",
+	"mat_monitorgamma",
+	"fov_desired",
+	"sensitivity",
+	"cl_ragdoll_collide",
+};
+
+static bool OV_IsAllowedBridgeConvar( const char *pszName )
+{
+	if ( !pszName || !pszName[0] )
+		return false;
+
+	for ( int i = 0; i < ARRAYSIZE( s_OVAllowedBridgeConvars ); ++i )
+	{
+		if ( !Q_stricmp( pszName, s_OVAllowedBridgeConvars[i] ) )
+			return true;
+	}
+
+	return false;
 }
 
 static void OV_URLDecodeInPlace( char *pszValue )
@@ -241,6 +325,12 @@ public:
 		MakeFullScreen();
 	}
 
+	void OnThink() OVERRIDE
+	{
+		BaseClass::OnThink();
+		OV_ConsoleTapThink();
+	}
+
 	bool OnOpenVibeHTMLStartRequest( const char *pszURL, const char *pszTarget, const char *pszPostData, bool bIsRedirect ) OVERRIDE
 	{
 		if ( OV_URLStartsWith( pszURL, "openvibe://" ) )
@@ -316,7 +406,92 @@ private:
 			return;
 		}
 
+		if ( OV_URLStartsWith( pszURL, "openvibe://cmd" ) )
+		{
+			// GUI console -> engine command, allowlisted by first token.
+			char szCmd[1024];
+			if ( !OV_ReadQueryValue( pszURL, "c", szCmd, sizeof( szCmd ) ) )
+				return;
+
+			if ( !OV_IsAllowedBridgeCommand( szCmd ) )
+			{
+				Warning( "[OV HTML] blocked bridge command: %s\n", szCmd );
+				return;
+			}
+
+			engine->ClientCmd_Unrestricted( VarArgs( "%s\n", szCmd ) );
+			return;
+		}
+
+		// NOTE: convar_get must be checked before the "openvibe://convar" prefix.
+		if ( OV_URLStartsWith( pszURL, "openvibe://convar_get" ) )
+		{
+			char szNames[512];
+			if ( OV_ReadQueryValue( pszURL, "names", szNames, sizeof( szNames ) ) )
+				PushConvarsToPage( szNames );
+			return;
+		}
+
+		if ( OV_URLStartsWith( pszURL, "openvibe://convar" ) )
+		{
+			char szName[64];
+			char szValue[256];
+			if ( !OV_ReadQueryValue( pszURL, "name", szName, sizeof( szName ) ) ||
+				 !OV_ReadQueryValue( pszURL, "value", szValue, sizeof( szValue ) ) )
+				return;
+
+			if ( !OV_IsAllowedBridgeConvar( szName ) )
+			{
+				Warning( "[OV HTML] blocked convar set: %s\n", szName );
+				return;
+			}
+
+			ConVar *pVar = g_pCVar ? g_pCVar->FindVar( szName ) : NULL;
+			if ( pVar )
+				pVar->SetValue( szValue );
+			else
+				Warning( "[OV HTML] convar not found: %s\n", szName );
+			return;
+		}
+
 		Warning( "[OV HTML] Ignored bridge URL: %s\n", pszURL ? pszURL : "<null>" );
+	}
+
+	// openvibe://convar_get — push allowlisted convar values back into the page
+	// as window.OV.onConvars({name: "value", ...}).
+	void PushConvarsToPage( char *pszNamesCsv )
+	{
+		char szScript[4096];
+		Q_strncpy( szScript,
+			"if(typeof window.OV==='object'&&typeof window.OV.onConvars==='function')"
+			"{window.OV.onConvars({", sizeof( szScript ) );
+
+		bool bFirst = true;
+		for ( char *pszName = strtok( pszNamesCsv, "," ); pszName; pszName = strtok( NULL, "," ) )
+		{
+			while ( *pszName == ' ' )
+				++pszName;
+
+			// Allowlisted names are literal matches of s_OVAllowedBridgeConvars,
+			// so they are safe to embed; values still go through the sanitiser.
+			if ( !*pszName || !OV_IsAllowedBridgeConvar( pszName ) )
+				continue;
+
+			ConVar *pVar = g_pCVar ? g_pCVar->FindVar( pszName ) : NULL;
+			if ( !pVar )
+				continue;
+
+			char szValue[256];
+			OV_SanitiseJSString( szValue, sizeof( szValue ), pVar->GetString() );
+
+			char szPair[384];
+			Q_snprintf( szPair, sizeof( szPair ), "%s'%s':'%s'", bFirst ? "" : ",", pszName, szValue );
+			Q_strncat( szScript, szPair, sizeof( szScript ), COPY_ALL_CHARACTERS );
+			bFirst = false;
+		}
+
+		Q_strncat( szScript, "});}", sizeof( szScript ), COPY_ALL_CHARACTERS );
+		RunJS( szScript );
 	}
 
 	HTML *m_pHTML;
@@ -327,10 +502,120 @@ static COpenVibeHTMLPanel *s_pOpenVibeMenu = NULL;
 static COpenVibeHTMLPanel *OV_GetHTMLMenu()
 {
 	if ( !s_pOpenVibeMenu )
+	{
 		s_pOpenVibeMenu = new COpenVibeHTMLPanel( enginevgui->GetPanel( PANEL_GAMEUIDLL ) );
+		OV_InstallConsoleTap();
+	}
 
 	return s_pOpenVibeMenu;
 }
+
+// OPENVIBE_CONSOLE_SPEW_TAP_BEGIN
+//
+// Mirrors engine console output into the HTML GUI console route. The chained
+// tier0 spew hook records EVERY line into a ring buffer from client-mode init
+// (so the GUI console gets full history, replacing the stock Source console);
+// the panel's OnThink drains the backlog into window.OV.onConsoleLine([...])
+// while visible, at most every 0.15s and 24 lines per flush. When the console
+// runs hot the oldest unsent lines fall out of the ring (never blocks).
+
+#define OV_CONSOLE_RING_LINES 400
+#define OV_CONSOLE_FLUSH_MAX  24
+
+static SpewOutputFunc_t s_PrevSpewFunc = NULL;
+static bool s_bConsoleTapInstalled = false;
+static bool s_bInConsoleTap = false; // reentrancy: a Msg inside RunJS must not recurse
+static char s_ConsoleRing[OV_CONSOLE_RING_LINES][480];
+static int64 s_nRingWritten = 0; // total lines ever written
+static int64 s_nRingSent = 0;    // total lines ever flushed to the panel
+static float s_flNextConsoleFlush = 0.0f;
+
+static SpewRetval_t OV_ConsoleTapSpewFunc( SpewType_t spewType, const tchar *pMsg )
+{
+	// Always forward to the previous spew func first.
+	SpewRetval_t ret = s_PrevSpewFunc ? s_PrevSpewFunc( spewType, pMsg ) : SPEW_CONTINUE;
+
+	if ( !s_bInConsoleTap && pMsg && pMsg[0] )
+	{
+		s_bInConsoleTap = true;
+
+		char *pszLine = s_ConsoleRing[s_nRingWritten % OV_CONSOLE_RING_LINES];
+		int nWritten = 0;
+		// Tag warnings/errors so the GUI can color them.
+		if ( spewType == SPEW_WARNING || spewType == SPEW_ASSERT || spewType == SPEW_ERROR )
+		{
+			const char *pszTag = ( spewType == SPEW_WARNING ) ? "[warning] " : "[error] ";
+			for ( const char *t = pszTag; *t && nWritten < (int)sizeof( s_ConsoleRing[0] ) - 1; ++t )
+				pszLine[nWritten++] = *t;
+		}
+		for ( const char *p = pMsg; *p && nWritten < (int)sizeof( s_ConsoleRing[0] ) - 1; ++p )
+			pszLine[nWritten++] = ( *p == '\n' || *p == '\r' ) ? ' ' : *p;
+		while ( nWritten > 0 && pszLine[nWritten - 1] == ' ' )
+			--nWritten;
+		pszLine[nWritten] = '\0';
+
+		if ( nWritten > 0 )
+			++s_nRingWritten;
+
+		s_bInConsoleTap = false;
+	}
+
+	return ret;
+}
+
+static void OV_InstallConsoleTap()
+{
+	if ( s_bConsoleTapInstalled )
+		return;
+
+	s_bConsoleTapInstalled = true;
+	s_PrevSpewFunc = GetSpewOutputFunc();
+	SpewOutputFunc( OV_ConsoleTapSpewFunc );
+}
+
+// Called from COpenVibeHTMLPanel::OnThink (i.e. only while the panel is visible).
+static void OV_ConsoleTapThink()
+{
+	if ( !s_pOpenVibeMenu || s_nRingSent >= s_nRingWritten )
+		return;
+
+	const float flNow = Plat_FloatTime();
+	if ( flNow < s_flNextConsoleFlush )
+		return;
+	s_flNextConsoleFlush = flNow + 0.15f;
+
+	// If the writer lapped us, skip the lines the ring no longer holds.
+	if ( s_nRingWritten - s_nRingSent > OV_CONSOLE_RING_LINES )
+		s_nRingSent = s_nRingWritten - OV_CONSOLE_RING_LINES;
+
+	char szScript[16384];
+	Q_strncpy( szScript,
+		"if(typeof window.OV==='object'&&typeof window.OV.onConsoleLine==='function')"
+		"{window.OV.onConsoleLine([", sizeof( szScript ) );
+
+	int nBatch = 0;
+	while ( s_nRingSent < s_nRingWritten && nBatch < OV_CONSOLE_FLUSH_MAX )
+	{
+		char szLine[480];
+		OV_SanitiseJSString( szLine, sizeof( szLine ), s_ConsoleRing[s_nRingSent % OV_CONSOLE_RING_LINES] );
+		++s_nRingSent;
+
+		if ( nBatch > 0 )
+			Q_strncat( szScript, ",", sizeof( szScript ), COPY_ALL_CHARACTERS );
+		Q_strncat( szScript, "'", sizeof( szScript ), COPY_ALL_CHARACTERS );
+		Q_strncat( szScript, szLine, sizeof( szScript ), COPY_ALL_CHARACTERS );
+		Q_strncat( szScript, "'", sizeof( szScript ), COPY_ALL_CHARACTERS );
+		++nBatch;
+	}
+
+	Q_strncat( szScript, "]);}", sizeof( szScript ), COPY_ALL_CHARACTERS );
+
+	// RunJS can itself Msg(); the guard keeps that spew out of the batch.
+	s_bInConsoleTap = true;
+	s_pOpenVibeMenu->RunJS( szScript );
+	s_bInConsoleTap = false;
+}
+// OPENVIBE_CONSOLE_SPEW_TAP_END
 
 static void OV_OpenMenu_f( const CCommand &args )
 {
@@ -358,6 +643,10 @@ static void OV_MenuJS_f( const CCommand &args )
 
 void OpenVibe_OnClientModeInit()
 {
+	// Install the console tap immediately so the GUI console has full history
+	// from process start, even before the panel is first opened.
+	OV_InstallConsoleTap();
+
 	if ( ov_menu_auto_open.GetBool() )
 		OV_GetHTMLMenu()->Open();
 }
@@ -422,6 +711,8 @@ static void OV_MenuLeaderboard_f( const CCommand &args ) { OV_OpenMenuRoute( "le
 static void OV_MenuInventory_f( const CCommand &args ) { OV_OpenMenuRoute( "inventory" ); }
 static void OV_MenuShop_f( const CCommand &args ) { OV_OpenMenuRoute( "shop" ); }
 static void OV_MenuSettings_f( const CCommand &args ) { OV_OpenMenuRoute( "settings" ); }
+static void OV_MenuConsole_f( const CCommand &args ) { OV_OpenMenuRoute( "console" ); }
+static void OV_MenuOptions_f( const CCommand &args ) { OV_OpenMenuRoute( "options" ); }
 
 static ConCommand ov_ui_cmd(
 	"ov_ui",
@@ -469,6 +760,37 @@ static ConCommand ov_menu_settings_route_cmd(
 	"ov_menu_settings",
 	OV_MenuSettings_f,
 	"Open the OpenVibe settings route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_console_cmd(
+	"ov_menu_console",
+	OV_MenuConsole_f,
+	"Open the OpenVibe console route.",
+	FCVAR_CLIENTDLL );
+
+static ConCommand ov_menu_options_cmd(
+	"ov_menu_options",
+	OV_MenuOptions_f,
+	"Open the OpenVibe options route.",
+	FCVAR_CLIENTDLL );
+
+// The OpenVibe console replaces the stock Source console: bind your console
+// key to ov_console (cfg/openvibe_client_default.cfg does this) and it
+// toggles the HTML console route.
+static void OV_ConsoleToggle_f( const CCommand &args )
+{
+	if ( s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible() )
+	{
+		s_pOpenVibeMenu->CloseMenu();
+		return;
+	}
+	OV_OpenMenuRoute( "console" );
+}
+
+static ConCommand ov_console_cmd(
+	"ov_console",
+	OV_ConsoleToggle_f,
+	"Toggle the OpenVibe HTML console (replacement for the stock console).",
 	FCVAR_CLIENTDLL );
 // OPENVIBE_UNIFIED_UI_ROUTE_COMMANDS_END
 

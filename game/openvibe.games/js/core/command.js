@@ -55,8 +55,13 @@
 
       const entry = commands[parsed.name];
       if (!entry) {
-        reply(ply, `Unknown command: ${parsed.name}. Try !help`);
-        return false;
+        // Chat (!cmd) gets feedback; console lines fall through to other
+        // handlers (concommand registry, engine) instead.
+        if (ply) {
+          reply(ply, `Unknown command: ${parsed.name}. Try !help`);
+          return false;
+        }
+        return undefined;
       }
 
       const result = entry.fn({ ply, name: parsed.name, args: parsed.args, raw: parsed.raw, reply });
@@ -84,25 +89,21 @@
     }
   };
 
-  globalThis.concommand = {
-    Add(name, fn, help) {
-      return command.add(name, help || "", function ({ args, raw, reply }) {
-        return fn(args, raw, reply);
-      });
-    },
-
-    Remove(name) {
-      return command.remove(name);
-    },
-
-    Run(text) {
-      return command.dispatchConsole(text);
-    },
-
-    List() {
-      return command.list();
-    }
-  };
+  // NOTE: the GMod-style concommand library lives in core/concommand.js
+  // (loaded by bridge.js before this file); command.js only owns chat (!cmd)
+  // commands. A minimal shim is kept for hosts without the new core files.
+  if (!globalThis.concommand) {
+    globalThis.concommand = {
+      Add(name, fn, help) {
+        return command.add(name, help || "", function ({ ply, args, raw, reply }) {
+          return fn(ply || null, name, args, raw);
+        });
+      },
+      Remove(name) {
+        return command.remove(name);
+      }
+    };
+  }
 
   hook.add("PlayerSay", "OpenVibeCommandRegistry", function (ply, text) {
     const msg = String(text || "").trim();

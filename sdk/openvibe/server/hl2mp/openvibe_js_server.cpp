@@ -18,6 +18,14 @@ static ConVar ov_js_enabled(
     FCVAR_GAMEDLL,
     "Enable OpenVibe JavaScript runtime. Windows server CI uses a stub runtime." );
 
+// GMod's sv_allowcslua equivalent: gates js_run_cl / js_openscript_cl on
+// clients. Replicated so the client bridge can read it. Default 1 for dev.
+static ConVar sv_allowcsjs(
+    "sv_allowcsjs",
+    "1",
+    FCVAR_REPLICATED | FCVAR_NOTIFY,
+    "Allow clients to run their own JavaScript (js_run_cl / js_openscript_cl)." );
+
 void OpenVibeJS_ServerInit()
 {
     Msg("[OV JS] Windows server CI stub active; runtime disabled, mode=%s\n", ov_mode.GetString());
@@ -78,6 +86,42 @@ static ConCommand ov_js_cmd(
     "ov_js_cmd",
     OV_JSCmd_f,
     "Send a ConsoleCommand event into the embedded OpenVibe JavaScript runtime.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_JSRun_f(const CCommand &args)
+{
+    Msg("[OV JS] Windows server CI stub: js_run ignored\n");
+}
+
+static ConCommand js_run(
+    "js_run",
+    OV_JSRun_f,
+    "Run JavaScript in the server realm: js_run <code>.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_JSOpenScript_f(const CCommand &args)
+{
+    Msg("[OV JS] Windows server CI stub: js_openscript ignored\n");
+}
+
+static ConCommand js_openscript(
+    "js_openscript",
+    OV_JSOpenScript_f,
+    "Run a script file in the server realm: js_openscript <path relative to js/>.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_Npm_f(const CCommand &args)
+{
+    Warning("ov_npm requires ov_js_backend node\n");
+}
+
+static ConCommand ov_npm(
+    "ov_npm",
+    OV_Npm_f,
+    "Run npm in the mod js/ tree via the Node runtime: ov_npm <install|update|...> [args].",
     FCVAR_GAMEDLL
 );
 
@@ -151,6 +195,12 @@ static ConVar ov_js_node_port(
     "ov_js_node_port", "41999", FCVAR_GAMEDLL,
     "TCP port of the OpenVibe server Node.js runtime host." );
 
+// GMod's sv_allowcslua equivalent: gates js_run_cl / js_openscript_cl on
+// clients. Replicated so the client bridge can read it. Default 1 for dev.
+static ConVar sv_allowcsjs(
+    "sv_allowcsjs", "1", FCVAR_REPLICATED | FCVAR_NOTIFY,
+    "Allow clients to run their own JavaScript (js_run_cl / js_openscript_cl)." );
+
 static COpenVibeJSRuntime g_OVServerJS;
 static bool g_OVServerJSStarted = false;
 
@@ -218,6 +268,10 @@ static void OVServer_OnLine( const char *line )
             if ( p ) { engine->ClientCommand( p->edict(), "%s", cmd ); }
         }
     }
+    else if ( !Q_strcmp( t, "eval-result" ) )
+    {
+        // js_run result echoed back by the runtime — already logged there.
+    }
     else if ( !Q_strcmp( t, "net" ) )
     {
         // server -> client net: OVNet usermessage. ids: CSV of userIds, -1 = all.
@@ -250,6 +304,22 @@ static void OVServer_SendHello()
     Q_snprintf( hello, sizeof( hello ), "{\"t\":\"hello\",\"realm\":\"server\",\"mode\":\"%s\",\"map\":\"%s\"}",
         ov_mode.GetString(), gpGlobals ? STRING( gpGlobals->mapname ) : "" );
     g_ServerIPC.SendLine( hello );
+}
+
+// Append a {"__player":true,"userId":N} marker (or null) to an outbound
+// {"t":"event"} line — ov-runtime.js onGameMessage wraps these back into
+// Player objects before firing the hook.
+static void OVServer_AppendPlayerMarker( char *out, int cap, CHL2MP_Player *player )
+{
+    if ( !player )
+    {
+        Q_strncat( out, "null", cap, COPY_ALL_CHARACTERS );
+        return;
+    }
+
+    char marker[64];
+    Q_snprintf( marker, sizeof( marker ), "{\"__player\":true,\"userId\":%d}", player->GetUserID() );
+    Q_strncat( out, marker, cap, COPY_ALL_CHARACTERS );
 }
 
 static bool OpenVibeJS_IsRunning()
@@ -355,6 +425,23 @@ void OpenVibeJS_Server_PlayerInitialSpawn( CHL2MP_Player *player )
 {
     OpenVibeJS_EnsureStarted();
 
+    if ( OVServer_UseNode() )
+    {
+        if ( !player || !g_ServerIPC.IsConnected() )
+            return;
+        const char *netid = engine->GetPlayerNetworkIDString( player->edict() );
+        char out[512];
+        Q_snprintf( out, sizeof( out ), "{\"t\":\"player_connect\",\"userId\":%d,\"name\":\"", player->GetUserID() );
+        OVJSONAppendEsc( out, sizeof( out ), player->GetPlayerName() );
+        Q_strncat( out, "\",\"steamId\":\"", sizeof( out ), COPY_ALL_CHARACTERS );
+        OVJSONAppendEsc( out, sizeof( out ), netid ? netid : "" );
+        char tail[48];
+        Q_snprintf( tail, sizeof( tail ), "\",\"entIndex\":%d}", player->entindex() );
+        Q_strncat( out, tail, sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        return;
+    }
+
     if ( !OpenVibeJS_IsRunning() || !player )
         return;
 
@@ -371,6 +458,17 @@ void OpenVibeJS_Server_PlayerSpawn( CHL2MP_Player *player )
 {
     OpenVibeJS_EnsureStarted();
 
+    if ( OVServer_UseNode() )
+    {
+        if ( !player || !g_ServerIPC.IsConnected() )
+            return;
+        char out[256] = "{\"t\":\"event\",\"name\":\"PlayerSpawn\",\"args\":[";
+        OVServer_AppendPlayerMarker( out, sizeof( out ), player );
+        Q_strncat( out, "]}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        return;
+    }
+
     if ( !OpenVibeJS_IsRunning() || !player )
         return;
 
@@ -386,6 +484,21 @@ void OpenVibeJS_Server_PlayerSpawn( CHL2MP_Player *player )
 void OpenVibeJS_Server_PlayerDeath( CHL2MP_Player *victim, CBaseEntity *attacker, CBaseEntity *inflictor )
 {
     OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !victim || !g_ServerIPC.IsConnected() )
+            return;
+        CHL2MP_Player *attackerPlayer = ( attacker && attacker->IsPlayer() )
+            ? ToHL2MPPlayer( static_cast<CBasePlayer *>( attacker ) ) : NULL;
+        char out[256] = "{\"t\":\"event\",\"name\":\"PlayerDeath\",\"args\":[";
+        OVServer_AppendPlayerMarker( out, sizeof( out ), victim );
+        Q_strncat( out, ",", sizeof( out ), COPY_ALL_CHARACTERS );
+        OVServer_AppendPlayerMarker( out, sizeof( out ), attackerPlayer );
+        Q_strncat( out, "]}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        return;
+    }
 
     if ( !OpenVibeJS_IsRunning() || !victim )
         return;
@@ -408,6 +521,16 @@ void OpenVibeJS_Server_PlayerDeath( CHL2MP_Player *victim, CBaseEntity *attacker
 void OpenVibeJS_Server_PlayerDisconnected( CHL2MP_Player *player )
 {
     OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !player || !g_ServerIPC.IsConnected() )
+            return;
+        char out[64];
+        Q_snprintf( out, sizeof( out ), "{\"t\":\"player_disconnect\",\"userId\":%d}", player->GetUserID() );
+        g_ServerIPC.SendLine( out );
+        return;
+    }
 
     if ( !OpenVibeJS_IsRunning() || !player )
         return;
@@ -533,6 +656,164 @@ static ConCommand ov_js_cmd(
 );
 
 // ---------------------------------------------------------------------------
+// GModJS script commands — js_run / js_openscript / ov_npm (server realm).
+// Embedded backend evals in-process; node backend forwards over IPC.
+// Results are echoed to the invoking client's console (the HTML GUI console
+// mirrors the client console through the spew tap, so this is what makes
+// js_run output visible in-game).
+// ---------------------------------------------------------------------------
+static void OV_JSEchoToCaller( const char *pszLine )
+{
+    if ( !pszLine || !pszLine[0] )
+        return;
+
+    CBasePlayer *pPlayer = UTIL_GetCommandClient();
+    if ( pPlayer )
+    {
+        char szMsg[512];
+        Q_snprintf( szMsg, sizeof( szMsg ), "[OV JS] %s\n", pszLine );
+        ClientPrint( pPlayer, HUD_PRINTCONSOLE, szMsg );
+    }
+}
+
+static void OV_JSRun_f( const CCommand &args )
+{
+    if ( args.ArgC() < 2 )
+    {
+        Msg( "Usage: js_run <code>\n" );
+        return;
+    }
+
+    OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !g_ServerIPC.IsConnected() )
+        {
+            Warning( "[OV JS] node runtime not connected; js_run ignored\n" );
+            OV_JSEchoToCaller( "node runtime not connected; js_run ignored" );
+            return;
+        }
+        char out[4096] = "{\"t\":\"eval\",\"code\":\"";
+        OVJSONAppendEsc( out, sizeof( out ), args.ArgS() );
+        Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        OV_JSEchoToCaller( "sent to node runtime (result in runtime log / GUI console)" );
+        return;
+    }
+
+    if ( !OpenVibeJS_IsRunning() )
+    {
+        Warning( "[OV JS] runtime is not running\n" );
+        OV_JSEchoToCaller( "runtime is not running" );
+        return;
+    }
+
+    char szResult[480];
+    g_OVServerJS.RunStringResult( args.ArgS(), szResult, sizeof( szResult ) );
+    OV_JSEchoToCaller( szResult );
+}
+
+static ConCommand js_run(
+    "js_run",
+    OV_JSRun_f,
+    "Run JavaScript in the server realm: js_run <code>.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_JSOpenScript_f( const CCommand &args )
+{
+    if ( args.ArgC() < 2 )
+    {
+        Msg( "Usage: js_openscript <path relative to js/>\n" );
+        return;
+    }
+
+    OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !g_ServerIPC.IsConnected() )
+        {
+            Warning( "[OV JS] node runtime not connected; js_openscript ignored\n" );
+            OV_JSEchoToCaller( "node runtime not connected; js_openscript ignored" );
+            return;
+        }
+        char out[1024] = "{\"t\":\"openscript\",\"path\":\"";
+        OVJSONAppendEsc( out, sizeof( out ), args[1] );
+        Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        OV_JSEchoToCaller( "sent to node runtime" );
+        return;
+    }
+
+    if ( !OpenVibeJS_IsRunning() )
+    {
+        Warning( "[OV JS] runtime is not running\n" );
+        OV_JSEchoToCaller( "runtime is not running" );
+        return;
+    }
+
+    char code[1024] = "OVLoader.openScript(\"";
+    OVJSONAppendEsc( code, sizeof( code ), args[1] );
+    Q_strncat( code, "\")", sizeof( code ), COPY_ALL_CHARACTERS );
+    char szResult[480];
+    g_OVServerJS.RunStringResult( code, szResult, sizeof( szResult ) );
+    char szEcho[512];
+    Q_snprintf( szEcho, sizeof( szEcho ), "js_openscript %s -> %s", args[1], szResult );
+    OV_JSEchoToCaller( szEcho );
+}
+
+static ConCommand js_openscript(
+    "js_openscript",
+    OV_JSOpenScript_f,
+    "Run a script file in the server realm: js_openscript <path relative to js/>.",
+    FCVAR_GAMEDLL
+);
+
+static void OV_Npm_f( const CCommand &args )
+{
+    if ( args.ArgC() < 2 )
+    {
+        Msg( "Usage: ov_npm <install|update|uninstall|ls> [args]\n" );
+        return;
+    }
+
+    OpenVibeJS_EnsureStarted();
+
+    if ( !OVServer_UseNode() )
+    {
+        Warning( "ov_npm requires ov_js_backend node\n" );
+        return;
+    }
+
+    if ( !g_ServerIPC.IsConnected() )
+    {
+        Warning( "[OV JS] node runtime not connected; ov_npm ignored\n" );
+        return;
+    }
+
+    char out[1024] = "{\"t\":\"npm\",\"args\":[";
+    for ( int i = 1; i < args.ArgC(); ++i )
+    {
+        if ( i > 1 )
+            Q_strncat( out, ",", sizeof( out ), COPY_ALL_CHARACTERS );
+        Q_strncat( out, "\"", sizeof( out ), COPY_ALL_CHARACTERS );
+        OVJSONAppendEsc( out, sizeof( out ), args[i] );
+        Q_strncat( out, "\"", sizeof( out ), COPY_ALL_CHARACTERS );
+    }
+    Q_strncat( out, "]}", sizeof( out ), COPY_ALL_CHARACTERS );
+    g_ServerIPC.SendLine( out );
+}
+
+static ConCommand ov_npm(
+    "ov_npm",
+    OV_Npm_f,
+    "Run npm in the mod js/ tree via the Node runtime: ov_npm <install|update|...> [args].",
+    FCVAR_GAMEDLL
+);
+
+// ---------------------------------------------------------------------------
 // net library — client->server transport.
 // The client forwards net messages as: ov_net <name> <payloadBase64>
 // We fire the "OVNetReceive" hook into server JS with the sending player, and
@@ -598,6 +879,17 @@ void OpenVibeJS_Server_RoundStart( int roundNumber )
 {
     OpenVibeJS_EnsureStarted();
 
+    if ( OVServer_UseNode() )
+    {
+        if ( !g_ServerIPC.IsConnected() )
+            return;
+        char out[96];
+        Q_snprintf( out, sizeof( out ), "{\"t\":\"event\",\"name\":\"RoundStart\",\"args\":[%d]}", roundNumber );
+        g_ServerIPC.SendLine( out );
+        Msg( "[OV JS] RoundStart forwarded round=%d\n", roundNumber );
+        return;
+    }
+
     if ( !OpenVibeJS_IsRunning() )
         return;
 
@@ -613,6 +905,19 @@ void OpenVibeJS_Server_RoundStart( int roundNumber )
 void OpenVibeJS_Server_RoundEnd( int roundNumber, const char *reason )
 {
     OpenVibeJS_EnsureStarted();
+
+    if ( OVServer_UseNode() )
+    {
+        if ( !g_ServerIPC.IsConnected() )
+            return;
+        char out[256];
+        Q_snprintf( out, sizeof( out ), "{\"t\":\"event\",\"name\":\"RoundEnd\",\"args\":[%d,\"", roundNumber );
+        OVJSONAppendEsc( out, sizeof( out ), reason ? reason : "time" );
+        Q_strncat( out, "\"]}", sizeof( out ), COPY_ALL_CHARACTERS );
+        g_ServerIPC.SendLine( out );
+        Msg( "[OV JS] RoundEnd forwarded round=%d reason=%s\n", roundNumber, reason ? reason : "time" );
+        return;
+    }
 
     if ( !OpenVibeJS_IsRunning() )
         return;

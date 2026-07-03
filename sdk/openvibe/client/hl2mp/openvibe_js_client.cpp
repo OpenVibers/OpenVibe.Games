@@ -8,6 +8,7 @@
 // panel. This is a thin, crash-proof bridge.
 #include "openvibe/ov_ipc.h"
 #include "usermessages.h"
+#include "c_baseplayer.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -25,6 +26,7 @@ static ConVar ov_client_mode(
 
 static COpenVibeIPC g_ClientIPC;
 static bool g_bClientBridgeStarted = false;
+static bool g_bSentLocalPlayer = false;
 
 // ---- tiny JSON helpers (build + extract) ----
 static void OVJSON_AppendEscaped( char *dst, int dstSize, const char *src )
@@ -115,11 +117,38 @@ void __MsgFunc_OVNet( bf_read &msg )
     g_ClientIPC.SendLine( out );
 }
 
+// ---- outbound: local player identity -> runtime ----
+// Sent once per level, as soon as the local player entity is valid (it isn't
+// yet at LevelInitPostEntity, so OpenVibeJS_Client_Think retries).
+static void OVClient_TrySendLocalPlayer()
+{
+    if ( g_bSentLocalPlayer || !g_ClientIPC.IsConnected() ) return;
+
+    C_BasePlayer *pLocal = C_BasePlayer::GetLocalPlayer();
+    if ( !pLocal ) return;
+
+    player_info_t pi;
+    if ( !engine->GetPlayerInfo( pLocal->entindex(), &pi ) ) return;
+
+    char out[512];
+    Q_snprintf( out, sizeof( out ), "{\"t\":\"local_player\",\"userId\":%d,\"name\":\"", pi.userID );
+    OVJSON_AppendEscaped( out, sizeof( out ), pi.name );
+    Q_strncat( out, "\",\"steamId\":\"", sizeof( out ), COPY_ALL_CHARACTERS );
+    OVJSON_AppendEscaped( out, sizeof( out ), pi.guid );
+    char tail[48];
+    Q_snprintf( tail, sizeof( tail ), "\",\"entIndex\":%d}", pLocal->entindex() );
+    Q_strncat( out, tail, sizeof( out ), COPY_ALL_CHARACTERS );
+
+    g_ClientIPC.SendLine( out );
+    g_bSentLocalPlayer = true;
+}
+
 // ---- lifecycle ----
 void OpenVibeJS_Client_Init()
 {
     if ( g_bClientBridgeStarted ) return;
     g_bClientBridgeStarted = true;
+    g_bSentLocalPlayer = false;
     if ( !ov_client_js_enabled.GetBool() )
     {
         Msg( "[OV JS/client] bridge disabled by ov_client_js_enabled=0\n" );
@@ -145,6 +174,19 @@ void OpenVibeJS_Client_Shutdown()
 void OpenVibeJS_Client_Think()
 {
     g_ClientIPC.Poll();
+
+    if ( !g_ClientIPC.IsConnected() )
+        return;
+
+    OVClient_TrySendLocalPlayer();
+
+    // 10Hz think to the client runtime (mirrors the server bridge).
+    static float s_flNextThink = 0.0f;
+    if ( gpGlobals && gpGlobals->curtime >= s_flNextThink )
+    {
+        s_flNextThink = gpGlobals->curtime + 0.1f;
+        g_ClientIPC.SendLine( "{\"t\":\"think\"}" );
+    }
 }
 
 static void OV_ClientJSStatus_f()
@@ -164,6 +206,72 @@ static void OV_ClientJSReconnect_f()
 }
 static ConCommand ov_client_js_reconnect( "ov_client_js_reconnect", OV_ClientJSReconnect_f,
     "Reconnect the OpenVibe client Node runtime bridge.", FCVAR_CLIENTDLL );
+
+// ---- js_run_cl / js_openscript_cl — gated by the replicated sv_allowcsjs ----
+// sv_allowcsjs (GMod's sv_allowcslua) is registered server-side with
+// FCVAR_REPLICATED; read it through the cvar system so the server's value
+// applies. Unknown (not connected / not registered) counts as allowed —
+// the dev default is 1.
+static bool OVClient_CSJSAllowed()
+{
+    const ConVar *pAllow = g_pCVar ? g_pCVar->FindVar( "sv_allowcsjs" ) : NULL;
+    if ( pAllow && !pAllow->GetBool() )
+    {
+        Warning( "[OV JS/client] blocked: server has sv_allowcsjs 0\n" );
+        return false;
+    }
+    return true;
+}
+
+static void OV_JSRunCl_f( const CCommand &args )
+{
+    if ( args.ArgC() < 2 )
+    {
+        Msg( "Usage: js_run_cl <code>\n" );
+        return;
+    }
+
+    if ( !OVClient_CSJSAllowed() )
+        return;
+
+    if ( !g_ClientIPC.IsConnected() )
+    {
+        Warning( "[OV JS/client] runtime not connected; js_run_cl ignored\n" );
+        return;
+    }
+
+    char out[4096] = "{\"t\":\"eval\",\"code\":\"";
+    OVJSON_AppendEscaped( out, sizeof( out ), args.ArgS() );
+    Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+    g_ClientIPC.SendLine( out );
+}
+static ConCommand js_run_cl( "js_run_cl", OV_JSRunCl_f,
+    "Run JavaScript in the client realm: js_run_cl <code>. Gated by sv_allowcsjs.", FCVAR_CLIENTDLL );
+
+static void OV_JSOpenScriptCl_f( const CCommand &args )
+{
+    if ( args.ArgC() < 2 )
+    {
+        Msg( "Usage: js_openscript_cl <path relative to js/>\n" );
+        return;
+    }
+
+    if ( !OVClient_CSJSAllowed() )
+        return;
+
+    if ( !g_ClientIPC.IsConnected() )
+    {
+        Warning( "[OV JS/client] runtime not connected; js_openscript_cl ignored\n" );
+        return;
+    }
+
+    char out[1024] = "{\"t\":\"openscript\",\"path\":\"";
+    OVJSON_AppendEscaped( out, sizeof( out ), args[1] );
+    Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+    g_ClientIPC.SendLine( out );
+}
+static ConCommand js_openscript_cl( "js_openscript_cl", OV_JSOpenScriptCl_f,
+    "Run a script file in the client realm: js_openscript_cl <path relative to js/>. Gated by sv_allowcsjs.", FCVAR_CLIENTDLL );
 
 // Drives the bridge: hook OVNet, connect on level enter, poll each frame.
 class COpenVibeClientJSSystem : public CAutoGameSystemPerFrame

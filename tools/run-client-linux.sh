@@ -35,9 +35,17 @@ if [[ "${1:-}" != "" && "${2:-}" != "" ]]; then
   CONNECT_ARGS=(+connect "$1:$2")
 fi
 
+# The OpenVibe HTML console replaces the stock Source console; pass
+# OPENVIBE_STOCK_CONSOLE=1 to get the engine console back for debugging.
+CONSOLE_ARGS=()
+if [[ "${OPENVIBE_STOCK_CONSOLE:-0}" == "1" ]]; then
+  CONSOLE_ARGS=(-console)
+fi
+
 exec "$HL2_LINUX" \
   -game "$GAME_DIR" \
-  -console -dev -novid -sw -w 1280 -h 720 \
+  "${CONSOLE_ARGS[@]}" -dev -novid -sw -w 1280 -h 720 \
   -port 27115 -clientport 27105 \
   +exec openvibe_proton_client.cfg \
+  +exec openvibe_client_default.cfg \
   "${CONNECT_ARGS[@]}"

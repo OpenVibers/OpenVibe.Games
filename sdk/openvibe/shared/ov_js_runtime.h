@@ -24,6 +24,10 @@ public:
 
     bool LoadFile(const char *pszPath);
     bool Eval(const char *pszCode, const char *pszFilename);
+    bool RunString(const char *pszCode);
+    // Like RunString, but also copies the stringified result (or the exception
+    // text) into pszOut so callers can echo it to the invoking client.
+    bool RunStringResult(const char *pszCode, char *pszOut, int nOutLen);
 
     JSValue CallHookRaw(const char *pszHookName, int argc = 0, JSValueConst *argv = nullptr);
     void CallHookVoid(const char *pszHookName, int argc = 0, JSValueConst *argv = nullptr);
@@ -51,6 +55,10 @@ public:
 
     bool LoadFile(const char *pszPath);
     bool Eval(const char *pszCode, const char *pszFilename);
+    bool RunString(const char *pszCode);
+    // Like RunString, but also copies the stringified result (or the exception
+    // text) into pszOut so callers can echo it to the invoking client.
+    bool RunStringResult(const char *pszCode, char *pszOut, int nOutLen);
 
     JSValue CallHookRaw(const char *pszHookName, int argc = 0, JSValueConst *argv = nullptr);
     void CallHookVoid(const char *pszHookName, int argc = 0, JSValueConst *argv = nullptr);

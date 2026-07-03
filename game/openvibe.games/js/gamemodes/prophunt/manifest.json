@@ -1,0 +1,11 @@
+{
+  "id": "prophunt",
+  "name": "OpenVibe Prop Hunt",
+  "base": "base",
+  "category": "pvp",
+  "entry": { "shared": "shared.js", "server": "server.js", "client": "client.js" },
+  "settings": [
+    { "name": "ov_ph_round_duration", "text": "Round duration (s)", "type": "Numeric", "default": 180 },
+    { "name": "ov_ph_hunter_lock", "text": "Hunter lock time (s)", "type": "Numeric", "default": 20 }
+  ]
+}
