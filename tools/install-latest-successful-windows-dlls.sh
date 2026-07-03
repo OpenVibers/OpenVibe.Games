@@ -88,7 +88,13 @@ mkdir -p "$BIN" "$BACKUP"
 cp -f "$CLIENT" "$BIN/client.dll"
 cp -f "$SERVER" "$BIN/server.dll"
 
-say "installed artifact DLLs into $BIN"
+# hl2_win64.exe loads game DLLs from bin/x64/ — keep both locations in sync
+# (bin/ serves the legacy 32-bit hl2.exe path).
+mkdir -p "$BIN/x64"
+cp -f "$CLIENT" "$BIN/x64/client.dll"
+cp -f "$SERVER" "$BIN/x64/server.dll"
+
+say "installed artifact DLLs into $BIN and $BIN/x64"
 say "old DLL backup, if any: $BACKUP"
 
 if [[ -x tools/verify-openvibe-dll-content.sh ]]; then
