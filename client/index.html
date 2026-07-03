@@ -601,6 +601,19 @@
       font-size: var(--console-font);
     }
     .console-input:focus { outline: none; border-color: var(--accent); }
+    .console-input-wrap { position: relative; }
+    .console-suggest {
+      position: absolute; bottom: 100%; left: 24px; right: 70px; margin-bottom: 4px;
+      background: var(--bg-elev, #101826); border: 1px solid var(--border, #24324a);
+      border-radius: 6px; max-height: 220px; overflow-y: auto; z-index: 40;
+      font-family: var(--mono, monospace); font-size: var(--console-font, 13px);
+      box-shadow: 0 -4px 18px rgba(0,0,0,0.45);
+    }
+    .console-suggest .sugg {
+      padding: 4px 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px;
+    }
+    .console-suggest .sugg .hint { opacity: 0.55; font-size: 0.85em; }
+    .console-suggest .sugg.sel, .console-suggest .sugg:hover { background: rgba(80,140,255,0.18); }
     .console-select {
       background: var(--bg-card);
       border: 1px solid var(--border);
@@ -1041,11 +1054,14 @@
           <button class="btn-console" onclick="OVApp.consoleClear()">Clear</button>
         </div>
         <div id="console-log" class="console-log" aria-live="polite"></div>
-        <div class="console-input-row">
-          <span class="console-prompt">›</span>
-          <input id="console-input" class="console-input" type="text" spellcheck="false" autocomplete="off"
-                 placeholder="JS code — or ]engine_command — or npm install <pkg>" />
-          <button class="btn-console" onclick="OVApp.consoleSubmit()">Run</button>
+        <div class="console-input-wrap">
+          <div id="console-suggest" class="console-suggest" hidden></div>
+          <div class="console-input-row">
+            <span class="console-prompt">›</span>
+            <input id="console-input" class="console-input" type="text" spellcheck="false" autocomplete="off"
+                   placeholder="JS code — or ]engine_command — or npm install <pkg> — Tab completes" />
+            <button class="btn-console" onclick="OVApp.consoleSubmit()">Run</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1482,22 +1498,175 @@
       input.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter') {
           ev.preventDefault();
+          if (_sugg.open && _sugg.sel >= 0) { suggApply(); return; }
+          suggHide();
           consoleSubmit();
+        } else if (ev.key === 'Tab') {
+          ev.preventDefault();
+          if (_sugg.open) suggApply();
+          else suggUpdate(true);
+        } else if (ev.key === 'Escape') {
+          if (_sugg.open) { ev.preventDefault(); suggHide(); }
         } else if (ev.key === 'ArrowUp') {
           ev.preventDefault();
+          if (_sugg.open) { suggMove(-1); return; }
           if (_con.hIdx > 0) {
             _con.hIdx -= 1;
             input.value = _con.history[_con.hIdx] || '';
           }
         } else if (ev.key === 'ArrowDown') {
           ev.preventDefault();
+          if (_sugg.open) { suggMove(1); return; }
           if (_con.hIdx < _con.history.length) {
             _con.hIdx += 1;
             input.value = _con.history[_con.hIdx] || '';
           }
         }
       });
+      input.addEventListener('input', function () { suggUpdate(false); });
+      input.addEventListener('blur', function () { setTimeout(suggHide, 150); });
+      suggPrefetch();
     }
+  }
+
+  // ── Console autocomplete ────────────────────────────────────────────────
+  // Engine commands + convars (curated), live map list (/maps) and script
+  // list (/scripts) from the server runtime, ov_join modes, JS globals.
+  var ENGINE_COMMANDS = [
+    ['map', 'load a map (dedicated-style)'], ['changelevel', 'switch map, keep players'],
+    ['connect', 'join server ip:port'], ['disconnect', 'leave server'], ['retry', 'reconnect last server'],
+    ['status', 'server/player status'], ['ping', 'show latency'], ['kill', 'suicide'], ['explode', 'explode'],
+    ['noclip', 'toggle fly/clip (sv_cheats 1)'], ['sv_cheats', '0/1 enable cheats'], ['god', 'godmode (cheat)'],
+    ['echo', 'print text'], ['say', 'chat message'], ['name', 'set player name'],
+    ['bind', 'bind <key> <cmd>'], ['unbind', 'unbind <key>'], ['fov_desired', 'field of view'],
+    ['sensitivity', 'mouse sensitivity'], ['volume', 'master volume 0-1'], ['snd_musicvolume', 'music volume'],
+    ['net_graph', '0-3 net debug HUD'], ['cl_showfps', '0-2 fps meter'], ['quit', 'exit game'],
+    ['ov_join', 'join an OpenVibe mode'], ['ov_menu', 'open the OpenVibe menu'], ['ov_console', 'toggle this console'],
+    ['ov_menu_console', 'console route'], ['ov_menu_options', 'options route'], ['ov_menu_close', 'close menu'],
+    ['ov_js_status', 'server JS runtime status'], ['ov_js_reload', 'reload server JS'],
+    ['ov_js_fire', 'fire a JS hook'], ['ov_js_cmd', 'run a JS chat/console command'],
+    ['ov_npm', 'npm install/ls in js/'], ['js_run', 'eval JS on the server'], ['js_run_cl', 'eval JS on this client'],
+    ['js_openscript', 'run js/<path> on the server'], ['js_openscript_cl', 'run js/<path> on this client'],
+    ['ov_client_js_status', 'client JS bridge status'], ['ov_client_js_reconnect', 'reconnect client JS bridge'],
+    ['ov_prophunt_disguise', 'disguise as prop'], ['ov_fortwars_spawn', 'spawn build prop']
+  ];
+  var JS_GLOBALS = ['hook.Add(', 'hook.Run(', 'hook.Remove(', 'net.Start(', 'net.Receive(', 'net.Broadcast()',
+    'net.SendToServer()', 'ents.Create(', 'ents.GetAll()', 'ents.FindByClass(', 'player.GetAll()',
+    'player.GetByUserID(', 'team.GetAllTeams()', 'timer.Simple(', 'timer.Create(', 'GAMEMODE', 'LocalPlayer()',
+    'util.AddNetworkString(', 'scripted_ents.Register(', 'concommand.Add(', 'include(', 'AddCSJSFile(',
+    'require(', 'OV.log(', 'OV.getMode()', 'OVLoader.openScript(', 'RunConsoleCommand('];
+  var OV_MODES = ['hub', 'prophunt', 'deathrun', 'fortwars', 'traitortown', 'sandbox'];
+  var _sugg = { open: false, sel: -1, items: [], maps: null, scripts: null };
+
+  function suggPrefetch() {
+    fetch(RT.server + '/maps').then(function (r) { return r.json(); })
+      .then(function (res) { _sugg.maps = res.maps || []; }).catch(function () { _sugg.maps = []; });
+    fetch(RT.server + '/scripts').then(function (r) { return r.json(); })
+      .then(function (res) { _sugg.scripts = res.scripts || []; }).catch(function () { _sugg.scripts = []; });
+  }
+
+  function suggCandidates(line, realm) {
+    var isEngine = realm === 'engine' || line.charAt(0) === ']';
+    var text = line.charAt(0) === ']' ? line.slice(1) : line;
+    var parts = text.split(/\s+/);
+    var word = parts[parts.length - 1];
+    var head = parts[0] ? parts[0].toLowerCase() : '';
+    var out = [];
+
+    if (isEngine && parts.length >= 2) {
+      // Argument completion for known commands.
+      var pool = null, hint = '';
+      if ((head === 'map' || head === 'changelevel') && _sugg.maps) { pool = _sugg.maps; hint = 'map'; }
+      else if (head === 'ov_join') { pool = OV_MODES; hint = 'mode'; }
+      else if ((head === 'js_openscript' || head === 'js_openscript_cl') && _sugg.scripts) { pool = _sugg.scripts; hint = 'js/'; }
+      if (pool) {
+        pool.forEach(function (m) {
+          if (m.toLowerCase().indexOf(word.toLowerCase()) === 0 && out.length < 10) {
+            out.push({ text: m, hint: hint, replaceWord: true });
+          }
+        });
+      }
+      return out;
+    }
+
+    if (isEngine) {
+      ENGINE_COMMANDS.forEach(function (c) {
+        if (c[0].indexOf(word.toLowerCase()) === 0 && word.length > 0 && out.length < 10) {
+          out.push({ text: c[0], hint: c[1], replaceWord: true });
+        }
+      });
+      return out;
+    }
+
+    // JS realms: complete known globals; npm lines: subcommands.
+    if (/^npm\s+\S*$/.test(text)) {
+      ['install', 'uninstall', 'update', 'ls'].forEach(function (s) {
+        if (s.indexOf(word.toLowerCase()) === 0) out.push({ text: s, hint: 'npm', replaceWord: true });
+      });
+      return out;
+    }
+    if (word.length > 1) {
+      JS_GLOBALS.forEach(function (g) {
+        if (g.toLowerCase().indexOf(word.toLowerCase()) === 0 && out.length < 10) {
+          out.push({ text: g, hint: 'js', replaceWord: true });
+        }
+      });
+    }
+    return out;
+  }
+
+  function suggUpdate(force) {
+    var input = document.getElementById('console-input');
+    var box = document.getElementById('console-suggest');
+    if (!input || !box) return;
+    var line = input.value;
+    if (!line.trim() && !force) { suggHide(); return; }
+    var realm = (document.getElementById('console-realm') || {}).value || 'server';
+    var items = suggCandidates(line, realm);
+    if (!items.length) { suggHide(); return; }
+    _sugg.items = items;
+    _sugg.sel = 0;
+    _sugg.open = true;
+    box.innerHTML = '';
+    items.forEach(function (it, i) {
+      var d = document.createElement('div');
+      d.className = 'sugg' + (i === 0 ? ' sel' : '');
+      var t = document.createElement('span'); t.textContent = it.text;
+      var h = document.createElement('span'); h.className = 'hint'; h.textContent = it.hint || '';
+      d.appendChild(t); d.appendChild(h);
+      d.addEventListener('mousedown', function (ev) { ev.preventDefault(); _sugg.sel = i; suggApply(); });
+      box.appendChild(d);
+    });
+    box.hidden = false;
+  }
+
+  function suggMove(dir) {
+    if (!_sugg.open || !_sugg.items.length) return;
+    _sugg.sel = (_sugg.sel + dir + _sugg.items.length) % _sugg.items.length;
+    var box = document.getElementById('console-suggest');
+    if (!box) return;
+    Array.prototype.forEach.call(box.children, function (el, i) {
+      el.classList.toggle('sel', i === _sugg.sel);
+      if (i === _sugg.sel) el.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  function suggApply() {
+    var input = document.getElementById('console-input');
+    if (!input || !_sugg.open || _sugg.sel < 0) return;
+    var it = _sugg.items[_sugg.sel];
+    var line = input.value;
+    var m = line.match(/^(.*?)(\S*)$/);
+    input.value = (m ? m[1] : '') + it.text + (it.hint === 'js' ? '' : ' ');
+    suggHide();
+    input.focus();
+  }
+
+  function suggHide() {
+    _sugg.open = false;
+    _sugg.sel = -1;
+    var box = document.getElementById('console-suggest');
+    if (box) box.hidden = true;
   }
 
   function conEval(realm, code) {
@@ -1536,9 +1705,9 @@
   function conEngine(cmd) {
     if (!cmd) return;
     if (embedded && shell === 'source') {
-      // In-game: allowlisted engine commands via the openvibe:// bridge.
+      // In-game: full console via the openvibe:// bridge — the command echoes
+      // and its output streams back through the engine console tap.
       location.href = 'openvibe://cmd?c=' + encodeURIComponent(cmd);
-      conAppend('engine', 'sent: ' + cmd, 'ok');
       return;
     }
     // Electron / browser: forward through the server runtime control server.
@@ -1547,7 +1716,13 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command: cmd })
     }).then(function (r) { return r.json(); }).then(function (res) {
-      conAppend('engine', typeof res === 'string' ? res : JSON.stringify(res), 'ok');
+      if (res && res.ok === false) {
+        conAppend('engine', res.error || 'command not handled', 'err');
+      } else if (res && res.handled === true) {
+        conAppend('engine', 'handled by JS command registry', 'ok');
+      } else {
+        conAppend('engine', 'forwarded to game', 'ok');
+      }
     }).catch(function (e) {
       conAppend('engine', 'exec failed (' + RT.server + '): ' + e.message, 'err');
     });

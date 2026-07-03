@@ -278,6 +278,11 @@ function onGameMessage(msg) {
     case 'think':
       if (ctx && ctx.hook) { try { ctx.hook.Run('Think'); } catch {} }
       break;
+    case 'conline':
+      // Engine console line mirrored from the game client's spew tap —
+      // republish on the SSE log stream so every GUI console host sees it.
+      if (msg.line) pushLog('engine', String(msg.line));
+      break;
     case 'eval':
       // js_run / js_run_cl from the game console.
       if (ctx && ctx.OVLoader && typeof ctx.OVLoader.runString === 'function') {
@@ -409,6 +414,10 @@ const ctrl = http.createServer(async (req, res) => {
     } catch (e) { return json(res, 200, { ok: false, error: e.message }); }
     if (!handled) {
       // Forward to the engine (the DLL applies its ov_*/say allowlist).
+      if (!sock || sock.destroyed) {
+        pushLog('warn', `engine command dropped (game not connected to this runtime): ${line}`);
+        return json(res, 200, { ok: false, handled: false, error: 'game not connected to the ' + REALM + ' runtime — in-game use the console directly; the engine realm needs ov_js_backend node for launcher-side forwarding' });
+      }
       sendToGame({ t: 'concmd', cmd: line });
       handled = 'forwarded';
     }
@@ -418,6 +427,33 @@ const ctrl = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const args = Array.isArray(body.args) ? body.args.map(String) : [];
     return runNpm(args, (result) => json(res, result.ok ? 200 : 400, result));
+  }
+  if (req.method === 'GET' && url.pathname === '/maps') {
+    let maps = [];
+    try {
+      maps = fs.readdirSync(path.join(MOD, 'maps'))
+        .filter((f) => f.endsWith('.bsp'))
+        .map((f) => f.replace(/\.bsp$/, ''))
+        .sort();
+    } catch { /* no maps dir */ }
+    return json(res, 200, { ok: true, maps });
+  }
+  if (req.method === 'GET' && url.pathname === '/scripts') {
+    // js/-relative script paths for js_openscript autocomplete.
+    const out = [];
+    const walk = (dir, rel, depth) => {
+      if (depth > 3) return;
+      let entries = [];
+      try { entries = fs.readdirSync(path.join(JS, dir), { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+        const r = rel ? rel + '/' + e.name : e.name;
+        if (e.isDirectory()) walk(dir + '/' + e.name, r, depth + 1);
+        else if (e.name.endsWith('.js')) out.push(r);
+      }
+    };
+    walk('.', '', 0);
+    return json(res, 200, { ok: true, scripts: out.sort().slice(0, 500) });
   }
   if (req.method === 'POST' && url.pathname === '/openscript') {
     const body = await readBody(req);

@@ -32,7 +32,7 @@ echo "  Proton: $GE_PROTON"
 echo "  HL2:    $HL2_EXE"
 [ -n "$CONNECT_ARGS" ] && echo "  Connect: $CONNECT_ARGS"
 
-if [ -f "$CLIENT_DLL" ] && command -v strings >/dev/null 2>&1 && strings -a "$CLIENT_DLL" | grep -Fq "ov_join"; then
+if [ -f "$CLIENT_DLL" ] && command -v strings >/dev/null 2>&1 && [ "$(strings -a "$CLIENT_DLL" | grep -Fc "ov_join" || true)" -gt 0 ]; then
   echo "  Client DLL: patched OpenVibe client.dll detected"
 elif [ -f "$CLIENT_DLL" ]; then
   echo "  WARNING: client.dll exists, but ov_join string was not found. It may be stock/old." >&2

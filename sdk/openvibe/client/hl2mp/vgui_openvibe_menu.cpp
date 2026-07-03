@@ -84,9 +84,25 @@ static bool OV_IsSafeMode( const char *pszMode )
 		  !Q_stricmp( pszMode, "traitortown" ) );
 }
 
-// openvibe://cmd allowlist: the first token decides. ov_* commands (which
-// includes ov_npm and all OpenVibe dev commands) plus the GModJS script
-// commands and a few stock engine commands the GUI console needs.
+// The OpenVibe HTML console replaces the stock Source console outright. When
+// the panel is showing OUR OWN local UI (127.0.0.1/localhost origins) the
+// bridge executes any console line, exactly like the real console. Remote
+// origins (openvibe.games) stay restricted to the allowlist below.
+static ConVar ov_console_unrestricted(
+	"ov_console_unrestricted",
+	"1",
+	FCVAR_CLIENTDLL | FCVAR_ARCHIVE,
+	"Allow the local OpenVibe HTML console to run any engine command (remote pages stay allowlisted)." );
+
+static bool OV_IsLocalUIOrigin( const char *pszUrl )
+{
+	return OV_URLStartsWith( pszUrl, "http://127.0.0.1:" ) ||
+		OV_URLStartsWith( pszUrl, "http://localhost:" );
+}
+
+// openvibe://cmd allowlist for NON-local origins: the first token decides.
+// ov_* commands (which includes ov_npm and all OpenVibe dev commands) plus the
+// GModJS script commands and a few stock engine commands the GUI console needs.
 static bool OV_IsAllowedBridgeCommand( const char *pszCommand )
 {
 	if ( !pszCommand || !pszCommand[0] )
@@ -285,6 +301,7 @@ public:
 	void Open( const char *pszURL = NULL )
 	{
 		const char *pszTarget = ( pszURL && pszURL[0] ) ? pszURL : ov_menu_url.GetString();
+		Q_strncpy( m_szCurrentURL, pszTarget, sizeof( m_szCurrentURL ) );
 		MakeFullScreen();
 		SetVisible( true );
 		MoveToFront();
@@ -345,6 +362,9 @@ public:
 			return false;
 		}
 
+		// Track the page origin: the bridge grants full console powers only to
+		// the local UI (see openvibe://cmd handling).
+		Q_strncpy( m_szCurrentURL, pszURL, sizeof( m_szCurrentURL ) );
 		return true;
 	}
 
@@ -408,17 +428,30 @@ private:
 
 		if ( OV_URLStartsWith( pszURL, "openvibe://cmd" ) )
 		{
-			// GUI console -> engine command, allowlisted by first token.
+			// GUI console -> engine command. This is the user's own console
+			// replacement: pages served from the local UI run any command line
+			// (like the stock console, incl. map/changelevel/cheats/binds);
+			// remote pages stay restricted to the first-token allowlist.
 			char szCmd[1024];
 			if ( !OV_ReadQueryValue( pszURL, "c", szCmd, sizeof( szCmd ) ) )
 				return;
 
-			if ( !OV_IsAllowedBridgeCommand( szCmd ) )
+			// Newlines never pass (one console line per bridge action).
+			for ( char *p = szCmd; *p; ++p )
 			{
-				Warning( "[OV HTML] blocked bridge command: %s\n", szCmd );
+				if ( *p == '\n' || *p == '\r' )
+					*p = ' ';
+			}
+
+			const bool bLocalConsole = ov_console_unrestricted.GetBool() && OV_IsLocalUIOrigin( m_szCurrentURL );
+			if ( !bLocalConsole && !OV_IsAllowedBridgeCommand( szCmd ) )
+			{
+				Warning( "[OV HTML] blocked bridge command from non-local page: %s\n", szCmd );
 				return;
 			}
 
+			// Echo like the stock console so the command shows in the tap.
+			Msg( "] %s\n", szCmd );
 			engine->ClientCmd_Unrestricted( VarArgs( "%s\n", szCmd ) );
 			return;
 		}
@@ -495,6 +528,7 @@ private:
 	}
 
 	HTML *m_pHTML;
+	char m_szCurrentURL[512] = {};
 };
 
 static COpenVibeHTMLPanel *s_pOpenVibeMenu = NULL;
@@ -614,6 +648,46 @@ static void OV_ConsoleTapThink()
 	s_bInConsoleTap = true;
 	s_pOpenVibeMenu->RunJS( szScript );
 	s_bInConsoleTap = false;
+}
+
+// Second consumer of the console ring: the client JS bridge drains lines and
+// forwards them to the Node runtime, whose SSE log stream feeds the GUI
+// console in EVERY host (launcher included). Returns false when caught up.
+bool OpenVibe_DrainConsoleLine( int64 *pnCursor, char *pszOut, int nOutLen )
+{
+	if ( !pnCursor || !pszOut || nOutLen <= 0 )
+		return false;
+
+	if ( *pnCursor >= s_nRingWritten )
+		return false;
+
+	if ( s_nRingWritten - *pnCursor > OV_CONSOLE_RING_LINES )
+		*pnCursor = s_nRingWritten - OV_CONSOLE_RING_LINES;
+
+	Q_strncpy( pszOut, s_ConsoleRing[*pnCursor % OV_CONSOLE_RING_LINES], nOutLen );
+	++( *pnCursor );
+	return true;
+}
+
+// The OpenVibe HTML menu fully replaces the stock GameUI menu: whenever we are
+// not in a level and the panel got hidden (e.g. the engine popped a
+// "Disconnected" dialog over the stock menu), bring ours back.
+void OpenVibe_MenuKeepAlive()
+{
+	if ( !ov_menu_auto_open.GetBool() )
+		return;
+
+	static float s_flNextCheck = 0.0f;
+	const float flNow = Plat_FloatTime();
+	if ( flNow < s_flNextCheck )
+		return;
+	s_flNextCheck = flNow + 2.0f;
+
+	if ( engine->IsInGame() )
+		return;
+
+	if ( !s_pOpenVibeMenu || !s_pOpenVibeMenu->IsVisible() )
+		OV_GetHTMLMenu()->Open();
 }
 // OPENVIBE_CONSOLE_SPEW_TAP_END
 

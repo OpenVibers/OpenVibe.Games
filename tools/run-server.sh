@@ -69,6 +69,13 @@ server_cmd=(
   -steamport "$STEAMPORT"
 )
 
+# Local dev shards run without VAC (a VAC-secured server rejects clients that
+# were ever started -insecure, and dev iterating on DLLs trips VAC anyway).
+# Set OPENVIBE_SRCDS_SECURE=1 for a secured public shard.
+if [[ "${OPENVIBE_SRCDS_SECURE:-0}" != "1" ]]; then
+  server_cmd+=(-insecure)
+fi
+
 if [[ "${OPENVIBE_SRCDS_MASTER:-0}" != "1" ]]; then
   server_cmd+=(-nomaster)
 fi
@@ -77,7 +84,10 @@ server_cmd+=(
   +clientport "$CLIENTPORT"
   +maxplayers "$MAXPLAYERS"
   +tv_port "$TVPORT"
-  +sv_master_share_game_socket 1
+  # share_game_socket=1 hands unconnected packets (A2S queries + connect
+  # challenges) to the Steam GS layer, which stays dead for anonymous local
+  # shards — clients then fail with "Connection failed after 4 retries".
+  +sv_master_share_game_socket 0
   +exec "$CFG"
 )
 

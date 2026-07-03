@@ -171,8 +171,41 @@ void OpenVibeJS_Client_Shutdown()
     g_bClientBridgeStarted = false;
 }
 
+// Implemented in vgui_openvibe_menu.cpp (console spew ring + menu override).
+extern bool OpenVibe_DrainConsoleLine( int64 *pnCursor, char *pszOut, int nOutLen );
+extern void OpenVibe_MenuKeepAlive();
+
+// Escape a console line for embedding in a JSON string value.
+static void OVClient_JSONEscape( char *pszOut, int nOutLen, const char *pszIn )
+{
+    int w = 0;
+    for ( const char *p = pszIn; *p && w < nOutLen - 2; ++p )
+    {
+        unsigned char c = (unsigned char)*p;
+        if ( c == '"' || c == '\\' )
+        {
+            if ( w >= nOutLen - 3 ) break;
+            pszOut[w++] = '\\';
+            pszOut[w++] = c;
+        }
+        else if ( c < 0x20 )
+        {
+            pszOut[w++] = ' ';
+        }
+        else
+        {
+            pszOut[w++] = c;
+        }
+    }
+    pszOut[w] = '\0';
+}
+
 void OpenVibeJS_Client_Think()
 {
+    // Keep the OpenVibe HTML menu covering the stock GameUI whenever we are
+    // out of a level (runs regardless of runtime connectivity).
+    OpenVibe_MenuKeepAlive();
+
     g_ClientIPC.Poll();
 
     if ( !g_ClientIPC.IsConnected() )
@@ -186,6 +219,21 @@ void OpenVibeJS_Client_Think()
     {
         s_flNextThink = gpGlobals->curtime + 0.1f;
         g_ClientIPC.SendLine( "{\"t\":\"think\"}" );
+    }
+
+    // Mirror engine console lines into the runtime's log stream so the GUI
+    // console shows engine output in every host (launcher included).
+    static int64 s_nConsoleCursor = 0;
+    char szLine[480];
+    int nSent = 0;
+    while ( nSent < 10 && OpenVibe_DrainConsoleLine( &s_nConsoleCursor, szLine, sizeof( szLine ) ) )
+    {
+        char szEsc[960];
+        OVClient_JSONEscape( szEsc, sizeof( szEsc ), szLine );
+        char szMsg[1100];
+        Q_snprintf( szMsg, sizeof( szMsg ), "{\"t\":\"conline\",\"line\":\"%s\"}", szEsc );
+        g_ClientIPC.SendLine( szMsg );
+        ++nSent;
     }
 }
 
@@ -273,14 +321,18 @@ static void OV_JSOpenScriptCl_f( const CCommand &args )
 static ConCommand js_openscript_cl( "js_openscript_cl", OV_JSOpenScriptCl_f,
     "Run a script file in the client realm: js_openscript_cl <path relative to js/>. Gated by sv_allowcsjs.", FCVAR_CLIENTDLL );
 
-// Drives the bridge: hook OVNet, connect on level enter, poll each frame.
+// Drives the bridge: hook OVNet, connect at boot AND on level enter, poll
+// each frame. Connecting at boot means the GUI console's client realm works
+// from the main menu, not just in-game.
 class COpenVibeClientJSSystem : public CAutoGameSystemPerFrame
 {
 public:
     COpenVibeClientJSSystem() : CAutoGameSystemPerFrame( "COpenVibeClientJSSystem" ) {}
     bool Init() OVERRIDE { usermessages->HookMessage( "OVNet", __MsgFunc_OVNet ); return true; }
+    void PostInit() OVERRIDE { OpenVibeJS_Client_Init(); }
     void LevelInitPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); OpenVibeJS_Client_Init(); }
-    void LevelShutdownPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); }
+    // Reconnect (rather than just close) so the bridge stays live at the menu.
+    void LevelShutdownPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); OpenVibeJS_Client_Init(); }
     void Update( float ) OVERRIDE { OpenVibeJS_Client_Think(); }
 };
 static COpenVibeClientJSSystem g_OpenVibeClientJSSystem;

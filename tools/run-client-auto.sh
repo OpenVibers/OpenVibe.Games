@@ -29,7 +29,9 @@ case "$MODE" in
       echo "Build Windows DLLs first, or use OPENVIBE_CLIENT_MODE=proton-fallback to launch without client DLL." >&2
       exit 1
     fi
-    exec "$ROOT/tools/run-client-proton.sh" "${@:-}"
+    # hl2_win64.exe is the engine our x64 DLLs load into (bin/x64); the 32-bit
+    # hl2.exe silently ignores them and boots the stock client.
+    exec "$ROOT/tools/run-client-proton-x64.sh" "${@:-}"
     ;;
   proton-fallback)
     echo "WARNING: Proton fallback may launch, but without game/openvibe.games/bin/client.dll the in-game ov_* client commands/menu will not exist." >&2

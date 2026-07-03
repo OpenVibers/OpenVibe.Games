@@ -56,7 +56,7 @@ echo "  Proton: $GE_PROTON"
 echo "  HL2:    $HL2_EXE"
 [ -n "$CONNECT_ARGS" ] && echo "  Connect: $CONNECT_ARGS"
 
-if [ -f "$CLIENT_DLL" ] && command -v strings >/dev/null 2>&1 && strings -a "$CLIENT_DLL" | grep -Fq "ov_join"; then
+if [ -f "$CLIENT_DLL" ] && command -v strings >/dev/null 2>&1 && [ "$(strings -a "$CLIENT_DLL" | grep -Fc "ov_join" || true)" -gt 0 ]; then
   echo "  Client DLL: patched OpenVibe client.dll detected"
 elif [ -f "$CLIENT_DLL" ]; then
   echo "  WARNING: client.dll exists, but ov_join string was not found. It may be stock/old." >&2
@@ -91,13 +91,18 @@ fi
 # Single canonical log via -condebug (writes game/openvibe.games/console.log).
 # Do NOT also set +con_logfile: it hijacks the console log mid-startup, so the
 # two split and neither is complete. -condebug alone keeps one full log.
+# NOTE: no -insecure here — an insecure client is rejected by VAC-secured
+# servers with "You are in insecure mode. You must restart before you can
+# connect to secure servers." Local dev servers run -insecure server-side
+# instead (see run-server.sh).
 exec "$GE_PROTON/proton" waitforexitandrun \
   "$HL2_EXE" \
   -game "$GAME_DIR" \
   $CONSOLE_ARGS -dev -condebug -novid -sw -w 1280 -h 720 \
   -port 27115 -clientport 27105 \
-  -nojoy -insecure -nohltv \
+  -nojoy -nohltv \
   +developer 1 \
+  +net_usesocketsforloopback 1 \
   +exec openvibe_proton_stability.cfg \
   +exec openvibe_proton_client.cfg \
   +exec openvibe_client_default.cfg \
