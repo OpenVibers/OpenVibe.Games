@@ -10,15 +10,22 @@ fi
 
 "$ROOT/tools/dev-db-up.sh"
 
-if tmux has-session -t ov-api 2>/dev/null; then
-  tmux kill-session -t ov-api
-fi
-if tmux has-session -t ov-client-ui 2>/dev/null; then
-  tmux kill-session -t ov-client-ui
-fi
+for session in ov-api ov-client-ui ov-runtime-server ov-runtime-client; do
+  if tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session"
+  fi
+done
 
 tmux new-session -d -s ov-api "$ROOT/tools/dev-api.sh"
 tmux new-session -d -s ov-client-ui "$ROOT/tools/run-client-ui.sh"
+
+# GModJS Node runtimes: back the GUI console (SSE logs + eval + npm on
+# 41997/41996) and serve as the game bridge when ov_js_backend is "node".
+OV_RUNTIME_MODE="${OPENVIBE_RUNTIME_MODE:-hub}"
+tmux new-session -d -s ov-runtime-server \
+  "node '$ROOT/engine/openvibe-js-runtime/ov-runtime.js' --realm server --mode $OV_RUNTIME_MODE --root '$ROOT'"
+tmux new-session -d -s ov-runtime-client \
+  "node '$ROOT/engine/openvibe-js-runtime/ov-runtime.js' --realm client --mode $OV_RUNTIME_MODE --root '$ROOT'"
 
 echo "[openvibe] waiting for api"
 for _ in {1..60}; do
