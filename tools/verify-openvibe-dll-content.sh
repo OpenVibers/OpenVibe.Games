@@ -23,7 +23,7 @@ check_file() {
 
   local missing=0
   for needle in "$@"; do
-    if strings -a "$file" | grep -Fq -- "$needle"; then
+    if n="$(strings -a "$file" | grep -Fc -- "$needle" || true)"; [[ "${n:-0}" -gt 0 ]]; then
       echo "[ok] contains string: $needle"
     else
       echo "[miss] does not contain string: $needle"

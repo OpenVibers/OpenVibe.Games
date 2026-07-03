@@ -55,7 +55,7 @@ fi
 
 has_string() {
   local file="$1" needle="$2"
-  strings -a "$file" | grep -Fq -- "$needle"
+  n="$(strings -a "$file" | grep -Fc -- "$needle" || true)"; [[ "${n:-0}" -gt 0 ]]
 }
 verify_file() {
   local label="$1" file="$2"; shift 2

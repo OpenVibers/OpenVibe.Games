@@ -7,6 +7,8 @@ MOD="$ROOT/game/openvibe.games"
 sessions=(
   ov-api
   ov-client-ui
+  ov-runtime-server
+  ov-runtime-client
   ov-hub
   ov-prophunt
   ov-deathrun
