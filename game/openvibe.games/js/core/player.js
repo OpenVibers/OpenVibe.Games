@@ -98,9 +98,53 @@
   P.ConCommand = function (cmd) { nat(this, "runCommand", [String(cmd)]); };
   P.SendNet = function (name, fn) { /* convenience: net.Start(name); fn(); net.Send(this) */ };
 
-  // ---- weapons (native support pending; degrade gracefully) ----
-  P.Give = function (cls) { nat(this, "give", [String(cls)]); return globalThis.NULL; };
-  P.StripWeapons = function () { nat(this, "stripWeapons"); };
+  // ---- weapons ----
+  // Give a weapon by class: creates the scripted-weapon instance, backs it with
+  // a real engine weapon via the native (if present), equips + tracks it.
+  P.Give = function (cls) {
+    cls = String(cls);
+    this._r.weapons = this._r.weapons || [];
+    // Already carrying it? GMod refills ammo instead of duplicating.
+    for (var i = 0; i < this._r.weapons.length; i++) {
+      if (this._r.weapons[i].GetClass() === cls) { nat(this, "give", [cls]); return this._r.weapons[i]; }
+    }
+    var wep = globalThis.weapons ? weapons.Create(cls) : globalThis.NULL;
+    nat(this, "give", [cls]); // engine-side create + equip (real body / clip sync)
+    if (wep && wep !== globalThis.NULL) {
+      wep.SetOwner(this);
+      this._r.weapons.push(wep);
+      if (!this._r.activeWeapon) this._r.activeWeapon = wep;
+      if (typeof wep.Equip === "function") { try { wep.Equip(this); } catch (e) {} }
+      if (globalThis.hook) { try { hook.Run("WeaponEquip", wep, this); } catch (e) {} }
+    }
+    return wep;
+  };
+  P.StripWeapons = function () {
+    (this._r.weapons || []).forEach(function (w) { if (w.OnRemove) { try { w.OnRemove(); } catch (e) {} } });
+    this._r.weapons = [];
+    this._r.activeWeapon = null;
+    nat(this, "stripWeapons");
+  };
+  P.StripWeapon = function (cls) {
+    cls = String(cls);
+    this._r.weapons = (this._r.weapons || []).filter(function (w) { return w.GetClass() !== cls; });
+    if (this._r.activeWeapon && this._r.activeWeapon.GetClass() === cls) this._r.activeWeapon = this._r.weapons[0] || null;
+    nat(this, "stripWeapon", [cls]);
+  };
+  P.GetWeapons = function () { return (this._r.weapons || []).slice(); };
+  P.HasWeapon = function (cls) { cls = String(cls); return (this._r.weapons || []).some(function (w) { return w.GetClass() === cls; }); };
+  P.GetWeapon = function (cls) { cls = String(cls); return (this._r.weapons || []).filter(function (w) { return w.GetClass() === cls; })[0] || globalThis.NULL; };
+  P.GetActiveWeapon = function () {
+    var n = nat(this, "getActiveWeapon");
+    if (n && n.entIndex != null && globalThis.ents) { var w = ents.GetByIndex(n.entIndex); if (w) return w; }
+    return this._r.activeWeapon || globalThis.NULL;
+  };
+  P.SelectWeapon = function (cls) {
+    cls = String(cls); var w = this.GetWeapon(cls);
+    if (w && w !== globalThis.NULL) { this._r.activeWeapon = w; nat(this, "selectWeapon", [cls]); }
+  };
+  P.GiveAmmo = function (amount, type) { nat(this, "giveAmmo", [amount | 0, String(type)]); return amount | 0; };
+  P.ViewPunch = function (ang) { nat(this, "viewPunch", [ang.p || 0, ang.y || 0, ang.r || 0]); };
 
   // ---- legacy lowercase API (existing gamemodes) ----
   P.userId = P.UserID;

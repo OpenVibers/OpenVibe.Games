@@ -2354,8 +2354,57 @@
     // { round, team, timer, health, gamemode }. Poll of /state is fallback.
     onHudState: function (obj) {
       applyHudState(obj);
+    },
+
+    // Generic renderer for a gamemode's JS-defined HUD (js/core/hud.js).
+    // snap = { visible, layout:[{id,type,anchor,bind,text,...}], values:{} }
+    onHudLayout: function (snap) {
+      renderHudLayout(snap);
     }
   };
+
+  // Renders the declarative HUD the active gamemode built in JS. Elements are
+  // positioned by anchor into a full-screen overlay; no layout is hard-coded.
+  function renderHudLayout(snap) {
+    if (!snap || typeof snap !== 'object') return;
+    var root = document.getElementById('ov-hud-js');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'ov-hud-js';
+      root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:50;font-family:ui-monospace,Consolas,monospace';
+      document.body.appendChild(root);
+    }
+    root.style.display = snap.visible === false ? 'none' : 'block';
+    var vals = snap.values || {};
+    var anchorCss = {
+      'top': 'top:24px;left:50%;transform:translateX(-50%);text-align:center',
+      'top-left': 'top:24px;left:24px', 'top-right': 'top:24px;right:24px;text-align:right',
+      'center': 'top:50%;left:50%;transform:translate(-50%,-50%);text-align:center',
+      'bottom': 'bottom:24px;left:50%;transform:translateX(-50%);text-align:center',
+      'bottom-left': 'bottom:24px;left:24px', 'bottom-right': 'bottom:24px;right:24px;text-align:right'
+    };
+    root.innerHTML = '';
+    (snap.layout || []).forEach(function (el) {
+      var v = el.bind != null ? vals[el.bind] : el.text;
+      if (el.hideWhenEmpty && (v == null || v === '' || v === 0)) return;
+      var node = document.createElement('div');
+      node.style.cssText = 'position:absolute;' + (anchorCss[el.anchor] || anchorCss.top) +
+        ';margin-top:' + (el.y || 0) + 'px;color:' + (el.color || '#e8eef5') +
+        (el.size ? ';font-size:' + el.size + 'px' : '') + ';text-shadow:0 1px 3px rgba(0,0,0,.8);font-weight:600';
+      if (el.type === 'bar') {
+        var pct = Math.max(0, Math.min(100, el.max ? (v / el.max) * 100 : v));
+        node.innerHTML = '<div style="width:180px;height:14px;background:rgba(0,0,0,.5);border-radius:7px;overflow:hidden">' +
+          '<div style="height:100%;width:' + pct + '%;background:' + (el.color || '#39d98a') + '"></div></div>' +
+          '<div style="font-size:12px;margin-top:2px">' + escHtml(String(v == null ? '' : v)) + '</div>';
+      } else if (el.type === 'timer') {
+        var s = Math.max(0, Math.floor(+v || 0));
+        node.textContent = (Math.floor(s / 60)) + ':' + ('0' + (s % 60)).slice(-2);
+      } else {
+        node.textContent = String(v == null ? '' : v);
+      }
+      root.appendChild(node);
+    });
+  }
 
   // Expose the app API. In-game / browser: window.OV is this object and C++
   // calls window.OV.onSteamAuthResult / onConsoleLine / onConvars /

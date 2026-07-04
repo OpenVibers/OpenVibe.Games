@@ -112,6 +112,35 @@
     }
   }
 
+  // ---- scripted weapons (GMod SWEP tree: js/weapons/<class>/) ----
+  function loadWeapons(root) {
+    if (!globalThis.scripted_weapons) return;
+    root = root || "js/weapons";
+    listSorted(root, /./).forEach(function (name) {
+      if (name.charAt(0) === ".") return;
+      var single = root + "/" + name;
+      if (/\.js$/.test(name)) { runWeaponFile(name.replace(/\.js$/, ""), [single]); return; }
+      var files = [];
+      if (OV.fileExists(single + "/shared.js")) files.push(single + "/shared.js");
+      var entry = single + "/" + (isServer ? "init.js" : "cl_init.js");
+      if (OV.fileExists(entry)) files.push(entry);
+      if (files.length) runWeaponFile(name, files);
+    });
+  }
+
+  function runWeaponFile(className, files) {
+    var prevSWEP = globalThis.SWEP;
+    globalThis.SWEP = { Base: "weapon_base", ClassName: className, Primary: {}, Secondary: {} };
+    try {
+      files.forEach(function (f) { execFile(f); });
+      if (globalThis.SWEP && typeof globalThis.SWEP === "object") {
+        scripted_weapons.Register(globalThis.SWEP, className);
+      }
+    } finally {
+      globalThis.SWEP = prevSWEP;
+    }
+  }
+
   // ---- base scripted-entity classes (GMod engine bases) ----
   function registerBaseEntities() {
     if (!globalThis.scripted_ents) return;
@@ -139,6 +168,7 @@
       loadAutorun();
       if (opts.gamemodes !== false) loadGamemodeChain(mode);
       loadEntities();
+      loadWeapons();
       if (globalThis.Addon && Addon.loadAll) Addon.loadAll();
       log("realm load complete (mode=" + mode + ", realm=" + realmDir + ")");
       return true;

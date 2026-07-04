@@ -479,6 +479,106 @@ for (const mode of ["hub", "sandbox", "prophunt", "deathrun", "fortwars", "trait
   }
 }
 
+// ---- scripted weapons (SWEP) framework ----
+{
+  section("weapons / scripted_weapons (SWEP)");
+  const tp = makeTransport();
+  const sv = makeRealm("server", "sandbox", tp);
+  const p = sv.addPlayer(1, "Gunner");
+  const W = sv.ctx;
+
+  ok(typeof W.weapons === "object" && W.weapons.__openvibe, "weapons library present");
+  ok(typeof W.scripted_weapons === "object", "scripted_weapons library present");
+  ok(!!W.scripted_weapons.GetStored("weapon_base"), "weapon_base registered by core");
+
+  // JS weapon definitions loaded from js/weapons/ by the loader.
+  ["weapon_ov_pistol", "weapon_ov_smg", "weapon_ov_shotgun", "weapon_ov_357", "weapon_ov_crowbar", "weapon_ov_stunstick"].forEach((c) => {
+    ok(!!W.scripted_weapons.GetStored(c), `weapon def loaded: ${c}`);
+  });
+  ok(W.scripted_weapons.IsBasedOn("weapon_ov_pistol", "weapon_base"), "pistol inherits weapon_base");
+  ok(W.scripted_weapons.IsBasedOn("weapon_ov_stunstick", "weapon_ov_crowbar"), "stunstick inherits crowbar (Base chain)");
+
+  // Create + inspect a weapon instance.
+  const pistol = W.weapons.Create("weapon_ov_pistol");
+  ok(pistol && pistol.IsWeapon && pistol.IsWeapon(), "weapons.Create returns a Weapon");
+  ok(pistol.GetClass() === "weapon_ov_pistol", "weapon GetClass");
+  ok(pistol.Clip1() === 18, `pistol seeded DefaultClip (clip1=${pistol.Clip1()})`);
+  ok(pistol.GetMaxClip1() === 18, "pistol GetMaxClip1 from Primary.ClipSize");
+
+  // Firing consumes ammo and gates on the fire delay.
+  const before = pistol.Clip1();
+  pistol.PrimaryAttack();
+  ok(pistol.Clip1() === before - 1, `PrimaryAttack consumed 1 round (clip1=${pistol.Clip1()})`);
+  const afterFirst = pistol.Clip1();
+  pistol.PrimaryAttack(); // should be gated by NextPrimaryFire (no time advance)
+  ok(pistol.Clip1() === afterFirst, "second PrimaryAttack gated by fire delay");
+  tp.tick(1.0);
+  pistol.PrimaryAttack();
+  ok(pistol.Clip1() === afterFirst - 1, "PrimaryAttack fires again after delay elapsed");
+
+  // Reload refills to max clip.
+  pistol.SetClip1(2); tp.tick(2.0); pistol.Reload();
+  ok(pistol.Clip1() === 18, `Reload refilled clip (clip1=${pistol.Clip1()})`);
+
+  // Player.Give tracks an inventory and equips.
+  let equipped = null;
+  W.hook.Add("WeaponEquip", "test_equip", (w) => { equipped = w.GetClass(); });
+  const given = p.Give ? null : null; // p is native mock; use the JS Player
+  const jsPly = W.player.GetByUserID ? W.player.GetByUserID(1) : null;
+  ok(!!jsPly, "JS Player object resolvable");
+  const w1 = jsPly.Give("weapon_ov_smg");
+  ok(jsPly.HasWeapon("weapon_ov_smg"), "Player.Give added weapon to inventory");
+  ok(equipped === "weapon_ov_smg", "WeaponEquip hook fired on Give");
+  ok(jsPly.GetActiveWeapon() && jsPly.GetActiveWeapon().GetClass() === "weapon_ov_smg", "first Give set active weapon");
+  jsPly.Give("weapon_ov_shotgun");
+  ok(jsPly.GetWeapons().length === 2, "second Give tracked (2 weapons)");
+  jsPly.Give("weapon_ov_smg"); // duplicate: no new slot
+  ok(jsPly.GetWeapons().length === 2, "duplicate Give does not add a slot");
+  jsPly.StripWeapon("weapon_ov_smg");
+  ok(!jsPly.HasWeapon("weapon_ov_smg"), "StripWeapon removed it");
+  jsPly.StripWeapons();
+  ok(jsPly.GetWeapons().length === 0, "StripWeapons cleared inventory");
+
+  // Hot-reload a SWEP: live instance jumps to the new proto.
+  const smg2 = W.weapons.Create("weapon_ov_smg");
+  W.scripted_weapons.Register(Object.assign({}, W.scripted_weapons.GetStored("weapon_ov_smg").t, { PrintName: "Reloaded SMG" }), "weapon_ov_smg");
+  ok(smg2.PrintName === "Reloaded SMG", "SWEP hot-reload repatched live instance");
+}
+
+// ---- HUD / GUI library (gamemode GUIs coded in JS) ----
+{
+  section("HUD / GUI library");
+  const tp = makeTransport();
+  // menuJS captor so we can assert the client pushes its layout to the page.
+  const pushes = [];
+  const cl = makeRealm("client", "prophunt", tp);
+  cl.OV.menuJS = (s) => pushes.push(s);
+  // Re-run realm bootstrap is not needed; HUD hooked at load. Drive its API.
+  const H = cl.ctx.HUD;
+  ok(typeof H === "object" && H.__openvibe, "HUD library present (client realm)");
+  H.SetLayout([
+    { id: "round", type: "text", bind: "round" },
+    { id: "health", type: "bar", bind: "health", max: 100 }
+  ]);
+  ok(H.GetLayout().length === 2, "HUD.SetLayout stored elements");
+  ok(H.GetLayout()[0].id === "round" && H.GetLayout()[1].type === "bar", "HUD layout order + types preserved");
+  H.Add({ id: "ammo", type: "counter", bind: "ammo" });
+  ok(H.GetLayout().length === 3, "HUD.Add appended element");
+  H.Add({ id: "round", type: "text", bind: "round", size: 30 }); // redeclare
+  ok(H.GetLayout().length === 3 && H.GetLayout()[0].size === 30, "HUD.Add redeclare replaces in place");
+  H.SetMany({ round: "Round 2", health: 80, ammo: 45 });
+  ok(H.Get("health") === 80, "HUD.Set/SetMany stored values");
+  const snap = H.Snapshot();
+  ok(snap.layout.length === 3 && snap.values.round === "Round 2" && snap.visible === true, "HUD.Snapshot carries layout + values + visibility");
+  const flushed = H.Flush(true);
+  ok(flushed === true, "HUD.Flush ran (client)");
+  ok(pushes.some((s) => /onHudLayout/.test(s)), "HUD.Flush pushed layout to the page via menuJS");
+  H.Hide();
+  ok(H.IsVisible() === false && H.Snapshot().visible === false, "HUD.Hide toggles visibility in snapshot");
+  H.Remove("ammo");
+  ok(H.GetLayout().length === 2, "HUD.Remove dropped element");
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures) { console.error(`${failures} FAILURES`); process.exit(1); }
 console.log("[test-gmodjs] ALL PASS");

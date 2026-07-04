@@ -33,8 +33,11 @@
   bootstrap("js/core/net.js");        // GMod net library
   bootstrap("js/core/entity.js");     // Entity class + NW/DT vars
   bootstrap("js/core/ents.js");       // ents + scripted_ents
+  bootstrap("js/core/weapon.js");     // Weapon class (extends Entity)
+  bootstrap("js/core/weapons.js");    // weapons + scripted_weapons (SWEP) + weapon_base
   bootstrap("js/core/player.js");     // Player class + player library
   bootstrap("js/core/team.js");       // team library
+  bootstrap("js/core/hud.js");        // HUD / GUI library (gamemode GUIs in JS)
   bootstrap("js/core/file.js");       // AddCSJSFile / include / client sync
   bootstrap("js/core/concommand.js"); // concommand + RunConsoleCommand
   bootstrap("js/core/addon.js");      // globalThis.Addon
