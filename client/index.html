@@ -36,6 +36,24 @@
       flex-direction: column;
     }
 
+    /* ── In-game pause overlay ────────────────────────────
+       Set on <html> by the C++ panel (SetPauseOverlay) when ESC opens the
+       menu during a level. The panel stops painting its opaque background,
+       so the running game renders behind a translucent, blurred menu. */
+    html.ov-pause-overlay,
+    html.ov-pause-overlay body {
+      background: transparent !important;
+    }
+    html.ov-pause-overlay body {
+      /* Dim + blur the game behind; falls back to a plain scrim where the
+         host compositor doesn't support backdrop-filter. */
+      background: rgba(6, 9, 16, 0.55) !important;
+      -webkit-backdrop-filter: blur(10px) saturate(115%);
+      backdrop-filter: blur(10px) saturate(115%);
+    }
+    /* Keep panels/cards legible against the blurred game. */
+    html.ov-pause-overlay #ov-auth { background: transparent !important; }
+
     /* ── Screen switching ─────────────────────────────── */
     .screen { display: none; flex-direction: column; height: 100%; }
     .screen.active { display: flex; }

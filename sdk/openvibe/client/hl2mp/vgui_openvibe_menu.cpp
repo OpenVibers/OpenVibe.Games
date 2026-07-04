@@ -309,6 +309,7 @@ public:
 
 	void Open( const char *pszURL = NULL )
 	{
+		SetPauseOverlay( false ); // full opaque shell (main menu / route open)
 		const char *pszTarget = ( pszURL && pszURL[0] ) ? pszURL : ov_menu_url.GetString();
 		Q_strncpy( m_szCurrentURL, pszTarget, sizeof( m_szCurrentURL ) );
 		MakeFullScreen();
@@ -317,6 +318,34 @@ public:
 		RequestFocus();
 		m_pHTML->RequestFocus();
 		m_pHTML->OpenURL( pszTarget, NULL, true );
+		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
+	}
+
+	// In-game pause menu: replaces the stock GameUI when ESC is pressed during
+	// a level. Renders as a translucent, blurred overlay so the game shows
+	// through behind it (the page adds the 'ov-pause-overlay' body class).
+	void OpenPause()
+	{
+		SetPauseOverlay( true );
+		MakeFullScreen();
+		SetVisible( true );
+		MoveToFront();
+		RequestFocus();
+		m_pHTML->RequestFocus();
+
+		// The page persists across shows; load it once, then just route +
+		// flag it. Fresh load also carries the flag via the query string.
+		if ( m_szCurrentURL[0] == '\0' )
+		{
+			Q_strncpy( m_szCurrentURL, ov_menu_url.GetString(), sizeof( m_szCurrentURL ) );
+			m_pHTML->OpenURL( m_szCurrentURL, NULL, true );
+		}
+
+		RunJS(
+			"document.documentElement.classList.add('ov-pause-overlay');"
+			"if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
+			"{window.OpenVibeShell.setRoute('portal');}" );
+
 		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
 	}
 
@@ -337,8 +366,21 @@ public:
 			return;
 		}
 
+		SetPauseOverlay( false );
 		SetVisible( false );
 		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
+	}
+
+	// Toggle translucent/blurred pause-overlay presentation. When on, the panel
+	// stops painting its opaque background so the 3D game renders behind the
+	// (semi-transparent, backdrop-blurred) HTML menu.
+	void SetPauseOverlay( bool bOn )
+	{
+		m_bPauseOverlay = bOn;
+		SetPaintBackgroundEnabled( !bOn );
+		SetBgColor( bOn ? Color( 0, 0, 0, 0 ) : Color( 7, 8, 14, 255 ) );
+		if ( !bOn )
+			RunJS( "document.documentElement.classList.remove('ov-pause-overlay');" );
 	}
 
 	void Reload()
@@ -663,6 +705,7 @@ private:
 
 	HTML *m_pHTML;
 	char m_szCurrentURL[512] = {};
+	bool m_bPauseOverlay = false;
 };
 
 static COpenVibeHTMLPanel *s_pOpenVibeMenu = NULL;
@@ -803,22 +846,32 @@ bool OpenVibe_DrainConsoleLine( int64 *pnCursor, char *pszOut, int nOutLen )
 	return true;
 }
 
-// The OpenVibe HTML menu fully replaces the stock GameUI menu: whenever we are
-// not in a level and the panel got hidden (e.g. the engine popped a
-// "Disconnected" dialog over the stock menu), bring ours back.
+// The OpenVibe HTML menu fully replaces the stock GameUI menu — both the main
+// menu (out of a level) and the in-game pause menu (ESC during a level).
 void OpenVibe_MenuKeepAlive()
 {
 	if ( !ov_menu_auto_open.GetBool() )
 		return;
 
+	// In-game: the engine opens the stock GameUI pause menu on ESC. Detect it
+	// every frame (cheap bool) and instantly replace it with our translucent
+	// pause overlay — no throttle, so there is no visible stock-menu flash.
+	if ( engine->IsInGame() )
+	{
+		const bool bStockUIVisible = enginevgui && enginevgui->IsGameUIVisible();
+		const bool bOursVisible = s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible();
+		if ( bStockUIVisible && !bOursVisible )
+			OV_GetHTMLMenu()->OpenPause();
+		return;
+	}
+
+	// Out of a level: keep our menu covering the stock main menu (e.g. after
+	// the engine pops a "Disconnected" dialog). Throttled — no urgency here.
 	static float s_flNextCheck = 0.0f;
 	const float flNow = Plat_FloatTime();
 	if ( flNow < s_flNextCheck )
 		return;
 	s_flNextCheck = flNow + 2.0f;
-
-	if ( engine->IsInGame() )
-		return;
 
 	if ( !s_pOpenVibeMenu || !s_pOpenVibeMenu->IsVisible() )
 		OV_GetHTMLMenu()->Open();
@@ -910,7 +963,22 @@ static void OV_OpenMenuRoute( const char *pszRoute )
 	char szURL[768];
 	Q_snprintf( szURL, sizeof( szURL ), "%s#%s", szBase, pszSafeRoute );
 
-	OV_GetHTMLMenu()->Open( szURL );
+	COpenVibeHTMLPanel *pMenu = OV_GetHTMLMenu();
+
+	// In a level, any route opens as the translucent pause overlay so the game
+	// stays visible behind it; at the main menu it is the full opaque shell.
+	if ( engine->IsInGame() )
+	{
+		pMenu->OpenPause();
+		char szScript[256];
+		Q_snprintf( szScript, sizeof( szScript ),
+			"if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
+			"{window.OpenVibeShell.setRoute('%s');}", pszSafeRoute );
+		pMenu->RunJS( szScript );
+		return;
+	}
+
+	pMenu->Open( szURL );
 }
 
 static void OV_MenuMain_f( const CCommand &args ) { OV_OpenMenuRoute( "portal" ); }
@@ -993,8 +1061,12 @@ static void OV_ConsoleToggle_f( const CCommand &args )
 	{
 		if ( engine->IsInGame() )
 		{
-			// Console key while the menu is up in a level: back to gameplay.
-			pMenu->CloseMenu();
+			// In a level: if the pause overlay is already on the console,
+			// the console key returns to gameplay; otherwise switch to it.
+			pMenu->RunJS(
+				"if((location.hash||'').indexOf('console')>=0){window.location.href='openvibe://close';}"
+				"else if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
+				"{window.OpenVibeShell.setRoute('console');}" );
 			return;
 		}
 
