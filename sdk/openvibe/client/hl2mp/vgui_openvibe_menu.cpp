@@ -12,6 +12,10 @@
 #include <vgui_controls/Frame.h>
 #include <vgui_controls/HTML.h>
 
+#include "tier1/convar.h"
+#include "tier1/utlstring.h"
+#include "tier1/utlvector.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 
@@ -179,6 +183,11 @@ static bool OV_IsAllowedBridgeConvar( const char *pszName )
 	return false;
 }
 
+static int __cdecl OV_SortCommandBaseByName( ConCommandBase * const *ppLeft, ConCommandBase * const *ppRight )
+{
+	return Q_stricmp( ( *ppLeft )->GetName(), ( *ppRight )->GetName() );
+}
+
 static void OV_URLDecodeInPlace( char *pszValue )
 {
 	if ( !pszValue )
@@ -311,8 +320,23 @@ public:
 		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
 	}
 
-	void CloseMenu()
+	void CloseMenu( bool bForceHide = false )
 	{
+		// Out of a level this panel IS the main menu: hiding it would reveal
+		// the stock GameUI menu sitting behind it. Fall back to the portal
+		// route instead. Actually hiding is only for returning to gameplay,
+		// or for a map load kicked off by openvibe://join (the engine's
+		// loading screen needs to show).
+		if ( !bForceHide && !engine->IsInGame() )
+		{
+			RunJS(
+				"if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
+				"{window.OpenVibeShell.setRoute('portal');}" );
+			SetVisible( true );
+			MoveToFront();
+			return;
+		}
+
 		SetVisible( false );
 		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
 	}
@@ -386,7 +410,7 @@ private:
 			char szMode[64];
 			if ( OV_ReadQueryValue( pszURL, "mode", szMode, sizeof( szMode ) ) && OV_IsSafeMode( szMode ) )
 			{
-				CloseMenu();
+				CloseMenu( true ); // force-hide: the map load's screen takes over
 				engine->ClientCmd_Unrestricted( VarArgs( "ov_join %s\n", szMode ) );
 				return;
 			}
@@ -453,6 +477,18 @@ private:
 			// Echo like the stock console so the command shows in the tap.
 			Msg( "] %s\n", szCmd );
 			engine->ClientCmd_Unrestricted( VarArgs( "%s\n", szCmd ) );
+			return;
+		}
+
+		if ( OV_URLStartsWith( pszURL, "openvibe://complete" ) )
+		{
+			// GUI console autocomplete: match the live engine command/convar
+			// registry (and per-command argument completion), like the stock
+			// console. Read-only metadata, but local UI pages only.
+			char szPrefix[256];
+			if ( OV_IsLocalUIOrigin( m_szCurrentURL ) &&
+				 OV_ReadQueryValue( pszURL, "prefix", szPrefix, sizeof( szPrefix ) ) )
+				PushCompletionsToPage( szPrefix );
 			return;
 		}
 
@@ -524,6 +560,104 @@ private:
 		}
 
 		Q_strncat( szScript, "});}", sizeof( szScript ), COPY_ALL_CHARACTERS );
+		RunJS( szScript );
+	}
+
+	// openvibe://complete — push live console autocomplete matches back into
+	// the page as window.OV.onEngineComplete(prefix, [[name, hint, kind], …])
+	// with kind 'cmd' | 'cvar' (name completion) or 'line' (a full command
+	// line from the command's own argument autocomplete, e.g. "map gm_x").
+	void PushCompletionsToPage( const char *pszPrefixRaw )
+	{
+		while ( *pszPrefixRaw == ' ' )
+			++pszPrefixRaw;
+
+		char szPrefix[256];
+		Q_strncpy( szPrefix, pszPrefixRaw, sizeof( szPrefix ) );
+
+		char szSafePrefix[256];
+		OV_SanitiseJSString( szSafePrefix, sizeof( szSafePrefix ), szPrefix );
+
+		char szScript[12288];
+		Q_snprintf( szScript, sizeof( szScript ),
+			"if(typeof window.OV==='object'&&typeof window.OV.onEngineComplete==='function')"
+			"{window.OV.onEngineComplete('%s',[", szSafePrefix );
+
+		const int nMaxItems = 20;
+		int nItems = 0;
+
+		const char *pszSpace = Q_strstr( szPrefix, " " );
+		if ( pszSpace )
+		{
+			// Argument completion: ask the command itself (map, changelevel,
+			// exec, … implement AutoCompleteSuggest and return full lines).
+			char szToken[128];
+			const int nTok = MIN( (int)( pszSpace - szPrefix ), (int)sizeof( szToken ) - 1 );
+			Q_strncpy( szToken, szPrefix, nTok + 1 );
+
+			ConCommand *pCmd = g_pCVar ? g_pCVar->FindCommand( szToken ) : NULL;
+			CUtlVector< CUtlString > matches;
+			if ( pCmd && pCmd->CanAutoComplete() )
+				pCmd->AutoCompleteSuggest( szPrefix, matches );
+
+			for ( int i = 0; i < matches.Count() && nItems < nMaxItems; ++i )
+			{
+				char szLine[256];
+				OV_SanitiseJSString( szLine, sizeof( szLine ), matches[i].Get() );
+
+				char szItem[320];
+				Q_snprintf( szItem, sizeof( szItem ), "%s['%s','','line']", nItems ? "," : "", szLine );
+				Q_strncat( szScript, szItem, sizeof( szScript ), COPY_ALL_CHARACTERS );
+				++nItems;
+			}
+		}
+		else if ( szPrefix[0] )
+		{
+			// Name completion across the full command/convar registry.
+			CUtlVector< ConCommandBase * > found;
+			const int nPrefixLen = Q_strlen( szPrefix );
+			for ( ConCommandBase *pBase = g_pCVar ? g_pCVar->GetCommands() : NULL; pBase; pBase = pBase->GetNext() )
+			{
+				if ( pBase->IsFlagSet( FCVAR_HIDDEN ) || pBase->IsFlagSet( FCVAR_DEVELOPMENTONLY ) )
+					continue;
+				if ( Q_strnicmp( pBase->GetName(), szPrefix, nPrefixLen ) )
+					continue;
+				found.AddToTail( pBase );
+				if ( found.Count() >= 256 )
+					break;
+			}
+			found.Sort( OV_SortCommandBaseByName );
+
+			for ( int i = 0; i < found.Count() && nItems < nMaxItems; ++i )
+			{
+				ConCommandBase *pBase = found[i];
+
+				char szHint[160];
+				if ( !pBase->IsCommand() )
+				{
+					ConVar *pVar = static_cast< ConVar * >( pBase );
+					Q_snprintf( szHint, sizeof( szHint ), "= %s - %s",
+						pVar->GetString(), pBase->GetHelpText() ? pBase->GetHelpText() : "" );
+				}
+				else
+				{
+					Q_strncpy( szHint, pBase->GetHelpText() ? pBase->GetHelpText() : "", sizeof( szHint ) );
+				}
+
+				char szName[128];
+				char szSafeHint[160];
+				OV_SanitiseJSString( szName, sizeof( szName ), pBase->GetName() );
+				OV_SanitiseJSString( szSafeHint, sizeof( szSafeHint ), szHint );
+
+				char szItem[384];
+				Q_snprintf( szItem, sizeof( szItem ), "%s['%s','%s','%s']",
+					nItems ? "," : "", szName, szSafeHint, pBase->IsCommand() ? "cmd" : "cvar" );
+				Q_strncat( szScript, szItem, sizeof( szScript ), COPY_ALL_CHARACTERS );
+				++nItems;
+			}
+		}
+
+		Q_strncat( szScript, "]);}", sizeof( szScript ), COPY_ALL_CHARACTERS );
 		RunJS( szScript );
 	}
 
@@ -853,11 +987,25 @@ static ConCommand ov_menu_options_cmd(
 // toggles the HTML console route.
 static void OV_ConsoleToggle_f( const CCommand &args )
 {
-	if ( s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible() )
+	COpenVibeHTMLPanel *pMenu = OV_GetHTMLMenu();
+
+	if ( pMenu->IsVisible() )
 	{
-		s_pOpenVibeMenu->CloseMenu();
+		if ( engine->IsInGame() )
+		{
+			// Console key while the menu is up in a level: back to gameplay.
+			pMenu->CloseMenu();
+			return;
+		}
+
+		// At the main menu the panel must never hide (the stock GameUI menu
+		// sits behind it) — flip between the console and portal routes.
+		pMenu->RunJS(
+			"if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
+			"{window.OpenVibeShell.setRoute(((location.hash||'').indexOf('console')>=0)?'portal':'console');}" );
 		return;
 	}
+
 	OV_OpenMenuRoute( "console" );
 }
 

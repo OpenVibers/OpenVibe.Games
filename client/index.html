@@ -1059,7 +1059,7 @@
           <div class="console-input-row">
             <span class="console-prompt">›</span>
             <input id="console-input" class="console-input" type="text" spellcheck="false" autocomplete="off"
-                   placeholder="JS code — or ]engine_command — or npm install <pkg> — Tab completes" />
+                   placeholder="engine command (status, map …) or JS — Tab completes — ]cmd forces engine" />
             <button class="btn-console" onclick="OVApp.consoleSubmit()">Run</button>
           </div>
         </div>
@@ -1486,10 +1486,14 @@
     if (input) setTimeout(function () { input.focus(); }, 0);
     if (_con.started) return;
     _con.started = true;
+    // In-game the console defaults to the engine realm so `status`,
+    // `map …`, binds etc. behave exactly like the stock console.
+    var realmSel = document.getElementById('console-realm');
+    if (realmSel && conHasEngineBridge()) realmSel.value = 'engine';
     conConnect('server');
     conConnect('client');
     if (conHasEngineBridge()) {
-      conAppend('engine', 'OpenVibe console ready. Engine output streams in below; Server/Client JS run via the runtimes when connected, otherwise through js_run / js_run_cl.', 'ok');
+      conAppend('engine', 'OpenVibe console ready. Engine commands run like the stock console (Tab completes from the live command registry); switch realm for Server/Client JS.', 'ok');
     } else {
       conAppend('engine', 'OpenVibe console ready — realms: Server JS (41997), Client JS (41996), Engine.', 'ok');
     }
@@ -1556,7 +1560,22 @@
     'util.AddNetworkString(', 'scripted_ents.Register(', 'concommand.Add(', 'include(', 'AddCSJSFile(',
     'require(', 'OV.log(', 'OV.getMode()', 'OVLoader.openScript(', 'RunConsoleCommand('];
   var OV_MODES = ['hub', 'prophunt', 'deathrun', 'fortwars', 'traitortown', 'sandbox'];
-  var _sugg = { open: false, sel: -1, items: [], maps: null, scripts: null };
+  var _sugg = { open: false, sel: -1, items: [], maps: null, scripts: null,
+                engFor: null, engItems: [], engTimer: 0 };
+  // Real engine command/convar names learned from openvibe://complete replies;
+  // used to dispatch typed lines to the engine even from a JS realm.
+  var _engKnown = {};
+
+  // Ask the engine (C++ bridge) for live completions of `prefix`; the reply
+  // arrives via OVApp.onEngineComplete. Debounced; skipped when we already
+  // hold results for this exact prefix (also breaks the reply→update loop).
+  function engComplete(prefix) {
+    if (!conHasEngineBridge() || _sugg.engFor === prefix) return;
+    clearTimeout(_sugg.engTimer);
+    _sugg.engTimer = setTimeout(function () {
+      location.href = 'openvibe://complete?prefix=' + encodeURIComponent(prefix);
+    }, 60);
+  }
 
   function suggPrefetch() {
     fetch(RT.server + '/maps').then(function (r) { return r.json(); })
@@ -1572,45 +1591,65 @@
     var word = parts[parts.length - 1];
     var head = parts[0] ? parts[0].toLowerCase() : '';
     var out = [];
+    var seen = {};
+
+    function push(t, hint, kind) {
+      if (out.length >= 12 || seen[t]) return;
+      seen[t] = 1;
+      out.push({ text: t, hint: hint, kind: kind || 'word' });
+    }
+    function pushEngineLive() {
+      engComplete(text);
+      if (_sugg.engFor === text) {
+        _sugg.engItems.forEach(function (it) { push(it.text, it.hint, it.kind); });
+      }
+    }
 
     if (isEngine && parts.length >= 2) {
-      // Argument completion for known commands.
+      // Argument completion: curated pools first, then whatever the engine's
+      // own per-command autocomplete returns (openvibe://complete, 'line').
       var pool = null, hint = '';
       if ((head === 'map' || head === 'changelevel') && _sugg.maps) { pool = _sugg.maps; hint = 'map'; }
       else if (head === 'ov_join') { pool = OV_MODES; hint = 'mode'; }
       else if ((head === 'js_openscript' || head === 'js_openscript_cl') && _sugg.scripts) { pool = _sugg.scripts; hint = 'js/'; }
       if (pool) {
         pool.forEach(function (m) {
-          if (m.toLowerCase().indexOf(word.toLowerCase()) === 0 && out.length < 10) {
-            out.push({ text: m, hint: hint, replaceWord: true });
-          }
+          if (m.toLowerCase().indexOf(word.toLowerCase()) === 0) push(m, hint, 'word');
         });
       }
+      pushEngineLive();
       return out;
     }
 
     if (isEngine) {
-      ENGINE_COMMANDS.forEach(function (c) {
-        if (c[0].indexOf(word.toLowerCase()) === 0 && word.length > 0 && out.length < 10) {
-          out.push({ text: c[0], hint: c[1], replaceWord: true });
-        }
-      });
+      if (word.length > 0) {
+        ENGINE_COMMANDS.forEach(function (c) {
+          if (c[0].indexOf(word.toLowerCase()) === 0) push(c[0], c[1], 'word');
+        });
+        pushEngineLive();
+      }
       return out;
     }
 
     // JS realms: complete known globals; npm lines: subcommands.
     if (/^npm\s+\S*$/.test(text)) {
       ['install', 'uninstall', 'update', 'ls'].forEach(function (s) {
-        if (s.indexOf(word.toLowerCase()) === 0) out.push({ text: s, hint: 'npm', replaceWord: true });
+        if (s.indexOf(word.toLowerCase()) === 0) push(s, 'npm', 'word');
       });
       return out;
     }
     if (word.length > 1) {
       JS_GLOBALS.forEach(function (g) {
-        if (g.toLowerCase().indexOf(word.toLowerCase()) === 0 && out.length < 10) {
-          out.push({ text: g, hint: 'js', replaceWord: true });
-        }
+        if (g.toLowerCase().indexOf(word.toLowerCase()) === 0) push(g, 'js', 'js');
       });
+    }
+    // First token in a JS realm may still be an engine command (submit
+    // dispatches those to the engine) — suggest them too.
+    if (parts.length === 1 && word.length > 1) {
+      ENGINE_COMMANDS.forEach(function (c) {
+        if (c[0].indexOf(word.toLowerCase()) === 0) push(c[0], c[1], 'word');
+      });
+      pushEngineLive();
     }
     return out;
   }
@@ -1656,8 +1695,13 @@
     if (!input || !_sugg.open || _sugg.sel < 0) return;
     var it = _sugg.items[_sugg.sel];
     var line = input.value;
-    var m = line.match(/^(.*?)(\S*)$/);
-    input.value = (m ? m[1] : '') + it.text + (it.hint === 'js' ? '' : ' ');
+    if (it.kind === 'line') {
+      // Engine argument autocomplete returns the full command line.
+      input.value = (line.charAt(0) === ']' ? ']' : '') + it.text + ' ';
+    } else {
+      var m = line.match(/^(.*?)(\S*)$/);
+      input.value = (m ? m[1] : '') + it.text + (it.kind === 'js' ? '' : ' ');
+    }
     suggHide();
     input.focus();
   }
@@ -1665,6 +1709,7 @@
   function suggHide() {
     _sugg.open = false;
     _sugg.sel = -1;
+    clearTimeout(_sugg.engTimer);
     var box = document.getElementById('console-suggest');
     if (box) box.hidden = true;
   }
@@ -1747,6 +1792,19 @@
     });
   }
 
+  // True when the line's first token is a real engine command/convar — either
+  // from the curated list or learned live via openvibe://complete. Lines with
+  // JS punctuation in the first token (parens, dots, =, …) never match.
+  function conIsEngineCommandLine(line) {
+    var tok = (line.split(/\s+/)[0] || '').toLowerCase();
+    if (!/^[a-z0-9_+\-]+$/.test(tok)) return false;
+    if (_engKnown[tok]) return true;
+    for (var i = 0; i < ENGINE_COMMANDS.length; i++) {
+      if (ENGINE_COMMANDS[i][0] === tok) return true;
+    }
+    return false;
+  }
+
   function consoleSubmit() {
     var input = document.getElementById('console-input');
     if (!input) return;
@@ -1768,7 +1826,9 @@
       conNpm(line.replace(/^npm\s*/, ''));
       return;
     }
-    if (realm === 'engine') {
+    // Engine realm — or any realm when the line IS an engine command
+    // (`status`, `map gm_x`, …): run through the engine like the stock console.
+    if (realm === 'engine' || conIsEngineCommandLine(line)) {
       conAppend('engine', '› ' + line, 'echo');
       conEngine(line);
       return;
@@ -2182,6 +2242,22 @@
       if (lines == null) return;
       var arr = Array.isArray(lines) ? lines : [lines];
       for (var i = 0; i < arr.length; i++) conAppend('engine', arr[i]);
+    },
+
+    // Called by C++ (openvibe://complete) with live command-registry matches:
+    // [[name, hint, kind], …], kind 'cmd' | 'cvar' | 'line' (full command
+    // line from a command's own argument autocomplete).
+    onEngineComplete: function (prefix, items) {
+      if (!Array.isArray(items)) return;
+      _sugg.engFor = String(prefix);
+      _sugg.engItems = items.map(function (it) {
+        var name = String(it[0] || '');
+        var kind = String(it[2] || 'cmd');
+        if (kind !== 'line') _engKnown[name.toLowerCase()] = 1;
+        return { text: name, hint: String(it[1] || '') || kind, kind: kind };
+      });
+      var input = document.getElementById('console-input');
+      if (input && document.activeElement === input) suggUpdate(false);
     },
 
     // ── Options ───────────────────────────────────────────────────────
