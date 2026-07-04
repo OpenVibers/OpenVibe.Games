@@ -858,6 +858,14 @@ void OpenVibe_MenuKeepAlive()
 	// pause overlay — no throttle, so there is no visible stock-menu flash.
 	if ( engine->IsInGame() )
 	{
+		// CRITICAL: do nothing during the connect/signon handshake. The
+		// loading screen is itself GameUI, so IsGameUIVisible() is true while
+		// IsInGame() has already flipped true mid-signon; hiding it / opening
+		// our panel then aborts the connection (client drops before spawning).
+		// Only intercept once the level is fully drawn and we have a player.
+		if ( engine->IsDrawingLoadingImage() || !engine->IsConnected() )
+			return;
+
 		const bool bStockUIVisible = enginevgui && enginevgui->IsGameUIVisible();
 		const bool bOursVisible = s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible();
 		if ( bStockUIVisible && !bOursVisible )
