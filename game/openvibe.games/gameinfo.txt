@@ -1,8 +1,8 @@
 "GameInfo"
 {
 	game		"OpenVibe: Source"
-	title		"OpenVibe: Source"
-	title2		"openvibe.games"
+	title		""
+	title2		""
 	type		multiplayer_only
 	nomodels	0
 	nohimodel	1

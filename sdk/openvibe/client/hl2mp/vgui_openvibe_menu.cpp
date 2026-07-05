@@ -929,6 +929,20 @@ bool OpenVibe_DrainConsoleLine( int64 *pnCursor, char *pszOut, int nOutLen )
 
 // The OpenVibe HTML menu fully replaces the stock GameUI menu — both the main
 // menu (out of a level) and the in-game pause menu (ESC during a level).
+// Called the moment a level tears down (disconnect / kick / connect failure):
+// cover the stock GameUI main menu immediately instead of waiting for the
+// throttled keep-alive — this is the "old menu after a disconnect" flash.
+void OpenVibe_OnLevelExit()
+{
+	COpenVibeHTMLPanel *pMenu = OV_GetHTMLMenu();
+	pMenu->Open();
+	// Force the GameUI layer AFTER Open(): IsInGame() can still read true
+	// mid-teardown, which would leave us on the (no longer painted)
+	// client layer — i.e. invisible behind the stock menu.
+	pMenu->SetParent( enginevgui->GetPanel( PANEL_GAMEUIDLL ) );
+	pMenu->MoveToFront();
+}
+
 void OpenVibe_MenuKeepAlive()
 {
 	if ( !ov_menu_auto_open.GetBool() )

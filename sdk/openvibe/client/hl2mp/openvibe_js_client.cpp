@@ -174,6 +174,7 @@ void OpenVibeJS_Client_Shutdown()
 // Implemented in vgui_openvibe_menu.cpp (console spew ring + menu override).
 extern bool OpenVibe_DrainConsoleLine( int64 *pnCursor, char *pszOut, int nOutLen );
 extern void OpenVibe_MenuKeepAlive();
+extern void OpenVibe_OnLevelExit();
 
 // Escape a console line for embedding in a JSON string value.
 static void OVClient_JSONEscape( char *pszOut, int nOutLen, const char *pszIn )
@@ -372,7 +373,13 @@ public:
     void PostInit() OVERRIDE { OpenVibeJS_Client_Init(); }
     void LevelInitPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); OpenVibeJS_Client_Init(); }
     // Reconnect (rather than just close) so the bridge stays live at the menu.
-    void LevelShutdownPostEntity() OVERRIDE { OpenVibeJS_Client_Shutdown(); OpenVibeJS_Client_Init(); }
+    void LevelShutdownPostEntity() OVERRIDE
+    {
+        OpenVibeJS_Client_Shutdown();
+        OpenVibeJS_Client_Init();
+        // Cover the stock main menu the same frame the level goes away.
+        OpenVibe_OnLevelExit();
+    }
     void Update( float ) OVERRIDE { OpenVibeJS_Client_Think(); }
 };
 static COpenVibeClientJSSystem g_OpenVibeClientJSSystem;
