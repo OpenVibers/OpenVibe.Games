@@ -139,6 +139,32 @@ ok(typeof server.ctx.OVLoader === "object", "loader present");
 ok(typeof server.ctx.ents === "object" && typeof server.ctx.Entity === "function", "entity system present");
 ok(typeof server.ctx.AddCSJSFile === "function" && typeof server.ctx.include === "function", "file library present");
 
+section("print globals + autorun folders (GMod lua_run/lua/autorun parity)");
+{
+  ok(typeof server.ctx.print === "function" && typeof client.ctx.print === "function", "print() on both realms");
+  ok(typeof server.ctx.PrintTable === "function" && typeof server.ctx.Msg === "function" && typeof server.ctx.ErrorNoHalt === "function", "PrintTable/Msg/ErrorNoHalt present");
+  server.logs.length = 0;
+  server.ctx.print("a", 5, null, { k: 1 });
+  ok(server.logs.some((l) => l.includes("a\t5\tnil\t{\"k\":1}")), `print joins args tab-separated (${server.logs[server.logs.length - 1]})`);
+  server.logs.length = 0;
+  server.ctx.PrintTable({ x: 1, f: function named() {} });
+  ok(server.logs.some((l) => l.includes('"x": 1')) && server.logs.some((l) => l.includes("function: named")), "PrintTable expands objects + names functions");
+  // js_run backing: OVLoader.runString evals with a result (the js_run/js_run_cl console path)
+  const rr = server.ctx.OVLoader.runString("1 + 41", "js_run-test");
+  ok(rr.ok && rr.result === 42, "OVLoader.runString returns eval result (js_run path)");
+  const re = server.ctx.OVLoader.runString("nope.nope", "js_run-test");
+  ok(!re.ok && String(re.error).includes("nope"), "runString surfaces errors (js_run path)");
+  // js_openscript backing: re-runs a js/-relative script (force)
+  ok(server.ctx.OVLoader.openScript("autorun/shared/example_hello.js") === true, "OVLoader.openScript re-runs a js/-relative script (js_openscript path)");
+  // autorun folders: shared runs on both realms, realm dirs are exclusive
+  ok(server.ctx.OVLoader.loadedFiles["js/autorun/shared/example_hello.js"] === true, "autorun/shared loaded on server");
+  ok(client.ctx.OVLoader.loadedFiles["js/autorun/shared/example_hello.js"] === true, "autorun/shared loaded on client");
+  ok(server.ctx.OVLoader.loadedFiles["js/autorun/server/example_server_hello.js"] === true, "autorun/server loaded on server");
+  ok(client.ctx.OVLoader.loadedFiles["js/autorun/server/example_server_hello.js"] === undefined, "autorun/server NOT loaded on client");
+  ok(client.ctx.OVLoader.loadedFiles["js/autorun/client/example_client_hello.js"] === true, "autorun/client loaded on client");
+  ok(server.ctx.OVLoader.loadedFiles["js/autorun/client/example_client_hello.js"] === undefined, "autorun/client NOT loaded on server");
+}
+
 section("hook semantics");
 {
   const H = server.ctx.hook;

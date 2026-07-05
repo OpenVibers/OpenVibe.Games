@@ -45,9 +45,13 @@
     return names.filter(function (n) { return filterRx.test(n); });
   }
 
-  // ---- autorun ----
+  // ---- autorun (GMod lua/autorun parity) ----
+  // Order: js/autorun/*.js (shared, like lua/autorun) -> js/autorun/shared/
+  // (explicit alias, also both realms) -> js/autorun/<server|client>/
+  // (realm-only). Alphabetical within each directory.
   function loadAutorun() {
     listSorted("js/autorun", /\.js$/).forEach(function (f) { execFile("js/autorun/" + f); });
+    listSorted("js/autorun/shared", /\.js$/).forEach(function (f) { execFile("js/autorun/shared/" + f); });
     listSorted("js/autorun/" + realmDir, /\.js$/).forEach(function (f) { execFile("js/autorun/" + realmDir + "/" + f); });
   }
 
