@@ -16,16 +16,60 @@
   let traitorsAlive  = 0;
   let rolesAssigned  = false;
 
+  // Devolved-style karma: everyone starts at 1000, teamkills cost 100,
+  // surviving a round earns 5 back. Low karma is a social signal only (no
+  // damage scaling yet — that needs the damage-info bridge).
+  const KARMA_START = 1000, KARMA_TEAMKILL = 100, KARMA_ROUND_BONUS = 5;
+  const karmaByUser = Object.create(null); // userId -> karma
+  const detectiveByUser = Object.create(null); // userId -> true
+
+  function karmaFor(ply) {
+    const uid = typeof ply.userId === "function" ? ply.userId() : (typeof ply.UserID === "function" ? ply.UserID() : -1);
+    if (karmaByUser[uid] == null) karmaByUser[uid] = KARMA_START;
+    return { uid, karma: karmaByUser[uid] };
+  }
+
+  function pushRole(p) {
+    if (!(globalThis.net && net.__openvibe)) return;
+    const k = karmaFor(p);
+    try {
+      net.Start("OV_TTT_Role");
+      net.WriteInt(p.team());
+      net.WriteInt(detectiveByUser[k.uid] ? 1 : 0);
+      net.WriteInt(k.karma);
+      net.Send(p);
+    } catch (e) { /* transport not up */ }
+  }
+
+  function pushKarma(p) {
+    if (!(globalThis.net && net.__openvibe)) return;
+    const k = karmaFor(p);
+    try {
+      net.Start("OV_TTT_Karma");
+      net.WriteInt(k.karma);
+      net.Send(p);
+    } catch (e) { /* transport not up */ }
+  }
+
   function assignRoles() {
     const players = OV.players();
     if (players.length < 2) return;
 
     rolesAssigned = false;
+    for (const uid in detectiveByUser) delete detectiveByUser[uid];
     const shuffled = players.slice().sort(() => Math.random() - 0.5);
     const traitorCount = Math.max(1, Math.floor(shuffled.length / 4));
 
     shuffled.forEach(function (p, i) {
       p.setTeam(i < traitorCount ? TEAM_TRAITOR : TEAM_INNOCENT);
+    });
+
+    // One detective per 8 players once the lobby is big enough (>=5),
+    // picked from the innocents — TTT semantics: a public innocent.
+    const innocents = shuffled.filter((p) => p.team() === TEAM_INNOCENT);
+    const detectiveCount = players.length >= 5 ? Math.max(1, Math.floor(players.length / 8)) : 0;
+    innocents.slice(0, detectiveCount).forEach(function (p) {
+      detectiveByUser[karmaFor(p).uid] = true;
     });
 
     innocentsAlive = shuffled.filter((p) => p.team() === TEAM_INNOCENT).length;
@@ -36,13 +80,8 @@
     // per player so the client HUD can render it.
     shuffled.forEach(function (p) {
       if (p.team() === TEAM_TRAITOR) p.chat("[TRAITOR] You are a traitor. Eliminate all innocents.");
-      if (globalThis.net && net.__openvibe) {
-        try {
-          net.Start("OV_TTT_Role");
-          net.WriteInt(p.team());
-          net.Send(p);
-        } catch (e) { /* transport not up */ }
-      }
+      if (detectiveByUser[karmaFor(p).uid]) p.chat("[DETECTIVE] You are the detective. Find the traitors.");
+      pushRole(p);
     });
 
     OV.broadcast(`Round ${gamemode.get()._roundNumber} — ${players.length} players. Find the traitor(s)!`);
@@ -77,7 +116,20 @@
     Initialize() {
       OV.log("Traitor Town Initialize fired");
       registerCommands();
-      if (globalThis.util && util.AddNetworkString) util.AddNetworkString("OV_TTT_Role");
+      if (globalThis.util && util.AddNetworkString) {
+        util.AddNetworkString("OV_TTT_Role");
+        util.AddNetworkString("OV_TTT_Karma");
+      }
+    },
+
+    // Extend the base HUD-state broadcast with TTT-specific live values.
+    buildHudState() {
+      const s = gamemode.getBase().buildHudState.call(this);
+      s.aliveInnocents = innocentsAlive;
+      s.aliveTraitors = traitorsAlive;
+      s.alive = innocentsAlive + traitorsAlive;
+      s.rolesAssigned = rolesAssigned;
+      return s;
     },
 
     CreateTeams() {
@@ -134,11 +186,27 @@
       hook.Run("RoundEnd", this._roundNumber, reason);
       OV.broadcast(msg);
 
+      // Karma: everyone still standing earns a little back.
+      OV.players().forEach(function (p) {
+        const k = karmaFor(p);
+        karmaByUser[k.uid] = Math.min(KARMA_START, k.karma + KARMA_ROUND_BONUS);
+        pushKarma(p);
+      });
+
       this.scheduleRoundStart();
     },
 
-    PlayerDeath(victim, _attacker) {
+    PlayerDeath(victim, attacker) {
       if (!victim || this._roundState !== "active" || !rolesAssigned) return;
+
+      // Teamkill karma penalty (self/world kills excluded).
+      if (attacker && attacker !== victim &&
+          typeof attacker.team === "function" && attacker.team() === victim.team()) {
+        const k = karmaFor(attacker);
+        karmaByUser[k.uid] = Math.max(0, k.karma - KARMA_TEAMKILL);
+        if (typeof attacker.chat === "function") attacker.chat(`Teamkill! Karma is now ${karmaByUser[k.uid]}.`);
+        pushKarma(attacker);
+      }
 
       if (victim.team() === TEAM_INNOCENT) {
         innocentsAlive = Math.max(0, innocentsAlive - 1);

@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "migrate": "tsx src/migrate.ts",
+    "seed:devolved": "tsx src/seed-devolved.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

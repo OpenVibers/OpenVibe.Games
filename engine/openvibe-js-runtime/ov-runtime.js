@@ -55,6 +55,17 @@ function warn(...a) { console.warn(`[ov-runtime/${REALM}] WARN`, ...a); pushLog(
 let sock = null;
 let rxBuf = '';
 function sendToGame(obj) {
+  // Guard: console commands must survive the engine's CCommand::Tokenize
+  // (512-byte string AND argv buffers — argv adds a NUL per token, and the
+  // tokenizer splits on {}()':). Estimate argv usage and name the producer
+  // loudly instead of letting the engine clamp it silently.
+  if (obj && obj.t === 'concmd' && typeof obj.cmd === 'string') {
+    const specials = (obj.cmd.match(/["'(){}:]/g) || []).length;
+    if (obj.cmd.length >= 510 || obj.cmd.length + specials + 8 >= 510) {
+      warn(`concmd too long for the engine (${obj.cmd.length} chars, ~${specials} token splits) — ` +
+        `route it through OV.menuJS (auto-chunks) or chunk like net.js: ${obj.cmd.slice(0, 90)}...`);
+    }
+  }
   if (sock && !sock.destroyed) {
     try { sock.write(JSON.stringify(obj) + '\n'); } catch (e) { warn('send failed', e.message); }
   }
@@ -63,6 +74,8 @@ function sendToGame(obj) {
 // ---- the sandboxed JS world (same globals the embedded build provides) ----
 let ctx = null;          // vm context (globalThis of the framework)
 let watchers = [];       // fs watchers for hot-reload
+let quietBoot = false;   // demote framework boot chatter during hot-reload re-bootstraps
+let frameworkLoads = 0;
 
 function modRel(p) {
   // Resolve a mod-relative path safely (no escaping MOD).
@@ -73,7 +86,10 @@ function modRel(p) {
 function buildOV() {
   // OV.* the js/core/* files expect, backed by Node + IPC.
   return {
-    log: (m) => { log('[js]', m); },
+    // During a hot-reload re-bootstrap the per-library "ready"/load chatter
+    // (~25 lines) is demoted to the SSE debug stream — the console keeps one
+    // "hot-reload:" + one "framework loaded" line. Warnings/errors stay loud.
+    log: (m) => { if (quietBoot) { pushLog('debug', '[js] ' + m); return; } log('[js]', m); },
     warn: (m) => { warn('[js]', m); },
     error: (m) => { console.error(`[ov-runtime/${REALM}] [js ERROR]`, m); pushLog('error', String(m)); },
     isServer: () => IS_SERVER,
@@ -108,7 +124,33 @@ function buildOV() {
     netSendToServer: (name, payloadB64) => sendToGame({ t: 'net', toServer: true, name: String(name), payload: String(payloadB64) }),
     fireHook: (name, ...args) => { try { return ctx.hook.Run(name, ...args); } catch (e) { warn('fireHook', e.message); } },
     // Push JS into the in-game HTML panel (client realm): runs ov_menu_js.
-    menuJS: (script) => sendToGame({ t: 'concmd', cmd: 'ov_menu_js ' + String(script) }),
+    // The engine clamps console command lines at 512 chars (CCommand::Tokenize),
+    // so oversized scripts are base64-chunked into an accumulator on the page
+    // and eval'd by a final command. No semicolons anywhere (Cbuf splits on ;).
+    //
+    // The 512 budget is NOT just the string length: the tokenizer splits on
+    // {}()': (and doesn't understand \" escapes), and CCommand's argv buffer
+    // stores every token + a NUL — dense JSON overflows it well under 512 raw
+    // chars. Single-shot only tiny scripts; the b64 chunk path is immune
+    // (base64 contains none of the tokenizer's special characters).
+    menuJS: (script) => {
+      const s = String(script);
+      const PREFIX = 'ov_menu_js ';
+      const MAX_LINE = 220;
+      if (PREFIX.length + s.length <= MAX_LINE && !s.includes(';')) {
+        sendToGame({ t: 'concmd', cmd: PREFIX + s });
+        return;
+      }
+      const b64 = Buffer.from(s, 'utf8').toString('base64');
+      const CHUNK = 360;
+      sendToGame({ t: 'concmd', cmd: PREFIX + 'window.__ovmjs=""' });
+      for (let i = 0; i < b64.length; i += CHUNK) {
+        sendToGame({ t: 'concmd', cmd: PREFIX + 'window.__ovmjs=window.__ovmjs+"' + b64.slice(i, i + CHUNK) + '"' });
+      }
+      // atob yields Latin-1 code units — escape/decodeURIComponent restores
+      // proper UTF-8 (plain atob mangles any non-ASCII in HUD text).
+      sendToGame({ t: 'concmd', cmd: PREFIX + 'eval(decodeURIComponent(escape(window.atob(window.__ovmjs))))' });
+    },
     reward: () => {},
     endMatch: () => {},
   };
@@ -146,7 +188,31 @@ function wrapPlayer(p) {
 // Build the Node require npm + the addon loader use. Resolved from the mod's js
 // dir so bare specifiers hit game/openvibe.games/node_modules (Node searches
 // upward) — full npm incl. native modules.
+// Bare specifiers that fail Node's walk-up resolution retry against the npm
+// root: an addon under addons/<name>/ never walks up into js/node_modules, so
+// without this only packages hand-copied next to addons/ would resolve. Keeps
+// the package.json promise ("js/node_modules is require()-able from gamemodes,
+// addons, and entities") true for freshly npm-installed deps too.
+let resolveFallbackInstalled = false;
+function installResolveFallback() {
+  if (resolveFallbackInstalled) return;
+  resolveFallbackInstalled = true;
+  const Module = require('module');
+  const orig = Module._resolveFilename;
+  const npmRootPaths = [path.join(JS, 'node_modules')];
+  Module._resolveFilename = function (request, parent, isMain, options) {
+    try { return orig.call(this, request, parent, isMain, options); }
+    catch (e) {
+      if (typeof request === 'string' && request[0] !== '.' && request[0] !== '/' && !options) {
+        try { return orig.call(this, request, parent, isMain, { paths: npmRootPaths }); } catch { /* rethrow original */ }
+      }
+      throw e;
+    }
+  };
+}
+
 function buildRequire() {
+  installResolveFallback();
   const { createRequire } = require('module');
   const nodeRequire = createRequire(path.join(JS, 'runtime-require.js'));
   const ovRequire = function (spec) { return nodeRequire(spec); };
@@ -162,11 +228,113 @@ function buildRequire() {
   return ovRequire;
 }
 
+// ---- addon/gamemode npm dependency sync (node backend only) ----
+// addons/<name>/addon.json and js/gamemodes/<name>/manifest.json may declare
+//   "npm": { "nanoid": "^5", "ov-leftpad": "file:vendor/ov-leftpad" }
+// At framework load we diff every declared dep against js/package.json +
+// js/node_modules and batch-install ONLY what's missing via runNpm (execFile
+// arg array — never a shell). Install is non-blocking: the realm keeps
+// loading, and runNpm's post-install reload re-resolves the new packages.
+// file: ranges resolve relative to js/ (the npm root, runNpm's cwd).
+const NPM_NAME_RE = /^(?:@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+const NPM_RANGE_RE = /^[-a-zA-Z0-9^~><=. *|&_@/:!]+$/;
+// What runNpm's per-arg filter accepts — anything else would be silently
+// dropped from the argv (yielding a bare `npm install`), so refuse it here.
+const NPM_ARG_SAFE_RE = /^[-@a-zA-Z0-9._/^~:]+$/;
+const npmDepsAttempted = new Set(); // specs already tried this process (no retry loops on failure)
+let npmDepsLastSig = '';            // last logged "all satisfied" dep set
+
+function collectDeclaredNpmDeps() {
+  const deps = Object.create(null); // name -> { range, from }
+  const scanManifest = (file, label) => {
+    let m;
+    try { m = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return; }
+    if (!m || typeof m.npm !== 'object' || m.npm === null || Array.isArray(m.npm)) return;
+    for (const [name, range] of Object.entries(m.npm)) {
+      if (typeof range !== 'string' || name.length > 214 || !NPM_NAME_RE.test(name) ||
+          range.length > 128 || !NPM_RANGE_RE.test(range) ||
+          (range.startsWith('file:') && range.includes('..'))) {
+        warn(`npm-deps: refusing invalid dep "${name}": "${range}" (${label})`);
+        continue;
+      }
+      if (deps[name]) {
+        if (deps[name].range !== range) {
+          warn(`npm-deps: conflicting ranges for ${name}: "${deps[name].range}" (${deps[name].from}) vs "${range}" (${label}) — keeping the first`);
+        }
+        continue;
+      }
+      deps[name] = { range, from: label };
+    }
+  };
+  const scanDir = (base, manifestName) => {
+    let entries = [];
+    try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const f = path.join(base, e.name, manifestName);
+      if (fs.existsSync(f)) scanManifest(f, path.relative(MOD, f));
+    }
+  };
+  scanDir(path.join(MOD, 'addons'), 'addon.json');
+  scanDir(path.join(JS, 'gamemodes'), 'manifest.json');
+  return deps;
+}
+
+function syncDeclaredNpmDeps() {
+  let declared;
+  try { declared = collectDeclaredNpmDeps(); } catch (e) { warn('npm-deps: scan failed:', e.message); return; }
+  const names = Object.keys(declared);
+  if (!names.length) return;
+  let pkgDeps = {};
+  try { pkgDeps = JSON.parse(fs.readFileSync(path.join(JS, 'package.json'), 'utf8')).dependencies || {}; } catch { /* no npm root manifest */ }
+  const missing = [];
+  for (const name of names) {
+    // Satisfied = actually installed (require() will resolve it). package.json
+    // alone isn't enough — a listed-but-uninstalled dep still needs the install.
+    const installed = fs.existsSync(path.join(JS, 'node_modules', ...name.split('/'), 'package.json'));
+    if (installed && pkgDeps[name] !== undefined) continue;
+    if (installed) continue; // resolvable already; don't churn package.json
+    const spec = `${name}@${declared[name].range}`;
+    if (npmDepsAttempted.has(spec)) continue; // already tried (in flight or failed)
+    if (!NPM_ARG_SAFE_RE.test(spec)) {
+      warn(`npm-deps: spec not safely passable to npm, skipping: ${spec} (${declared[name].from})`);
+      npmDepsAttempted.add(spec);
+      continue;
+    }
+    missing.push(spec);
+  }
+  if (!missing.length) {
+    const sig = names.slice().sort().join(', ');
+    if (sig !== npmDepsLastSig) {
+      npmDepsLastSig = sig;
+      log(`npm-deps: ${names.length} declared dep(s) satisfied (${sig})`);
+    }
+    return;
+  }
+  if (npmBusy) return; // an install is running; its post-install reload re-checks
+  for (const s of missing) npmDepsAttempted.add(s);
+  log(`npm-deps: installing ${missing.length} missing dep(s): ${missing.join(' ')}`);
+  runNpm(['install', ...missing], (r) => {
+    if (r.ok) log(`npm-deps: install finished (${missing.length} dep(s)) — framework reloaded`);
+    else warn(`npm-deps: install failed — realm continues without: ${r.error}`);
+  });
+}
+
 // ---- (re)load the framework in Node's MAIN global context ----
 // Everything (framework core, gamemodes, addons via require, npm) shares one
 // real global so OV/hook/require are visible everywhere — unlike a vm sandbox,
 // whose globals Node's require() cannot see.
 function loadFramework() {
+  // Re-bootstraps (hot-reload, game hello, post-npm) demote per-library boot
+  // chatter; the very first load stays verbose.
+  quietBoot = frameworkLoads++ > 0;
+  try { loadFrameworkInner(); } finally { quietBoot = false; }
+  // Node backend only: addon/gamemode manifests may declare npm deps —
+  // install whatever is missing in the background (non-blocking, never fatal).
+  try { syncDeclaredNpmDeps(); } catch (e) { warn('npm-deps:', e.message); }
+}
+
+function loadFrameworkInner() {
   // Clear framework globals so re-eval redefines them (core files guard against
   // re-init, which would otherwise no-op a hot-reload).
   for (const g of ['hook', 'gamemode', 'GM', 'GAMEMODE', 'net', 'util', 'command', 'concommand',
@@ -208,21 +376,37 @@ function loadFramework() {
   log(`framework loaded (mode=${MODE}, realm=${REALM})`);
 }
 
-// ---- hot reload: watch js + addons, debounce, reload framework ----
+// ---- hot reload: watch js + addons, filter noise, debounce, reload ----
+// Only real code/config changes re-bootstrap the realm: *.js / *.json, no
+// dotfiles or dot-directories, no editor temp/backup files (extension-less
+// scratch names like "XXT8vqwZ", trailing ~, .swp, .tmp, .bak, ...). A 500ms
+// debounce collapses an editor save storm (write + rename + metadata, or an
+// npm install touching hundreds of files) into ONE full re-bootstrap.
+function isReloadWorthy(f) {
+  if (!f) return false;                                     // unnamed events are watch noise
+  const parts = String(f).split(/[\\/]/);
+  for (const seg of parts) { if (seg.startsWith('.')) return false; }  // .git/, .addon.json.swp, ...
+  const base = parts[parts.length - 1];
+  if (/(~|\.(swp|swo|swx|tmp|bak|part|orig|new))$/i.test(base)) return false;
+  return /\.(js|json)$/i.test(base);                        // drops README.md, LICENSE, "XXT8vqwZ", ...
+}
 function setupHotReload() {
   watchers.forEach((w) => { try { w.close(); } catch {} });
   watchers = [];
   let timer = null;
-  const trigger = (why) => {
+  let why = '';
+  const trigger = (f) => {
+    if (!isReloadWorthy(f)) return;
+    why = String(f);
     clearTimeout(timer);
-    timer = setTimeout(() => { log('hot-reload:', why); loadFramework(); fire('Initialize'); }, 200);
+    timer = setTimeout(() => { log('hot-reload:', why); loadFramework(); fire('Initialize'); }, 500);
   };
   for (const dir of [JS, path.join(MOD, 'addons')]) {
     if (!fs.existsSync(dir)) continue;
-    try { watchers.push(fs.watch(dir, { recursive: true }, (_e, f) => trigger(f || dir))); }
+    try { watchers.push(fs.watch(dir, { recursive: true }, (_e, f) => trigger(f))); }
     catch (e) { warn('watch failed', dir, e.message); }
   }
-  log('hot-reload watching js/ + addons/');
+  log('hot-reload watching js/ + addons/ (*.js|*.json only, 500ms debounce)');
 }
 
 // ---- fire a hook into the framework's gamemode ----
@@ -282,6 +466,20 @@ function onGameMessage(msg) {
       // Engine console line mirrored from the game client's spew tap —
       // republish on the SSE log stream so every GUI console host sees it.
       if (msg.line) pushLog('engine', String(msg.line));
+      break;
+    case 'concommand':
+      // ov_js_cmd_cl (engine keybinds / openvibe:// bridge) -> JS-realm
+      // console command. Dispatched exactly like the GUI console /exec path.
+      if (ctx && ctx.concommand && typeof ctx.concommand.Dispatch === 'function' && msg.text) {
+        const lp = (!IS_SERVER && state.localUserId != null && state.players[state.localUserId])
+          ? wrapPlayer(state.players[state.localUserId]) : null;
+        try {
+          const handled = ctx.concommand.Dispatch(lp, String(msg.text));
+          if (!handled && ctx.command && typeof ctx.command.dispatchConsole === 'function') {
+            ctx.command.dispatchConsole(String(msg.text));
+          }
+        } catch (e) { warn('concommand:', e.message); }
+      }
       break;
     case 'eval':
       // js_run / js_run_cl from the game console.

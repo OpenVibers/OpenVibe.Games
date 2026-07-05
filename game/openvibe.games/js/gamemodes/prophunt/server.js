@@ -126,6 +126,8 @@
           }
         }
       });
+
+      this.broadcastHudState();
     },
 
     endRound(reason) {
@@ -147,22 +149,36 @@
       OV.log(`[PH] RoundEnd round=${this._roundNumber} reason=${reason}`);
       hook.Run("RoundEnd", this._roundNumber, reason);
       OV.broadcast(msg);
+      this.broadcastHudState();
 
       this.scheduleRoundStart();
     },
 
     PlayerDeath(victim, _attacker) {
-      if (!victim) return;
-      countAlive();
-      if (this._roundState !== "active") return;
+      if (!victim || this._roundState !== "active") return;
 
       if (victim.team() === TEAM_PROPS) {
+        propsAlive = Math.max(0, propsAlive - 1);
+        this.broadcastHudState();
         if (propsAlive === 0) {
           this.endRound("hunters_win");
         } else {
           OV.broadcast(`A prop was found! ${propsAlive} prop(s) remaining.`);
         }
+      } else if (victim.team() === TEAM_HUNTERS) {
+        huntersAlive = Math.max(0, huntersAlive - 1);
+        this.broadcastHudState();
       }
+    },
+
+    // Extend the base HUD snapshot with Prop Hunt live values; the client
+    // binds these to its ph_* elements.
+    buildHudState() {
+      const s = gamemode.getBase().buildHudState.call(this);
+      s.propsAlive = propsAlive;
+      s.huntersAlive = huntersAlive;
+      s.locked = locked;
+      return s;
     },
 
     Think() {}

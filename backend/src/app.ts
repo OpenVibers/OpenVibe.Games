@@ -30,12 +30,18 @@ import {
 } from "./schemas.js";
 import { RepositoryError } from "./repository-memory.js";
 import { createSessionToken, OpenVibeSessionStore } from "./sessions.js";
+import { EconomyService } from "./economy.js";
+import { registerEconomyRoutes } from "./routes-economy.js";
+import { fetchPersonaName, registerSteamOpenIdRoutes, SteamOpenIdFetch } from "./steam-openid.js";
 
 export interface AppOptions {
   repository: OpenVibeRepository;
   devAuthEnabled?: boolean;
   adminSecret?: string;
   sessionStore?: OpenVibeSessionStore;
+  economy?: EconomyService;
+  // Injectable outbound HTTP for the Steam OpenID flow (tests mock this).
+  steamOpenIdFetch?: SteamOpenIdFetch;
 }
 
 export async function createApp(options: AppOptions): Promise<FastifyInstance> {
@@ -176,7 +182,15 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       return reply.code(403).send({ error: "steam_account_banned" });
     }
 
-    const displayName = body.displayName ?? `Steam ${params.steamid.slice(-6)}`;
+    // No name in the ticket payload (the C++ client doesn't send one):
+    // resolve the real Steam persona instead of saving the numeric fallback.
+    const displayName =
+      body.displayName ??
+      (await fetchPersonaName(
+        (options.steamOpenIdFetch ?? (fetch as unknown as SteamOpenIdFetch)),
+        params.steamid,
+        request.log,
+      ));
     const profile = await options.repository.upsertDevPlayer({
       steamId: params.steamid,
       displayName,
@@ -190,6 +204,12 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       ownerSteamId: params.ownersteamid ?? params.steamid,
       ...profile,
     };
+  });
+
+  registerSteamOpenIdRoutes(app, {
+    repository: options.repository,
+    sessionStore: options.sessionStore,
+    steamOpenIdFetch: options.steamOpenIdFetch,
   });
 
   app.get("/v1/me", async (request, reply) => {
@@ -406,6 +426,15 @@ export async function createApp(options: AppOptions): Promise<FastifyInstance> {
       "",
     ].join("\n");
   });
+
+  if (options.economy) {
+    registerEconomyRoutes(app, {
+      economy: options.economy,
+      sessionStore: options.sessionStore,
+      devAuthEnabled: options.devAuthEnabled,
+      adminSecret: options.adminSecret,
+    });
+  }
 
   app.addHook("onClose", async () => {
     await options.sessionStore?.close?.();

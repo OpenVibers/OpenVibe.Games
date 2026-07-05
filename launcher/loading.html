@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OpenVibe: Source — Loading</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #0d0d14;
+    color: #e8e8f0;
+    font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, sans-serif;
+    user-select: none;
+    cursor: default;
+  }
+
+  /* Subtle animated background: drifting radial glows */
+  .bg {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: 0;
+  }
+  .bg::before, .bg::after {
+    content: '';
+    position: absolute;
+    width: 70vmax;
+    height: 70vmax;
+    border-radius: 50%;
+    filter: blur(60px);
+    opacity: 0.14;
+  }
+  .bg::before {
+    background: radial-gradient(circle, #00c8ff 0%, transparent 60%);
+    top: -25vmax;
+    left: -15vmax;
+    animation: drift-a 26s ease-in-out infinite alternate;
+  }
+  .bg::after {
+    background: radial-gradient(circle, #a855f7 0%, transparent 60%);
+    bottom: -30vmax;
+    right: -15vmax;
+    animation: drift-b 32s ease-in-out infinite alternate;
+  }
+  @keyframes drift-a {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(12vmax, 8vmax) scale(1.15); }
+  }
+  @keyframes drift-b {
+    from { transform: translate(0, 0) scale(1.1); }
+    to   { transform: translate(-10vmax, -6vmax) scale(0.95); }
+  }
+
+  /* Faint scanline grid for a Source-y feel */
+  .grid {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+
+  .stage {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+  }
+
+  .wordmark {
+    font-size: clamp(34px, 5.5vw, 64px);
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .wordmark .open  { color: #e8e8f0; }
+  .wordmark .vibe  { color: #00c8ff; text-shadow: 0 0 24px rgba(0, 200, 255, 0.45); }
+  .wordmark .source {
+    display: block;
+    text-align: center;
+    font-size: 0.34em;
+    font-weight: 600;
+    letter-spacing: 0.55em;
+    margin-top: 10px;
+    color: #8a8aa0;
+  }
+
+  .phase {
+    min-height: 1.6em;
+    font-size: clamp(15px, 1.6vw, 20px);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: #b8b8cc;
+    text-align: center;
+    transition: opacity 0.25s ease;
+  }
+  .phase.swap { opacity: 0; }
+
+  /* Indeterminate shimmer bar */
+  .bar {
+    width: min(460px, 70vw);
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+    position: relative;
+  }
+  .bar::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -40%;
+    width: 40%;
+    height: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, transparent, #00c8ff, #06ffa5, transparent);
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+  @keyframes shimmer {
+    from { left: -40%; }
+    to   { left: 100%; }
+  }
+
+  .hint {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #55556a;
+    text-transform: uppercase;
+  }
+
+  .hide-btn {
+    position: fixed;
+    right: 22px;
+    bottom: 20px;
+    z-index: 3;
+    padding: 8px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #8a8aa0;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    font-family: inherit;
+  }
+  .hide-btn:hover {
+    color: #e8e8f0;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(0, 200, 255, 0.4);
+  }
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="grid"></div>
+
+  <div class="stage">
+    <div class="wordmark">
+      <span class="open">OPEN</span><span class="vibe">VIBE</span>
+      <span class="source">: SOURCE</span>
+    </div>
+    <div class="bar"></div>
+    <div class="phase" id="phase">Waiting for Source&hellip;</div>
+    <div class="hint">The game window will take over when ready</div>
+  </div>
+
+  <button class="hide-btn" id="hide" type="button">Hide</button>
+
+<script>
+  'use strict';
+  (function () {
+    var phaseEl = document.getElementById('phase');
+    var swapTimer = null;
+
+    // Well-known hook: main process pushes phase text via executeJavaScript.
+    window.__ovSetPhase = function (text) {
+      if (!text || typeof text !== 'string') return;
+      window.__ovPhase = text;
+      if (!phaseEl) return;
+      phaseEl.classList.add('swap');
+      clearTimeout(swapTimer);
+      swapTimer = setTimeout(function () {
+        phaseEl.textContent = text;
+        phaseEl.classList.remove('swap');
+      }, 200);
+    };
+
+    // If a phase was staged before this script ran, apply it now.
+    if (typeof window.__ovPhase === 'string' && window.__ovPhase) {
+      phaseEl.textContent = window.__ovPhase;
+    }
+
+    document.getElementById('hide').addEventListener('click', function (e) {
+      e.stopPropagation();
+      window.close();
+    });
+  })();
+</script>
+</body>
+</html>

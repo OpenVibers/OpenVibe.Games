@@ -3,6 +3,9 @@ import { Pool } from "pg";
 import { createApp } from "./app.js";
 import { PgOpenVibeRepository } from "./repository-pg.js";
 import { RedisSessionStore } from "./sessions.js";
+import { EconomyService } from "./economy.js";
+import { PgEconomyRepository } from "./economy-repository-pg.js";
+import { findSeedFile, loadDevolvedDefs } from "./seed-devolved.js";
 import fastifyStatic from "@fastify/static";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -14,12 +17,32 @@ const pool = new Pool({
     process.env.DATABASE_URL ?? "postgres://openvibe:openvibe@127.0.0.1:5432/openvibe",
 });
 
+const economyRepo = new PgEconomyRepository(pool);
+const economy = new EconomyService(economyRepo);
+
+// Seed/refresh the devolved content defs at boot when the import exists.
+const seedFile = findSeedFile([
+  resolve(__dirname, "../seed/devolved-content.json"),
+  resolve(__dirname, "../../seed/devolved-content.json"),
+]);
+if (seedFile) {
+  const { defs, skippedDuplicates } = loadDevolvedDefs(seedFile);
+  await economyRepo.upsertDefs(defs);
+  console.log(`[economy] seeded ${defs.length} devolved defs from ${seedFile}`);
+  if (skippedDuplicates.length > 0) {
+    console.warn(`[economy] ${skippedDuplicates.length} duplicate def ids skipped`);
+  }
+} else {
+  console.warn("[economy] no seed/devolved-content.json found — run tools/import-devolved.mjs");
+}
+
 const app = await createApp({
   repository: new PgOpenVibeRepository(pool),
   devAuthEnabled: process.env.OPENVIBE_DEV_AUTH_ENABLED !== "false",
   sessionStore: process.env.SESSION_REDIS_URL
     ? new RedisSessionStore(process.env.SESSION_REDIS_URL)
     : undefined,
+  economy,
 });
 
 // Serve the in-game web client from the repo-root client/ directory.

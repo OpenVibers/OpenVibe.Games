@@ -54,6 +54,16 @@
     /* Keep panels/cards legible against the blurred game. */
     html.ov-pause-overlay #ov-auth { background: transparent !important; }
 
+    /* In-game menu scrim: applied by the page itself whenever a menu route is
+       shown over the running game (covers opens the C++ pause-overlay path
+       misses, e.g. the initial in-level open). The HUD route never gets it. */
+    html.ov-menu-scrim body {
+      background: radial-gradient(120% 90% at 50% 0%,
+        rgba(10, 14, 24, 0.86), rgba(4, 6, 12, 0.96)) !important;
+      -webkit-backdrop-filter: blur(14px) saturate(120%);
+      backdrop-filter: blur(14px) saturate(120%);
+    }
+
     /* ── Screen switching ─────────────────────────────── */
     .screen { display: none; flex-direction: column; height: 100%; }
     .screen.active { display: flex; }
@@ -756,6 +766,449 @@
       text-shadow: 0 1px 3px rgba(0,0,0,0.8);
     }
 
+    /* ── Loading screen (?loading=1 — Electron launcher overlay) ── */
+    #ov-loading {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 6000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      text-align: center;
+      background:
+        radial-gradient(ellipse at 28% 18%, rgba(26,159,255,0.10) 0%, transparent 55%),
+        radial-gradient(ellipse at 72% 82%, rgba(18,119,200,0.10) 0%, transparent 55%),
+        linear-gradient(160deg, #0b1722 0%, var(--bg) 55%, #04080c 100%);
+    }
+    body.ov-loading-mode #ov-loading { display: flex; }
+    body.ov-loading-mode #ov-auth,
+    body.ov-loading-mode #ov-main,
+    body.ov-loading-mode #ov-hud { display: none !important; }
+    /* subtle scanlines */
+    #ov-loading::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.45;
+      background: repeating-linear-gradient(0deg, rgba(255,255,255,0.022) 0 1px, transparent 1px 3px);
+    }
+    .loading-particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+    .ov-lp {
+      position: absolute;
+      bottom: -8px;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: ovRise 9s linear infinite;
+    }
+    @keyframes ovRise { from { transform: translateY(0); } to { transform: translateY(-105vh); } }
+    .loading-wordmark {
+      position: relative;
+      font-size: clamp(30px, 6vw, 46px);
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      color: var(--text-head);
+      text-shadow: 0 0 26px rgba(26,159,255,0.35);
+    }
+    .loading-wordmark span { color: var(--accent); }
+    .loading-mode {
+      position: relative;
+      margin-top: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--accent);
+      min-height: 22px;
+    }
+    .loading-bar {
+      position: relative;
+      width: min(420px, 70vw);
+      height: 6px;
+      margin-top: 34px;
+      border-radius: 3px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border);
+    }
+    .loading-bar-fill {
+      position: absolute;
+      inset: 0;
+      width: 40%;
+      background: linear-gradient(90deg, transparent, rgba(26,159,255,0.95), transparent);
+      animation: ovShimmer 1.4s linear infinite;
+    }
+    @keyframes ovShimmer { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+    .loading-phase {
+      position: relative;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--text);
+      min-height: 20px;
+    }
+    .loading-tip {
+      position: relative;
+      margin-top: 26px;
+      max-width: 500px;
+      padding: 0 20px;
+      font-size: 12px;
+      color: var(--text-dim);
+      min-height: 36px;
+      opacity: 1;
+      transition: opacity 0.35s ease;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .loading-bar-fill { animation: none; width: 100%; opacity: 0.5; }
+      .ov-lp { display: none; }
+      .loading-tip { transition: none; }
+    }
+
+    /* ── Cade / spawn quick menu (OVApp.toggleCadeMenu) ── */
+    #ov-cademenu {
+      position: fixed;
+      inset: 0;
+      z-index: 6500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(4,8,12,0.62);
+      /* Must receive input even in the ?hud=1 overlay, where #ov-hud is
+         pointer-events:none — this container is a body-level sibling and
+         re-enables pointer events for itself while open. */
+      pointer-events: auto;
+    }
+    #ov-cademenu[hidden] { display: none; }
+    .cade-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px 20px;
+      width: min(680px, 92vw);
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+    }
+    .cade-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--text-head);
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .cade-hint { font-size: 11px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+    .cade-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .cade-tile {
+      position: relative;
+      display: block;
+      text-align: left;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px 10px 36px;
+      cursor: pointer;
+      color: var(--text);
+      font: inherit;
+      transition: border-color var(--transition), background var(--transition);
+    }
+    .cade-tile:hover { border-color: var(--accent); background: var(--bg-hover); }
+    .cade-key {
+      position: absolute;
+      left: 9px;
+      top: 11px;
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+    .cade-name { display: block; font-size: 13px; font-weight: 700; color: var(--text-head); }
+    .cade-meta { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .cade-meta .cost { color: var(--gold); font-weight: 600; }
+    .cade-empty { grid-column: 1 / -1; font-size: 12px; color: var(--text-dim); padding: 12px 4px; }
+
+    /* ── OpenVibe economy hub (#route-inventory) ─────── */
+    .eco-header {
+      display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 16px; max-width: 1100px; margin-bottom: 14px;
+    }
+    .eco-bucks { font-size: 16px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+    .eco-bucks .lbl { font-size: 11px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 6px; }
+    .eco-level { font-size: 13px; font-weight: 700; color: var(--text-head); white-space: nowrap; }
+    .eco-xpbar { flex: 1; min-width: 140px; height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .eco-xpfill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-dk), var(--accent)); transition: width 0.3s ease; }
+    .eco-xptext { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+
+    .eco-tabs { display: flex; gap: 2px; margin-bottom: 14px; border-bottom: 1px solid var(--border); max-width: 1100px; }
+    .eco-tab {
+      padding: 8px 16px; background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-dim); font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: color var(--transition);
+    }
+    .eco-tab:hover { color: var(--text); }
+    .eco-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .eco-pane { display: none; max-width: 1100px; }
+    .eco-pane.active { display: block; }
+
+    .eco-sortrow { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+    .eco-sortlbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+    .eco-sorthint { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+
+    .eco-grid {
+      display: grid; grid-template-columns: repeat(10, 52px); gap: 6px;
+      max-height: 62vh; overflow-y: auto; padding: 2px;
+      touch-action: none; user-select: none; -webkit-user-select: none;
+    }
+    .eco-slot {
+      width: 52px; height: 52px; position: relative;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+    }
+    .eco-slot.occupied { cursor: grab; }
+    .eco-slot.occupied:hover { border-color: var(--accent); }
+    .eco-slot.selected { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+    .eco-slot.drag-src { opacity: 0.35; }
+    .eco-slot.drop-hint { border-color: var(--accent); background: var(--bg-hover); box-shadow: 0 0 0 1px var(--accent); }
+    .eco-tile { position: absolute; inset: 2px; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    .eco-tile img { width: 100%; height: 100%; object-fit: contain; display: block; -webkit-user-drag: none; pointer-events: none; }
+    .eco-ph {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800; letter-spacing: 0.02em; color: #fff;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.6); pointer-events: none;
+    }
+    .eco-k-item     { background: rgba(76,175,80,0.30);   color: #a5d6a7; }
+    .eco-k-crate    { background: rgba(245,166,35,0.30);  color: #ffd54f; }
+    .eco-k-rare     { background: rgba(168,85,247,0.30);  color: #d0a9f5; }
+    .eco-k-cade     { background: rgba(141,110,99,0.35);  color: #d7ccc8; }
+    .eco-k-perma    { background: rgba(229,57,53,0.30);   color: #ef9a9a; }
+    .eco-k-tier     { background: rgba(0,188,212,0.28);   color: #80deea; }
+    .eco-k-roundbuy { background: rgba(255,112,67,0.30);  color: #ffab91; }
+    .eco-k-specwep  { background: rgba(236,64,122,0.30);  color: #f48fb1; }
+    .eco-k-taunt    { background: rgba(255,238,88,0.22);  color: #fff59d; }
+    .eco-k-mat      { background: rgba(120,144,156,0.35); color: #cfd8dc; }
+    .eco-k-recipe   { background: rgba(102,187,106,0.28); color: #c8e6c9; }
+    .eco-k-quest    { background: rgba(38,198,218,0.28);  color: #b2ebf2; }
+    /* Loadout-side kinds (rare meta.type values) — kept for full coverage */
+    .eco-k-jihad     { background: rgba(255,152,0,0.30);  color: #ffcc80; }
+    .eco-k-wep       { background: rgba(92,107,192,0.32); color: #c5cae9; }
+    .eco-k-wepskin   { background: rgba(0,150,136,0.30);  color: #b2dfdb; }
+    .eco-k-crosshair { background: rgba(205,220,57,0.24); color: #f0f4c3; }
+    .eco-kb-bucks    { background: rgba(245,166,35,0.25); color: var(--gold); }
+    .eco-kbadge {
+      display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+      white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+    }
+    .eco-kbadge.nm { text-transform: none; font-size: 11px; letter-spacing: 0; }
+
+    #eco-ghost {
+      position: fixed; width: 52px; height: 52px; z-index: 10000; display: none;
+      pointer-events: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.6));
+    }
+    #eco-ctx {
+      position: fixed; z-index: 10001; min-width: 170px; padding: 4px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .eco-ctx-head {
+      padding: 6px 12px 4px; font-size: 11px; font-weight: 700; color: var(--text-dim);
+      border-bottom: 1px solid var(--border); margin-bottom: 2px; max-width: 240px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .eco-ctx-item { padding: 7px 12px; font-size: 13px; color: var(--text); border-radius: 4px; cursor: pointer; }
+    .eco-ctx-item:hover { background: var(--bg-hover); color: var(--text-head); }
+    .eco-ctx-item.dim { color: var(--text-dim); }
+    #eco-tip {
+      position: fixed; z-index: 10002; max-width: 280px; padding: 8px 10px;
+      background: #0a141d; border: 1px solid var(--border); border-radius: 6px;
+      font-size: 12px; pointer-events: none; box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+    }
+    .eco-tip-name { font-weight: 700; color: var(--text-head); }
+    .eco-tip-kind { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-dim); margin-bottom: 4px; }
+    .eco-tip-row { display: flex; justify-content: space-between; gap: 12px; color: var(--text-dim); }
+    .eco-tip-row .pc { color: var(--gold); white-space: nowrap; }
+
+    #eco-reel {
+      position: fixed; inset: 0; z-index: 10005; background: rgba(4,8,12,0.85);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #eco-reel[hidden] { display: none; }
+    .eco-reel-box {
+      width: min(92vw, 760px); background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+      position: relative; overflow: hidden;
+    }
+    .eco-reel-title { font-size: 15px; font-weight: 700; color: var(--text-head); }
+    .eco-reel-window {
+      position: relative; overflow: hidden; height: 112px; margin: 16px 0 10px;
+      border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+    }
+    .eco-reel-strip { display: flex; gap: 8px; padding: 8px 0; will-change: transform; }
+    .eco-reel-strip.instant { justify-content: center; transform: none !important; }
+    .eco-reel-tile {
+      flex: 0 0 96px; height: 94px; position: relative;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+      transition: transform 0.12s ease;
+    }
+    .eco-reel-tile.tick { transform: scale(1.06); }
+    .eco-reel-tile.glow { border-color: var(--gold); animation: ecoglow 1s ease-in-out infinite; }
+    @keyframes ecoglow {
+      0%, 100% { box-shadow: 0 0 4px rgba(245,166,35,0.35); }
+      50%      { box-shadow: 0 0 14px rgba(245,166,35,0.9); }
+    }
+    .eco-reel-tile.winpop { transform: scale(1.14); z-index: 1; }
+    .eco-reel-tile .eco-tile { inset: 4px 4px 18px; }
+    .eco-reel-tile .rname {
+      position: absolute; bottom: 2px; left: 3px; right: 3px; font-size: 9px; line-height: 1.3;
+      color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .eco-reel-tile.win { border-color: var(--gold); }
+    .eco-reel-tile.flash { animation: ecoflash 0.5s ease 3; }
+    @keyframes ecoflash {
+      0%, 100% { box-shadow: 0 0 0 rgba(245,166,35,0); }
+      50%      { box-shadow: 0 0 18px rgba(245,166,35,0.9); }
+    }
+    .eco-reel-marker {
+      position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; z-index: 2;
+      background: var(--gold); box-shadow: 0 0 8px var(--gold);
+      animation: ecomarker 1.2s ease-in-out infinite;
+    }
+    @keyframes ecomarker {
+      0%, 100% { box-shadow: 0 0 8px var(--gold); }
+      50%      { box-shadow: 0 0 16px var(--gold), 0 0 28px rgba(245,166,35,0.55); }
+    }
+    .eco-reel-banner { font-size: 16px; font-weight: 800; color: var(--gold); min-height: 24px; }
+    #eco-reel-banner .eco-reel-wonname { background: none; padding: 0; font-size: 16px; font-weight: 800; }
+    .eco-confetti { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 3; }
+    .eco-confetti-p {
+      position: absolute; top: -14px; width: 7px; height: 11px; opacity: 0.9;
+      animation: ecofall linear forwards;
+    }
+    @keyframes ecofall {
+      to { transform: translateY(440px) rotate(560deg); opacity: 0; }
+    }
+
+    .eco-craft-wrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+    .eco-craft-main { flex: 0 0 auto; }
+    .eco-craft-slots { display: grid; grid-template-columns: repeat(4, 52px); gap: 6px; margin-bottom: 12px; touch-action: manipulation; }
+    .eco-craft-slots .eco-slot.occupied { cursor: pointer; }
+    .eco-craft-slots.shake { animation: ecoshake 0.4s ease; }
+    @keyframes ecoshake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-6px); } 40% { transform: translateX(6px); }
+      60% { transform: translateX(-4px); } 80% { transform: translateX(4px); }
+    }
+    .eco-craft-result { display: flex; gap: 8px; margin-top: 12px; min-height: 52px; align-items: center; flex-wrap: wrap; }
+    .eco-craft-gave { font-size: 12px; color: var(--green); font-weight: 600; }
+    .eco-pop { animation: ecopop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    @keyframes ecopop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .eco-craft-side { flex: 1; min-width: 260px; }
+    .eco-side-grid { display: grid; grid-template-columns: repeat(auto-fill, 52px); gap: 6px; max-height: 300px; overflow-y: auto; padding: 2px; }
+    .eco-side-grid .eco-slot.occupied { cursor: pointer; }
+    .eco-recipes { margin-top: 20px; font-size: 12px; color: var(--text-dim); max-width: 640px; }
+    .eco-recipe { padding: 2px 0; }
+    .eco-recipe b { color: var(--text); }
+    .eco-recipe.known { color: var(--text); }
+    .eco-recipe .dim { color: var(--text-dim); font-size: 11px; }
+
+    .eco-lo-section { margin-bottom: 20px; }
+    .eco-lo-title {
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-dim); border-bottom: 1px solid var(--border);
+      padding-bottom: 5px; margin-bottom: 8px;
+    }
+    .eco-lo-empty { font-size: 12px; color: var(--text-dim); padding: 4px 0; }
+    .eco-wep-row {
+      display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin-bottom: 6px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; max-width: 640px;
+    }
+    .eco-wep-name { font-weight: 600; color: var(--text-head); flex: 1; }
+    .eco-wep-class { font-size: 11px; color: var(--text-dim); }
+    .eco-chiprow { display: flex; flex-wrap: wrap; gap: 8px; }
+    .eco-chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px;
+      font-size: 12px; color: var(--text); cursor: pointer; transition: border-color var(--transition);
+    }
+    .eco-chip:hover { border-color: var(--accent); }
+    .eco-chip.equipped { border-color: var(--accent); background: rgba(26,159,255,0.15); color: var(--accent); font-weight: 600; }
+    .eco-unredeem { border: none; background: none; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 1px 4px; border-radius: 4px; }
+    .eco-unredeem:hover { color: var(--red); background: rgba(229,57,53,0.12); }
+    .eco-lvlreq { font-size: 11px; color: var(--text-dim); font-weight: 600; }
+    .eco-lvlreq.locked { color: var(--red); }
+    .eco-store-tile { width: 52px; height: 52px; position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+
+    /* ── Market tab ── */
+    .eco-mkt-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .eco-mkt-toolbar .settings-input { max-width: 220px; }
+    .eco-mkt-select {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 4px; padding: 6px 8px; font-size: 12px;
+    }
+    .eco-mine-wrap { margin-bottom: 14px; }
+    .eco-mkt-row {
+      display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin-bottom: 6px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; max-width: 860px;
+    }
+    .eco-mkt-icon { width: 38px; height: 38px; flex: 0 0 38px; position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+    .eco-mkt-name { flex: 1; font-weight: 600; color: var(--text-head); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 80px; }
+    .eco-mkt-seller { font-size: 11px; color: var(--text-dim); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .eco-mkt-price { color: var(--gold); font-weight: 700; white-space: nowrap; }
+    .eco-mkt-pager { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: var(--text-dim); }
+
+    /* ── Trades tab ── */
+    .eco-trade-cols { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+    .eco-trade-col { flex: 1; min-width: 300px; max-width: 520px; }
+    .eco-trade-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 12px; margin-bottom: 8px;
+    }
+    .eco-trade-head { font-weight: 600; color: var(--text-head); font-size: 13px; margin-bottom: 6px; }
+    .eco-trade-side { font-size: 12px; color: var(--text-dim); margin: 3px 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .eco-trade-side .lbl { min-width: 74px; font-weight: 600; }
+    .eco-trade-msg { font-size: 12px; color: var(--text); font-style: italic; margin: 5px 0 2px; }
+    .eco-trade-form { max-width: 720px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+    .eco-trade-frow { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+    .eco-trade-frow .flbl { min-width: 110px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+    .eco-trade-pick { max-height: 130px; overflow-y: auto; padding: 2px; }
+    .eco-trade-hint { font-size: 11px; color: var(--text-dim); }
+
+    /* ── Small prompt overlay (sell price) ── */
+    #eco-prompt {
+      position: fixed; inset: 0; z-index: 10006; background: rgba(4,8,12,0.75);
+      display: flex; align-items: center; justify-content: center;
+    }
+    #eco-prompt[hidden] { display: none; }
+    .eco-prompt-box {
+      width: min(92vw, 380px); background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 10px; padding: 18px 20px; text-align: center; box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    .eco-prompt-sub { font-size: 12px; color: var(--text-dim); margin: 6px 0 10px; }
+    .eco-prompt-box .settings-input { width: 100%; box-sizing: border-box; }
+    .eco-prompt-btns { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .eco-pop, .eco-craft-slots.shake, .eco-reel-tile.flash,
+      .eco-reel-tile.glow, .eco-reel-marker, .eco-confetti-p { animation: none; }
+      .eco-reel-tile { transition: none; }
+    }
+
     /* scrollbar */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: var(--bg); }
@@ -822,9 +1275,10 @@
     <div class="topbar-profile">
       <div id="profile-avatar" class="profile-avatar">?</div>
       <span id="profile-name" class="profile-name">Player</span>
-      <span id="profile-currency" class="profile-currency">0 VC</span>
+      <span id="profile-currency" class="profile-currency">0 Bucks</span>
       <span id="profile-xp" class="profile-xp">0 XP</span>
       <button class="btn-signout" onclick="OVApp.signOut()">Sign out</button>
+      <button id="btn-quit" class="btn-signout" style="display:none" onclick="OVApp.quitGame()" title="Quit the game">Quit</button>
     </div>
   </div>
 
@@ -884,11 +1338,164 @@
       </div>
     </div>
 
-    <!-- Inventory -->
+    <!-- Inventory: OpenVibe economy hub (Inventory / Crafting / Loadout / Store) -->
     <div id="route-inventory" class="route">
-      <div class="section-header">Your Inventory</div>
+      <div class="section-header">OpenVibe Economy</div>
       <div id="inventory-content">
-        <div class="empty-state"><span class="spinner"></span> Loading…</div>
+        <div id="eco-msg" class="empty-state"><span class="spinner"></span> Loading…</div>
+        <div id="eco-hub" style="display:none">
+
+          <div class="eco-header">
+            <span class="eco-bucks"><span class="lbl">Bucks</span><span id="eco-bucks-val">0</span></span>
+            <span id="eco-level" class="eco-level">Level 1</span>
+            <div class="eco-xpbar"><div id="eco-xpfill" class="eco-xpfill"></div></div>
+            <span id="eco-xptext" class="eco-xptext">0 / 0 XP</span>
+          </div>
+
+          <div id="eco-tabs" class="eco-tabs">
+            <button class="eco-tab active" data-eco-action="tab" data-ecotab="inventory">Inventory</button>
+            <button class="eco-tab" data-eco-action="tab" data-ecotab="crafting">Crafting</button>
+            <button class="eco-tab" data-eco-action="tab" data-ecotab="loadout">Loadout</button>
+            <button class="eco-tab" data-eco-action="tab" data-ecotab="store">Store</button>
+            <button class="eco-tab" data-eco-action="tab" data-ecotab="market">Market</button>
+            <button class="eco-tab" data-eco-action="tab" data-ecotab="trades">Trades</button>
+          </div>
+
+          <div id="eco-pane-inventory" class="eco-pane active">
+            <div class="eco-sortrow">
+              <span class="eco-sortlbl">Sort</span>
+              <button class="btn-console" data-eco-action="sort" data-mode="asc">Name ↑</button>
+              <button class="btn-console" data-eco-action="sort" data-mode="desc">Name ↓</button>
+              <button class="btn-console" data-eco-action="sort" data-mode="crate_top">Crates top</button>
+              <button class="btn-console" data-eco-action="sort" data-mode="type_asc">Type</button>
+              <span class="eco-sorthint">Drag to move · click two slots to swap · right-click for actions</span>
+            </div>
+            <div id="eco-grid" class="eco-grid"></div>
+          </div>
+
+          <div id="eco-pane-crafting" class="eco-pane">
+            <div class="eco-craft-wrap">
+              <div class="eco-craft-main">
+                <div class="eco-lo-title">Combine (up to 8 items)</div>
+                <div id="eco-craft-slots" class="eco-craft-slots"></div>
+                <button class="btn-buy" style="padding:8px 26px" data-eco-action="craft">Craft</button>
+                <button class="btn-console" data-eco-action="craft-clear">Clear</button>
+                <div id="eco-craft-result" class="eco-craft-result"></div>
+              </div>
+              <div class="eco-craft-side">
+                <div class="eco-lo-title">Your items — click to add</div>
+                <div id="eco-craft-side-grid" class="eco-side-grid"></div>
+              </div>
+            </div>
+            <div id="eco-recipes" class="eco-recipes"></div>
+          </div>
+
+          <div id="eco-pane-loadout" class="eco-pane"></div>
+
+          <div id="eco-pane-store" class="eco-pane">
+            <div id="eco-store-filters" class="eco-chiprow" style="margin-bottom:12px">
+              <span class="eco-chip equipped" data-eco-action="store-filter" data-filter="all">All</span>
+              <span class="eco-chip" data-eco-action="store-filter" data-filter="weapons">Weapons</span>
+              <span class="eco-chip" data-eco-action="store-filter" data-filter="tiers">Tiers</span>
+              <span class="eco-chip" data-eco-action="store-filter" data-filter="specweps">SpecWeps</span>
+              <span class="eco-chip" data-eco-action="store-filter" data-filter="skins">Skins</span>
+            </div>
+            <div id="eco-store-grid"></div>
+          </div>
+
+          <div id="eco-pane-market" class="eco-pane">
+            <div class="eco-mkt-toolbar">
+              <input id="eco-mkt-q" class="settings-input" type="text" placeholder="Search items…" spellcheck="false" autocomplete="off">
+              <select id="eco-mkt-kind" class="eco-mkt-select" title="Kind filter">
+                <option value="">All kinds</option>
+                <option value="item">Item</option>
+                <option value="crate">Crate</option>
+                <option value="rare">Rare</option>
+                <option value="cade">Barricade</option>
+                <option value="perma">Perma Weapon</option>
+                <option value="tier">Tier</option>
+                <option value="roundbuy">Round Buy</option>
+                <option value="specwep">Spec Weapon</option>
+                <option value="taunt">Taunt</option>
+                <option value="mat">Material</option>
+                <option value="recipe">Recipe</option>
+                <option value="quest">Quest</option>
+              </select>
+              <select id="eco-mkt-sort" class="eco-mkt-select" title="Sort">
+                <option value="newest">Newest</option>
+                <option value="price_asc">Price ↑</option>
+                <option value="price_desc">Price ↓</option>
+              </select>
+              <button class="btn-console" data-eco-action="mkt-refresh">Refresh</button>
+              <span class="eco-sorthint">Right-click an inventory item → “Sell on Market”</span>
+            </div>
+            <div class="eco-mine-wrap">
+              <div class="eco-lo-title">My listings</div>
+              <div id="eco-mkt-mine" class="eco-chiprow"><span class="eco-lo-empty">—</span></div>
+            </div>
+            <div id="eco-mkt-list"></div>
+            <div id="eco-mkt-pager" class="eco-mkt-pager"></div>
+          </div>
+
+          <div id="eco-pane-trades" class="eco-pane">
+            <div class="eco-trade-cols">
+              <div class="eco-trade-col">
+                <div class="eco-lo-title">Incoming offers</div>
+                <div id="eco-trades-in"><div class="eco-lo-empty">—</div></div>
+              </div>
+              <div class="eco-trade-col">
+                <div class="eco-lo-title">Outgoing offers</div>
+                <div id="eco-trades-out"><div class="eco-lo-empty">—</div></div>
+              </div>
+            </div>
+
+            <div class="eco-lo-title" style="margin-top:20px">New trade offer</div>
+            <div id="eco-trade-form" class="eco-trade-form">
+              <div class="eco-trade-frow">
+                <span class="flbl">To (SteamID64)</span>
+                <input id="eco-trade-to" class="settings-input" type="text" maxlength="17" placeholder="7656119…" spellcheck="false" autocomplete="off" style="max-width:220px">
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">You give</span>
+                <div id="eco-trade-offer-chips" class="eco-chiprow"><span class="eco-trade-hint">Pick items below (up to 8)</span></div>
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">Your items</span>
+                <div id="eco-trade-offer-pick" class="eco-chiprow eco-trade-pick"></div>
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">+ Bucks</span>
+                <input id="eco-trade-offer-bucks" class="settings-input" type="number" min="0" step="1" value="0" style="max-width:120px">
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">You request</span>
+                <div id="eco-trade-req-chips" class="eco-chiprow"><span class="eco-trade-hint">Search below to add (up to 8)</span></div>
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">Find items</span>
+                <input id="eco-trade-req-q" class="settings-input" type="text" placeholder="Search all items…" spellcheck="false" autocomplete="off" style="max-width:220px">
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl"></span>
+                <div id="eco-trade-req-results" class="eco-chiprow eco-trade-pick"></div>
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">+ Bucks</span>
+                <input id="eco-trade-req-bucks" class="settings-input" type="number" min="0" step="1" value="0" style="max-width:120px">
+              </div>
+              <div class="eco-trade-frow">
+                <span class="flbl">Message</span>
+                <input id="eco-trade-msg" class="settings-input" type="text" maxlength="200" placeholder="Optional message" style="flex:1;min-width:200px">
+              </div>
+              <div class="eco-trade-frow" style="margin-bottom:0">
+                <span class="flbl"></span>
+                <button class="btn-buy" data-eco-action="trade-send" style="padding:8px 26px">Send offer</button>
+                <button class="btn-console" data-eco-action="trade-clear">Clear</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
 
@@ -1069,6 +1676,7 @@
           <button class="btn-console" onclick="OVApp.consoleQuick('js_openscript')">js_openscript</button>
           <button class="btn-console" onclick="OVApp.consoleQuick('ov_npm ls')">ov_npm ls</button>
           <button id="console-pause" class="btn-console" onclick="OVApp.consolePause()">Pause scroll</button>
+          <button id="console-copy" class="btn-console" onclick="OVApp.consoleCopyLog()">Copy log</button>
           <button class="btn-console" onclick="OVApp.consoleClear()">Clear</button>
         </div>
         <div id="console-log" class="console-log" aria-live="polite"></div>
@@ -1100,8 +1708,57 @@
   <div id="hud-gamemode" class="hud-gamemode"></div>
 </div>
 
+<!-- ─────────────────────────────────────────────── LOADING SCREEN (?loading=1) -->
+<!-- Fullscreen branded splash used by the Electron launcher as an overlay
+     window while the game boots (/client/?loading=1&mode=<mode>). -->
+<div id="ov-loading">
+  <div id="loading-particles" class="loading-particles"></div>
+  <div class="loading-wordmark">OPENVIBE<span>: SOURCE</span></div>
+  <div id="loading-mode" class="loading-mode"></div>
+  <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+  <div id="loading-phase" class="loading-phase">Starting Source engine&hellip;</div>
+  <div id="loading-tip" class="loading-tip"></div>
+</div>
+
+<!-- ─────────────────────────────────────────────── CADE QUICK MENU -->
+<!-- Centered overlay grid of the player's owned cades; opened by
+     OVApp.toggleCadeMenu() (bound to "ov_js_cmd_cl ov_econ_menu" in-game). -->
+<div id="ov-cademenu" hidden>
+  <div class="cade-box">
+    <div class="cade-title">Barricades <span class="cade-hint">1&ndash;9 or click to place &middot; Esc to close</span></div>
+    <div id="cade-grid" class="cade-grid"></div>
+  </div>
+</div>
+
 <!-- Toast notification -->
 <div id="ov-toast"></div>
+
+<!-- OpenVibe economy overlays: drag ghost, context menu, tooltip, crate reel -->
+<div id="eco-ghost"></div>
+<div id="eco-ctx" hidden></div>
+<div id="eco-tip" hidden></div>
+<div id="eco-reel" hidden>
+  <div class="eco-reel-box">
+    <div id="eco-reel-title" class="eco-reel-title">Opening crate…</div>
+    <div id="eco-reel-window" class="eco-reel-window">
+      <div class="eco-reel-marker"></div>
+      <div id="eco-reel-strip" class="eco-reel-strip"></div>
+    </div>
+    <div id="eco-reel-banner" class="eco-reel-banner"></div>
+    <button id="eco-reel-close" class="btn-console" data-eco-action="reel-close" style="visibility:hidden;margin-top:10px">Close</button>
+  </div>
+</div>
+<div id="eco-prompt" hidden>
+  <div class="eco-prompt-box">
+    <div id="eco-prompt-title" class="eco-reel-title">Sell on Market</div>
+    <div id="eco-prompt-sub" class="eco-prompt-sub"></div>
+    <input id="eco-prompt-input" class="settings-input" type="number" min="1" max="1000000" step="1" placeholder="Price in Bucks">
+    <div class="eco-prompt-btns">
+      <button id="eco-prompt-ok" class="btn-buy">List for sale</button>
+      <button id="eco-prompt-cancel" class="btn-console">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -1116,8 +1773,10 @@
   // and we install our own window.OV below.
   var electronOV = (window.OV && typeof window.OV.launchMode === 'function') ? window.OV : null;
   var isElectron = shell === 'electron' || params.get('electron') === '1' || !!electronOV;
+  var _steamAuthTimer = null; // never-hang watchdog for the openvibe:// auth bridge
   if (isElectron && !shell) shell = 'electron';
   var hudMode  = params.get('hud') === '1' || location.hash === '#hud';
+  var loadingMode = params.get('loading') === '1'; // Electron boot splash overlay
   var devMode  = params.get('devauth') === '1' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
   // Served from the dev UI server (:5173) or Electron, the backend lives on :3000.
   var defaultApi = (isElectron || location.port === '5173') ? 'http://127.0.0.1:3000' : location.origin;
@@ -1205,7 +1864,7 @@
 
     if (nameEl) nameEl.textContent = p.displayName || 'Player';
     if (avatarEl) avatarEl.textContent = (p.displayName || '?')[0].toUpperCase();
-    if (currEl) currEl.textContent = (p.currencyBalance || 0) + ' VC';
+    if (currEl) currEl.textContent = (p.currencyBalance || 0).toLocaleString() + ' Bucks';
     if (xpEl)   xpEl.textContent   = (p.xp || 0) + ' XP';
     if (nameInput) nameInput.value  = p.displayName || '';
     if (sidInput)  sidInput.value   = p.steamId || '';
@@ -1255,9 +1914,16 @@
   var _currentRoute = 'portal';
   var _routeLoaded  = {};
 
+  function setGameScrim(on) {
+    // Only meaningful in the in-game CEF panel (page over the 3D scene).
+    if (shell !== 'source') return;
+    document.documentElement.classList.toggle('ov-menu-scrim', !!on);
+  }
+
   function routeTo(routeName) {
-    if (routeName === 'hud') { enterHud(); return; }
+    if (routeName === 'hud') { setGameScrim(false); enterHud(); return; }
     exitHud();
+    setGameScrim(true);
 
     var valid = ['portal','servers','leaderboard','inventory','shop','settings','options','console'];
     if (valid.indexOf(routeName) === -1) routeName = 'portal';
@@ -1345,7 +2011,7 @@
           return '<tr><td class="lb-rank' + topClass + '">' + e.rank + '</td>' +
             '<td>' + escHtml(e.displayName) + '</td>' +
             '<td class="lb-xp">' + e.xp + '</td>' +
-            '<td>' + e.currencyBalance + ' VC</td>' +
+            '<td>' + e.currencyBalance + ' Bucks</td>' +
             '</tr>';
         }).join('') + '</tbody></table>';
     }).catch(function () {
@@ -1353,34 +2019,1070 @@
     });
   }
 
+  // ══════════════════════════════════════════════════════════════════════
+  // OpenVibe economy hub (#route-inventory) — Inventory / Crafting /
+  // Loadout / Store against the /v1/economy/* API. Pointer-events only
+  // (no HTML5 draggable): works in Electron, browser and the in-game CEF.
+  // ══════════════════════════════════════════════════════════════════════
+  var _eco = {
+    defs: null,        // Map defId → def
+    byName: null,      // Map lowercased name → def (rares/items win collisions)
+    state: null,       // last /v1/economy/state body
+    tab: 'inventory',
+    sel: null,         // selected slot (click-to-swap)
+    craft: [],         // chosen inventory slot numbers (max 8)
+    storeFilter: 'all',
+    market: { q: '', kind: '', sort: 'newest', page: 1, perPage: 50, total: 0, listings: null, mine: null, loading: false, missing: false },
+    trade: { data: null, timer: null, offerIds: [], reqIds: [], missing: false },
+    bound: false
+  };
+  var _ecoDrag = null;
+  var _ecoTipSlot = null;
+
+  var ECO_KINDS = {
+    item: 'Item', crate: 'Crate', rare: 'Rare', cade: 'Barricade',
+    perma: 'Perma Weapon', tier: 'Tier', roundbuy: 'Round Buy',
+    specwep: 'Spec Weapon', taunt: 'Taunt', mat: 'Material',
+    recipe: 'Recipe', quest: 'Quest',
+    // loadout-side kinds (rare meta.type values) — full coverage
+    jihad: 'Jihad Sound', wep: 'Weapon', wepskin: 'Weapon Skin', crosshair: 'Crosshair'
+  };
+  // Kinds whose reel tiles / wins get the gold "rare" treatment.
+  var ECO_RARE_KINDS = { rare: 1, perma: 1, specwep: 1, tier: 1 };
+  var ECO_ERR_MSG = {
+    missing_key: 'You need the matching key for this crate.',
+    no_recipe: 'Those items do not craft into anything.',
+    insufficient_bucks: 'Not enough Bucks.',
+    level_too_low: 'Your level is too low for that.',
+    already_owned: 'You already own that.',
+    use_not_available_in_menu: 'That item can only be used in-game.',
+    invalid_slot: 'Invalid slot.',
+    not_found: 'Item not found.',
+    not_usable: 'That item cannot be used.',
+    not_a_crate: 'That is not a crate.',
+    not_redeemable: 'That cannot be redeemed.',
+    // Market
+    empty_slot: 'That slot is empty.',
+    invalid_price: 'Enter a price between 1 and 1,000,000 Bucks.',
+    listing_not_found: 'That listing is already gone.',
+    cannot_buy_own: 'You cannot buy your own listing.',
+    inventory_full: 'Your inventory is full.',
+    not_your_listing: 'That is not your listing.',
+    // Trades
+    empty_trade: 'Add items or Bucks to at least one side of the trade.',
+    not_owned: 'You no longer own those items.',
+    self_trade: 'You cannot trade with yourself.',
+    player_not_found: 'Player not found.',
+    too_many_trades: 'Too many open outgoing offers (max 10).',
+    trade_not_found: 'That trade offer is gone.',
+    not_your_trade: 'That is not your trade.',
+    missing_items: 'One side no longer has the goods — offer cancelled.'
+  };
+
+  function fmtBucks(n) {
+    return String(Math.floor(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function ecoToastErr(body, fallback) {
+    var code = body && body.error ? String(body.error) : '';
+    toast(ECO_ERR_MSG[code] || code || fallback || 'Request failed.', 'error');
+  }
+  function ecoNetErr() { toast('Could not reach API.', 'error'); }
+  // Endpoint not implemented yet (plain router 404, not a contract error code).
+  function ecoMissing(res) {
+    return res.status === 404 &&
+      !(res.body && typeof res.body.error === 'string' && /^[a-z_]+$/.test(res.body.error));
+  }
+  // Market/trade item ids can be def ids ("item_X") or bare rare names.
+  function ecoAnyDef(id) { return ecoDef(id) || ecoDefByName(id); }
+  function ecoNameOf(id) { var d = ecoAnyDef(id); return d ? d.name : String(id); }
+  function ecoKindOf(id) { var d = ecoAnyDef(id); return d ? d.kind : 'item'; }
+  function ecoKindBadge(id) {
+    var k = ecoKindOf(id);
+    return '<span class="eco-kbadge nm eco-k-' + escHtml(k) + '" title="' +
+      escHtml(ECO_KINDS[k] || k) + '">' + escHtml(ecoNameOf(id)) + '</span>';
+  }
+
+  // All economy calls: Bearer token (apiFetch) + ?steamId= dev fallback.
+  function ecoApi(path, body) {
+    var sid = (_session && _session.steamId) || '';
+    var url = path + (path.indexOf('?') === -1 ? '?' : '&') + 'steamId=' + encodeURIComponent(sid);
+    return apiFetch(url, body ? { method: 'POST', body: JSON.stringify(body) } : undefined);
+  }
+
+  // Build the shared def caches from a /v1/economy/defs payload (used by the
+  // economy hub and the cade quick menu — whichever loads first wins).
+  function ecoIndexDefs(list) {
+    _eco.defs = new Map();
+    _eco.byName = new Map();
+    list.forEach(function (d) { _eco.defs.set(d.id, d); });
+    // Name index: rares/items first (crate drop tables reference them).
+    var passes = [
+      function (d) { return d.kind === 'rare' || d.kind === 'item'; },
+      function ()  { return true; }
+    ];
+    passes.forEach(function (want) {
+      _eco.defs.forEach(function (d) {
+        var k = String(d.name || '').toLowerCase();
+        if (k && want(d) && !_eco.byName.has(k)) _eco.byName.set(k, d);
+      });
+    });
+  }
+
+  function ecoDef(id) { return (_eco.defs && _eco.defs.get(id)) || null; }
+  function ecoDefByName(name) {
+    return (_eco.byName && _eco.byName.get(String(name).toLowerCase())) || null;
+  }
+  // Endpoints return either the state itself or { …, state }.
+  function ecoStateOf(body) {
+    if (body && body.player) return body;
+    if (body && body.state && body.state.player) return body.state;
+    return null;
+  }
+  function ecoOccMap() {
+    var occ = {};
+    ((_eco.state && _eco.state.inventory) || []).forEach(function (it) { occ[it.slot] = it.itemId; });
+    return occ;
+  }
+
+  function ecoIconUrl(def) {
+    if (!def || !def.icon || !/\.png$/i.test(def.icon)) return null;
+    return 'assets/devolved/' + String(def.icon)
+      .replace(/\\/g, '/').replace(/^\/+/, '').replace(/^materials\//i, '').toLowerCase();
+  }
+
+  // Icon <img> (with placeholder fallback via onerror) + kind-coded tile.
+  function ecoTileInner(def, name) {
+    name = (def && def.name) || String(name || '?');
+    var kind = def ? def.kind : 'item';
+    var initials = (name.match(/\b[a-zA-Z0-9]/g) || ['?']).slice(0, 2).join('').toUpperCase();
+    var url = ecoIconUrl(def);
+    var ph = '<div class="eco-ph eco-k-' + escHtml(kind) + '"' + (url ? ' style="display:none"' : '') + '>' +
+      escHtml(initials) + '</div>';
+    var img = url
+      ? '<img src="' + escHtml(url) + '" alt="" draggable="false" loading="lazy" ' +
+        'onerror="this.style.display=\'none\';if(this.nextElementSibling)this.nextElementSibling.style.display=\'flex\'">'
+      : '';
+    return img + ph;
+  }
+  function ecoTileHtml(def, name) {
+    return '<div class="eco-tile">' + ecoTileInner(def, name) + '</div>';
+  }
+
+  // Entry point kept for loadRoute dispatch.
   function loadInventory() {
+    var hub = document.getElementById('eco-hub');
+    var msg = document.getElementById('eco-msg');
     if (!_session || !_session.steamId) {
-      document.getElementById('inventory-content').innerHTML =
-        '<div class="empty-state">Not signed in.</div>';
+      if (hub) hub.style.display = 'none';
+      if (msg) { msg.style.display = 'block'; msg.textContent = 'Not signed in.'; }
       return;
     }
-    var el = document.getElementById('inventory-content');
-    apiFetch('/v1/me?steamId=' + encodeURIComponent(_session.steamId)).then(function (res) {
-      if (res.status !== 200 || !res.body.inventory) {
-        el.innerHTML = '<div class="empty-state">Could not load inventory.</div>';
-        return;
+    ecoBind();
+    if (msg) { msg.style.display = 'block'; msg.innerHTML = '<span class="spinner"></span> Loading economy…'; }
+    if (hub) hub.style.display = 'none';
+
+    var pDefs = _eco.defs ? Promise.resolve(null) : ecoApi('/v1/economy/defs');
+    Promise.all([pDefs, ecoApi('/v1/economy/state')]).then(function (rs) {
+      var defsRes = rs[0], stRes = rs[1];
+      if (defsRes) {
+        if (defsRes.status !== 200 || !defsRes.body.defs) throw new Error('defs unavailable');
+        ecoIndexDefs(defsRes.body.defs);
       }
-      var items = res.body.inventory;
-      if (!items.length) {
-        el.innerHTML = '<div class="empty-state">Your inventory is empty. Visit the Shop to get items!</div>';
-        return;
+      if (stRes.status !== 200 || !stRes.body.player) {
+        throw new Error((stRes.body && stRes.body.error) || 'state unavailable');
       }
-      el.innerHTML = '<div class="items-grid">' + items.map(function (item) {
-        return '<div class="item-card">' +
-          '<div class="item-type">' + escHtml(item.itemType) + '</div>' +
-          '<div class="item-name">' + escHtml(item.displayName) + '</div>' +
-          '<div class="item-desc">' + escHtml(item.description || '') + '</div>' +
-          '<span class="item-owned">✓ Owned</span>' +
-          '</div>';
-      }).join('') + '</div>';
-    }).catch(function () {
-      el.innerHTML = '<div class="empty-state">Could not reach API.</div>';
+      _eco.state = stRes.body;
+      if (msg) msg.style.display = 'none';
+      if (hub) hub.style.display = 'block';
+      ecoRender();
+    }).catch(function (e) {
+      if (msg) { msg.style.display = 'block'; msg.textContent = 'Could not load the economy (' + e.message + ').'; }
     });
+  }
+
+  // ── Rendering ─────────────────────────────────────────────────────────
+  function ecoRender() {
+    if (!_eco.state) return;
+    ecoRenderHeader();
+    document.querySelectorAll('#eco-tabs .eco-tab').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.ecotab === _eco.tab);
+    });
+    document.querySelectorAll('#eco-hub .eco-pane').forEach(function (p) {
+      p.classList.toggle('active', p.id === 'eco-pane-' + _eco.tab);
+    });
+    switch (_eco.tab) {
+      case 'inventory': ecoRenderGrid();    break;
+      case 'crafting':  ecoRenderCraft();   break;
+      case 'loadout':   ecoRenderLoadout(); break;
+      case 'store':     ecoRenderStore();   break;
+      case 'market':    ecoRenderMarket(); if (!_eco.market.loading) ecoMarketLoad(); break;
+      case 'trades':    ecoRenderTrades();  break;
+    }
+    // Poll open trade offers only while the Trades tab is visible.
+    if (_eco.tab === 'trades') ecoTradePollStart(); else ecoTradePollStop();
+  }
+
+  function ecoRenderHeader() {
+    var p = _eco.state.player;
+    var el;
+    if ((el = document.getElementById('eco-bucks-val'))) el.textContent = fmtBucks(p.bucks);
+    if ((el = document.getElementById('eco-level')))     el.textContent = 'Level ' + (p.lvl || 1);
+    if ((el = document.getElementById('eco-xptext')))    el.textContent = fmtBucks(p.xpInLevel) + ' / ' + fmtBucks(p.xpNext) + ' XP';
+    if ((el = document.getElementById('eco-xpfill'))) {
+      var pct = p.xpNext > 0 ? Math.min(100, (p.xpInLevel / p.xpNext) * 100) : 0;
+      el.style.width = pct + '%';
+    }
+  }
+
+  function ecoRenderGrid() {
+    var grid = document.getElementById('eco-grid');
+    if (!grid) return;
+    var occ = ecoOccMap();
+    var maxSlot = -1;
+    Object.keys(occ).forEach(function (s) { if (+s > maxSlot) maxSlot = +s; });
+    var total = Math.max(50, maxSlot + 11);
+    total = Math.min(200, Math.ceil(total / 10) * 10);
+    var html = '';
+    for (var i = 0; i < total; i++) {
+      var id = occ[i];
+      html += '<div class="eco-slot' + (id ? ' occupied' : '') + (_eco.sel === i ? ' selected' : '') +
+        '" data-slot="' + i + '"' + (id ? ' data-item="' + escHtml(id) + '"' : '') + '>' +
+        (id ? ecoTileHtml(ecoDef(id), id) : '') + '</div>';
+    }
+    grid.innerHTML = html;
+  }
+
+  // ── One-time event wiring (all delegated; containers are static) ──────
+  function ecoBind() {
+    if (_eco.bound) return;
+    _eco.bound = true;
+    var hub = document.getElementById('eco-hub');
+    var grid = document.getElementById('eco-grid');
+    hub.addEventListener('click', ecoHubClick);
+    grid.addEventListener('pointerdown', ecoPointerDown);
+    grid.addEventListener('contextmenu', ecoContextMenu);
+    grid.addEventListener('pointerover', ecoTipOver);
+    grid.addEventListener('pointerout', ecoTipOut);
+    grid.addEventListener('pointermove', ecoTipMove);
+    document.getElementById('eco-ctx').addEventListener('click', ecoCtxClick);
+    document.getElementById('eco-reel').addEventListener('click', function (ev) {
+      if (ev.target.closest('[data-eco-action="reel-close"]')) ecoReelClose();
+    });
+
+    // Market toolbar (static inputs).
+    var mktQ = document.getElementById('eco-mkt-q');
+    var mktQT = null;
+    mktQ.addEventListener('input', function () {
+      clearTimeout(mktQT);
+      mktQT = setTimeout(function () {
+        _eco.market.q = mktQ.value.trim();
+        _eco.market.page = 1;
+        ecoMarketLoad();
+      }, 350);
+    });
+    document.getElementById('eco-mkt-kind').addEventListener('change', function () {
+      _eco.market.kind = this.value; _eco.market.page = 1; ecoMarketLoad();
+    });
+    document.getElementById('eco-mkt-sort').addEventListener('change', function () {
+      _eco.market.sort = this.value; _eco.market.page = 1; ecoMarketLoad();
+    });
+
+    // Trades: request-item def search.
+    var reqQ = document.getElementById('eco-trade-req-q');
+    var reqQT = null;
+    reqQ.addEventListener('input', function () {
+      clearTimeout(reqQT);
+      reqQT = setTimeout(ecoRenderTradeReqResults, 250);
+    });
+
+    // Price prompt overlay.
+    document.getElementById('eco-prompt-ok').addEventListener('click', ecoPromptOk);
+    document.getElementById('eco-prompt-cancel').addEventListener('click', function () { ecoPromptHide(); });
+    document.getElementById('eco-prompt-input').addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') ecoPromptOk();
+      else if (ev.key === 'Escape') ecoPromptHide();
+    });
+    document.getElementById('eco-prompt').addEventListener('pointerdown', function (ev) {
+      if (ev.target === this) ecoPromptHide();
+    });
+    // Press anywhere outside the context menu closes it.
+    document.addEventListener('pointerdown', function (ev) {
+      var ctx = document.getElementById('eco-ctx');
+      if (ctx && !ctx.hidden && !ctx.contains(ev.target)) ecoCtxHide();
+    }, true);
+  }
+
+  function ecoHubClick(ev) {
+    var t = ev.target.closest('[data-eco-action]');
+    if (!t) return;
+    switch (t.dataset.ecoAction) {
+      case 'tab':          _eco.tab = t.dataset.ecotab; ecoRender(); break;
+      case 'sort':         ecoSort(t.dataset.mode); break;
+      case 'craft':        ecoCraftDo(); break;
+      case 'craft-clear':  _eco.craft = []; ecoRenderCraft(); break;
+      case 'craft-add':    ecoCraftAdd(Number(t.dataset.slot)); break;
+      case 'craft-remove': _eco.craft.splice(Number(t.dataset.idx), 1); ecoRenderCraft(); break;
+      case 'buy':          ecoBuy(t.dataset.def); break;
+      case 'equip':        ecoEquip(t.dataset.type, t.dataset.key); break;
+      case 'unredeem':     ecoUnredeem(t.dataset.type, t.dataset.key); break;
+      case 'store-filter': _eco.storeFilter = t.dataset.filter; ecoRenderStore(); break;
+      // Market
+      case 'mkt-refresh':  ecoMarketLoad(); break;
+      case 'mkt-page':     ecoMktPage(Number(t.dataset.dir)); break;
+      case 'mkt-buy':      ecoMktBuy(Number(t.dataset.id)); break;
+      case 'mkt-cancel':   ecoMktCancel(Number(t.dataset.id)); break;
+      // Trades
+      case 'trade-accept':       ecoTradeAct('accept', Number(t.dataset.id)); break;
+      case 'trade-decline':      ecoTradeAct('decline', Number(t.dataset.id)); break;
+      case 'trade-cancel':       ecoTradeAct('cancel', Number(t.dataset.id)); break;
+      case 'trade-send':         ecoTradeSend(); break;
+      case 'trade-clear':        ecoTradeClearForm(); break;
+      case 'trade-pick-offer':   ecoTradePickOffer(t.dataset.item); break;
+      case 'trade-unpick-offer': _eco.trade.offerIds.splice(Number(t.dataset.idx), 1); ecoRenderTradeForm(); break;
+      case 'trade-pick-req':     ecoTradePickReq(t.dataset.def); break;
+      case 'trade-unpick-req':   _eco.trade.reqIds.splice(Number(t.dataset.idx), 1); ecoRenderTradeForm(); break;
+    }
+  }
+
+  // ── Drag & drop / click-to-swap (pointer events only) ─────────────────
+  function ecoPointerDown(ev) {
+    if (ev.button !== 0) return;
+    var slot = ev.target.closest('.eco-slot');
+    if (!slot) return;
+    ev.preventDefault();
+    ecoCtxHide();
+    _ecoDrag = {
+      from: Number(slot.dataset.slot),
+      occupied: slot.classList.contains('occupied'),
+      started: false,
+      x0: ev.clientX, y0: ev.clientY,
+      el: slot
+    };
+    window.addEventListener('pointermove', ecoPointerMove);
+    window.addEventListener('pointerup', ecoPointerUp);
+    window.addEventListener('pointercancel', ecoDragCleanup);
+  }
+
+  function ecoPointerMove(ev) {
+    if (!_ecoDrag) return;
+    var dx = ev.clientX - _ecoDrag.x0, dy = ev.clientY - _ecoDrag.y0;
+    if (!_ecoDrag.started) {
+      if (!_ecoDrag.occupied || (dx * dx + dy * dy) < 16) return; // 4px threshold
+      _ecoDrag.started = true;
+      var ghost = document.getElementById('eco-ghost');
+      ghost.innerHTML = _ecoDrag.el.innerHTML;
+      ghost.style.display = 'block';
+      _ecoDrag.el.classList.add('drag-src');
+      ecoTipHide();
+    }
+    var g = document.getElementById('eco-ghost');
+    g.style.left = (ev.clientX - 26) + 'px';
+    g.style.top  = (ev.clientY - 26) + 'px';
+    var over = document.elementFromPoint(ev.clientX, ev.clientY);
+    var target = over && over.closest ? over.closest('#eco-grid .eco-slot') : null;
+    document.querySelectorAll('.eco-slot.drop-hint').forEach(function (s) { s.classList.remove('drop-hint'); });
+    if (target && Number(target.dataset.slot) !== _ecoDrag.from) target.classList.add('drop-hint');
+  }
+
+  function ecoPointerUp(ev) {
+    var d = _ecoDrag;
+    ecoDragCleanup();
+    if (!d) return;
+    if (d.started) {
+      var over = document.elementFromPoint(ev.clientX, ev.clientY);
+      var target = over && over.closest ? over.closest('#eco-grid .eco-slot') : null;
+      if (target) {
+        var to = Number(target.dataset.slot);
+        if (to !== d.from) ecoMove(d.from, to);
+      }
+      return;
+    }
+    // Plain click: select, deselect or swap with the previous selection.
+    if (_eco.sel == null) {
+      if (d.occupied) { _eco.sel = d.from; ecoRenderGrid(); }
+    } else if (_eco.sel === d.from) {
+      _eco.sel = null; ecoRenderGrid();
+    } else {
+      var from = _eco.sel;
+      _eco.sel = null;
+      ecoMove(from, d.from);
+    }
+  }
+
+  function ecoDragCleanup() {
+    window.removeEventListener('pointermove', ecoPointerMove);
+    window.removeEventListener('pointerup', ecoPointerUp);
+    window.removeEventListener('pointercancel', ecoDragCleanup);
+    var ghost = document.getElementById('eco-ghost');
+    if (ghost) ghost.style.display = 'none';
+    document.querySelectorAll('.eco-slot.drag-src, .eco-slot.drop-hint').forEach(function (s) {
+      s.classList.remove('drag-src'); s.classList.remove('drop-hint');
+    });
+    _ecoDrag = null;
+  }
+
+  function ecoMove(from, to) {
+    var inv = _eco.state.inventory || [];
+    var snapshot = inv.map(function (it) { return { slot: it.slot, itemId: it.itemId }; });
+    var a = null, b = null;
+    inv.forEach(function (it) {
+      if (it.slot === from) a = it;
+      if (it.slot === to)   b = it;
+    });
+    if (!a) { ecoRenderGrid(); return; }
+    if (b) b.slot = from;                      // optimistic swap/move
+    a.slot = to;
+    _eco.craft = _eco.craft.map(function (s) { return s === from ? to : (s === to ? from : s); });
+    ecoRenderGrid();
+    ecoApi('/v1/economy/move', { from: from, to: to }).then(function (res) {
+      if (res.status === 200 && res.body.inventory) {
+        _eco.state.inventory = res.body.inventory;
+        ecoRenderGrid();
+      } else {
+        _eco.state.inventory = snapshot;
+        ecoRenderGrid();
+        ecoToastErr(res.body, 'Move failed.');
+      }
+    }).catch(function () {
+      _eco.state.inventory = snapshot;
+      ecoRenderGrid();
+      ecoNetErr();
+    });
+  }
+
+  function ecoSort(mode) {
+    ecoApi('/v1/economy/sort', { mode: mode }).then(function (res) {
+      if (res.status === 200 && res.body.inventory) {
+        _eco.state.inventory = res.body.inventory;
+        _eco.sel = null;
+        _eco.craft = [];
+        ecoRenderGrid();
+      } else {
+        ecoToastErr(res.body, 'Sort failed.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // ── Custom context menu ────────────────────────────────────────────────
+  function ecoContextMenu(ev) {
+    ev.preventDefault();
+    var slot = ev.target.closest('.eco-slot.occupied');
+    if (!slot) { ecoCtxHide(); return; }
+    var idx = Number(slot.dataset.slot);
+    var def = ecoDef(slot.dataset.item);
+    var items = [];
+    if (def && def.meta && def.meta.usable)  items.push(['use', 'Use']);
+    if (def && def.kind === 'crate')         items.push(['open', 'Open Crate']);
+    if (def && def.kind === 'rare')          items.push(['redeem', 'Redeem']);
+    items.push(['craft-add', 'Add to Crafting']);
+    items.push(['sell', 'Sell on Market']);
+    items.push(['trade', 'Offer in Trade']);
+    items.push(['cancel', 'Cancel']);
+    var ctx = document.getElementById('eco-ctx');
+    ctx.innerHTML = '<div class="eco-ctx-head">' + escHtml(def ? def.name : slot.dataset.item) + '</div>' +
+      items.map(function (it) {
+        return '<div class="eco-ctx-item' + (it[0] === 'cancel' ? ' dim' : '') +
+          '" data-op="' + it[0] + '" data-slot="' + idx + '">' + it[1] + '</div>';
+      }).join('');
+    ctx.hidden = false;
+    ctx.style.left = '0px'; ctx.style.top = '0px';       // measure, then clamp
+    var r = ctx.getBoundingClientRect();
+    ctx.style.left = Math.max(4, Math.min(ev.clientX, window.innerWidth  - r.width  - 8)) + 'px';
+    ctx.style.top  = Math.max(4, Math.min(ev.clientY, window.innerHeight - r.height - 8)) + 'px';
+    ecoTipHide();
+  }
+
+  function ecoCtxHide() {
+    var ctx = document.getElementById('eco-ctx');
+    if (ctx) ctx.hidden = true;
+  }
+
+  function ecoCtxClick(ev) {
+    var t = ev.target.closest('.eco-ctx-item');
+    if (!t) return;
+    var op = t.dataset.op, slot = Number(t.dataset.slot);
+    ecoCtxHide();
+    if (op === 'use') ecoUse(slot);
+    else if (op === 'open') ecoOpenCrate(slot);
+    else if (op === 'redeem') ecoRedeem(slot);
+    else if (op === 'craft-add') { ecoCraftAdd(slot); _eco.tab = 'crafting'; ecoRender(); }
+    else if (op === 'sell') ecoSellPrompt(slot);
+    else if (op === 'trade') {
+      var occ = ecoOccMap();
+      if (occ[slot] != null) ecoTradePickOffer(occ[slot], true);
+      _eco.tab = 'trades';
+      ecoRender();
+    }
+  }
+
+  function ecoUse(slot) {
+    ecoApi('/v1/economy/use', { slot: slot }).then(function (res) {
+      if (res.status === 200) {
+        var st = ecoStateOf(res.body);
+        if (st) _eco.state = st;
+        toast(res.body.effect ? 'Used: ' + res.body.effect : 'Item used.', 'success');
+        ecoRender();
+      } else {
+        ecoToastErr(res.body, 'Could not use that item.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  function ecoRedeem(slot) {
+    var occ = ecoOccMap();
+    var def = ecoDef(occ[slot]);
+    ecoApi('/v1/economy/redeem', { slot: slot }).then(function (res) {
+      var st = ecoStateOf(res.body);
+      if (res.status === 200 && st) {
+        _eco.state = st;
+        toast('Redeemed ' + (def ? def.name : 'item') + ' to your loadout.', 'success');
+        ecoRender();
+      } else {
+        ecoToastErr(res.body, 'Redeem failed.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // ── Tooltip ────────────────────────────────────────────────────────────
+  function ecoTipOver(ev) {
+    var slot = ev.target.closest('.eco-slot.occupied');
+    if (!slot || (_ecoDrag && _ecoDrag.started)) return;
+    if (slot === _ecoTipSlot) return;
+    _ecoTipSlot = slot;
+    var def = ecoDef(slot.dataset.item);
+    var name = def ? def.name : slot.dataset.item;
+    var html = '<div class="eco-tip-name">' + escHtml(name) + '</div>' +
+      '<div class="eco-tip-kind">' + escHtml(def ? (ECO_KINDS[def.kind] || def.kind) : 'Item') + '</div>';
+    if (def && def.kind === 'crate' && def.meta) {
+      if (def.meta.key) {
+        html += '<div class="eco-tip-row"><span>Requires</span><span class="pc">' + escHtml(def.meta.key) + '</span></div>';
+      }
+      var drops = def.meta.items || [];
+      drops.slice(0, 14).forEach(function (i) {
+        html += '<div class="eco-tip-row"><span>' + escHtml(i.name) + '</span><span class="pc">' +
+          escHtml(String(i.chance)) + '</span></div>';
+      });
+      if (drops.length > 14) {
+        html += '<div class="eco-tip-row"><span>… +' + (drops.length - 14) + ' more</span></div>';
+      }
+    }
+    // Kind-specific detail rows so every kind tooltips usefully.
+    var meta = (def && def.meta) || null;
+    if (meta) {
+      if (def.kind === 'rare' && meta.type) {
+        html += '<div class="eco-tip-row"><span>Redeems as</span><span class="pc">' +
+          escHtml(ECO_KINDS[meta.type] || meta.type) + '</span></div>';
+      }
+      if (def.kind === 'recipe' && meta.recipe) {
+        html += '<div class="eco-tip-row"><span>Combine</span><span class="pc">' +
+          escHtml([].concat(meta.recipe).join(' + ')) + '</span></div>';
+      }
+      if (meta.limited != null) {
+        html += '<div class="eco-tip-row"><span>Limited</span><span class="pc">' + escHtml(String(meta.limited)) + '</span></div>';
+      }
+      if (Number(meta.cost) > 0) {
+        html += '<div class="eco-tip-row"><span>Store price</span><span class="pc">' + fmtBucks(meta.cost) + ' Bucks</span></div>';
+      }
+      if (Number(meta.lvl) > 1) {
+        html += '<div class="eco-tip-row"><span>Requires level</span><span class="pc">' + escHtml(String(meta.lvl)) + '</span></div>';
+      }
+      if (meta.desc) {
+        html += '<div class="eco-tip-row"><span>' + escHtml(String(meta.desc)) + '</span></div>';
+      }
+    }
+    if (def && def.meta && def.meta.usable) html += '<div class="eco-tip-row"><span>Usable</span></div>';
+    var tip = document.getElementById('eco-tip');
+    tip.innerHTML = html;
+    tip.hidden = false;
+    ecoTipPlace(ev);
+  }
+
+  function ecoTipMove(ev) {
+    var tip = document.getElementById('eco-tip');
+    if (tip && !tip.hidden) ecoTipPlace(ev);
+  }
+
+  function ecoTipPlace(ev) {
+    var tip = document.getElementById('eco-tip');
+    var r = tip.getBoundingClientRect();
+    var x = ev.clientX + 14, y = ev.clientY + 14;
+    if (x + r.width  > window.innerWidth  - 8) x = ev.clientX - r.width  - 10;
+    if (y + r.height > window.innerHeight - 8) y = ev.clientY - r.height - 10;
+    tip.style.left = Math.max(4, x) + 'px';
+    tip.style.top  = Math.max(4, y) + 'px';
+  }
+
+  function ecoTipOut(ev) {
+    var slot = ev.target.closest('.eco-slot');
+    if (slot && slot === _ecoTipSlot && !slot.contains(ev.relatedTarget)) ecoTipHide();
+  }
+
+  function ecoTipHide() {
+    _ecoTipSlot = null;
+    var tip = document.getElementById('eco-tip');
+    if (tip) tip.hidden = true;
+  }
+
+  // ── Crate opening reel ─────────────────────────────────────────────────
+  function ecoReelClose() {
+    document.getElementById('eco-reel').hidden = true;
+    ecoRender();
+  }
+
+  function ecoOpenCrate(slot) {
+    var occ = ecoOccMap();
+    var def = ecoDef(occ[slot]);
+    if (!def || def.kind !== 'crate') { toast('That is not a crate.', 'error'); return; }
+    var meta = def.meta || {};
+    var table = (meta.items || []).filter(function (i) { return i && i.name; });
+    var reduce = (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) || !table.length;
+
+    var overlay = document.getElementById('eco-reel');
+    var strip   = document.getElementById('eco-reel-strip');
+    var banner  = document.getElementById('eco-reel-banner');
+    var closeBtn = document.getElementById('eco-reel-close');
+    document.getElementById('eco-reel-title').textContent = 'Opening ' + def.name + '…';
+    banner.textContent = '';
+    closeBtn.style.visibility = 'hidden';
+    strip.classList.remove('instant');
+    strip.style.transition = 'none';
+    strip.style.transform = 'translateX(0)';
+    strip.innerHTML = '';
+    overlay.hidden = false;
+
+    // Ask the server immediately; the reel is presentation only.
+    var req = ecoApi('/v1/economy/crates/open', { slot: slot });
+
+    // Strip of ~40 tiles sampled from the drop table, weighted ~1/(chance+2).
+    var weights = table.map(function (i) { return 1 / ((Number(i.chance) || 0) + 2); });
+    var wsum = weights.reduce(function (a, b) { return a + b; }, 0);
+    function sample() {
+      var r = Math.random() * wsum;
+      for (var i = 0; i < table.length; i++) {
+        r -= weights[i];
+        if (r <= 0) return table[i].name;
+      }
+      return table[table.length - 1].name;
+    }
+    var N = 50, WIN = 46;    // long strip; winner lands near the end
+    var names = [];
+    for (var i = 0; i < N; i++) names.push(sample());
+
+    function reelTile(nm) {
+      var d = ecoDefByName(nm) || ecoDef(nm);
+      var k = d ? d.kind : 'item';
+      return '<div class="eco-reel-tile' + (ECO_RARE_KINDS[k] ? ' glow' : '') + '">' +
+        ecoTileHtml(d, nm) + '<div class="rname">' + escHtml((d && d.name) || nm) + '</div></div>';
+    }
+    function finish(winEl, wonName, wonDef) {
+      var k = wonDef ? wonDef.kind : 'item';
+      document.getElementById('eco-reel-title').textContent = 'Opened ' + def.name;
+      banner.innerHTML = 'You unboxed: ' +
+        '<span class="eco-kbadge eco-k-' + escHtml(k) + '">' + escHtml(ECO_KINDS[k] || k) + '</span> ' +
+        '<span class="eco-reel-wonname eco-k-' + escHtml(k) + '">' + escHtml(wonName) + '</span>';
+      if (winEl) {
+        winEl.classList.remove('tick');
+        winEl.classList.add('win');
+        winEl.classList.add('flash');
+        winEl.classList.add('winpop');
+      }
+      if (!reduce && ECO_RARE_KINDS[k]) ecoConfetti(overlay.querySelector('.eco-reel-box'));
+      closeBtn.style.visibility = 'visible';
+      ecoRenderHeader();
+      ecoRenderGrid();
+    }
+
+    req.then(function (res) {
+      if (res.status !== 200 || !res.body || res.body.won == null) {
+        overlay.hidden = true;
+        if (res.body && res.body.error === 'missing_key') {
+          toast('You need a ' + (meta.key || 'key') + '.', 'error');
+        } else {
+          ecoToastErr(res.body, 'Could not open the crate.');
+        }
+        return;
+      }
+      var won = res.body.won;
+      var wonDef = ecoDef(won) || ecoDefByName(won);
+      var wonName = wonDef ? wonDef.name : String(won);
+      var st = ecoStateOf(res.body);
+      if (st) _eco.state = st;
+
+      if (reduce) {
+        // Reduced motion (or empty drop table): show the result instantly.
+        strip.classList.add('instant');
+        strip.innerHTML = reelTile(wonName);
+        finish(strip.children[0], wonName, wonDef);
+        return;
+      }
+
+      names[WIN] = wonName;
+      strip.innerHTML = names.map(reelTile).join('');
+      var winEl = strip.children[WIN];
+      var windowEl = document.getElementById('eco-reel-window');
+      var center = windowEl.clientWidth / 2;
+      var exact = winEl.offsetLeft + winEl.offsetWidth / 2 - center;
+      // Slight random over/undershoot, corrected in a short second glide.
+      var overshoot = (10 + Math.random() * 26) * (Math.random() < 0.5 ? -1 : 1);
+      var firstStop = Math.max(0, exact + overshoot);
+      var step = winEl.offsetWidth + 8;   // tile + flex gap
+
+      // Tick feedback: watch the live transform each frame; when a new tile
+      // crosses the marker, pulse it and play a quiet click.
+      var lastIdx = -1, rafId = 0, animDone = false;
+      function tickLoop() {
+        if (animDone) return;
+        var tx = 0;
+        try {
+          var m = getComputedStyle(strip).transform;
+          if (m && m !== 'none') {
+            var nums = /matrix\(([^)]+)\)/.exec(m);
+            if (nums) tx = parseFloat(nums[1].split(',')[4]) || 0;
+          }
+        } catch (e) { /* keep rolling without ticks */ }
+        var idx = Math.floor((center - tx) / step);
+        if (idx !== lastIdx && idx >= 0 && idx < strip.children.length) {
+          if (lastIdx >= 0 && strip.children[lastIdx]) strip.children[lastIdx].classList.remove('tick');
+          lastIdx = idx;
+          strip.children[idx].classList.add('tick');
+          ecoReelClickSound();
+        }
+        rafId = requestAnimationFrame(tickLoop);
+      }
+
+      // Phase 0: long deceleration to the overshoot point.
+      // Phase 1: short ease-out correction onto the exact center.
+      var phase = 0;
+      function onEnd(ev) {
+        if (ev && ev.target !== strip) return;
+        if (phase === 0) {
+          phase = 1;
+          strip.style.transition = 'transform 0.55s cubic-bezier(0.25, 1, 0.5, 1)';
+          strip.style.transform = 'translateX(' + (-exact) + 'px)';
+          setTimeout(function () { onEnd(); }, 750);   // in case the tiny move fires no event
+        } else if (phase === 1) {
+          phase = 2;
+          animDone = true;
+          cancelAnimationFrame(rafId);
+          strip.removeEventListener('transitionend', onEnd);
+          if (lastIdx >= 0 && strip.children[lastIdx]) strip.children[lastIdx].classList.remove('tick');
+          finish(winEl, wonName, wonDef);
+        }
+      }
+      strip.addEventListener('transitionend', onEnd);
+      setTimeout(function () { if (phase === 0) onEnd(); }, 6400); // transitionend safety net
+
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          strip.style.transition = 'transform 6s cubic-bezier(0.12, 0.8, 0.2, 1)';
+          strip.style.transform = 'translateX(' + (-firstStop) + 'px)';
+          tickLoop();
+        });
+      });
+    }).catch(function () {
+      overlay.hidden = true;
+      ecoNetErr();
+    });
+  }
+
+  // Quiet WebAudio tick as reel tiles pass the marker (no external assets).
+  var _ecoAudioCtx = null;
+  function ecoReelClickSound() {
+    try {
+      if (_ecoAudioCtx === false) return;
+      if (!_ecoAudioCtx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) { _ecoAudioCtx = false; return; }
+        _ecoAudioCtx = new AC();
+      }
+      if (_ecoAudioCtx.state === 'suspended' && _ecoAudioCtx.resume) _ecoAudioCtx.resume();
+      var t = _ecoAudioCtx.currentTime;
+      var osc = _ecoAudioCtx.createOscillator();
+      var gain = _ecoAudioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 1700;
+      gain.gain.setValueAtTime(0.025, t);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      osc.connect(gain);
+      gain.connect(_ecoAudioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.06);
+    } catch (e) { _ecoAudioCtx = false; }
+  }
+
+  // Brief pure-CSS confetti burst inside the reel box (rare wins only).
+  function ecoConfetti(box) {
+    if (!box) return;
+    try {
+      var host = document.createElement('div');
+      host.className = 'eco-confetti';
+      var colors = ['#f5a623', '#a855f7', '#4caf50', '#1a9fff', '#ec407a', '#fff59d', '#80deea'];
+      for (var i = 0; i < 60; i++) {
+        var p = document.createElement('div');
+        p.className = 'eco-confetti-p';
+        p.style.left = (Math.random() * 100) + '%';
+        p.style.background = colors[i % colors.length];
+        p.style.animationDelay = (Math.random() * 0.45) + 's';
+        p.style.animationDuration = (1.4 + Math.random() * 1.3) + 's';
+        host.appendChild(p);
+      }
+      box.appendChild(host);
+      setTimeout(function () { if (host.parentNode) host.parentNode.removeChild(host); }, 3400);
+    } catch (e) {}
+  }
+
+  // ── Crafting ───────────────────────────────────────────────────────────
+  function ecoCraftAdd(slot) {
+    var occ = ecoOccMap();
+    if (occ[slot] == null) return;
+    if (_eco.craft.indexOf(slot) !== -1) return;
+    if (_eco.craft.length >= 8) { toast('Crafting grid is full (8 slots).', 'error'); return; }
+    _eco.craft.push(slot);
+    if (_eco.tab === 'crafting') ecoRenderCraft();
+  }
+
+  function ecoRenderCraft() {
+    var occ = ecoOccMap();
+    _eco.craft = _eco.craft.filter(function (s) { return occ[s] != null; }).slice(0, 8);
+
+    var slotsEl = document.getElementById('eco-craft-slots');
+    var html = '';
+    for (var i = 0; i < 8; i++) {
+      var s = _eco.craft[i];
+      if (s != null) {
+        var def = ecoDef(occ[s]);
+        html += '<div class="eco-slot occupied" data-eco-action="craft-remove" data-idx="' + i +
+          '" title="' + escHtml((def ? def.name : occ[s]) + ' — click to remove') + '">' +
+          ecoTileHtml(def, occ[s]) + '</div>';
+      } else {
+        html += '<div class="eco-slot"></div>';
+      }
+    }
+    slotsEl.innerHTML = html;
+
+    var picked = {};
+    _eco.craft.forEach(function (s) { picked[s] = 1; });
+    var items = (_eco.state.inventory || []).filter(function (it) { return !picked[it.slot]; })
+      .sort(function (a, b) { return a.slot - b.slot; });
+    var side = document.getElementById('eco-craft-side-grid');
+    side.innerHTML = items.length
+      ? items.map(function (it) {
+          var def = ecoDef(it.itemId);
+          return '<div class="eco-slot occupied" data-eco-action="craft-add" data-slot="' + it.slot +
+            '" title="' + escHtml(def ? def.name : it.itemId) + '">' + ecoTileHtml(def, it.itemId) + '</div>';
+        }).join('')
+      : '<div class="eco-lo-empty">No items left in your inventory.</div>';
+
+    ecoRenderRecipes();
+  }
+
+  function ecoRenderRecipes() {
+    var el = document.getElementById('eco-recipes');
+    if (!el) return;
+    var known = (_eco.state.loadout && _eco.state.loadout.recipes) || {};
+    var combos = [
+      '2× the same Rare → Refined Metal',
+      '2× same-type Rares → Reclaimed Metal',
+      '2× Crates → Metals',
+      '2× Reclaimed Metal → Refined Metal',
+      '2× Refined Metal → Refined Metal Stack',
+      '2× Refined Metal Stacks → Metal Key'
+    ];
+    var html = '<div class="eco-lo-title">Always-available combinations</div>' +
+      combos.map(function (c) { return '<div class="eco-recipe">• ' + escHtml(c) + '</div>'; }).join('');
+    var lines = [];
+    _eco.defs.forEach(function (d) {
+      if (d.kind !== 'recipe') return;
+      var unlocked = !!(known[d.name] || known[d.id]);
+      var parts = ((d.meta && d.meta.recipe) || []).join(' + ');
+      var gives = ((d.meta && d.meta.gives) || []).map(function (g) {
+        var gd = ecoDef(g);
+        return gd ? gd.name : g;
+      }).join(', ');
+      lines.push('<div class="eco-recipe' + (unlocked ? ' known' : '') + '">' + (unlocked ? '✔ ' : '• ') +
+        '<b>' + escHtml(parts) + '</b> → ' + escHtml(gives) +
+        (unlocked ? '' : ' <span class="dim">(recipe not learned)</span>') + '</div>');
+    });
+    if (lines.length) html += '<div class="eco-lo-title" style="margin-top:12px">Recipes</div>' + lines.join('');
+    el.innerHTML = html;
+  }
+
+  function ecoCraftDo() {
+    if (_eco.craft.length < 2) { toast('Add at least two items to craft.', 'error'); return; }
+    ecoApi('/v1/economy/craft', { slots: _eco.craft.slice() }).then(function (res) {
+      if (res.status === 200 && res.body.gives) {
+        var st = ecoStateOf(res.body);
+        if (st) _eco.state = st;
+        _eco.craft = [];
+        ecoRenderHeader();
+        ecoRenderCraft();
+        var out = document.getElementById('eco-craft-result');
+        out.innerHTML = res.body.gives.map(function (id) {
+          var d = ecoDef(id);
+          return '<div class="eco-slot occupied eco-pop" title="' + escHtml(d ? d.name : id) + '">' +
+            ecoTileHtml(d, id) + '</div>';
+        }).join('') + '<span class="eco-craft-gave">Crafted: ' +
+          res.body.gives.map(function (id) { var d = ecoDef(id); return escHtml(d ? d.name : id); }).join(', ') +
+          '</span>';
+        toast('Crafted!', 'success');
+      } else {
+        var box = document.getElementById('eco-craft-slots');
+        box.classList.remove('shake');
+        void box.offsetWidth;             // restart the animation
+        box.classList.add('shake');
+        ecoToastErr(res.body, 'Crafting failed.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // ── Loadout ────────────────────────────────────────────────────────────
+  function ecoRenderLoadout() {
+    var pane = document.getElementById('eco-pane-loadout');
+    var lo = _eco.state.loadout || {};
+    var eq = lo.equipped || {};
+    var html = '<div class="eco-lo-section"><div class="eco-lo-title">Weapons</div>';
+    var weps = lo.weps || {};
+    var wnames = Object.keys(weps);
+    if (!wnames.length) {
+      html += '<div class="eco-lo-empty">No weapons redeemed yet — redeem Rares from your inventory.</div>';
+    } else {
+      wnames.sort().forEach(function (nm) {
+        var w = weps[nm] || {};
+        html += '<div class="eco-wep-row">' +
+          '<span class="eco-wep-name">' + escHtml(nm) + '</span>' +
+          '<span class="eco-wep-class">' + escHtml(w.class || '') +
+            (w.mat ? ' · skin: ' + escHtml(w.mat) : '') + '</span>' +
+          '<button class="btn-buy" data-eco-action="equip" data-type="wep" data-key="' + escHtml(nm) + '">' +
+            (w.equipped ? 'Unequip' : 'Equip') + '</button>' +
+          (w.bought ? '' :
+            '<button class="eco-unredeem" data-eco-action="unredeem" data-type="wep" data-key="' + escHtml(nm) +
+            '" title="Unredeem back to inventory">↩</button>') +
+          '</div>';
+      });
+    }
+    html += '</div>';
+
+    [['mats', 'mat', 'Materials'],
+     ['specweps', 'specwep', 'Spec Weapons'],
+     ['jihads', 'jihad', 'Jihads'],
+     ['taunts', 'taunt', 'Taunts'],
+     ['crosshairs', 'crosshair', 'Crosshairs'],
+     ['wepskins', 'wepskin', 'Weapon Skins']].forEach(function (sec) {
+      var map = lo[sec[0]] || {};
+      var keys = Object.keys(map);
+      html += '<div class="eco-lo-section"><div class="eco-lo-title">' + sec[2] + '</div>';
+      if (!keys.length) {
+        html += '<div class="eco-lo-empty">None owned.</div>';
+      } else {
+        html += '<div class="eco-chiprow">' + keys.sort().map(function (k) {
+          var entry = map[k];
+          var isEq = eq[sec[1]] === k || !!(entry && typeof entry === 'object' && entry.equipped);
+          return '<span class="eco-chip' + (isEq ? ' equipped' : '') +
+            '" data-eco-action="equip" data-type="' + sec[1] + '" data-key="' + escHtml(k) + '">' + escHtml(k) +
+            '<button class="eco-unredeem" data-eco-action="unredeem" data-type="' + sec[1] +
+            '" data-key="' + escHtml(k) + '" title="Unredeem back to inventory">↩</button></span>';
+        }).join('') + '</div>';
+      }
+      html += '</div>';
+    });
+    pane.innerHTML = html;
+  }
+
+  function ecoEquip(type, key) {
+    ecoApi('/v1/economy/equip', { type: type, key: key }).then(function (res) {
+      var st = ecoStateOf(res.body);
+      if (res.status === 200 && st) {
+        _eco.state = st;
+        ecoRender();
+        toast('Loadout updated.', 'success');
+      } else {
+        ecoToastErr(res.body, 'Equip failed.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  function ecoUnredeem(type, key) {
+    ecoApi('/v1/economy/unredeem', { type: type, key: key }).then(function (res) {
+      var st = ecoStateOf(res.body);
+      if (res.status === 200 && st) {
+        _eco.state = st;
+        ecoRender();
+        toast('Returned ' + key + ' to your inventory.', 'success');
+      } else {
+        ecoToastErr(res.body, 'Unredeem failed.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // ── Store ──────────────────────────────────────────────────────────────
+  function ecoRenderStore() {
+    var grid = document.getElementById('eco-store-grid');
+    if (!grid || !_eco.defs) return;
+    var p = _eco.state.player;
+    var lo = _eco.state.loadout || {};
+    document.querySelectorAll('#eco-store-filters .eco-chip').forEach(function (c) {
+      c.classList.toggle('equipped', c.dataset.filter === _eco.storeFilter);
+    });
+    var kindFor = { weapons: 'perma', tiers: 'tier', specweps: 'specwep', skins: 'mat' };
+    var owned = { perma: lo.permas || {}, tier: lo.tiers || {}, specwep: lo.specweps || {}, mat: lo.mats || {} };
+    var defs = [];
+    _eco.defs.forEach(function (d) {
+      var m = d.meta || {};
+      var ok = (d.kind === 'perma' && m.hidden !== true) ||
+               d.kind === 'tier' ||
+               (d.kind === 'specwep' && m.hidden !== true) ||
+               d.kind === 'mat';
+      if (!ok) return;
+      if (_eco.storeFilter !== 'all' && d.kind !== kindFor[_eco.storeFilter]) return;
+      defs.push(d);
+    });
+    defs.sort(function (a, b) {
+      var la = (a.meta && a.meta.lvl) || 0, lb = (b.meta && b.meta.lvl) || 0;
+      return la - lb || String(a.name).localeCompare(String(b.name));
+    });
+    if (!defs.length) {
+      grid.innerHTML = '<div class="empty-state">Nothing for sale in this category.</div>';
+      return;
+    }
+    grid.innerHTML = '<div class="items-grid">' + defs.map(function (d) {
+      var m = d.meta || {};
+      var cost = Number(m.cost) || 0;
+      var lvl = Number(m.lvl) || 0;
+      var isOwned = !!owned[d.kind][d.name];
+      var lowLvl = (p.lvl || 1) < lvl;
+      var poor = (p.bucks || 0) < cost;
+      var reason = lowLvl ? 'Requires level ' + lvl : (poor ? 'Not enough Bucks' : '');
+      var desc = m.desc || m.class || (m.type ? 'Type: ' + m.type : '');
+      return '<div class="item-card">' +
+        '<div class="eco-store-tile">' + ecoTileHtml(d, d.name) + '</div>' +
+        '<div class="item-type">' + escHtml(ECO_KINDS[d.kind] || d.kind) + '</div>' +
+        '<div class="item-name">' + escHtml(d.name) + '</div>' +
+        (desc ? '<div class="item-desc">' + escHtml(desc) + '</div>' : '<div class="item-desc"></div>') +
+        '<div class="item-price">' + fmtBucks(cost) + ' Bucks' +
+          (lvl > 1 ? ' <span class="eco-lvlreq' + (lowLvl ? ' locked' : '') + '">· Lv ' + lvl + '</span>' : '') +
+        '</div>' +
+        (isOwned
+          ? '<span class="item-owned">✓ Owned</span>'
+          : '<button class="btn-buy" data-eco-action="buy" data-def="' + escHtml(d.id) + '"' +
+            (reason ? ' disabled title="' + escHtml(reason) + '"' : '') + '>' +
+            (reason ? escHtml(reason) : 'Buy') + '</button>') +
+        '</div>';
+    }).join('') + '</div>';
+  }
+
+  function ecoBuy(defId) {
+    var d = ecoDef(defId);
+    ecoApi('/v1/economy/buy', { defId: defId }).then(function (res) {
+      var st = ecoStateOf(res.body);
+      if (res.status === 200 && st) {
+        _eco.state = st;
+        ecoRenderHeader();
+        ecoRenderStore();
+        toast('Purchased ' + (d ? d.name : defId) + '!', 'success');
+      } else {
+        ecoToastErr(res.body, 'Purchase failed.');
+      }
+    }).catch(ecoNetErr);
   }
 
   function loadShop() {
@@ -1398,7 +3100,7 @@
           '<div class="item-type">' + escHtml(item.itemType) + '</div>' +
           '<div class="item-name">' + escHtml(item.displayName) + '</div>' +
           '<div class="item-desc">' + escHtml(item.description || '') + '</div>' +
-          '<div class="item-price">' + (item.price === 0 ? 'Free' : item.price + ' VC') + '</div>' +
+          '<div class="item-price">' + (item.price === 0 ? 'Free' : item.price + ' Bucks') + '</div>' +
           (owned
             ? '<span class="item-owned">✓ Owned</span>'
             : '<button class="btn-buy" onclick="OVApp.buyItem(' + JSON.stringify(item.itemId) + ',' + item.price + ')" ' +
@@ -1409,6 +3111,444 @@
     }).catch(function () {
       el.innerHTML = '<div class="empty-state">Could not reach API.</div>';
     });
+  }
+
+  // ── Market (server-wide Bucks-priced listings) ────────────────────────
+  function ecoMarketLoad() {
+    var m = _eco.market;
+    m.loading = true;
+    var list = document.getElementById('eco-mkt-list');
+    if (list && !m.listings) {
+      list.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading market…</div>';
+    }
+    var qs = '/v1/economy/market?sort=' + encodeURIComponent(m.sort) +
+      '&page=' + m.page + '&perPage=' + m.perPage +
+      (m.q ? '&q=' + encodeURIComponent(m.q) : '') +
+      (m.kind ? '&kind=' + encodeURIComponent(m.kind) : '');
+    Promise.all([ecoApi(qs), ecoApi('/v1/economy/market/mine')]).then(function (rs) {
+      m.loading = false;
+      var lr = rs[0], mr = rs[1];
+      if (ecoMissing(lr)) {
+        m.missing = true;
+        m.listings = null;
+        ecoRenderMarket();
+        return;
+      }
+      m.missing = false;
+      if (lr.status === 200 && lr.body && lr.body.listings) {
+        m.listings = lr.body.listings;
+        m.total = Number(lr.body.total) || 0;
+        m.page = Number(lr.body.page) || m.page;
+        m.perPage = Number(lr.body.perPage) || m.perPage;
+      } else {
+        m.listings = [];
+        m.total = 0;
+        ecoToastErr(lr.body, 'Could not load the market.');
+      }
+      m.mine = (mr.status === 200 && mr.body && mr.body.listings) ? mr.body.listings : [];
+      ecoRenderMarket();
+    }).catch(function () {
+      m.loading = false;
+      if (list) list.innerHTML = '<div class="empty-state">Could not reach API.</div>';
+    });
+  }
+
+  function ecoRenderMarket() {
+    var m = _eco.market;
+    var el;
+    if ((el = document.getElementById('eco-mkt-q')) && el.value !== m.q && document.activeElement !== el) el.value = m.q;
+    if ((el = document.getElementById('eco-mkt-kind'))) el.value = m.kind;
+    if ((el = document.getElementById('eco-mkt-sort'))) el.value = m.sort;
+
+    var mine = document.getElementById('eco-mkt-mine');
+    var list = document.getElementById('eco-mkt-list');
+    var pager = document.getElementById('eco-mkt-pager');
+    if (!list) return;
+
+    if (m.missing) {
+      mine.innerHTML = '<span class="eco-lo-empty">—</span>';
+      list.innerHTML = '<div class="empty-state">The market is not available on this server yet.</div>';
+      pager.innerHTML = '';
+      return;
+    }
+    if (m.listings === null) {
+      // First visit: ecoMarketLoad() fills this in.
+      return;
+    }
+
+    // "My listings" strip with Cancel buttons.
+    var mineRows = m.mine || [];
+    mine.innerHTML = mineRows.length
+      ? mineRows.map(function (l) {
+          return '<span class="eco-chip" style="cursor:default">' + ecoKindBadge(l.itemId) +
+            '<span style="color:var(--gold);font-weight:600">' + fmtBucks(l.price) + ' Bucks</span>' +
+            '<button class="eco-unredeem" data-eco-action="mkt-cancel" data-id="' + Number(l.listingId) +
+            '" title="Cancel listing — item returns to your inventory">✕</button></span>';
+        }).join('')
+      : '<span class="eco-lo-empty">You have no open listings. Right-click an inventory item to sell it.</span>';
+
+    // Browse list.
+    var mySid = String((_session && _session.steamId) || '');
+    var bucks = (_eco.state && _eco.state.player && _eco.state.player.bucks) || 0;
+    if (!m.listings.length) {
+      list.innerHTML = '<div class="empty-state">No listings match. Be the first to sell something!</div>';
+    } else {
+      list.innerHTML = m.listings.map(function (l) {
+        var d = ecoAnyDef(l.itemId);
+        var kind = d ? d.kind : 'item';
+        var nm = d ? d.name : String(l.itemId);
+        var own = String(l.sellerSteamId) === mySid;
+        var poor = !own && bucks < l.price;
+        return '<div class="eco-mkt-row">' +
+          '<div class="eco-mkt-icon">' + ecoTileHtml(d, nm) + '</div>' +
+          '<span class="eco-kbadge eco-k-' + escHtml(kind) + '">' + escHtml(ECO_KINDS[kind] || kind) + '</span>' +
+          '<span class="eco-mkt-name" title="' + escHtml(nm) + '">' + escHtml(nm) + '</span>' +
+          '<span class="eco-mkt-seller">' + escHtml(l.sellerName || l.sellerSteamId || '') + '</span>' +
+          '<span class="eco-mkt-price">' + fmtBucks(l.price) + ' Bucks</span>' +
+          '<button class="btn-buy" data-eco-action="mkt-buy" data-id="' + Number(l.listingId) + '"' +
+            (own ? ' disabled title="This is your listing"' : (poor ? ' disabled title="Not enough Bucks"' : '')) +
+            '>' + (own ? 'Yours' : 'Buy') + '</button>' +
+          '</div>';
+      }).join('');
+    }
+
+    // Pager.
+    var pages = Math.max(1, Math.ceil(m.total / m.perPage));
+    pager.innerHTML =
+      '<button class="btn-console" data-eco-action="mkt-page" data-dir="-1"' + (m.page <= 1 ? ' disabled' : '') + '>‹ Prev</button>' +
+      '<span>Page ' + m.page + ' / ' + pages + ' · ' + fmtBucks(m.total) + ' listing' + (m.total === 1 ? '' : 's') + '</span>' +
+      '<button class="btn-console" data-eco-action="mkt-page" data-dir="1"' + (m.page >= pages ? ' disabled' : '') + '>Next ›</button>';
+  }
+
+  function ecoMktPage(dir) {
+    var m = _eco.market;
+    var pages = Math.max(1, Math.ceil(m.total / m.perPage));
+    var next = Math.min(pages, Math.max(1, m.page + (dir || 0)));
+    if (next === m.page) return;
+    m.page = next;
+    ecoMarketLoad();
+  }
+
+  function ecoMktBuy(listingId) {
+    ecoApi('/v1/economy/market/buy', { listingId: listingId }).then(function (res) {
+      var st = ecoStateOf(res.body);
+      if (res.status === 200 && st) {
+        _eco.state = st;
+        ecoRenderHeader();
+        toast('Purchased! The item is in your inventory.', 'success');
+        ecoMarketLoad();
+      } else if (ecoMissing(res)) {
+        toast('The market is not available on this server yet.', 'error');
+      } else {
+        ecoToastErr(res.body, 'Purchase failed.');
+        if (res.body && res.body.error === 'listing_not_found') ecoMarketLoad();
+      }
+    }).catch(ecoNetErr);
+  }
+
+  function ecoMktCancel(listingId) {
+    ecoApi('/v1/economy/market/cancel', { listingId: listingId }).then(function (res) {
+      var st = ecoStateOf(res.body);
+      if (res.status === 200 && st) {
+        _eco.state = st;
+        ecoRenderHeader();
+        toast('Listing cancelled — item returned to your inventory.', 'success');
+        ecoMarketLoad();
+      } else if (ecoMissing(res)) {
+        toast('The market is not available on this server yet.', 'error');
+      } else {
+        ecoToastErr(res.body, 'Could not cancel the listing.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // Sell flow: context menu → price prompt → POST /market/list.
+  var _ecoPromptCb = null;
+  function ecoPromptShow(title, sub, cb) {
+    _ecoPromptCb = cb;
+    document.getElementById('eco-prompt-title').textContent = title;
+    document.getElementById('eco-prompt-sub').textContent = sub;
+    var input = document.getElementById('eco-prompt-input');
+    input.value = '';
+    document.getElementById('eco-prompt').hidden = false;
+    try { input.focus(); } catch (e) {}
+  }
+  function ecoPromptHide() {
+    _ecoPromptCb = null;
+    document.getElementById('eco-prompt').hidden = true;
+  }
+  function ecoPromptOk() {
+    var price = Math.floor(Number(document.getElementById('eco-prompt-input').value));
+    if (!(price >= 1 && price <= 1000000)) {
+      toast(ECO_ERR_MSG.invalid_price, 'error');
+      return;
+    }
+    var cb = _ecoPromptCb;
+    ecoPromptHide();
+    if (cb) cb(price);
+  }
+
+  function ecoSellPrompt(slot) {
+    var occ = ecoOccMap();
+    var id = occ[slot];
+    if (id == null) return;
+    var def = ecoDef(id);
+    var nm = def ? def.name : String(id);
+    ecoPromptShow('Sell on Market', nm + ' — set your price in Bucks (1 – 1,000,000)', function (price) {
+      ecoApi('/v1/economy/market/list', { slot: slot, price: price }).then(function (res) {
+        if (res.status === 200 && res.body && res.body.listingId != null) {
+          var st = ecoStateOf(res.body);
+          if (st) _eco.state = st;
+          toast('Listed ' + nm + ' for ' + fmtBucks(price) + ' Bucks.', 'success');
+          _eco.market.listings = null;   // stale — refetch on next Market visit
+          ecoRender();
+        } else if (ecoMissing(res)) {
+          toast('The market is not available on this server yet.', 'error');
+        } else {
+          ecoToastErr(res.body, 'Listing failed.');
+        }
+      }).catch(ecoNetErr);
+    });
+  }
+
+  // ── Trades (direct player-to-player offers) ───────────────────────────
+  function ecoRenderTrades() {
+    ecoRenderTradeLists();
+    ecoRenderTradeForm();
+    ecoRenderTradeReqResults();
+    ecoTradesLoad(!!_eco.trade.data);   // silent refresh if we already have data
+  }
+
+  function ecoTradesLoad(silent) {
+    var tr = _eco.trade;
+    if (!silent && !tr.data) {
+      var box = document.getElementById('eco-trades-in');
+      if (box) box.innerHTML = '<div class="empty-state"><span class="spinner"></span> Loading…</div>';
+    }
+    ecoApi('/v1/economy/trade').then(function (res) {
+      if (ecoMissing(res)) {
+        tr.missing = true;
+        tr.data = null;
+        ecoRenderTradeLists();
+        return;
+      }
+      tr.missing = false;
+      if (res.status === 200 && res.body && (res.body.incoming || res.body.outgoing)) {
+        tr.data = {
+          incoming: res.body.incoming || [],
+          outgoing: res.body.outgoing || []
+        };
+        ecoRenderTradeLists();
+      } else if (!silent) {
+        ecoToastErr(res.body, 'Could not load trade offers.');
+      }
+    }).catch(function () { if (!silent) ecoNetErr(); });
+  }
+
+  function ecoTradeSideHtml(ids, bucks) {
+    var parts = (ids || []).map(function (id) { return ecoKindBadge(id); });
+    if (Number(bucks) > 0) {
+      parts.push('<span class="eco-kbadge nm eco-kb-bucks">' + fmtBucks(bucks) + ' Bucks</span>');
+    }
+    return parts.length ? parts.join('') : '<span class="eco-lo-empty">nothing</span>';
+  }
+
+  function ecoRenderTradeLists() {
+    var tr = _eco.trade;
+    var inBox = document.getElementById('eco-trades-in');
+    var outBox = document.getElementById('eco-trades-out');
+    if (!inBox || !outBox) return;
+    if (tr.missing) {
+      inBox.innerHTML = '<div class="eco-lo-empty">Trading is not available on this server yet.</div>';
+      outBox.innerHTML = '<div class="eco-lo-empty">Trading is not available on this server yet.</div>';
+      return;
+    }
+    if (!tr.data) return;   // still loading (spinner already shown)
+
+    function card(o, incoming) {
+      var who = incoming
+        ? 'From ' + escHtml(o.fromName || o.fromSteamId)
+        : 'To ' + escHtml(o.toName || o.toSteamId);
+      var btns = incoming
+        ? '<button class="btn-buy" data-eco-action="trade-accept" data-id="' + Number(o.tradeId) + '">Accept</button> ' +
+          '<button class="btn-console" data-eco-action="trade-decline" data-id="' + Number(o.tradeId) + '">Decline</button>'
+        : '<button class="btn-console" data-eco-action="trade-cancel" data-id="' + Number(o.tradeId) + '">Cancel offer</button>';
+      return '<div class="eco-trade-card">' +
+        '<div class="eco-trade-head">' + who + '</div>' +
+        '<div class="eco-trade-side"><span class="lbl">' + (incoming ? 'They give' : 'You give') + '</span>' +
+          ecoTradeSideHtml(o.offerItemIds, o.offerBucks) + '</div>' +
+        '<div class="eco-trade-side"><span class="lbl">' + (incoming ? 'They want' : 'You want') + '</span>' +
+          ecoTradeSideHtml(o.requestItemIds, o.requestBucks) + '</div>' +
+        (o.message ? '<div class="eco-trade-msg">“' + escHtml(o.message) + '”</div>' : '') +
+        '<div style="margin-top:8px">' + btns + '</div>' +
+        '</div>';
+    }
+    inBox.innerHTML = tr.data.incoming.length
+      ? tr.data.incoming.map(function (o) { return card(o, true); }).join('')
+      : '<div class="eco-lo-empty">No incoming offers.</div>';
+    outBox.innerHTML = tr.data.outgoing.length
+      ? tr.data.outgoing.map(function (o) { return card(o, false); }).join('')
+      : '<div class="eco-lo-empty">No outgoing offers.</div>';
+  }
+
+  function ecoTradeAct(op, tradeId) {
+    ecoApi('/v1/economy/trade/' + op, { tradeId: tradeId }).then(function (res) {
+      if (res.status === 200) {
+        if (op === 'accept') {
+          var st = ecoStateOf(res.body);
+          if (st) { _eco.state = st; ecoRenderHeader(); }
+          toast('Trade accepted!', 'success');
+        } else {
+          toast(op === 'decline' ? 'Offer declined.' : 'Offer cancelled.', 'info');
+        }
+        ecoTradesLoad();
+      } else if (ecoMissing(res)) {
+        toast('Trading is not available on this server yet.', 'error');
+      } else {
+        ecoToastErr(res.body, 'Trade action failed.');
+        if (res.body && (res.body.error === 'trade_not_found' || res.body.error === 'missing_items')) ecoTradesLoad();
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // New-trade form: pick up to 8 of your items, request up to 8 defs.
+  function ecoTradePickOffer(itemId, quiet) {
+    var tr = _eco.trade;
+    if (itemId == null) return;
+    if (tr.offerIds.length >= 8) { toast('You can offer at most 8 items.', 'error'); return; }
+    // Never offer more copies than you own.
+    var owned = 0, picked = 0;
+    (_eco.state.inventory || []).forEach(function (it) { if (it.itemId === itemId) owned++; });
+    tr.offerIds.forEach(function (id) { if (id === itemId) picked++; });
+    if (picked >= owned) { if (!quiet) toast('You only own ' + owned + ' of those.', 'error'); return; }
+    tr.offerIds.push(itemId);
+    if (_eco.tab === 'trades') ecoRenderTradeForm();
+  }
+
+  function ecoTradePickReq(defId) {
+    var tr = _eco.trade;
+    if (!defId) return;
+    if (tr.reqIds.length >= 8) { toast('You can request at most 8 items.', 'error'); return; }
+    tr.reqIds.push(defId);
+    ecoRenderTradeForm();
+  }
+
+  function ecoRenderTradeForm() {
+    var tr = _eco.trade;
+    var chips = document.getElementById('eco-trade-offer-chips');
+    var pick = document.getElementById('eco-trade-offer-pick');
+    var reqChips = document.getElementById('eco-trade-req-chips');
+    if (!chips) return;
+
+    chips.innerHTML = tr.offerIds.length
+      ? tr.offerIds.map(function (id, i) {
+          return '<span class="eco-chip" style="cursor:default">' + ecoKindBadge(id) +
+            '<button class="eco-unredeem" data-eco-action="trade-unpick-offer" data-idx="' + i + '" title="Remove">✕</button></span>';
+        }).join('')
+      : '<span class="eco-trade-hint">Pick items below (up to 8)</span>';
+
+    // Your inventory as click-to-add chips (skip copies already picked).
+    var counts = {};
+    tr.offerIds.forEach(function (id) { counts[id] = (counts[id] || 0) + 1; });
+    var avail = [];
+    ((_eco.state && _eco.state.inventory) || []).slice()
+      .sort(function (a, b) { return a.slot - b.slot; })
+      .forEach(function (it) {
+        if (counts[it.itemId] > 0) { counts[it.itemId]--; return; }
+        avail.push(it.itemId);
+      });
+    pick.innerHTML = avail.length
+      ? avail.map(function (id) {
+          return '<span class="eco-chip" data-eco-action="trade-pick-offer" data-item="' + escHtml(id) + '">' +
+            ecoKindBadge(id) + '</span>';
+        }).join('')
+      : '<span class="eco-trade-hint">No more items in your inventory.</span>';
+
+    reqChips.innerHTML = tr.reqIds.length
+      ? tr.reqIds.map(function (id, i) {
+          return '<span class="eco-chip" style="cursor:default">' + ecoKindBadge(id) +
+            '<button class="eco-unredeem" data-eco-action="trade-unpick-req" data-idx="' + i + '" title="Remove">✕</button></span>';
+        }).join('')
+      : '<span class="eco-trade-hint">Search below to add (up to 8)</span>';
+  }
+
+  function ecoRenderTradeReqResults() {
+    var box = document.getElementById('eco-trade-req-results');
+    var qEl = document.getElementById('eco-trade-req-q');
+    if (!box || !qEl || !_eco.defs) return;
+    var q = qEl.value.trim().toLowerCase();
+    if (!q) { box.innerHTML = '<span class="eco-trade-hint">Type to search the item catalogue.</span>'; return; }
+    var hits = [];
+    _eco.defs.forEach(function (d) {
+      if (hits.length >= 30) return;
+      if (String(d.name || '').toLowerCase().indexOf(q) !== -1) hits.push(d);
+    });
+    box.innerHTML = hits.length
+      ? hits.map(function (d) {
+          return '<span class="eco-chip" data-eco-action="trade-pick-req" data-def="' + escHtml(d.id) + '">' +
+            ecoKindBadge(d.id) + '</span>';
+        }).join('')
+      : '<span class="eco-trade-hint">No items match “' + escHtml(q) + '”.</span>';
+  }
+
+  function ecoTradeClearForm() {
+    _eco.trade.offerIds = [];
+    _eco.trade.reqIds = [];
+    var el;
+    if ((el = document.getElementById('eco-trade-to'))) el.value = '';
+    if ((el = document.getElementById('eco-trade-offer-bucks'))) el.value = '0';
+    if ((el = document.getElementById('eco-trade-req-bucks'))) el.value = '0';
+    if ((el = document.getElementById('eco-trade-msg'))) el.value = '';
+    if ((el = document.getElementById('eco-trade-req-q'))) el.value = '';
+    ecoRenderTradeForm();
+    ecoRenderTradeReqResults();
+  }
+
+  function ecoTradeSend() {
+    var tr = _eco.trade;
+    var to = (document.getElementById('eco-trade-to').value || '').trim();
+    if (!/^\d{17}$/.test(to)) { toast('Enter the 17-digit SteamID64 of the other player.', 'error'); return; }
+    var offerBucks = Math.max(0, Math.floor(Number(document.getElementById('eco-trade-offer-bucks').value) || 0));
+    var requestBucks = Math.max(0, Math.floor(Number(document.getElementById('eco-trade-req-bucks').value) || 0));
+    var message = (document.getElementById('eco-trade-msg').value || '').slice(0, 200);
+    if (!tr.offerIds.length && !tr.reqIds.length && !offerBucks && !requestBucks) {
+      toast(ECO_ERR_MSG.empty_trade, 'error');
+      return;
+    }
+    ecoApi('/v1/economy/trade/offer', {
+      toSteamId: to,
+      offerItemIds: tr.offerIds.slice(0, 8),
+      offerBucks: offerBucks,
+      requestItemIds: tr.reqIds.slice(0, 8),
+      requestBucks: requestBucks,
+      message: message
+    }).then(function (res) {
+      if (res.status === 200 && res.body && res.body.tradeId != null) {
+        toast('Trade offer sent.', 'success');
+        ecoTradeClearForm();
+        ecoTradesLoad();
+      } else if (ecoMissing(res)) {
+        toast('Trading is not available on this server yet.', 'error');
+      } else {
+        ecoToastErr(res.body, 'Could not send the trade offer.');
+      }
+    }).catch(ecoNetErr);
+  }
+
+  // ~20s poll while the Trades tab is visible; cleared on tab/route leave.
+  function ecoTradePollStart() {
+    if (_eco.trade.timer) return;
+    _eco.trade.timer = setInterval(function () {
+      if (_currentRoute !== 'inventory' || _eco.tab !== 'trades') { ecoTradePollStop(); return; }
+      if (document.hidden) return;
+      ecoTradesLoad(true);
+    }, 20000);
+  }
+  function ecoTradePollStop() {
+    if (_eco.trade.timer) {
+      clearInterval(_eco.trade.timer);
+      _eco.trade.timer = null;
+    }
   }
 
   // ── XSS helper ────────────────────────────────────────────────────────
@@ -1516,39 +3656,78 @@
       conAppend('engine', 'OpenVibe console ready — realms: Server JS (41997), Client JS (41996), Engine.', 'ok');
     }
 
+    // Switching realm invalidates engine completions: clear the prefix
+    // cache and any in-flight/debounced request state.
+    if (realmSel) {
+      realmSel.addEventListener('change', function () {
+        engCacheClear();
+        suggHide();
+      });
+    }
+
     if (input) {
       input.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Enter') {
+        var key = conKeyName(ev);
+        // The console owns ONLY Enter, Tab, Up/Down (history/popup) and Esc
+        // (popup dismiss). Everything else — Backspace, Delete, arrows
+        // Left/Right, Home/End, select-all, plain characters — must reach the
+        // browser's default editing behaviour untouched: never preventDefault
+        // those. We DO stopPropagation so document-level handlers / the CEF
+        // host's bind forwarding can't eat editing keys mid-typing.
+        if (key === 'Enter') {
           ev.preventDefault();
+          ev.stopPropagation();
           if (_sugg.open && _sugg.sel >= 0) { suggApply(); return; }
           suggHide();
           consoleSubmit();
-        } else if (ev.key === 'Tab') {
+        } else if (key === 'Tab') {
           ev.preventDefault();
+          ev.stopPropagation();
           if (_sugg.open) suggApply();
           else suggUpdate(true);
-        } else if (ev.key === 'Escape') {
-          if (_sugg.open) { ev.preventDefault(); suggHide(); }
-        } else if (ev.key === 'ArrowUp') {
+        } else if (key === 'Escape') {
+          if (_sugg.open) { ev.preventDefault(); ev.stopPropagation(); suggHide(); }
+        } else if (key === 'ArrowUp') {
           ev.preventDefault();
+          ev.stopPropagation();
           if (_sugg.open) { suggMove(-1); return; }
           if (_con.hIdx > 0) {
             _con.hIdx -= 1;
             input.value = _con.history[_con.hIdx] || '';
           }
-        } else if (ev.key === 'ArrowDown') {
+        } else if (key === 'ArrowDown') {
           ev.preventDefault();
+          ev.stopPropagation();
           if (_sugg.open) { suggMove(1); return; }
           if (_con.hIdx < _con.history.length) {
             _con.hIdx += 1;
             input.value = _con.history[_con.hIdx] || '';
           }
+        } else {
+          // Editing/navigation keys inside the input: defensive
+          // stopPropagation (NOT preventDefault) so in-game binds and
+          // capture-phase listeners can't swallow them.
+          ev.stopPropagation();
         }
       });
       input.addEventListener('input', function () { suggUpdate(false); });
       input.addEventListener('blur', function () { setTimeout(suggHide, 150); });
       suggPrefetch();
     }
+  }
+
+  // Normalise keydown identity across browser generations: older CEF builds
+  // (the in-game Source panel) predate KeyboardEvent.key or report legacy
+  // names ('Up', 'Esc', …). Fall back to keyCode for the keys we own.
+  var CON_KEYCODE_NAMES = { 8: 'Backspace', 9: 'Tab', 13: 'Enter', 27: 'Escape',
+                            37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight',
+                            40: 'ArrowDown', 46: 'Delete' };
+  var CON_LEGACY_KEYS = { Up: 'ArrowUp', Down: 'ArrowDown', Left: 'ArrowLeft',
+                          Right: 'ArrowRight', Esc: 'Escape', Del: 'Delete' };
+  function conKeyName(ev) {
+    var k = ev.key;
+    if (k !== undefined && k !== 'Unidentified') return CON_LEGACY_KEYS[k] || k;
+    return CON_KEYCODE_NAMES[ev.keyCode] || '';
   }
 
   // ── Console autocomplete ────────────────────────────────────────────────
@@ -1578,21 +3757,87 @@
     'util.AddNetworkString(', 'scripted_ents.Register(', 'concommand.Add(', 'include(', 'AddCSJSFile(',
     'require(', 'OV.log(', 'OV.getMode()', 'OVLoader.openScript(', 'RunConsoleCommand('];
   var OV_MODES = ['hub', 'prophunt', 'deathrun', 'fortwars', 'traitortown', 'sandbox'];
+  var SUGG_MAX = 30;              // hard cap on rendered suggestion rows
   var _sugg = { open: false, sel: -1, items: [], maps: null, scripts: null,
-                engFor: null, engItems: [], engTimer: 0 };
+                engFor: null, engItems: [], engTimer: 0,
+                engSeq: 0, engWant: null, engWantSeq: 0, engSent: null };
   // Real engine command/convar names learned from openvibe://complete replies;
   // used to dispatch typed lines to the engine even from a JS realm.
   var _engKnown = {};
 
+  // Per-prefix completion cache (insertion-ordered Map, oldest evicted at
+  // ENG_CACHE_MAX; cleared on realm switch). A cached result set smaller than
+  // ENG_CACHE_SMALL is complete, so longer prefixes can be answered by
+  // client-side filtering with zero bridge round-trips.
+  var ENG_CACHE_MAX = 200;
+  var ENG_CACHE_SMALL = 50;
+  var _engCache = new Map();
+
+  function engCacheClear() {
+    _engCache.clear();
+    clearTimeout(_sugg.engTimer);
+    _sugg.engFor = null;
+    _sugg.engItems = [];
+    _sugg.engWant = null;
+    _sugg.engSent = null;
+  }
+
+  function engCachePut(prefix, items) {
+    if (_engCache.has(prefix)) _engCache.delete(prefix);
+    else if (_engCache.size >= ENG_CACHE_MAX) _engCache.delete(_engCache.keys().next().value);
+    _engCache.set(prefix, items);
+  }
+
+  function engCacheGet(prefix) {
+    var hit = _engCache.get(prefix);
+    if (hit) return hit;
+    // Derive from the longest cached ancestor prefix whose result set was
+    // already small enough to be exhaustive.
+    var bestP = null, bestItems = null;
+    _engCache.forEach(function (items, p) {
+      if (items.length < ENG_CACHE_SMALL && p.length < prefix.length &&
+          prefix.lastIndexOf(p, 0) === 0 && (bestP === null || p.length > bestP.length)) {
+        bestP = p; bestItems = items;
+      }
+    });
+    if (bestP === null) return null;
+    var lower = prefix.toLowerCase();
+    var out = bestItems.filter(function (it) {
+      return it.text.toLowerCase().lastIndexOf(lower, 0) === 0;
+    });
+    engCachePut(prefix, out);
+    return out;
+  }
+
   // Ask the engine (C++ bridge) for live completions of `prefix`; the reply
-  // arrives via OVApp.onEngineComplete. Debounced; skipped when we already
-  // hold results for this exact prefix (also breaks the reply→update loop).
+  // arrives via OVApp.onEngineComplete. Cache-first, then debounced ~110ms.
+  // Never re-requests an unchanged prefix; replies are matched against the
+  // latest request (seq-tagged) so stale arrivals only warm the cache.
   function engComplete(prefix) {
     if (!conHasEngineBridge() || _sugg.engFor === prefix) return;
+    var cached = engCacheGet(prefix);
+    if (cached) {
+      // Served synchronously: suggCandidates reads engFor/engItems right after.
+      _sugg.engFor = prefix;
+      _sugg.engItems = cached;
+      return;
+    }
+    if (_sugg.engSent === prefix) return; // identical request already in flight
     clearTimeout(_sugg.engTimer);
     _sugg.engTimer = setTimeout(function () {
-      location.href = 'openvibe://complete?prefix=' + encodeURIComponent(prefix);
-    }, 60);
+      if (_sugg.engSent === prefix || _engCache.has(prefix)) return;
+      _sugg.engSent = prefix;
+      _sugg.engWant = prefix;
+      _sugg.engWantSeq = ++_sugg.engSeq;
+      // Non-navigating bridge request (img.src, same pattern as
+      // openvibe://ready and openvibe://convar_get). Assigning location.href
+      // here started a cancelled top-level navigation on every keystroke,
+      // which made the CEF host drop the input's text-entry focus — that is
+      // what broke Backspace in-game. C++ ignores the extra seq param.
+      var img = new Image();
+      img.src = 'openvibe://complete?prefix=' + encodeURIComponent(prefix) +
+                '&seq=' + _sugg.engWantSeq;
+    }, 110);
   }
 
   function suggPrefetch() {
@@ -1612,7 +3857,7 @@
     var seen = {};
 
     function push(t, hint, kind) {
-      if (out.length >= 12 || seen[t]) return;
+      if (out.length >= SUGG_MAX || seen[t]) return;
       seen[t] = 1;
       out.push({ text: t, hint: hint, kind: kind || 'word' });
     }
@@ -1681,19 +3926,32 @@
     var realm = (document.getElementById('console-realm') || {}).value || 'server';
     var items = suggCandidates(line, realm);
     if (!items.length) { suggHide(); return; }
+    if (items.length > SUGG_MAX) items = items.slice(0, SUGG_MAX);
     _sugg.items = items;
     _sugg.sel = 0;
     _sugg.open = true;
-    box.innerHTML = '';
-    items.forEach(function (it, i) {
-      var d = document.createElement('div');
-      d.className = 'sugg' + (i === 0 ? ' sel' : '');
-      var t = document.createElement('span'); t.textContent = it.text;
-      var h = document.createElement('span'); h.className = 'hint'; h.textContent = it.hint || '';
-      d.appendChild(t); d.appendChild(h);
-      d.addEventListener('mousedown', function (ev) { ev.preventDefault(); _sugg.sel = i; suggApply(); });
-      box.appendChild(d);
-    });
+    // One innerHTML assignment per update (no per-item DOM appends) and a
+    // single delegated mousedown listener installed once — cheap re-render
+    // on every keystroke even with a full popup.
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      html += '<div class="sugg' + (i === 0 ? ' sel' : '') + '" data-i="' + i + '">' +
+              '<span>' + escHtml(it.text) + '</span>' +
+              '<span class="hint">' + escHtml(it.hint || '') + '</span></div>';
+    }
+    box.innerHTML = html;
+    if (!box.dataset.wired) {
+      box.dataset.wired = '1';
+      box.addEventListener('mousedown', function (ev) {
+        var el = ev.target;
+        while (el && el.parentNode !== box) el = el.parentNode; // row = direct child
+        if (!el || el === box) return;
+        ev.preventDefault(); // keep focus in the input
+        _sugg.sel = Number(el.getAttribute('data-i')) || 0;
+        suggApply();
+      });
+    }
     box.hidden = false;
   }
 
@@ -2070,6 +4328,8 @@
     _hudActive = true;
     document.documentElement.classList.add('ov-hud-mode');
     document.body.classList.add('ov-hud-mode');
+    var jsHud = document.getElementById('ov-hud-js');
+    if (jsHud) jsHud.style.display = jsHud.dataset.wantVisible === '1' ? 'block' : 'none';
     document.getElementById('ov-auth').classList.remove('active');
     document.getElementById('ov-main').classList.remove('active');
     if (location.hash !== '#hud') location.replace('#hud');
@@ -2082,11 +4342,229 @@
     _hudActive = false;
     document.documentElement.classList.remove('ov-hud-mode');
     document.body.classList.remove('ov-hud-mode');
+    var jsHudX = document.getElementById('ov-hud-js');
+    if (jsHudX) jsHudX.style.display = 'none';
     clearInterval(_hudPollTimer);
     _hudPollTimer = null;
     if (_session) document.getElementById('ov-main').classList.add('active');
     else document.getElementById('ov-auth').classList.add('active');
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Loading screen (?loading=1) — fullscreen branded splash shown by the
+  // Electron launcher in an overlay window while the game boots. Renders
+  // only the splash: init() early-returns before auth/menu/HUD wiring.
+  // ══════════════════════════════════════════════════════════════════════
+  var LOADING_TIPS = [
+    'Crates drop from playing rounds — every crate needs its matching key from the Store.',
+    'Press C in-game to open the cade menu and place any barricade you own.',
+    'Combine items in the Crafting tab — known recipes light up when the ingredients match.',
+    'Sell spare rares on the Market: set your price in Bucks and wait for a buyer.',
+    'Trade with other players from the Trades tab — offers update live while it is open.',
+    'Redeem Rares from your inventory to unlock weapons, skins and taunts in your Loadout.',
+    'Earn Bucks and XP every round — level up to unlock higher-tier cades and weapons.',
+    'Keys never drop from gameplay; buy them with Bucks in the Store.'
+  ];
+  var _loadAutoPhase = null;   // last phase the /state poller computed
+  var _loadTipIdx = -1;
+
+  function loadingSetPhase(text) {
+    var el = document.getElementById('loading-phase');
+    if (el) el.textContent = String(text);
+  }
+
+  // Self-driving phases off the client runtime control server (same /state
+  // endpoint hudPollOnce uses). Writes only on phase *transitions* so an
+  // external override via window.__ovSetPhase is not clobbered every tick.
+  function loadingPollOnce() {
+    function auto(p) {
+      if (p !== _loadAutoPhase) { _loadAutoPhase = p; loadingSetPhase(p); }
+    }
+    fetch(RT.client + '/state')
+      .then(function (r) { return r.json(); })
+      .then(function (st) {
+        if (st && st.gameConnected) auto(st.map ? 'Entering ' + st.map + '…' : 'Loading gamemode…');
+        else auto('Starting Source engine…');
+      })
+      .catch(function () { auto('Starting Source engine…'); });
+  }
+
+  function loadingRotateTip(immediate) {
+    var el = document.getElementById('loading-tip');
+    if (!el) return;
+    _loadTipIdx = (_loadTipIdx + 1) % LOADING_TIPS.length;
+    if (immediate) { el.textContent = LOADING_TIPS[_loadTipIdx]; return; }
+    el.style.opacity = '0';
+    setTimeout(function () {
+      el.textContent = LOADING_TIPS[_loadTipIdx];
+      el.style.opacity = '1';
+    }, 350);
+  }
+
+  function enterLoading() {
+    document.body.classList.add('ov-loading-mode');
+
+    var mode = params.get('mode') || '';
+    var modeEl = document.getElementById('loading-mode');
+    if (modeEl) modeEl.textContent = mode;
+
+    // Ambient rising particles (skipped under prefers-reduced-motion).
+    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var pWrap = document.getElementById('loading-particles');
+    if (pWrap && !reduced) {
+      for (var i = 0; i < 18; i++) {
+        var d = document.createElement('div');
+        d.className = 'ov-lp';
+        d.style.left = (Math.random() * 100) + '%';
+        d.style.animationDuration = (6 + Math.random() * 10) + 's';
+        d.style.animationDelay = (-Math.random() * 12) + 's';
+        d.style.opacity = String(0.15 + Math.random() * 0.4);
+        pWrap.appendChild(d);
+      }
+    }
+
+    _loadTipIdx = Math.floor(Math.random() * LOADING_TIPS.length) - 1;
+    loadingRotateTip(true);
+    setInterval(loadingRotateTip, 4000);
+
+    loadingPollOnce();
+    setInterval(loadingPollOnce, 1000);
+
+    // Launcher hook: overrides the phase line; sticks until the /state
+    // poller detects the next phase transition.
+    window.__ovSetPhase = function (text) { loadingSetPhase(text); };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Cade / spawn quick menu (Devolved-inspired) — OVApp.toggleCadeMenu().
+  // Lists the player's OWNED cades (loadout.cades from /v1/economy/state,
+  // resolved against the defs cache). Works in the normal in-game panel and
+  // the ?hud=1 overlay (#ov-cademenu re-enables pointer events for itself).
+  // ══════════════════════════════════════════════════════════════════════
+  var _cade = { open: false, list: null };
+
+  // Lazily fill the shared _eco caches (defs + state) if the economy hub
+  // hasn't loaded them yet. In the HUD overlay init() never bootstrapped a
+  // session, so adopt the stored one for the steamId ecoApi needs.
+  function cadeEnsureData() {
+    if (!_session) _session = loadStoredSession();
+    if (!_session || !_session.steamId) return Promise.reject(new Error('not signed in'));
+    var pDefs  = _eco.defs  ? Promise.resolve(null) : ecoApi('/v1/economy/defs');
+    var pState = _eco.state ? Promise.resolve(null) : ecoApi('/v1/economy/state');
+    return Promise.all([pDefs, pState]).then(function (rs) {
+      var defsRes = rs[0], stRes = rs[1];
+      if (defsRes) {
+        if (defsRes.status !== 200 || !defsRes.body.defs) throw new Error('defs unavailable');
+        ecoIndexDefs(defsRes.body.defs);
+      }
+      if (stRes) {
+        if (stRes.status !== 200 || !stRes.body.player) {
+          throw new Error((stRes.body && stRes.body.error) || 'state unavailable');
+        }
+        _eco.state = stRes.body;
+      }
+    });
+  }
+
+  function cadeResolve() {
+    var owned = (_eco.state && _eco.state.loadout && _eco.state.loadout.cades) || {};
+    var list = Object.keys(owned).map(function (name) {
+      var def = ecoDef('cade:' + name);
+      var meta = (def && def.meta) || {};
+      return {
+        name: name,
+        cost: Number(meta.cost || 0),
+        lvl:  Number(meta.lvl  || 0),
+        hp:   Number(meta.hp   || 0),
+        model: String(meta.model || '')
+      };
+    });
+    list.sort(function (a, b) {
+      return (a.lvl - b.lvl) || (a.cost - b.cost) || a.name.localeCompare(b.name);
+    });
+    return list;
+  }
+
+  function cadeRender() {
+    var grid = document.getElementById('cade-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    var list = _cade.list || [];
+    if (!list.length) {
+      grid.innerHTML = '<div class="cade-empty">No cades owned yet — redeem cade Rares from your inventory.</div>';
+      return;
+    }
+    list.forEach(function (c, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cade-tile';
+      if (c.model) b.title = c.model;
+      b.innerHTML =
+        '<span class="cade-key">' + (i < 9 ? String(i + 1) : '·') + '</span>' +
+        '<span class="cade-name">' + escHtml(c.name) + '</span>' +
+        '<span class="cade-meta"><span class="cost">' + c.cost + ' Bucks</span> · Lvl ' + c.lvl +
+        ' · ' + c.hp + ' HP</span>';
+      b.addEventListener('click', function () { cadePlace(c.name); });
+      grid.appendChild(b);
+    });
+  }
+
+  function cadePlace(name) {
+    if (embedded && shell === 'source') {
+      // ov_econ_cade <name>: JS-realm client concommand (addons/openvibe-economy/
+      // client.js), dispatched via the engine forwarder ov_js_cmd_cl —
+      // the server validates ownership/level/cost and spawns the prop.
+      location.href = 'openvibe://cmd?c=' + encodeURIComponent('ov_js_cmd_cl ov_econ_cade ' + name);
+      cadeClose();
+    } else {
+      toast('Cade placement works in-game only.', 'info');
+    }
+  }
+
+  function cadeKeydown(ev) {
+    if (!_cade.open) return;
+    if (ev.key === 'Escape') { ev.preventDefault(); cadeClose(); return; }
+    if (ev.key >= '1' && ev.key <= '9') {
+      var c = _cade.list && _cade.list[Number(ev.key) - 1];
+      if (c) { ev.preventDefault(); cadePlace(c.name); }
+    }
+  }
+
+  function cadeOpen() {
+    var wrap = document.getElementById('ov-cademenu');
+    var grid = document.getElementById('cade-grid');
+    if (!wrap || !grid) return;
+    _cade.open = true;
+    wrap.hidden = false;
+    // In the ?hud=1 overlay the page is input-transparent (#ov-hud is
+    // pointer-events:none); force interactivity back on for the menu.
+    wrap.style.pointerEvents = 'auto';
+    document.addEventListener('keydown', cadeKeydown, true);
+    grid.innerHTML = '<div class="cade-empty"><span class="spinner"></span> Loading cades…</div>';
+    cadeEnsureData().then(function () {
+      if (!_cade.open) return;
+      _cade.list = cadeResolve();
+      cadeRender();
+    }).catch(function (e) {
+      if (!_cade.open) return;
+      grid.innerHTML = '<div class="cade-empty">Could not load cades (' + escHtml(e.message) + ').</div>';
+    });
+  }
+
+  function cadeClose() {
+    _cade.open = false;
+    document.removeEventListener('keydown', cadeKeydown, true);
+    var wrap = document.getElementById('ov-cademenu');
+    if (wrap) wrap.hidden = true;
+  }
+
+  function toggleCadeMenu() { if (_cade.open) cadeClose(); else cadeOpen(); }
+
+  // Clicking the backdrop (not the box) closes the menu.
+  (function () {
+    var wrap = document.getElementById('ov-cademenu');
+    if (wrap) wrap.addEventListener('click', function (ev) { if (ev.target === wrap) cadeClose(); });
+  })();
 
   // ── Public OV API (called by C++ and by page itself) ──────────────────
   var OVApp = {
@@ -2094,6 +4572,7 @@
     // Called by C++ after GetTicketForWebApi + POST /v1/auth/steam succeed.
     // data: { authenticated, sessionToken, steamId, displayName, error? }
     onSteamAuthResult: function (data) {
+      clearTimeout(_steamAuthTimer);
       var btn = document.getElementById('btn-steam-auth');
       if (btn) btn.disabled = false;
 
@@ -2113,6 +4592,16 @@
         var errMsg;
         if (raw === 'steam_auth_not_configured') {
           errMsg = 'Steam sign-in isn’t set up on this server. Use "Dev / Local auth" below.';
+        } else if (raw === 'steam_bridge_timeout') {
+          errMsg = 'No response from Steam — is Steam running and signed in? You can use "Dev / Local auth" below.';
+        } else if (raw === 'steam_no_user') {
+          errMsg = 'Steam isn’t running (or you’re not signed in to it).';
+        } else if (raw === 'steam_ticket_failed') {
+          errMsg = 'Steam refused to issue a sign-in ticket — check that Steam is online.';
+        } else if (raw === 'steam_http_failed' || raw === 'steam_http_unavailable') {
+          errMsg = 'Signed in to Steam, but the game couldn’t reach the OpenVibe API.';
+        } else if (raw === 'steam_openid_failed' || raw === 'steam_openid_cancelled') {
+          errMsg = 'Steam sign-in was cancelled or failed — try again.';
         } else if (raw === 'steam_auth_failed' || raw === '') {
           errMsg = 'Steam sign-in unavailable here — use "Dev / Local auth" below.';
         } else {
@@ -2122,10 +4611,40 @@
       }
     },
 
-    // Trigger Steam auth via C++ bridge.
+    // Trigger Steam auth. Three hosts, three transports: Electron launcher
+    // (preload bridge opens a Steam OpenID popup), in-game Source panel
+    // (openvibe:// bridge -> ov_auth_steam ticket flow), plain browser
+    // (full-page redirect through Steam OpenID).
     steamAuth: function () {
       var btn = document.getElementById('btn-steam-auth');
       if (btn) btn.disabled = true;
+
+      if (electronOV && electronOV.steamLogin) {
+        setAuthStatus('Opening Steam sign-in…');
+        Promise.resolve(electronOV.steamLogin()).then(function (res) {
+          if (res && res.sessionToken) {
+            OVApp.onSteamAuthResult({ authenticated: true, sessionToken: res.sessionToken, steamId: res.steamId || '', displayName: res.displayName || '' });
+          } else {
+            OVApp.onSteamAuthResult({ authenticated: false, error: (res && res.error) || 'steam_openid_failed' });
+          }
+        }).catch(function () {
+          OVApp.onSteamAuthResult({ authenticated: false, error: 'steam_openid_failed' });
+        });
+        return;
+      }
+
+      if (!(embedded && shell === 'source')) {
+        setAuthStatus('Redirecting to Steam…');
+        location.href = apiBase + '/v1/auth/steam/openid/start?return=' +
+          encodeURIComponent(location.pathname + location.search);
+        return;
+      }
+
+      // Never hang: if the C++ bridge doesn't answer, fail visibly.
+      clearTimeout(_steamAuthTimer);
+      _steamAuthTimer = setTimeout(function () {
+        OVApp.onSteamAuthResult({ authenticated: false, error: 'steam_bridge_timeout' });
+      }, 20000);
       setAuthStatus('Connecting to Steam\u2026');
       // Navigate to bridge URL — C++ intercepts this and calls ov_auth_steam.
       location.href = 'openvibe://auth/steam';
@@ -2216,6 +4735,18 @@
       showAuthUI('');
     },
 
+    // Quit the game (in-game panel) or close the launcher (Electron).
+    // Hidden in a plain browser tab.
+    quitGame: function () {
+      if (shell === 'source') { location.href = 'openvibe://cmd?c=quit'; return; }
+      if (isElectron) {
+        try {
+          if (window.OpenVibeShell && typeof OpenVibeShell.close === 'function') { OpenVibeShell.close(); return; }
+        } catch (e) {}
+        window.close();
+      }
+    },
+
     // Called by C++ when the ready bridge is sent (openvibe://ready).
     // C++ uses this to inject stored session tokens on page reload.
     onReady: function () {},
@@ -2253,6 +4784,40 @@
       conEngine(cmd);
     },
 
+    // Copy the entire visible console buffer to the clipboard. The in-game
+    // CEF may lack navigator.clipboard, so fall back to a hidden textarea +
+    // document.execCommand('copy').
+    consoleCopyLog: function () {
+      var log = document.getElementById('console-log');
+      var lines = log ? log.querySelectorAll('.console-line') : [];
+      var text = Array.prototype.map.call(lines, function (l) { return l.textContent; }).join('\n');
+      if (!text) { toast('Console is empty.', 'info'); return; }
+      function fallback() {
+        var ok = false;
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+        } catch (e) { ok = false; }
+        toast(ok ? 'Console log copied (' + lines.length + ' lines).' : 'Copy failed — clipboard unavailable here.',
+              ok ? 'success' : 'error');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { toast('Console log copied (' + lines.length + ' lines).', 'success'); },
+          fallback
+        );
+      } else {
+        fallback();
+      }
+    },
+
     // Called by the C++ console spew tap (vgui_openvibe_menu.cpp) to push
     // engine console output into the console view. Accepts a string or an
     // array of lines.
@@ -2264,16 +4829,25 @@
 
     // Called by C++ (openvibe://complete) with live command-registry matches:
     // [[name, hint, kind], …], kind 'cmd' | 'cvar' | 'line' (full command
-    // line from a command's own argument autocomplete).
-    onEngineComplete: function (prefix, items) {
+    // line from a command's own argument autocomplete). `seq` is only echoed
+    // by newer engine builds; prefix matching alone already drops stale
+    // replies because engWant always tracks the newest request.
+    onEngineComplete: function (prefix, items, seq) {
       if (!Array.isArray(items)) return;
-      _sugg.engFor = String(prefix);
-      _sugg.engItems = items.map(function (it) {
+      prefix = String(prefix);
+      var mapped = items.map(function (it) {
         var name = String(it[0] || '');
         var kind = String(it[2] || 'cmd');
         if (kind !== 'line') _engKnown[name.toLowerCase()] = 1;
         return { text: name, hint: String(it[1] || '') || kind, kind: kind };
       });
+      engCachePut(prefix, mapped);
+      // Out-of-order / superseded reply: keep it cached, don't touch the UI.
+      if (prefix !== _sugg.engWant) return;
+      if (seq !== undefined && seq !== null && Number(seq) !== _sugg.engWantSeq) return;
+      _sugg.engWant = null;
+      _sugg.engFor = prefix;
+      _sugg.engItems = mapped;
       var input = document.getElementById('console-input');
       if (input && document.activeElement === input) suggUpdate(false);
     },
@@ -2360,7 +4934,13 @@
     // snap = { visible, layout:[{id,type,anchor,bind,text,...}], values:{} }
     onHudLayout: function (snap) {
       renderHudLayout(snap);
-    }
+    },
+
+    // ── OpenVibe economy quick menus ──────────────────────────────────────────
+    // Toggled by the ov_econ_menu client concommand (addons/openvibe-economy/
+    // client.js pushes OVApp.toggleCadeMenu() over the ov_menu_js bridge)
+    // and callable directly from the menu panel or the ?hud=1 overlay.
+    toggleCadeMenu: toggleCadeMenu
   };
 
   // Renders the declarative HUD the active gamemode built in JS. Elements are
@@ -2374,7 +4954,10 @@
       root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:50;font-family:ui-monospace,Consolas,monospace';
       document.body.appendChild(root);
     }
-    root.style.display = snap.visible === false ? 'none' : 'block';
+    // Gate on HUD mode: gamemode HUD layouts must never bleed over the menu
+    // routes — they only show while the page is the in-game HUD overlay.
+    root.dataset.wantVisible = snap.visible === false ? '0' : '1';
+    root.style.display = (root.dataset.wantVisible === '1' && document.body.classList.contains('ov-hud-mode')) ? 'block' : 'none';
     var vals = snap.values || {};
     var anchorCss = {
       'top': 'top:24px;left:50%;transform:translateX(-50%);text-align:center',
@@ -2384,17 +4967,24 @@
       'bottom-left': 'bottom:24px;left:24px', 'bottom-right': 'bottom:24px;right:24px;text-align:right'
     };
     root.innerHTML = '';
+    // HUD.Add specs may carry color as a {r,g,b} table (GMod Color semantics).
+    function hudColor(c, fallback) {
+      if (!c) return fallback;
+      if (typeof c === 'string') return c;
+      if (typeof c === 'object') return 'rgb(' + (+c.r || 0) + ',' + (+c.g || 0) + ',' + (+c.b || 0) + ')';
+      return fallback;
+    }
     (snap.layout || []).forEach(function (el) {
       var v = el.bind != null ? vals[el.bind] : el.text;
       if (el.hideWhenEmpty && (v == null || v === '' || v === 0)) return;
       var node = document.createElement('div');
       node.style.cssText = 'position:absolute;' + (anchorCss[el.anchor] || anchorCss.top) +
-        ';margin-top:' + (el.y || 0) + 'px;color:' + (el.color || '#e8eef5') +
+        ';margin-top:' + (el.y || 0) + 'px;color:' + hudColor(el.color, '#e8eef5') +
         (el.size ? ';font-size:' + el.size + 'px' : '') + ';text-shadow:0 1px 3px rgba(0,0,0,.8);font-weight:600';
       if (el.type === 'bar') {
         var pct = Math.max(0, Math.min(100, el.max ? (v / el.max) * 100 : v));
         node.innerHTML = '<div style="width:180px;height:14px;background:rgba(0,0,0,.5);border-radius:7px;overflow:hidden">' +
-          '<div style="height:100%;width:' + pct + '%;background:' + (el.color || '#39d98a') + '"></div></div>' +
+          '<div style="height:100%;width:' + pct + '%;background:' + hudColor(el.color, '#39d98a') + '"></div></div>' +
           '<div style="font-size:12px;margin-top:2px">' + escHtml(String(v == null ? '' : v)) + '</div>';
       } else if (el.type === 'timer') {
         var s = Math.max(0, Math.floor(+v || 0));
@@ -2418,6 +5008,14 @@
 
   // ── Startup: check stored session ─────────────────────────────────────
   function init() {
+    // Loading overlay window (?loading=1): render ONLY the branded splash —
+    // skip auth, menu and HUD wiring entirely (mirrors the hudMode
+    // short-circuit below; the Electron launcher owns this window).
+    if (loadingMode) {
+      enterLoading();
+      return;
+    }
+
     // UI prefs (accent / hud scale / console font) apply in every host.
     applyOptPrefs(loadOptPrefs());
 
@@ -2450,6 +5048,36 @@
     if (devMode) {
       var devSection = document.getElementById('devauth-section');
       if (devSection) devSection.style.display = 'block';
+    }
+
+    // Quit closes the game (in-game) or the launcher (Electron); a plain
+    // browser tab has nothing to quit, so the button stays hidden there.
+    var quitBtn = document.getElementById('btn-quit');
+    if (quitBtn && (shell === 'source' || isElectron)) quitBtn.style.display = '';
+
+    // Steam OpenID return: the backend redirects back with #ovtoken=<session>.
+    // Adopt it, scrub it from the URL, then continue as a signed-in session.
+    var otm = /[#&]ovtoken=([^&]+)/.exec(location.hash || '');
+    if (otm) {
+      var otok = decodeURIComponent(otm[1]);
+      history.replaceState(null, '', location.pathname + location.search);
+      apiFetch('/v1/auth/session', { headers: { 'Authorization': 'Bearer ' + otok } }).then(function (res) {
+        if (res.status === 200 && res.body.valid) {
+          var osess = {
+            sessionToken: otok,
+            steamId:      res.body.steamId || '',
+            displayName:  '',
+            provider:     res.body.provider || 'steam'
+          };
+          saveSession(osess);
+          showMainUI(osess);
+        } else {
+          showAuthUI('Steam sign-in failed — please try again.');
+        }
+      }).catch(function () {
+        showAuthUI('Steam sign-in failed — could not reach the API.');
+      });
+      return;
     }
 
     var stored = loadStoredSession();

@@ -67,9 +67,67 @@ async function waitForHealth(base, timeoutMs = 8000) {
   return false;
 }
 
+// OpenVibe economy hub inside the inventory route: sub-tabs, slot grid,
+// drag ghost, custom context menu, crate-opening reel, crafting slots.
+const ECO_MARKERS = [
+  'eco-hub',
+  'eco-tabs',
+  'data-ecotab="inventory"',
+  'data-ecotab="crafting"',
+  'data-ecotab="loadout"',
+  'data-ecotab="store"',
+  'eco-grid',
+  'eco-ghost',
+  'eco-ctx',
+  'eco-reel-strip',
+  'eco-craft-slots',
+  'eco-store-grid',
+  '/v1/economy/',
+  // Market + Trades tabs and the lottery-style crate reel
+  'data-ecotab="market"',
+  'data-ecotab="trades"',
+  'eco-mkt-list',
+  'eco-mkt-mine',
+  'eco-trades-in',
+  'eco-trades-out',
+  'eco-trade-form',
+  'eco-prompt-input',
+  '/v1/economy/market',
+  '/v1/economy/trade',
+  'eco-confetti',
+  'ecoReelClickSound',
+];
+
+// Loading splash (?loading=1 launcher overlay), cade quick menu, console
+// copy-log button.
+const OVERLAY_MARKERS = [
+  'ov-loading',
+  'loading-phase',
+  '__ovSetPhase',
+  'ov-cademenu',
+  'cade-grid',
+  'toggleCadeMenu',
+  'ov_js_cmd_cl ov_econ_cade',
+  'consoleCopyLog',
+  'console-copy',
+  // Console input/autocomplete hardening: keyCode-fallback key naming
+  // (editing keys must never be preventDefault'ed in the CEF panel),
+  // per-prefix completion cache and the non-navigating bridge request.
+  'conKeyName',
+  'engCacheClear',
+  'engCachePut',
+  'SUGG_MAX',
+];
+
 function assertUnifiedHtml(label, html) {
   for (const marker of ROUTE_MARKERS) {
     check(`${label}: contains ${marker}`, html.includes(marker));
+  }
+  for (const marker of ECO_MARKERS) {
+    check(`${label}: economy hub contains ${marker}`, html.includes(marker));
+  }
+  for (const marker of OVERLAY_MARKERS) {
+    check(`${label}: overlay UI contains ${marker}`, html.includes(marker));
   }
   check(`${label}: contains HUD overlay (ov-hud)`, html.includes('ov-hud'));
   check(`${label}: loads ui-sync.js`, html.includes('ui-sync.js'));

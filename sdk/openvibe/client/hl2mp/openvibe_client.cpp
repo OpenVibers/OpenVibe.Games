@@ -24,7 +24,7 @@
 extern CSteamAPIContext *steamapicontext;
 
 // Forward declaration: implemented in vgui_openvibe_menu.cpp.
-extern void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const char *pszSteamId, const char *pszDisplayName );
+extern void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const char *pszSteamId, const char *pszDisplayName, const char *pszError );
 
 static ConVar ov_api_url(
 	"ov_api_url",
@@ -44,10 +44,12 @@ static ConVar ov_join_local_fallback(
 	FCVAR_ARCHIVE,
 	"If API travel fails, connect to the conventional local OpenVibe port for the requested mode." );
 
+// NOT archived: the token is single-use — persisting it in config.cfg meant
+// every later connect re-presented a consumed token ("Join token rejected").
 static ConVar ov_join_token(
 	"ov_join_token",
 	"",
-	FCVAR_USERINFO | FCVAR_ARCHIVE,
+	FCVAR_USERINFO,
 	"Short-lived OpenVibe join token sent to destination servers." );
 
 static ConVar ov_auth_identity(
@@ -322,6 +324,7 @@ public:
 		if ( !steamapicontext || !steamapicontext->SteamUser() )
 		{
 			Warning( "[OV Auth] Steam user interface unavailable.\n" );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "", "steam_no_user" );
 			return;
 		}
 
@@ -335,6 +338,7 @@ private:
 		if ( !pTicket || pTicket->m_eResult != k_EResultOK || pTicket->m_cubTicket <= 0 )
 		{
 			Warning( "[OV Auth] Steam did not provide a valid Web API ticket.\n" );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "", "steam_ticket_failed" );
 			return;
 		}
 
@@ -353,6 +357,7 @@ private:
 		if ( !steamapicontext || !steamapicontext->SteamHTTP() )
 		{
 			Warning( "[OV Auth] Steam HTTP unavailable.\n" );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "", "steam_http_unavailable" );
 			return;
 		}
 
@@ -370,7 +375,11 @@ private:
 		ReleaseRequest();
 		m_hRequest = steamapicontext->SteamHTTP()->CreateHTTPRequest( k_EHTTPMethodPOST, szUrl );
 		if ( m_hRequest == INVALID_HTTPREQUEST_HANDLE )
+		{
+			Warning( "[OV Auth] Could not create Steam HTTP request.\n" );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "", "steam_http_failed" );
 			return;
+		}
 
 		steamapicontext->SteamHTTP()->SetHTTPRequestHeaderValue( m_hRequest, "Accept", "application/json" );
 		steamapicontext->SteamHTTP()->SetHTTPRequestRawPostBody(
@@ -388,6 +397,8 @@ private:
 		}
 		else
 		{
+			Warning( "[OV Auth] Could not send Steam HTTP request to the OpenVibe API.\n" );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "", "steam_http_failed" );
 			ReleaseRequest();
 		}
 	}
@@ -434,12 +445,18 @@ private:
 			ov_session_token.SetValue( szToken );
 
 			Msg( "[OV Auth] Steam authentication accepted by OpenVibe API. SteamID: %s\n", szSteamId );
-			OpenVibe_NotifyHTMLSteamAuth( true, szToken, szSteamId, szDisplayName );
+			OpenVibe_NotifyHTMLSteamAuth( true, szToken, szSteamId, szDisplayName, "" );
 		}
 		else
 		{
 			Warning( "[OV Auth] OpenVibe API rejected or could not validate Steam ticket: %s\n", szBody );
-			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "" );
+			// Pass the backend's error code through so the page can show a
+			// specific message; szBody is empty on transport failure.
+			char szErrCode[64];
+			szErrCode[0] = '\0';
+			if ( !OV_ExtractJsonString( szBody, "error", szErrCode, sizeof( szErrCode ) ) || !szErrCode[0] )
+				Q_strncpy( szErrCode, szBody[0] ? "steam_auth_failed" : "steam_http_failed", sizeof( szErrCode ) );
+			OpenVibe_NotifyHTMLSteamAuth( false, "", "", "", szErrCode );
 		}
 
 		ReleaseRequest();

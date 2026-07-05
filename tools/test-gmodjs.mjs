@@ -437,6 +437,21 @@ for (const mode of ["hub", "sandbox", "prophunt", "deathrun", "fortwars", "trait
 
   ok(sv.ctx.GAMEMODE && sv.ctx.GAMEMODE.mode === mode, `[${mode}] server GAMEMODE active`);
   ok(cl.ctx.GAMEMODE && cl.ctx.GAMEMODE.mode === (["hub", "sandbox"].includes(mode) ? mode : mode), `[${mode}] client GAMEMODE active`);
+
+  // Every gamemode declares its own JS GUI via HUD.Add in client Initialize.
+  const HUD_IDS = {
+    hub: ["hub_title", "hub_players", "hub_hint"],
+    sandbox: ["sb_mode", "sb_hint", "sb_props"],
+    prophunt: ["ph_round", "ph_time", "ph_role", "ph_lock", "ph_hiders"],
+    deathrun: ["dr_role", "dr_time", "dr_runners", "dr_deaths"],
+    fortwars: ["fw_phase", "fw_time", "fw_score", "fw_team"],
+    traitortown: ["ttt_role", "ttt_karma", "ttt_round", "ttt_time", "ttt_alive"],
+  };
+  {
+    const layoutIds = cl.ctx.HUD.GetLayout().map((el) => el.id);
+    const missing = HUD_IDS[mode].filter((id) => !layoutIds.includes(id));
+    ok(missing.length === 0, `[${mode}] gamemode HUD declared (${missing.length ? "missing: " + missing.join(",") : layoutIds.length + " elements"})`);
+  }
   ok(sv.ctx.scripted_ents.GetStored("ov_bouncy_crate") !== null, `[${mode}] SENT registered on server`);
   ok(cl.ctx.scripted_ents.GetStored("ov_bouncy_crate") !== null, `[${mode}] SENT registered on client`);
 
@@ -451,6 +466,12 @@ for (const mode of ["hub", "sandbox", "prophunt", "deathrun", "fortwars", "trait
     ok(teams.every((t) => t === 2 || t === 3), `[${mode}] players assigned to teams (${teams})`);
     if (mode !== "fortwars") {
       ok(rolesSeen.length > 0, `[${mode}] client received role via net (${rolesSeen.join(",")})`);
+    }
+    if (mode === "traitortown") {
+      const vals = cl.ctx.HUD.GetValues();
+      ok(vals.ttt_role === "TRAITOR" || vals.ttt_role === "INNOCENT" || vals.ttt_role === "DETECTIVE",
+        `[ttt] HUD role card set (${vals.ttt_role})`);
+      ok(vals.ttt_karma === "Karma: 1000", `[ttt] HUD karma starts at 1000 (${vals.ttt_karma})`);
     }
     // HUD ticker
     for (let i = 0; i < 4; i++) { tp.tick(1); sv.ctx.gamemode.call("Think"); drain(); }
@@ -577,6 +598,180 @@ for (const mode of ["hub", "sandbox", "prophunt", "deathrun", "fortwars", "trait
   ok(H.IsVisible() === false && H.Snapshot().visible === false, "HUD.Hide toggles visibility in snapshot");
   H.Remove("ammo");
   ok(H.GetLayout().length === 2, "HUD.Remove dropped element");
+}
+
+// ---- util.SteamIDTo64 + Player.SteamID64 (pure-JS SteamID64, no C++) ----
+{
+  section("util.SteamIDTo64 + Player.SteamID64");
+  const U = server.ctx.util;
+  ok(typeof U.SteamIDTo64 === "function", "util.SteamIDTo64 present");
+  ok(U.SteamIDTo64("STEAM_0:0:11101") === "76561197960287930", "STEAM_0:0:11101 -> 76561197960287930");
+  ok(U.SteamIDTo64("STEAM_0:1:1") === "76561197960265731", "STEAM_0:1:1 -> 76561197960265731");
+  ok(U.SteamIDTo64("76561198000000000") === "76561198000000000", "17-digit id64 passes through");
+  ok(U.SteamIDTo64("BOT") === null, "BOT -> null");
+  ok(U.SteamIDTo64("") === null && U.SteamIDTo64(null) === null, "empty/null -> null");
+  ok(U.SteamIDTo64("STEAM_ID_PENDING") === null, "STEAM_ID_PENDING -> null");
+  const p7 = server.ctx.player.GetByUserID(7); // Alice, native steamId STEAM_0:1:7
+  ok(p7 && p7.SteamID64() === "76561197960265743", `Player.SteamID64() (${p7 && p7.SteamID64()})`);
+  ok(p7 && p7.steamId64() === p7.SteamID64(), "legacy lowercase steamId64 alias");
+}
+
+// ---- openvibe-economy addon (Devolved-inspired economy port) ----
+{
+  section("openvibe-economy addon: manifest + class map");
+  const manifestPath = path.join(MOD, "addons", "openvibe-economy", "addon.json");
+  let manifest = null;
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")); } catch {}
+  ok(manifest !== null, "addon.json parses");
+  ok(manifest && manifest.name === "openvibe-economy", "addon name is 'openvibe-economy'");
+  ok(manifest && manifest.entry && ["shared", "server", "client"].every((k) =>
+    manifest.entry[k] && fs.existsSync(path.join(MOD, "addons", "openvibe-economy", manifest.entry[k]))
+  ), "entry files (shared/server/client) exist");
+
+  const Dv = server.ctx.OVEconomy;
+  ok(Dv && typeof Dv.MapWeaponClass === "function", "OVEconomy shared registry loaded (server realm)");
+  ok(client.ctx.OVEconomy && typeof client.ctx.OVEconomy.MapWeaponClass === "function", "OVEconomy shared registry loaded (client realm)");
+  ok(Dv && Object.keys(Dv.CLASS_MAP).length >= 15, `class map has ${Dv && Object.keys(Dv.CLASS_MAP).length} entries (>=15)`);
+  ok(Dv && Dv.MapWeaponClass("weapon_ttt_ak47") === "weapon_ar2", "map weapon_ttt_ak47 -> weapon_ar2");
+  ok(Dv && Dv.MapWeaponClass("weapon_zm_sledge") === "weapon_crowbar", "map weapon_zm_sledge -> weapon_crowbar");
+  ok(Dv && Dv.MapWeaponClass("weapon_zm_shotgun") === "weapon_shotgun", "map weapon_zm_shotgun -> weapon_shotgun");
+  ok(Dv && Dv.MapWeaponClass("weapon_ttt_glock") === "weapon_pistol", "map weapon_ttt_glock -> weapon_pistol");
+  ok(Dv && Dv.MapWeaponClass("weapon_zm_improvised_katana") === "weapon_crowbar", "prefix rule: improvised_* knives -> weapon_crowbar");
+  ok(Dv && Dv.MapWeaponClass("weapon_totally_unknown") === null, "unmapped class -> null");
+  ok(Dv && Dv.server && Dv.server.hasHttp === false, "server degrades without Node http (embedded-style realm)");
+
+  section("openvibe-economy addon: state push / loadout grant / cade gating");
+  const S = server.ctx, C = client.ctx;
+  const alice = S.player.GetByUserID(7);
+  const sid64 = alice.SteamID64();
+  const view = {
+    player: { steamId: sid64, displayName: "Alice", bucks: 500, xp: 600, lvl: 3, xpInLevel: 100, xpNext: 720 },
+    inventory: [], stats: {},
+    loadout: {
+      cades: { Donut: true }, mats: {}, specweps: {}, jihads: {}, taunts: {}, wepskins: {},
+      weps: {
+        AK47:   { class: "weapon_ttt_ak47", slot: 1, equipped: true },
+        Katana: { class: "weapon_zm_improvised_katana", slot: 2, equipped: true },
+        Needler:{ class: "weapon_ttt_halo_needler", slot: 3, equipped: true },  // no mapping
+        M16:    { class: "weapon_ttt_m16", slot: 4, equipped: false },          // not equipped
+      },
+      permas: {}, tiers: {}, recipes: {}, crosshairs: {},
+      equipped: { playermodel: "alyx" }, xp2xUntil: 0,
+    },
+  };
+  Dv.server._setState(sid64, view);
+
+  let cstate = null;
+  C.hook.Add("OVEconStateUpdated", "t", (st) => { cstate = st; });
+  ok(Dv.server.pushState(alice) === true, "pushState sent OVEcon_State");
+  pump();
+  ok(cstate !== null && cstate.bucks === 500 && cstate.lvl === 3, "client received bucks/level");
+  ok(cstate && cstate.xpInLevel === 100 && cstate.xpNext === 720, "client received xp progress");
+  ok(cstate && cstate.weps.AK47 && cstate.weps.Katana && !cstate.weps.M16, "payload carries equipped weps only");
+  ok(cstate && cstate.equippedCosmetics.playermodel === "alyx", "payload carries equipped cosmetics");
+  ok(C.OVEconomy.state && C.OVEconomy.state.bucks === 500, "client cached OVEconomy.state");
+  ok(C.HUD.Get("dv_bucks") === 500 && C.HUD.Get("dv_level") === 3, "HUD values bound (dv_bucks/dv_level)");
+  ok(alice.GetMoney() === 500 && alice.GetLevel() === 3, "Player NW money/level mirrored");
+
+  // loadout grant on spawn
+  alice.StripWeapons();
+  S.hook.Run("PlayerLoadout", alice);
+  ok(alice.HasWeapon("weapon_ar2"), "equipped AK47 granted as weapon_ar2");
+  ok(alice.HasWeapon("weapon_crowbar"), "equipped katana granted via prefix rule");
+  ok(alice.GetWeapons().length === 2, "unequipped + unmapped classes skipped");
+
+  // cade gating against the synced state
+  const cv = Dv.server.cadeVerdict;
+  ok(cv(alice, "Blast Door").ok === false, "hidden unowned cade rejected");
+  ok(cv(alice, "Nope").ok === false, "unknown cade rejected");
+  ok(cv(alice, "Donut").ok === true, "hidden-but-owned cade allowed");
+  const cade = Dv.server.placeCade(alice, "Donut");
+  ok(cade && cade.IsValid() && cade.GetClass() === "ov_prop_cade", "placed cade is an ov_prop_cade entity");
+  ok(cade && cade.GetCadeOwner() === alice.EntIndex(), "cade owner networked");
+  ok(Dv.server._getState(sid64).player.bucks === 460, "no reachable backend — charge fell back to local soft-debit");
+  ok(cv(alice, "Beer").ok === false, "1s cooldown blocks immediate re-place");
+  // per-life cap: fill up to GLOBAL_CAP, then reject; respawn resets
+  for (let i = 0; i < 12 && Dv.server._cadeCount(7) < S.cades.GLOBAL_CAP; i++) {
+    transport.tick(2);
+    Dv.server.placeCade(alice, "Beer");
+  }
+  ok(Dv.server._cadeCount(7) === S.cades.GLOBAL_CAP, `per-life count reached cap (${Dv.server._cadeCount(7)})`);
+  transport.tick(2);
+  const capped = cv(alice, "Beer");
+  ok(capped.ok === false && /cap/.test(capped.reason), "placement rejected at cap");
+  S.hook.Run("PlayerLoadout", alice); // respawn resets the per-life counter
+  ok(cv(alice, "Beer").ok === true, "cap resets on respawn");
+}
+
+// ---- openvibe-economy addon: persisted charge + kill reward (injected backend POST) ----
+{
+  section("openvibe-economy addon: server charge / kill reward (injected POST)");
+  const S = server.ctx;
+  const Dv = S.OVEconomy;
+  const alice = S.player.GetByUserID(7);
+  const sid64 = alice.SteamID64();
+  const flush = () => new Promise((r) => setImmediate(r));
+
+  const calls = [];
+  let respond = () => Promise.resolve({});
+  Dv.server._setPostJson((path, body) => { calls.push({ path, body }); return respond(path, body); });
+
+  // registration payload matches backend registerServerSchema
+  Dv.server.ensureRegistered();
+  await flush();
+  const reg = calls.find((c) => c.path === "/v1/servers/register");
+  ok(!!reg, "ensureRegistered POSTs /v1/servers/register");
+  ok(reg && reg.body.serverId === "local-dev" && reg.body.serverSecret === "dev-secret", "register carries default serverId/serverSecret");
+  ok(reg && reg.body.mode === "hub" && reg.body.mapName === "test_map", "register coerces non-backend mode to 'hub' + carries the map");
+  ok(reg && reg.body.publicHost === "127.0.0.1" && reg.body.port === 27015 && reg.body.maxPlayers === 48, "register carries host/port/maxPlayers");
+
+  // fresh cached state + cooldown/cap reset
+  Dv.server._getState(sid64).player.bucks = 500;
+  S.hook.Run("PlayerLoadout", alice);
+  transport.tick(2);
+
+  // happy path: backend response becomes the cached balance
+  calls.length = 0;
+  respond = () => Promise.resolve({ bucks: 460 });
+  const cade = Dv.server.placeCade(alice, "Donut");
+  ok(cade && cade.IsValid(), "cade placed via the cached fast path");
+  await flush();
+  const charge = calls.find((c) => c.path === "/v1/economy/server/charge");
+  ok(!!charge, "placement POSTed /v1/economy/server/charge");
+  ok(charge && charge.body.steamId === sid64 && charge.body.amount === 40 && charge.body.reason === "cade:Donut", "charge body carries steamId/amount/reason");
+  ok(charge && charge.body.serverId === "local-dev" && charge.body.serverSecret === "dev-secret", "charge is server-authenticated");
+  ok(Dv.server._getState(sid64).player.bucks === 460, "cached balance updated from the charge response");
+
+  // backend says no: optimistic placement revoked
+  transport.tick(2);
+  respond = () => Promise.reject(new Error("insufficient_bucks"));
+  const denied = Dv.server.placeCade(alice, "Beer");
+  ok(denied && denied.IsValid(), "optimistic placement created the entity");
+  const countBefore = Dv.server._cadeCount(7);
+  await flush();
+  S.Entity._flushRemovals(); // Remove() defers to end of tick (GMod semantics)
+  ok(denied.IsValid() === false, "insufficient_bucks revoked the placed cade");
+  ok(Dv.server._cadeCount(7) === countBefore - 1, "per-life count refunded on revoke");
+
+  // kill reward: attacker gets bucks+xp, response refreshes the cache
+  calls.length = 0;
+  respond = () => Promise.resolve({ bucks: 465, xp: 15, lvl: 1 });
+  const bob = S.player.GetByUserID(9);
+  S.hook.Run("PlayerDeath", bob, alice);
+  await flush();
+  const reward = calls.find((c) => c.path === "/v1/economy/server/reward");
+  ok(!!reward, "PlayerDeath POSTed /v1/economy/server/reward");
+  ok(reward && reward.body.steamId === sid64 && reward.body.bucks === 5 && reward.body.xp === 15 && reward.body.reason === "kill", "reward body carries attacker + kill amounts");
+  ok(Dv.server._getState(sid64).player.bucks === 465 && Dv.server._getState(sid64).player.xp === 15, "cached bucks/xp updated from the reward response");
+
+  // self kills and world kills never reward
+  calls.length = 0;
+  S.hook.Run("PlayerDeath", alice, alice);
+  S.hook.Run("PlayerDeath", bob, S.NULL);
+  await flush();
+  ok(calls.length === 0, "self kill and world kill send no reward");
+
+  Dv.server._setPostJson(null);
 }
 
 console.log(`\n${checks - failures}/${checks} checks passed`);

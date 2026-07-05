@@ -12,8 +12,9 @@
   const TEAM_RUNNERS    = 2;
   const TEAM_ACTIVATORS = 3;
 
-  let runnersAlive = 0;
-  let activatorId  = null; // userId of the activator this round
+  let runnersAlive  = 0;
+  let activatorId   = null; // userId of the activator this round
+  let deathsThisMap = 0;    // runner deaths (attempts) since MapInitialize
 
   function assignTeams() {
     const players = OV.players();
@@ -73,6 +74,7 @@
 
     MapInitialize(mapName) {
       OV.log(`Deathrun MapInitialize: ${mapName}`);
+      deathsThisMap = 0;
       this.scheduleRoundStart();
     },
 
@@ -103,6 +105,8 @@
           }
         }
       });
+
+      this.broadcastHudState();
     },
 
     endRound(reason) {
@@ -123,6 +127,7 @@
       OV.log(`[DR] RoundEnd round=${this._roundNumber} reason=${reason}`);
       hook.Run("RoundEnd", this._roundNumber, reason);
       OV.broadcast(msg);
+      this.broadcastHudState();
 
       this.scheduleRoundStart();
     },
@@ -131,12 +136,23 @@
       if (!victim || this._roundState !== "active") return;
       if (victim.team() === TEAM_RUNNERS) {
         runnersAlive = Math.max(0, runnersAlive - 1);
+        deathsThisMap += 1;
+        this.broadcastHudState();
         if (runnersAlive === 0) {
           this.endRound("activator_win");
         } else {
           OV.broadcast(`Runner down! ${runnersAlive} runner(s) remaining.`);
         }
       }
+    },
+
+    // Extend the base HUD snapshot with Deathrun live values; the client
+    // binds these to its dr_* elements.
+    buildHudState() {
+      const s = gamemode.getBase().buildHudState.call(this);
+      s.runnersAlive = runnersAlive;
+      s.deathsThisMap = deathsThisMap;
+      return s;
     },
 
     Think() {}

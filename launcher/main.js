@@ -2,7 +2,7 @@
 // Embeds Chromium via Electron for the custom main menu
 'use strict';
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, screen } = require('electron');
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -79,7 +79,6 @@ function waitForStableSourceWindow(timeoutMs = 60000) {
 const GAME_WINDOW_TITLE = process.env.OPENVIBE_GAME_WINDOW_TITLE || 'OpenVibe: Source';
 const GAME_READY_TIMEOUT_MS = Number(process.env.OPENVIBE_GAME_WINDOW_READY_TIMEOUT_MS || 45000);
 const GAME_STABLE_MS = Number(process.env.OPENVIBE_GAME_WINDOW_STABLE_MS || 8000);
-const HIDE_LAUNCHER_ON_GAME_READY = process.env.OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY === '1';
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -140,6 +139,22 @@ async function waitForGameWindowReady(timeoutMs = GAME_READY_TIMEOUT_MS) {
 function apiGet(urlPath) {
   return new Promise((resolve, reject) => {
     http.get(`${API_BASE}${urlPath}`, { timeout: 5000 }, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error('Bad JSON: ' + data)); }
+      });
+    }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
+  });
+}
+
+function apiGetAuthed(urlPath, token) {
+  return new Promise((resolve, reject) => {
+    http.get(`${API_BASE}${urlPath}`, {
+      timeout: 5000,
+      headers: { Authorization: `Bearer ${token}` },
+    }, (res) => {
       let data = '';
       res.on('data', (c) => (data += c));
       res.on('end', () => {
@@ -244,8 +259,184 @@ async function ensureClientUiServer(root) {
   return waitForHttp(healthUrl, 5000);
 }
 
+// ── "Waiting for Source" loading overlay ─────────────────────────────────────
+// A frameless always-on-top window shown while the Source engine boots.
+// Progress is driven by polling the client runtime control server once/second.
+//
+// Phase state machine (per launch session):
+//   starting  → gameProcess spawned, control server not yet reporting connect
+//   connected → state.gameConnected === true          ("Loading gamemode…")
+//   map       → state.map is non-empty                ("Entering <map>…")
+//   ready     → map set AND (players.length > 0 OR 8s elapsed since map set)
+// On ready: overlay closes and the launcher main window hides (single code
+// path — the old timer-based OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY hide is gone).
+// On game exit / 180s safety timeout: overlay closes, launcher stays/returns.
+const CONTROL_STATE_URL = 'http://127.0.0.1:41996/state';
+const LOADING_OVERLAY_MAX_MS = 180_000;      // safety: never cover the screen forever
+const LOADING_READY_AFTER_MAP_MS = 8_000;    // ready fallback once a map is set
+const LOADING_CLICK_ESCAPE_AFTER_MS = 30_000; // click-to-dismiss once connected this long
+
+let loadingOverlay = null;
+let loadingPollTimer = null;
+let loadingSafetyTimer = null;
+let loadingSession = null;
+
+function controlStateGet() {
+  return new Promise((resolve, reject) => {
+    const req = http.get(CONTROL_STATE_URL, { timeout: 900 }, (res) => {
+      let data = '';
+      res.on('data', (c) => (data += c));
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+  });
+}
+
+function sendLoadingPhase(phase, message) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('ov-loading-phase', { phase, message, at: Date.now() });
+  }
+}
+
+function setOverlayPhaseText(text) {
+  if (!loadingOverlay || loadingOverlay.isDestroyed()) return;
+  // Works for both the remote /client/?loading=1 page and the local fallback:
+  // both are expected to expose window.__ovSetPhase; __ovPhase is stashed so a
+  // page that finishes loading late can pick the current phase up itself.
+  const js =
+    `try { window.__ovPhase = ${JSON.stringify(text)}; ` +
+    `window.__ovSetPhase && window.__ovSetPhase(${JSON.stringify(text)}); } catch (e) {}`;
+  loadingOverlay.webContents.executeJavaScript(js, true).catch(() => {});
+}
+
+function closeLoadingOverlay() {
+  if (loadingPollTimer) { clearInterval(loadingPollTimer); loadingPollTimer = null; }
+  if (loadingSafetyTimer) { clearTimeout(loadingSafetyTimer); loadingSafetyTimer = null; }
+  loadingSession = null;
+  if (loadingOverlay && !loadingOverlay.isDestroyed()) {
+    loadingOverlay.destroy();
+  }
+  loadingOverlay = null;
+}
+
+function openLoadingOverlay(mode) {
+  closeLoadingOverlay();
+
+  let bounds = null;
+  try { bounds = screen.getPrimaryDisplay().bounds; } catch {}
+
+  loadingOverlay = new BrowserWindow({
+    ...(bounds
+      ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+      : { width: 1280, height: 800 }),
+    frame: false,
+    fullscreen: true,
+    alwaysOnTop: true,
+    backgroundColor: '#0d0d14',
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+    show: false,
+  });
+
+  loadingOverlay.setMenuBarVisibility(false);
+  loadingOverlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  loadingOverlay.once('ready-to-show', () => {
+    if (loadingOverlay && !loadingOverlay.isDestroyed()) loadingOverlay.show();
+  });
+  // The page's "Hide" button (window.close()) or the click escape hatch lands
+  // here; polling continues so the launcher still hides once the game is ready.
+  loadingOverlay.on('closed', () => { loadingOverlay = null; });
+
+  const remoteUrl = `${API_BASE}/client/?loading=1&mode=${encodeURIComponent(mode || 'hub')}`;
+  loadingOverlay.loadURL(remoteUrl).catch(() => {
+    // Backend down — fall back to the bundled local page.
+    if (loadingOverlay && !loadingOverlay.isDestroyed()) {
+      loadingOverlay.loadFile(path.join(__dirname, 'loading.html')).catch(() => {});
+    }
+  });
+
+  loadingSession = {
+    startedAt: Date.now(),
+    connectedAt: 0,
+    mapSetAt: 0,
+    map: '',
+    escapeArmed: false,
+    ready: false,
+  };
+
+  setOverlayPhaseText('Starting Source engine…');
+  sendLoadingPhase('starting', 'Starting Source engine…');
+
+  loadingSafetyTimer = setTimeout(() => {
+    console.log('[launcher] loading overlay safety timeout — closing');
+    sendLoadingPhase('timeout', 'Still waiting for Source — overlay dismissed.');
+    closeLoadingOverlay();
+  }, LOADING_OVERLAY_MAX_MS);
+
+  loadingPollTimer = setInterval(pollLoadingState, 1000);
+}
+
+async function pollLoadingState() {
+  const s = loadingSession;
+  if (!s || s.ready) return;
+
+  let st = null;
+  try { st = await controlStateGet(); }
+  catch { /* control server not up yet — keep current phase */ }
+  if (loadingSession !== s) return; // session ended while awaiting
+
+  const now = Date.now();
+
+  if (st && st.gameConnected === true && !s.connectedAt) {
+    s.connectedAt = now;
+    setOverlayPhaseText('Loading gamemode…');
+    sendLoadingPhase('connected', 'Loading gamemode…');
+  }
+
+  if (st && typeof st.map === 'string' && st.map.length > 0 && !s.mapSetAt) {
+    s.mapSetAt = now;
+    s.map = st.map;
+    setOverlayPhaseText(`Entering ${s.map}…`);
+    sendLoadingPhase('map', `Entering ${s.map}…`);
+  }
+
+  // Escape hatch: once the game has been connected >30s, a click anywhere on
+  // the overlay dismisses it (works for remote page and local fallback alike).
+  if (s.connectedAt && !s.escapeArmed && now - s.connectedAt > LOADING_CLICK_ESCAPE_AFTER_MS) {
+    s.escapeArmed = true;
+    if (loadingOverlay && !loadingOverlay.isDestroyed()) {
+      loadingOverlay.webContents.executeJavaScript(
+        `try { document.addEventListener('click', function () { window.close(); }, { once: true }); } catch (e) {}`,
+        true
+      ).catch(() => {});
+    }
+  }
+
+  const players = st && Array.isArray(st.players) ? st.players : [];
+  const ready = s.mapSetAt > 0
+    && (players.length > 0 || now - s.mapSetAt >= LOADING_READY_AFTER_MAP_MS);
+
+  if (ready) {
+    s.ready = true;
+    sendLoadingPhase('ready', s.map ? `In game — ${s.map}` : 'In game');
+    closeLoadingOverlay();
+    // Single hide code path: launcher hides only when the game is READY.
+    if (gameProcess && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
+  }
+}
+
 // ── Game launch ────────────────────────────────────────────────────────────────
-async function launchGame(serverIp, serverPort) {
+async function launchGame(serverIp, serverPort, mode) {
   const root = path.resolve(__dirname, '..');
 
   const uiReady = await ensureClientUiServer(root);
@@ -285,29 +476,127 @@ async function launchGame(serverIp, serverPort) {
 
   gameProcess.stdout.on('data', (d) => console.log('[game]', d.toString().trim()));
   gameProcess.stderr.on('data', (d) => console.error('[game]', d.toString().trim()));
+  gameProcess.on('error', (err) => {
+    console.error('[launcher] game process error:', err && err.message);
+    gameProcess = null;
+    closeLoadingOverlay();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('game-exited', -1);
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
   gameProcess.on('exit', (code) => {
     console.log('[launcher] game exited with code', code);
     gameProcess = null;
+    closeLoadingOverlay();
     mainWindow?.webContents.send('game-exited', code);
-    mainWindow?.show();
-    mainWindow?.focus();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 
   mainWindow?.webContents.send('game-started', gameProcess.pid);
 
-  // Keep Electron visible by default so users are not dumped behind a frozen Source loading window.
-  // Advanced: set OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY=1 to hide after a conservative delay.
-  if (process.env.OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY === '1') {
-    setTimeout(() => {
-      if (gameProcess && mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-    }, Number(process.env.OPENVIBE_GAME_READY_HIDE_DELAY_MS || 12000));
-  }
+  // Show the "waiting for Source" overlay immediately; the launcher main
+  // window is hidden later, only once the game is READY (see pollLoadingState).
+  openLoadingOverlay(mode);
 
   gameProcess.unref();
   return true;
 }
 
+// ── Steam OpenID sign-in ──────────────────────────────────────────────────────
+// Opens a popup on the backend's /v1/auth/steam/openid/start route, which
+// bounces through steamcommunity.com and redirects back with #ovtoken=<token>.
+// Always resolves ({ sessionToken, steamId } or { error }); never rejects.
+const STEAM_LOGIN_TIMEOUT_MS = 3 * 60 * 1000;
+
+function steamOpenIdLogin() {
+  return new Promise((resolve) => {
+    let settled = false;
+    let tokenCaptured = false;
+    let popup = null;
+    let timeoutHandle = null;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutHandle);
+      if (popup && !popup.isDestroyed()) popup.destroy();
+      popup = null;
+      resolve(result);
+    };
+
+    try {
+      popup = new BrowserWindow({
+        width: 500,
+        height: 750,
+        parent: (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : undefined,
+        autoHideMenuBar: true,
+        title: 'Sign in with Steam',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          sandbox: true,
+        },
+      });
+    } catch (e) {
+      console.error('[launcher] steam login popup failed:', e.message);
+      return finish({ error: 'steam_openid_failed' });
+    }
+
+    timeoutHandle = setTimeout(() => finish({ error: 'steam_openid_failed' }), STEAM_LOGIN_TIMEOUT_MS);
+
+    const inspectUrl = (url) => {
+      if (settled || tokenCaptured || typeof url !== 'string') return;
+      const match = /#ovtoken=([^&]+)/.exec(url);
+      if (!match) return;
+      tokenCaptured = true;
+
+      let token = '';
+      try { token = decodeURIComponent(match[1]); } catch { token = match[1]; }
+
+      // Token captured: close the popup, then verify the session with the API.
+      if (popup && !popup.isDestroyed()) popup.destroy();
+      if (!token) return finish({ error: 'steam_openid_failed' });
+
+      apiGetAuthed('/v1/auth/session', token).then((info) => {
+        if (info && info.valid) {
+          finish({ sessionToken: token, steamId: info.steamId || '' });
+        } else {
+          finish({ error: 'steam_openid_failed' });
+        }
+      }).catch(() => finish({ error: 'steam_openid_failed' }));
+    };
+
+    popup.webContents.on('will-redirect', (_e, url) => inspectUrl(url));
+    popup.webContents.on('did-navigate', (_e, url) => inspectUrl(url));
+    popup.webContents.on('did-navigate-in-page', (_e, url) => inspectUrl(url));
+
+    popup.on('closed', () => {
+      if (!tokenCaptured) finish({ error: 'steam_openid_cancelled' });
+    });
+
+    popup.loadURL(`${API_BASE}/v1/auth/steam/openid/start?return=${encodeURIComponent('/client/')}`)
+      .catch((e) => {
+        console.error('[launcher] steam login navigation failed:', e && e.message);
+        if (!tokenCaptured) finish({ error: 'steam_openid_failed' });
+      });
+  });
+}
+
 // ── IPC handlers ──────────────────────────────────────────────────────────────
+ipcMain.handle('ov-steam-login', async () => {
+  try {
+    return await steamOpenIdLogin();
+  } catch (e) {
+    console.error('[launcher] steam login failed:', e && e.message);
+    return { error: 'steam_openid_failed' };
+  }
+});
+
 ipcMain.handle('api:health', async () => {
   try { return await apiGet('/health'); }
   catch (e) { return { ok: false, error: e.message }; }
@@ -330,21 +619,28 @@ ipcMain.handle('api:travel', async (_e, { steamId, mode }) => {
   catch (e) { return { error: e.message }; }
 });
 
+const MODE_SERVER_MAP = {
+  hub: { ip: '127.0.0.1', port: 27015 },
+  prophunt: { ip: '127.0.0.1', port: 27016 },
+  deathrun: { ip: '127.0.0.1', port: 27017 },
+  fortwars: { ip: '127.0.0.1', port: 27018 },
+  traitortown: { ip: '127.0.0.1', port: 27019 },
+};
+
+function modeForPort(port) {
+  for (const [mode, srv] of Object.entries(MODE_SERVER_MAP)) {
+    if (srv.port === Number(port)) return mode;
+  }
+  return 'hub';
+}
+
 ipcMain.handle('game:launch', async (_e, { ip, port }) => {
-  return launchGame(ip, port);
+  return launchGame(ip, port, modeForPort(port));
 });
 
 ipcMain.handle('game:launch-direct', async (_e, mode) => {
-  // Look up the mode's port from local server list
-  const serverMap = {
-    hub: { ip: '127.0.0.1', port: 27015 },
-    prophunt: { ip: '127.0.0.1', port: 27016 },
-    deathrun: { ip: '127.0.0.1', port: 27017 },
-    fortwars: { ip: '127.0.0.1', port: 27018 },
-    traitortown: { ip: '127.0.0.1', port: 27019 },
-  };
-  const srv = serverMap[mode] || serverMap.hub;
-  return launchGame(srv.ip, srv.port);
+  const srv = MODE_SERVER_MAP[mode] || MODE_SERVER_MAP.hub;
+  return launchGame(srv.ip, srv.port, mode in MODE_SERVER_MAP ? mode : 'hub');
 });
 
 ipcMain.handle('game:status', () => ({
@@ -435,6 +731,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   appIsQuitting = true;
+  closeLoadingOverlay();
   if (uiServerProcess) {
     uiServerProcess.kill();
     uiServerProcess = null;

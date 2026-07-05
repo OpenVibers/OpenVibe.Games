@@ -38,6 +38,7 @@
   bootstrap("js/core/player.js");     // Player class + player library
   bootstrap("js/core/team.js");       // team library
   bootstrap("js/core/hud.js");        // HUD / GUI library (gamemode GUIs in JS)
+  bootstrap("js/core/cades.js");      // cades (deployable barricades) registry
   bootstrap("js/core/file.js");       // AddCSJSFile / include / client sync
   bootstrap("js/core/concommand.js"); // concommand + RunConsoleCommand
   bootstrap("js/core/addon.js");      // globalThis.Addon

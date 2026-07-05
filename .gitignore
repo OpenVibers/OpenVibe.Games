@@ -50,3 +50,4 @@ _deps/
 *.log
 game/openvibe.games/js/node_modules/
 game/openvibe.games/js/ov_downloads/
+steam-key.txt

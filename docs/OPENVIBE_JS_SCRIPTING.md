@@ -156,13 +156,34 @@ ov_js_reload / ov_js_status / ov_js_fire / ov_js_cmd   (existing)
 
 ## Hotloading
 
-- node backend: `fs.watch` on `js/` + `addons/` → debounced full reload →
-  `Initialize` + `OnReloaded`; scripted entity re-register hot-patches live
-  instances; `require.reload(id)` for targeted reloads.
+- node backend: `fs.watch` on `js/` + `addons/` → full reload → `Initialize`
+  + `OnReloaded`; scripted entity re-register hot-patches live instances;
+  `require.reload(id)` for targeted reloads. The watcher only reacts to
+  `*.js`/`*.json` changes (dotfiles, extension-less editor scratch files, and
+  `~`/`.swp`/`.tmp`/`.bak` backups are ignored) and debounces bursts 500ms, so
+  an editor save storm re-bootstraps once; re-bootstrap boot chatter is
+  demoted to the debug log stream.
 - embedded backend: `ov_js_reload` (full), `js_openscript` (ad-hoc).
 - npm: `ov_npm install <pkg>` (console), `POST /npm` (GUI console), or edit
   `js/package.json` — the watcher reloads on node_modules changes. Local
   packages live in `js/vendor/` via `file:` deps.
+- declared npm deps (node backend): an addon's `addon.json` or a gamemode's
+  `manifest.json` may declare dependencies:
+
+  ```json
+  { "npm": { "nanoid": "^5", "ov-leftpad": "file:vendor/ov-leftpad" } }
+  ```
+
+  At framework load the runtime diffs every declared dep against
+  `js/package.json` + installed `js/node_modules` and batch-installs only
+  what's missing (one `npm install pkg@range ...`, non-blocking — a failed
+  install warns and the realm keeps loading; the post-install reload picks the
+  new packages up). `file:` ranges resolve relative to `js/` (the npm root),
+  so vendored packages live at `js/vendor/<name>` (see
+  `addons/hello-world/addon.json` for a working example). Package names must
+  be npm-valid, version ranges are character-validated, and npm always runs
+  via execFile arg arrays — never a shell. The embedded QuickJS backend
+  ignores the `npm` key (no npm there; vendor pure-JS files for it instead).
 
 ## Runtime control server (GUI console backend)
 

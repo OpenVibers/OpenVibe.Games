@@ -1,1 +1,6 @@
-{ "name": "Hello World", "author": "OpenVibe", "entry": { "shared": "shared.js", "server": "server.js", "client": "client.js" } }
+{
+  "name": "Hello World",
+  "author": "OpenVibe",
+  "entry": { "shared": "shared.js", "server": "server.js", "client": "client.js" },
+  "npm": { "ov-leftpad": "file:vendor/ov-leftpad" }
+}

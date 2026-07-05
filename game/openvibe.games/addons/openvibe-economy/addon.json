@@ -1,0 +1,6 @@
+{
+  "name": "openvibe-economy",
+  "author": "OpenVibe",
+  "description": "OpenVibe Economy — backend-synced bucks/level/loadout, perma weapon grants, cade buying (Devolved-inspired).",
+  "entry": { "shared": "shared.js", "server": "server.js", "client": "client.js" }
+}

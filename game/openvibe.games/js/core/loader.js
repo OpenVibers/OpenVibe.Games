@@ -141,6 +141,21 @@
     }
   }
 
+  // ---- cades (Devolved barricade registry: js/cades/*.js) ----
+  function loadCades(root) {
+    if (!globalThis.cades) return;
+    root = root || "js/cades";
+    listSorted(root, /\.js$/).forEach(function (name) {
+      if (name.charAt(0) === ".") return;
+      // Each file sets globalThis.CADE (or several CADEs) and/or calls cades.Register.
+      var prevCADE = globalThis.CADE;
+      globalThis.CADE = null;
+      execFile(root + "/" + name);
+      if (globalThis.CADE && typeof globalThis.CADE === "object") cades.Register(globalThis.CADE);
+      globalThis.CADE = prevCADE;
+    });
+  }
+
   // ---- base scripted-entity classes (GMod engine bases) ----
   function registerBaseEntities() {
     if (!globalThis.scripted_ents) return;
@@ -169,7 +184,9 @@
       if (opts.gamemodes !== false) loadGamemodeChain(mode);
       loadEntities();
       loadWeapons();
+      loadCades();
       if (globalThis.Addon && Addon.loadAll) Addon.loadAll();
+      if (globalThis.weapons && weapons.ValidateBases) weapons.ValidateBases();
       log("realm load complete (mode=" + mode + ", realm=" + realmDir + ")");
       return true;
     },

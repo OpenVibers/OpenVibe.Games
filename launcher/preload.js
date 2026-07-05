@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('OV', {
   leaderboard: (limit)       => ipcRenderer.invoke('api:leaderboard', limit),
   travel:      (opts)        => ipcRenderer.invoke('api:travel', opts),
 
+  // Steam sign-in via a Steam OpenID popup window (handled in main process).
+  // Resolves { sessionToken, steamId } or { error } — never rejects.
+  steamLogin:  ()            => ipcRenderer.invoke('ov-steam-login'),
+
   // Game launch
   launchGame:  (ip, port)    => ipcRenderer.invoke('game:launch', { ip, port }),
   launchMode:  (mode)        => ipcRenderer.invoke('game:launch-direct', mode),
@@ -25,6 +29,8 @@ contextBridge.exposeInMainWorld('OV', {
 
   // Events from main → renderer
   onGameStart: (cb) => ipcRenderer.on('game-started', (_e, pid) => cb(pid)),
+  // Loading-overlay phase updates: { phase: 'starting'|'connected'|'map'|'ready'|'timeout', message, at }
+  onLoadingPhase: (cb) => ipcRenderer.on('ov-loading-phase', (_e, info) => cb(info)),
   onLaunchState: (cb) => ipcRenderer.on('launch-state', (_e, state) => cb(state)),
   onLaunchPhase: (cb) => ipcRenderer.on('game-launch-phase', (_e, info) => cb(info)),
   onGameExit: (cb) => ipcRenderer.on('game-exited', (_e, code) => cb(code)),

@@ -81,6 +81,24 @@
     // Serialisable snapshot the client pushes to the HTML overlay.
     Snapshot: function () { return { visible: visible, layout: elements.slice(), values: HUD.GetValues() }; },
 
+    // Wire-compact snapshot: identical shape but null/false/empty fields are
+    // omitted so the push usually fits in one <512-char console command
+    // (the page treats missing keys as their defaults).
+    CompactSnapshot: function () {
+      var layout = elements.map(function (el) {
+        var out = { id: el.id, type: el.type, anchor: el.anchor, x: el.x, y: el.y };
+        if (el.bind != null) out.bind = el.bind;
+        if (el.text) out.text = el.text;
+        if (el.color) out.color = el.color;
+        if (el.size != null) out.size = el.size;
+        if (el.max != null) out.max = el.max;
+        if (el.icon != null) out.icon = el.icon;
+        if (el.hideWhenEmpty) out.hideWhenEmpty = true;
+        return out;
+      });
+      return { visible: visible, layout: layout, values: HUD.GetValues() };
+    },
+
     // Push to the page (client realm only). Uses the menu bridge like base HUD.
     Flush: function (force) {
       if (isServer) return false;
@@ -89,7 +107,7 @@
       var snap = HUD.Snapshot();
       if (OV && typeof OV.menuJS === "function") {
         try {
-          var json = JSON.stringify(snap).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          var json = JSON.stringify(HUD.CompactSnapshot()).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
           OV.menuJS('window.OV&&OV.onHudLayout&&OV.onHudLayout(JSON.parse("' + json + '"))');
         } catch (e) { /* best-effort */ }
       }

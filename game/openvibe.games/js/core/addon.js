@@ -38,6 +38,8 @@
     }
   }
 
+  var announced = Object.create(null); // addon dir name -> logged once
+
   function loadOne(name, isServer) {
     var dir = "addons/" + name;
     var manifestPath = dir + "/addon.json";
@@ -51,7 +53,10 @@
           entry.server = m.entry.server || entry.server;
           entry.client = m.entry.client || entry.client;
         }
-        log("addon '" + (m && m.name ? m.name : name) + "'");
+        if (!announced[name]) {
+          announced[name] = true;
+          log("addon '" + (m && m.name ? m.name : name) + "'");
+        }
       } catch (e) {
         warn("bad addon.json in " + name + ": " + (e && e.message));
       }
@@ -68,11 +73,16 @@
       if (!OV || !OV.listDir) return [];
       return OV.listDir("addons", "*");
     },
+    __scanned: false,
     loadAll: function () {
       if (!OV || !OV.listDir) { warn("file bridge unavailable"); return; }
       var isServer = OV.isServer ? OV.isServer() : true;
       var names = this.list();
-      log("scanning " + names.length + " addon folder(s), realm=" + (isServer ? "server" : "client"));
+      // Repeat scans (loader re-entry / hot-reload) are idempotent — log once.
+      if (!this.__scanned) {
+        this.__scanned = true;
+        log("scanning " + names.length + " addon folder(s), realm=" + (isServer ? "server" : "client"));
+      }
       for (var i = 0; i < names.length; i++) {
         // Skip node_modules and dotfiles.
         if (names[i] === "node_modules" || names[i].charAt(0) === ".") continue;

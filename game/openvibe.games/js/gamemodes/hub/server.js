@@ -45,6 +45,8 @@
     PlayerInitialSpawn(ply) {
       ply.chat("Welcome to OpenVibe: Source JS runtime.");
       OV.broadcast(`${ply.name()} joined the hub.`);
+      // Refresh the client HUD (online count) immediately on join.
+      if (typeof this.broadcastHudState === "function") this.broadcastHudState();
     },
 
     PlayerSpawn(ply) {

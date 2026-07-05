@@ -36,6 +36,8 @@
     OV.serverCommand("ov_fortwars_build_enabled 1");
   }
 
+  let propsSpawned = 0; // session prop count (shown on the client HUD)
+
   function spawnProp(ply, id) {
     const key = String(id || "").toLowerCase();
     if (!spawnable[key]) {
@@ -46,6 +48,9 @@
     ensureBuildEnabled();
     ply.runCommand(`ov_fortwars_spawn ${key}`);
     ply.chat(`Spawned: ${spawnable[key]}`);
+    propsSpawned += 1;
+    const gm = gamemode.get();
+    if (gm && gm.broadcastHudState) gm.broadcastHudState();
     return true;
   }
 
@@ -160,6 +165,13 @@
     scheduleRoundStart() {},
     startRound() {},
     endRound() {},
+
+    // Extend the base HUD-state broadcast with the session prop count.
+    buildHudState() {
+      const s = gamemode.getBase().buildHudState.call(this);
+      s.propsSpawned = propsSpawned;
+      return s;
+    },
 
     PlayerInitialSpawn(ply) {
       ply.chat("Welcome to OpenVibe Sandbox! Press Q (or type !q) for the spawn menu.");

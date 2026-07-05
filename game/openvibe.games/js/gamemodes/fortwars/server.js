@@ -11,6 +11,7 @@
   const TEAM_BLUE = 3;
 
   let phase        = "build"; // "build" | "fight"
+  let phaseEndsAt  = 0;       // OV.time() when the current phase flips/ends
   let redAlive     = 0;
   let blueAlive    = 0;
 
@@ -21,6 +22,14 @@
     const half = Math.ceil(shuffled.length / 2);
     shuffled.forEach(function (p, i) {
       p.setTeam(i < half ? TEAM_RED : TEAM_BLUE);
+      // Private team notification over the net library (client HUD shows it).
+      if (globalThis.net && net.__openvibe) {
+        try {
+          net.Start("OV_FW_Team");
+          net.WriteInt(p.team());
+          net.Send(p);
+        } catch (e) { /* transport not up */ }
+      }
     });
     redAlive  = shuffled.filter((p) => p.team() === TEAM_RED).length;
     blueAlive = shuffled.filter((p) => p.team() === TEAM_BLUE).length;
@@ -68,7 +77,10 @@
     Initialize() {
       OV.log("Fort Wars Initialize fired");
       registerCommands();
-      if (globalThis.util && util.AddNetworkString) util.AddNetworkString("OV_FW_Phase");
+      if (globalThis.util && util.AddNetworkString) {
+        util.AddNetworkString("OV_FW_Phase");
+        util.AddNetworkString("OV_FW_Team");
+      }
     },
 
     CreateTeams() {
@@ -92,6 +104,7 @@
       this._roundState = "active";
       this._roundEndsAt = OV.time() + BUILD_DURATION + FIGHT_DURATION;
       phase = "build";
+      phaseEndsAt = OV.time() + BUILD_DURATION;
       broadcastPhase("build", BUILD_DURATION);
 
       assignTeams();
@@ -108,10 +121,12 @@
       timer.simple(BUILD_DURATION, function () {
         if (self._roundState !== "active" || self._roundNumber !== roundNum) return;
         phase = "fight";
+        phaseEndsAt = OV.time() + FIGHT_DURATION;
         OV.broadcast("BUILD PHASE OVER! FIGHT!");
         OV.serverCommand("ov_fortwars_build_enabled 0");
         hook.Run("FW_FightPhaseStart", roundNum);
         broadcastPhase("fight", FIGHT_DURATION);
+        self.broadcastHudState();
       });
 
       // End of round timer
@@ -126,6 +141,8 @@
           }
         }
       });
+
+      this.broadcastHudState();
     },
 
     endRound(reason) {
@@ -134,7 +151,14 @@
       this._roundEndsAt = 0;
       timer.remove(`ov_fw_round_end_${this._roundNumber}`);
       phase = "build";
+      phaseEndsAt = 0;
       OV.serverCommand("ov_fortwars_build_enabled 1");
+
+      // Round wins feed the team scoreboard on the HUD.
+      if (globalThis.team) {
+        if (reason === "red_win") team.AddScore(TEAM_RED, 1);
+        else if (reason === "blue_win") team.AddScore(TEAM_BLUE, 1);
+      }
 
       const msg = reason === "red_win"  ? "Red team wins!" :
                   reason === "blue_win" ? "Blue team wins!" :
@@ -143,14 +167,29 @@
       OV.log(`[FW] RoundEnd round=${this._roundNumber} reason=${reason}`);
       hook.Run("RoundEnd", this._roundNumber, reason);
       OV.broadcast(msg);
+      this.broadcastHudState();
 
       this.scheduleRoundStart();
+    },
+
+    // Extend the base HUD snapshot with Fort Wars live values; the client
+    // binds these to its fw_* elements.
+    buildHudState() {
+      const s = gamemode.getBase().buildHudState.call(this);
+      s.phase = phase;
+      s.phaseTimeLeft = phaseEndsAt ? Math.max(0, Math.round(phaseEndsAt - OV.time())) : 0;
+      s.redAlive = redAlive;
+      s.blueAlive = blueAlive;
+      s.redScore = globalThis.team ? team.GetScore(TEAM_RED) : 0;
+      s.blueScore = globalThis.team ? team.GetScore(TEAM_BLUE) : 0;
+      return s;
     },
 
     PlayerDeath(victim, _attacker) {
       if (!victim || this._roundState !== "active" || phase !== "fight") return;
       if (victim.team() === TEAM_RED)  redAlive  = Math.max(0, redAlive - 1);
       if (victim.team() === TEAM_BLUE) blueAlive = Math.max(0, blueAlive - 1);
+      this.broadcastHudState();
 
       if (redAlive === 0 && blueAlive > 0) {
         this.endRound("blue_win");

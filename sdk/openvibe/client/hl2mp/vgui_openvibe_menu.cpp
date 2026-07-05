@@ -47,6 +47,12 @@ static ConVar ov_menu_auto_open(
 	FCVAR_ARCHIVE,
 	"Automatically opens the OpenVibe HTML menu when the client UI initializes." );
 
+static ConVar ov_hud_html(
+	"ov_hud_html",
+	"1",
+	FCVAR_ARCHIVE,
+	"Keep the HTML panel visible during gameplay as a transparent, input-transparent HUD overlay (gamemode JS GUIs render there)." );
+
 static ConVar ov_menu_allow_remote(
 	"ov_menu_allow_remote",
 	"1",
@@ -307,8 +313,51 @@ public:
 		SetVisible( false );
 	}
 
+	// In-game HTML HUD: keep the panel visible during gameplay as a
+	// transparent, input-transparent overlay routed to the page's #hud route
+	// (pointer-events:none there). Gamemode JS GUIs — HUD.Add layouts pushed
+	// via ov_menu_js — render here. The GameUI panel layer only draws while
+	// GameUI is up, so HUD mode reparents into the client panel layer.
+	void EnterHudMode()
+	{
+		m_bHudMode = true;
+		SetPauseOverlay( true );
+		SetParent( enginevgui->GetPanel( PANEL_CLIENTDLL ) );
+		MakeFullScreen();
+		if ( m_szCurrentURL[0] == '\0' )
+		{
+			Q_strncpy( m_szCurrentURL, ov_menu_url.GetString(), sizeof( m_szCurrentURL ) );
+			m_pHTML->OpenURL( m_szCurrentURL, NULL, true );
+		}
+		RunJS(
+			"document.documentElement.classList.remove('ov-pause-overlay');"
+			"if(typeof window.routeTo==='function'){routeTo('hud');}" );
+		SetVisible( true );
+		// Gameplay keeps mouse + keys; the page is pointer-events:none in
+		// HUD mode anyway.
+		SetMouseInputEnabled( false );
+		SetKeyBoardInputEnabled( false );
+		m_pHTML->SetMouseInputEnabled( false );
+		m_pHTML->SetKeyBoardInputEnabled( false );
+	}
+
+	void LeaveHudMode()
+	{
+		if ( !m_bHudMode )
+			return;
+		m_bHudMode = false;
+		SetParent( enginevgui->GetPanel( PANEL_GAMEUIDLL ) );
+		SetMouseInputEnabled( true );
+		SetKeyBoardInputEnabled( true );
+		m_pHTML->SetMouseInputEnabled( true );
+		m_pHTML->SetKeyBoardInputEnabled( true );
+	}
+
+	bool IsHudMode() const { return m_bHudMode; }
+
 	void Open( const char *pszURL = NULL )
 	{
+		LeaveHudMode();
 		SetPauseOverlay( false ); // full opaque shell (main menu / route open)
 		const char *pszTarget = ( pszURL && pszURL[0] ) ? pszURL : ov_menu_url.GetString();
 		Q_strncpy( m_szCurrentURL, pszTarget, sizeof( m_szCurrentURL ) );
@@ -326,6 +375,7 @@ public:
 	// through behind it (the page adds the 'ov-pause-overlay' body class).
 	void OpenPause()
 	{
+		LeaveHudMode();
 		SetPauseOverlay( true );
 		MakeFullScreen();
 		SetVisible( true );
@@ -343,7 +393,8 @@ public:
 
 		RunJS(
 			"document.documentElement.classList.add('ov-pause-overlay');"
-			"if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
+			"if(typeof window.routeTo==='function'){routeTo('portal');}"
+			"else if(window.OpenVibeShell&&typeof window.OpenVibeShell.setRoute==='function')"
 			"{window.OpenVibeShell.setRoute('portal');}" );
 
 		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
@@ -366,7 +417,17 @@ public:
 			return;
 		}
 
+		// Returning to gameplay: stay up as the transparent HTML HUD overlay
+		// instead of hiding (unless force-hidden for a map load).
+		if ( !bForceHide && engine->IsInGame() && ov_hud_html.GetBool() )
+		{
+			EnterHudMode();
+			engine->ClientCmd_Unrestricted( "gameui_hide\n" );
+			return;
+		}
+
 		SetPauseOverlay( false );
+		LeaveHudMode();
 		SetVisible( false );
 		engine->ClientCmd_Unrestricted( "gameui_hide\n" );
 	}
@@ -706,6 +767,7 @@ private:
 	HTML *m_pHTML;
 	char m_szCurrentURL[512] = {};
 	bool m_bPauseOverlay = false;
+	bool m_bHudMode = false;
 };
 
 static COpenVibeHTMLPanel *s_pOpenVibeMenu = NULL;
@@ -867,9 +929,22 @@ void OpenVibe_MenuKeepAlive()
 			return;
 
 		const bool bStockUIVisible = enginevgui && enginevgui->IsGameUIVisible();
-		const bool bOursVisible = s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible();
-		if ( bStockUIVisible && !bOursVisible )
+		// The HUD overlay is "visible" but is not a menu — ESC over it must
+		// still swap the stock GameUI for our pause overlay.
+		const bool bOursMenuVisible = s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible() && !s_pOpenVibeMenu->IsHudMode();
+		if ( bStockUIVisible && !bOursMenuVisible )
+		{
 			OV_GetHTMLMenu()->OpenPause();
+			return;
+		}
+
+		// Gameplay with no menus up: keep the transparent HTML HUD overlay
+		// alive (first spawn after a map load, or after a force-hide).
+		if ( !bStockUIVisible && ov_hud_html.GetBool() &&
+			 ( !s_pOpenVibeMenu || !s_pOpenVibeMenu->IsVisible() ) )
+		{
+			OV_GetHTMLMenu()->EnterHudMode();
+		}
 		return;
 	}
 
@@ -1125,7 +1200,7 @@ static void OV_SanitiseJSString( char *pszOut, size_t nOut, const char *pszIn )
 
 // Called by COpenVibeSteamAuthClient after Steam ticket validation completes.
 // Injects the result into the HTML page via RunJS.
-void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const char *pszSteamId, const char *pszDisplayName )
+void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const char *pszSteamId, const char *pszDisplayName, const char *pszError )
 {
 	COpenVibeHTMLPanel *pMenu = s_pOpenVibeMenu;
 	if ( !pMenu )
@@ -1134,10 +1209,12 @@ void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const ch
 	char szToken[2048];
 	char szSteamId[64];
 	char szDisplayName[256];
+	char szError[128];
 
 	OV_SanitiseJSString( szToken,       sizeof( szToken ),       pszToken       ? pszToken       : "" );
 	OV_SanitiseJSString( szSteamId,     sizeof( szSteamId ),     pszSteamId     ? pszSteamId     : "" );
 	OV_SanitiseJSString( szDisplayName, sizeof( szDisplayName ), pszDisplayName ? pszDisplayName : "" );
+	OV_SanitiseJSString( szError,       sizeof( szError ),       ( pszError && pszError[0] ) ? pszError : "steam_auth_failed" );
 
 	char szScript[4096];
 	if ( bSuccess )
@@ -1151,7 +1228,7 @@ void OpenVibe_NotifyHTMLSteamAuth( bool bSuccess, const char *pszToken, const ch
 	{
 		Q_snprintf( szScript, sizeof( szScript ),
 			"if(typeof window.OV==='object'&&typeof window.OV.onSteamAuthResult==='function')"
-			"{window.OV.onSteamAuthResult({authenticated:false,error:'steam_auth_failed'});}" );
+			"{window.OV.onSteamAuthResult({authenticated:false,error:'%s'});}", szError );
 	}
 
 	pMenu->RunJS( szScript );

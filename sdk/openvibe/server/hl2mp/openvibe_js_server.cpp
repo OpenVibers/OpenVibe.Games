@@ -329,10 +329,21 @@ static bool OpenVibeJS_IsRunning()
 
 static void OpenVibeJS_EnsureStarted()
 {
+    // Live backend switch: "ov_js_backend node" used to require a map
+    // restart (the guard below never re-ran the connect path), which made
+    // ov_npm look broken. Detect the flip and restart the bridge selection.
+    static bool s_bStartedAsNode = false;
+    if ( g_OVServerJSStarted && OVServer_UseNode() && !s_bStartedAsNode )
+    {
+        g_OVServerJSStarted = false;
+        Msg( "[OV JS] backend switched to node — connecting to the runtime bridge\n" );
+    }
+
     if ( g_OVServerJSStarted )
         return;
 
     g_OVServerJSStarted = true;
+    s_bStartedAsNode = OVServer_UseNode();
 
     if ( !ov_js_enabled.GetBool() )
     {

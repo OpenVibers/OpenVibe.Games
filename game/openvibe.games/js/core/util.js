@@ -49,9 +49,29 @@
     return ("0000000" + h.toString(16)).slice(-8);
   }
 
+  // SteamID2 ("STEAM_0:Y:Z") -> SteamID64 decimal string.
+  // 64-bit base for individual accounts is 76561197960265728; id64 = base + Z*2 + Y.
+  // Passthrough for values that are already 17-digit decimal id64s; returns
+  // null for bots ("BOT..."), pending/empty ids and anything unparseable.
+  var STEAM64_BASE = 76561197960265728n;
+  function steamIDTo64(steamid) {
+    if (steamid == null) return null;
+    var s = String(steamid).trim();
+    if (!s) return null;
+    if (/^\d{17}$/.test(s)) return s; // already a SteamID64
+    var m = /^STEAM_[0-5]:([01]):(\d+)$/i.exec(s);
+    if (!m) return null; // BOT / STEAM_ID_PENDING / garbage
+    try {
+      return (STEAM64_BASE + BigInt(m[2]) * 2n + BigInt(m[1])).toString();
+    } catch (e) {
+      return null;
+    }
+  }
+
   var util = globalThis.util || {};
   util.__openvibe = true;
   util.AddNetworkString = addNetworkString;
+  util.SteamIDTo64 = steamIDTo64;
   util.NetworkStringToID = networkStringToID;
   util.NetworkIDToString = networkIDToString;
   util.CRC = fnv1a;

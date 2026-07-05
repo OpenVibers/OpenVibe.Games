@@ -50,6 +50,13 @@
   P.Nick = function () { var v = nat(this, "name"); return v !== undefined ? v : (this._r.playerName || "Player" + this._userId); };
   P.Name = P.Nick;
   P.SteamID = function () { var v = nat(this, "steamId"); return v !== undefined ? v : this._r.steamId; };
+  // SteamID64 as a decimal string (null for bots / unresolved ids). If the
+  // native bridge already hands out a 17-digit id64, SteamIDTo64 passes it
+  // through unchanged.
+  P.SteamID64 = function () {
+    var sid = this.SteamID();
+    return globalThis.util && util.SteamIDTo64 ? util.SteamIDTo64(sid) : null;
+  };
   P.EntIndex = function () { var v = nat(this, "entIndex"); return v !== undefined ? v : this._key; };
   P.entIndex = P.EntIndex;
   P.IsBot = function () { return /^BOT/.test(this.SteamID() || ""); };
@@ -146,9 +153,24 @@
   P.GiveAmmo = function (amount, type) { nat(this, "giveAmmo", [amount | 0, String(type)]); return amount | 0; };
   P.ViewPunch = function (ang) { nat(this, "viewPunch", [ang.p || 0, ang.y || 0, ang.r || 0]); };
 
+  // ---- economy (level / currency, synced from the backend via NW vars) ----
+  P.GetLevel = function () { return this.GetNWInt ? (this.GetNWInt("ov_level", 0) | 0) : (this._r.level | 0); };
+  P.SetLevel = function (n) { this._r.level = n | 0; if (this.SetNWInt) this.SetNWInt("ov_level", n | 0); };
+  P.GetMoney = function () { return this.GetNWInt ? (this.GetNWInt("ov_money", 0) | 0) : (this._r.money | 0); };
+  P.SetMoney = function (n) { n = Math.max(0, n | 0); this._r.money = n; if (this.SetNWInt) this.SetNWInt("ov_money", n); if (globalThis.hook) { try { hook.Run("OVMoneyChanged", this, n); } catch (e) {} } };
+  P.AddMoney = function (n) { this.SetMoney(this.GetMoney() + (n | 0)); return this.GetMoney(); };
+  P.TakeMoney = function (n) {
+    n = n | 0;
+    if (this.GetMoney() < n) return false;
+    this.SetMoney(this.GetMoney() - n);
+    return true;
+  };
+  P.CanAfford = function (n) { return this.GetMoney() >= (n | 0); };
+
   // ---- legacy lowercase API (existing gamemodes) ----
   P.userId = P.UserID;
   P.steamId = P.SteamID;
+  P.steamId64 = P.SteamID64;
   P.name = P.Nick;
   P.health = P.Health;
   P.setHealth = P.SetHealth;

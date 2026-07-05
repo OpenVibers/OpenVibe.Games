@@ -18,9 +18,10 @@
     var baseProto = Weapon.prototype;
     if (def.Base && def.Base !== className) {
       var baseEntry = stored[def.Base];
+      // A missing base is normal mid-load (files load alphabetically, e.g.
+      // weapon_ov_357 before weapon_ov_base): the derived class is re-registered
+      // when its base arrives; ValidateBases() warns about truly missing ones.
       if (baseEntry) baseProto = baseEntry.proto;
-      else if (def.Base !== "weapon_base" && OV && OV.warn)
-        OV.warn("weapons: base '" + def.Base + "' of '" + className + "' not registered yet");
     }
     var proto = Object.create(baseProto);
     for (var k in def) proto[k] = def[k];
@@ -48,9 +49,26 @@
         }
       } else {
         stored[className] = { t: def, proto: proto, instances: [] };
+        // Re-register any already-loaded classes waiting on this as their base
+        // (load order is alphabetical, so derived files can precede the base).
+        for (var pending in stored) {
+          if (pending !== className && stored[pending].t.Base === className) {
+            scripted_weapons.Register(stored[pending].t, pending);
+          }
+        }
       }
       if (globalThis.baseclass) baseclass.Set(className, proto);
       return stored[className];
+    },
+    // Called after the loader finishes a realm: warn about bases that never
+    // showed up (real config errors, not load-order artifacts).
+    ValidateBases: function () {
+      for (var cls in stored) {
+        var base = stored[cls].t.Base;
+        if (base && base !== cls && base !== "weapon_base" && !stored[base] && OV && OV.warn) {
+          OV.warn("weapons: base '" + base + "' of '" + cls + "' was never registered");
+        }
+      }
     },
     GetStored: function (c) { return stored[String(c)] || null; },
     Get: function (c) {

@@ -192,6 +192,13 @@ if (isElectron) {
     updateGameStatus(false);
     toast(`Game exited (code ${code})`);
   });
+  // Boot progress from the main-process control-server poller (drives the
+  // fullscreen loading overlay window; mirrored here for the in-page overlay).
+  window.OV.onLoadingPhase?.((info) => {
+    const label = document.getElementById('launch-label');
+    if (label && info?.message) label.textContent = info.message;
+    if (info?.phase === 'ready' || info?.phase === 'timeout') hideLaunchOverlay();
+  });
 }
 
 // ── API health ────────────────────────────────────────────────────────────────

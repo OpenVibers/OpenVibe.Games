@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { Pool } from "pg";
 
@@ -8,7 +8,11 @@ const pool = new Pool({
     process.env.DATABASE_URL ?? "postgres://openvibe:openvibe@127.0.0.1:5432/openvibe",
 });
 
-const migrations = ["001_init.sql"];
+// All migrations are idempotent (IF NOT EXISTS / DROP CONSTRAINT IF EXISTS),
+// so every run applies the whole ordered set.
+const migrations = (await readdir(resolve(process.cwd(), "migrations")))
+  .filter((name) => /^\d+_.*\.sql$/.test(name))
+  .sort();
 
 try {
   for (const migration of migrations) {

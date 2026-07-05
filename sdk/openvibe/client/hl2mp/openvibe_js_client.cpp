@@ -200,11 +200,24 @@ static void OVClient_JSONEscape( char *pszOut, int nOutLen, const char *pszIn )
     pszOut[w] = '\0';
 }
 
+static ConVar ov_hud_stock(
+    "ov_hud_stock", "0", FCVAR_CLIENTDLL | FCVAR_ARCHIVE,
+    "Draw the stock HL2 status HUD (health / suit / aux power). 0 = hidden — the JS HTML HUD replaces it. Ammo/crosshair stay until the JS weapon HUD lands." );
+
 void OpenVibeJS_Client_Think()
 {
     // Keep the OpenVibe HTML menu covering the stock GameUI whenever we are
     // out of a level (runs regardless of runtime connectivity).
     OpenVibe_MenuKeepAlive();
+
+    // Suppress the stock HL2 status HUD so the gamemode's JS GUI is the HUD.
+    // m_iHideHUD is refreshed from the server, so reassert every frame.
+    if ( !ov_hud_stock.GetBool() )
+    {
+        C_BasePlayer *pLocal = C_BasePlayer::GetLocalPlayer();
+        if ( pLocal )
+            pLocal->m_Local.m_iHideHUD |= HIDEHUD_HEALTH | HIDEHUD_FLASHLIGHT | HIDEHUD_BONUS_PROGRESS;
+    }
 
     g_ClientIPC.Poll();
 
@@ -320,6 +333,33 @@ static void OV_JSOpenScriptCl_f( const CCommand &args )
 }
 static ConCommand js_openscript_cl( "js_openscript_cl", OV_JSOpenScriptCl_f,
     "Run a script file in the client realm: js_openscript_cl <path relative to js/>. Gated by sv_allowcsjs.", FCVAR_CLIENTDLL );
+
+// ov_js_cmd_cl — dispatch a JS-registered client console command (the client
+// twin of the server's ov_js_cmd). This is how engine keybinds and the
+// openvibe:// bridge reach concommand.Add()'d commands the engine doesn't
+// know about, e.g.: bind "c" "ov_js_cmd_cl ov_econ_menu". Not gated by
+// sv_allowcsjs: it can only trigger commands client JS chose to register.
+static void OV_JSCmdCl_f( const CCommand &args )
+{
+    if ( args.ArgC() < 2 )
+    {
+        Msg( "Usage: ov_js_cmd_cl <command> [args]\n" );
+        return;
+    }
+
+    if ( !g_ClientIPC.IsConnected() )
+    {
+        Warning( "[OV JS/client] runtime not connected; ov_js_cmd_cl ignored\n" );
+        return;
+    }
+
+    char out[2048] = "{\"t\":\"concommand\",\"text\":\"";
+    OVJSON_AppendEscaped( out, sizeof( out ), args.ArgS() );
+    Q_strncat( out, "\"}", sizeof( out ), COPY_ALL_CHARACTERS );
+    g_ClientIPC.SendLine( out );
+}
+static ConCommand ov_js_cmd_cl( "ov_js_cmd_cl", OV_JSCmdCl_f,
+    "Dispatch a client-realm JS console command: ov_js_cmd_cl <command> [args].", FCVAR_CLIENTDLL );
 
 // Drives the bridge: hook OVNet, connect at boot AND on level enter, poll
 // each frame. Connecting at boot means the GUI console's client realm works
