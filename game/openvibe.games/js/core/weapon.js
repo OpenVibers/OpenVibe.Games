@@ -40,7 +40,7 @@
   var W = Weapon.prototype;
   W.__openvibe = true;
   W.IsWeapon = function () { return true; };
-  W.IsValid = function () { return true; };
+  W.IsValid = function () { return !this._r.removed; }; // real removal semantics (OnRemove wiring)
 
   // ---- ownership ----
   W.GetOwner = function () { var n = wnat(this, "getOwner"); if (n && n.entIndex != null) return globalThis.ents ? ents.GetByIndex(n.entIndex) : this._w.owner; return this._w.owner; };
@@ -59,6 +59,17 @@
   W.TakePrimaryAmmo = function (n) { var c = this.Clip1(); if (c >= 0) this.SetClip1(Math.max(0, c - (n | 0 || 1))); wnat(this, "takePrimaryAmmo", [n | 0 || 1]); };
   W.TakeSecondaryAmmo = function (n) { var c = this.Clip2(); if (c >= 0) this.SetClip2(Math.max(0, c - (n | 0 || 1))); wnat(this, "takeSecondaryAmmo", [n | 0 || 1]); };
   W.HasAmmo = function () { return this.Clip1() !== 0; };
+  // GMod SWEP:Ammo1/Ammo2 — the owner's reserve ammo for this weapon's types.
+  W.Ammo1 = function () {
+    var o = this.GetOwner();
+    var t = this.Primary && this.Primary.Ammo;
+    return o && typeof o.GetAmmoCount === "function" ? o.GetAmmoCount(t) : 0;
+  };
+  W.Ammo2 = function () {
+    var o = this.GetOwner();
+    var t = this.Secondary && this.Secondary.Ammo;
+    return o && typeof o.GetAmmoCount === "function" ? o.GetAmmoCount(t) : 0;
+  };
 
   // ---- timing gates (GMod: SetNextPrimaryFire uses CurTime) ----
   W.GetNextPrimaryFire = function () { return this._w.nextPrimary; };

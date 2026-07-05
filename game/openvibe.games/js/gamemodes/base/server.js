@@ -57,6 +57,21 @@
       return undefined;
     },
 
+    // ---- GMod GM hook defaults (overridable per submode / addon) ----
+    // Fired once per realm load by the loader after gamemode+entities+addons.
+    OnGamemodeLoaded() { this._gamemodeLoaded = true; },
+    // Player.Kill() consults this before executing a suicide.
+    CanPlayerSuicide(_ply) { return true; },
+    // Dispatch-ready: fires when the engine forwards the voice event.
+    PlayerCanHearPlayersVoice(_listener, _talker) { return true; },
+    // Passthrough hook point: OnPlayerHitGround (engine event) consults this.
+    // Return the damage to apply for a fall at `speed`.
+    GetFallDamage(_ply, _speed) { return 10; },
+    // Runs every Think for each dead player (see OpenVibePlayerDeathThink).
+    PlayerDeathThink(_ply) {},
+    // Dispatch-ready: fires when the engine forwards server shutdown.
+    ShutDown() {},
+
     // Called when the countdown timer ends — fires "RoundStart" and runs round timer.
     startRound() {
       this._roundNumber += 1;
@@ -165,6 +180,64 @@
     hook.Run("CreateTeams");
     const gm = gamemode.get();
     if (gm && typeof gm._startHudTicker === "function") gm._startHudTicker();
+    return undefined;
+  });
+
+  // GM:InitPostEntity — fires once per map, one tick after MapInitialize
+  // (GMod: after all map entities have initialized).
+  hook.Add("MapInitialize", "OpenVibeInitPostEntity", function () {
+    if (globalThis.timer && timer.simple) timer.simple(0, function () { hook.Run("InitPostEntity"); });
+    else hook.Run("InitPostEntity");
+    return undefined;
+  });
+
+  // GM:PlayerDeathThink — GMod runs it every Think for every dead player.
+  hook.Add("Think", "OpenVibePlayerDeathThink", function () {
+    if (!globalThis.player || !player.GetAll) return undefined;
+    player.GetAll().forEach(function (ply) {
+      if (ply && typeof ply.Alive === "function" && !ply.Alive()) {
+        try { hook.Run("PlayerDeathThink", ply); } catch (e) {}
+      }
+    });
+    return undefined;
+  });
+
+  // GM:GetFallDamage passthrough — the engine forwards OnPlayerHitGround
+  // (ply, inWater, onFloater, speed); the verdict comes from GetFallDamage.
+  // Damage is only applied on the logical backend: in-engine the C++ fall
+  // damage stays authoritative (it should read this hook's return once the
+  // event forwarding lands).
+  hook.Add("OnPlayerHitGround", "OpenVibeFallDamage", function (ply, _inWater, _onFloater, speed) {
+    if (!ply || typeof ply.TakeDamage !== "function") return undefined;
+    const FALL_SPEED = 526; // ~PLAYER_MAX_SAFE_FALL_SPEED
+    if ((+speed || 0) <= FALL_SPEED) return undefined;
+    const dmg = hook.Run("GetFallDamage", ply, +speed || 0);
+    const isNativeBackend = globalThis.Entity && Entity._native && Entity._native();
+    if (typeof dmg === "number" && dmg > 0 && !isNativeBackend) {
+      ply.TakeDamage(dmg, globalThis.NULL, globalThis.NULL);
+    }
+    return undefined;
+  });
+
+  // ---- player class lifecycle (player_manager / PLAYER_Hooks) ----
+  // Classes registered with player_manager.RegisterClass get their
+  // Init/Spawn/Loadout/Death methods driven from the base hook flow.
+  hook.Add("PlayerInitialSpawn", "OpenVibePlayerClassInit", function (ply) {
+    if (!globalThis.player_manager || !ply || !ply._r) return undefined;
+    if (!player_manager.GetPlayerClass(ply)) player_manager.SetPlayerClass(ply, "player_default");
+    player_manager.RunClass(ply, "Init");
+    return undefined;
+  });
+  hook.Add("PlayerSpawn", "OpenVibePlayerClassSpawn", function (ply) {
+    if (globalThis.player_manager) player_manager.RunClass(ply, "Spawn");
+    return undefined;
+  });
+  hook.Add("PlayerLoadout", "OpenVibePlayerClassLoadout", function (ply) {
+    if (globalThis.player_manager) player_manager.RunClass(ply, "Loadout");
+    return undefined;
+  });
+  hook.Add("PlayerDeath", "OpenVibePlayerClassDeath", function (victim, inflictor, attacker) {
+    if (globalThis.player_manager) player_manager.RunClass(victim, "Death", inflictor, attacker);
     return undefined;
   });
 

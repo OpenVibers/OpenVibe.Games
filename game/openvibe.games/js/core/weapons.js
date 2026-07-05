@@ -143,13 +143,33 @@
 
     Initialize: function () { this.SetWeaponHoldType(this.HoldType || "pistol"); },
     Deploy: function () { this._w.deployed = true; this.SendWeaponAnim(2 /* ACT_VM_DRAW */); return true; },
-    Holster: function () { this._w.deployed = false; return true; },
+    // Holster(nextWep): return false to abort the weapon switch (GMod semantics
+    // — Player.SelectWeapon honors the abort).
+    Holster: function (_nextWep) { this._w.deployed = false; return true; },
+    // Equip(newOwner): called when a player picks the weapon up (Player.Give).
+    Equip: function (_newOwner) {},
+    // OnDrop: called when the owner drops the weapon (Player.DropWeapon).
+    OnDrop: function () {},
+    // OnRemove: fires through the entity removal pipeline (ent.Remove()).
+    OnRemove: function () {},
+    // DryFire: empty-clip click; CanPrimary/SecondaryAttack call it.
+    DryFire: function () {
+      var now = OV && OV.time ? OV.time() : 0;
+      this.EmitSound("Weapon.empty");
+      this.SetNextPrimaryFire(now + 0.5);
+    },
 
     // GMod: CanPrimaryAttack checks clip + timing.
     CanPrimaryAttack: function () {
       var now = OV && OV.time ? OV.time() : 0;
       if (now < this.GetNextPrimaryFire()) return false;
-      if (this.Clip1() === 0) { this.EmitSound("Weapon.empty"); this.SetNextPrimaryFire(now + 0.5); return false; }
+      if (this.Clip1() === 0) { this.DryFire(); return false; }
+      return true;
+    },
+    CanSecondaryAttack: function () {
+      var now = OV && OV.time ? OV.time() : 0;
+      if (now < this.GetNextSecondaryFire()) return false;
+      if (this.Clip2() === 0) { this.DryFire(); return false; }
       return true;
     },
     PrimaryAttack: function () {
@@ -161,8 +181,12 @@
       if (globalThis.hook) { try { hook.Run("OnWeaponPrimaryAttack", this, this.GetOwner()); } catch (e) {} }
     },
     SecondaryAttack: function () {
+      if (!this.CanSecondaryAttack()) return;
       if (globalThis.hook) { try { hook.Run("OnWeaponSecondaryAttack", this, this.GetOwner()); } catch (e) {} }
     },
+    // ShootEffects lives on Weapon.prototype (engine muzzle flash / anim); this
+    // stub documents it as an overridable SWEP hook.
+    ShootEffects: function () { return globalThis.Weapon.prototype.ShootEffects.call(this); },
     Reload: function () {
       var now = OV && OV.time ? OV.time() : 0;
       if (now < this._w.nextReload) return;

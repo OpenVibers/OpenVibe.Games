@@ -46,10 +46,11 @@
     }
     html.ov-pause-overlay body {
       /* Dim + blur the game behind; falls back to a plain scrim where the
-         host compositor doesn't support backdrop-filter. */
-      background: rgba(6, 9, 16, 0.55) !important;
-      -webkit-backdrop-filter: blur(10px) saturate(115%);
-      backdrop-filter: blur(10px) saturate(115%);
+         host compositor doesn't support backdrop-filter. Kept light so the
+         running game clearly shows through the pause menu. */
+      background: rgba(6, 9, 16, 0.32) !important;
+      -webkit-backdrop-filter: blur(6px) saturate(115%);
+      backdrop-filter: blur(6px) saturate(115%);
     }
     /* Keep panels/cards legible against the blurred game. */
     html.ov-pause-overlay #ov-auth { background: transparent !important; }
@@ -58,10 +59,12 @@
        shown over the running game (covers opens the C++ pause-overlay path
        misses, e.g. the initial in-level open). The HUD route never gets it. */
     html.ov-menu-scrim body {
+      /* See-through: the running game should stay clearly visible behind
+         the in-game menu (heavier variant looked like an opaque screen). */
       background: radial-gradient(120% 90% at 50% 0%,
-        rgba(10, 14, 24, 0.86), rgba(4, 6, 12, 0.96)) !important;
-      -webkit-backdrop-filter: blur(14px) saturate(120%);
-      backdrop-filter: blur(14px) saturate(120%);
+        rgba(10, 14, 24, 0.42), rgba(4, 6, 12, 0.62)) !important;
+      -webkit-backdrop-filter: blur(7px) saturate(118%);
+      backdrop-filter: blur(7px) saturate(118%);
     }
 
     /* ── Screen switching ─────────────────────────────── */

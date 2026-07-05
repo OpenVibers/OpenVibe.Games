@@ -774,6 +774,293 @@ for (const mode of ["hub", "sandbox", "prophunt", "deathrun", "fortwars", "trait
   Dv.server._setPostJson(null);
 }
 
+// ---- GM hook plumbing (hook parity: lifecycle + suicide + fall damage) ----
+{
+  section("GM hook plumbing (Tick/InitPostEntity/OnGamemodeLoaded/CanPlayerSuicide/PlayerDeathThink/GetFallDamage)");
+  const tp = makeTransport();
+  const sv = makeRealm("server", "base", tp);
+  const S = sv.ctx;
+
+  ok(S.GAMEMODE && S.GAMEMODE._gamemodeLoaded === true, "OnGamemodeLoaded fired during realm load");
+
+  // Tick alias fires alongside Think (base shared.js).
+  let ticks = 0;
+  S.hook.Add("Tick", "t", () => { ticks++; });
+  S.gamemode.call("Think");
+  ok(ticks === 1, "Tick alias fired from Think");
+  S.hook.Remove("Tick", "t");
+
+  // InitPostEntity fires one tick after MapInitialize.
+  const p1 = sv.addPlayer(1, "Solo"); // so scheduleRoundStart doesn't idle-loop
+  let ipe = 0;
+  S.hook.Add("InitPostEntity", "t", () => { ipe++; });
+  S.gamemode.call("Initialize");
+  S.gamemode.call("MapInitialize", "test_map");
+  ok(ipe === 0, "InitPostEntity not fired synchronously");
+  tp.tick(0.1);
+  S.gamemode.call("Think");
+  ok(ipe === 1, "InitPostEntity fired on the next tick");
+  S.hook.Remove("InitPostEntity", "t");
+
+  // CanPlayerSuicide gates Player.Kill; base GM default allows.
+  const ply = S.Player.fromNative(p1);
+  let deaths = 0;
+  S.hook.Add("PlayerDeath", "t", () => { deaths++; });
+  S.hook.Add("CanPlayerSuicide", "t", () => false);
+  ply.Kill();
+  ok(ply.Alive() === true && deaths === 0, "CanPlayerSuicide=false blocks Kill");
+  S.hook.Remove("CanPlayerSuicide", "t");
+  ply.Kill();
+  ok(ply.Alive() === false && deaths === 1, "Kill allowed by default (base GM returns true) + PlayerDeath fired");
+
+  // PlayerDeathThink runs every Think for dead players.
+  let ddt = 0;
+  S.hook.Add("PlayerDeathThink", "t", (p) => { ddt++; return undefined; });
+  S.gamemode.call("Think");
+  ok(ddt >= 1, `PlayerDeathThink ran for dead player (${ddt})`);
+  ply.Spawn();
+  ddt = 0;
+  S.gamemode.call("Think");
+  ok(ddt === 0, "PlayerDeathThink stops after respawn");
+  S.hook.Remove("PlayerDeathThink", "t");
+
+  // GetFallDamage passthrough via OnPlayerHitGround (logical backend applies).
+  ply.SetHealth(100);
+  S.hook.Add("GetFallDamage", "t", (_p, speed) => Math.floor(speed / 20));
+  S.gamemode.call("OnPlayerHitGround", p1, false, false, 300); // below safe-fall speed
+  ok(ply.Health() === 100, "slow landing takes no fall damage");
+  S.gamemode.call("OnPlayerHitGround", p1, false, false, 840);
+  ok(ply.Health() === 58, `GetFallDamage hook applied (health=${ply.Health()})`);
+  S.hook.Remove("GetFallDamage", "t");
+
+  // Lethal Player.TakeDamage fires PlayerDeath (no entity Remove).
+  const p2 = sv.addPlayer(2, "Victim");
+  const ply2 = S.Player.fromNative(p2);
+  let deathArgs = null;
+  S.hook.Add("PlayerDeath", "t2", (v, i, a) => { deathArgs = { v, a }; });
+  ply2.TakeDamage(150, ply);
+  ok(ply2.Alive() === false && deathArgs && deathArgs.v === ply2 && deathArgs.a === ply, "lethal TakeDamage fired PlayerDeath(victim,...,attacker)");
+  ok(ply2.IsValid() === true, "dead player stays a valid entity (not removed)");
+  S.hook.Remove("PlayerDeath", "t"); S.hook.Remove("PlayerDeath", "t2");
+}
+
+// ---- GM:HUDShouldDraw + HUD.SetElementVisible + stock elements ----
+{
+  section("HUDShouldDraw / SetElementVisible / stock HUD control");
+  const tp = makeTransport();
+  const cl = makeRealm("client", "base", tp);
+  const C = cl.ctx;
+  const H = C.HUD;
+
+  H.SetLayout([
+    { id: "round", type: "text", bind: "round" },
+    { id: "health", type: "bar", bind: "health", max: 100 },
+    { id: "score", type: "counter", bind: "score" },
+  ]);
+  ok(H.CompactSnapshot().layout.length === 3, "all elements drawn with no HUDShouldDraw hooks");
+
+  C.hook.Add("HUDShouldDraw", "t", (id) => (id === "score" ? false : undefined));
+  const ids = H.CompactSnapshot().layout.map((el) => el.id);
+  ok(!ids.includes("score") && ids.length === 2, "HUDShouldDraw=false hides element from CompactSnapshot");
+  ok(H.Snapshot().layout.every((el) => el.id !== "score"), "Snapshot filtered too");
+  ok(H.GetLayout().length === 3, "GetLayout keeps the full declaration list");
+  C.hook.Remove("HUDShouldDraw", "t");
+  ok(H.CompactSnapshot().layout.length === 3, "element returns after hook removal");
+
+  H.SetElementVisible("health", false);
+  ok(H.CompactSnapshot().layout.every((el) => el.id !== "health"), "SetElementVisible(false) hides element");
+  ok(H.GetElementVisible("health") === false, "GetElementVisible reflects hidden state");
+  H.SetElementVisible("health", true);
+  ok(H.CompactSnapshot().layout.some((el) => el.id === "health"), "SetElementVisible(true) restores element");
+
+  // Stock engine elements -> ov_hud_stock convar push (client concmd path).
+  ok(Array.isArray(H.STOCK_ELEMENTS) && ["CHudHealth", "CHudBattery", "CHudSuitPower", "CHudAmmo", "CHudCrosshair", "CHudChat", "CHudWeaponSelection"]
+    .every((e) => H.STOCK_ELEMENTS.includes(e)), "STOCK_ELEMENTS list exposed");
+  H.Flush(true);
+  ok(!cl.logs.some((l) => /ov_hud_stock/.test(l)), "no HUDShouldDraw opinion -> convar untouched");
+  C.hook.Add("HUDShouldDraw", "stock", (id) => (id === "CHudHealth" ? false : undefined));
+  H.Flush(true);
+  ok(cl.logs.some((l) => l === "[serverCommand] ov_hud_stock 0"), "hiding CHudHealth pushed ov_hud_stock 0");
+  C.hook.Remove("HUDShouldDraw", "stock");
+  H.Flush(true);
+  ok(cl.logs.some((l) => l === "[serverCommand] ov_hud_stock 1"), "un-hiding pushed ov_hud_stock 1 (restore)");
+}
+
+// ---- ENTITY_Hooks dispatch (Touch/Use/AcceptInput/PhysicsCollide/transmit) ----
+{
+  section("ENTITY hook dispatch (Touch/Use/OnTakeDamage/AcceptInput/PhysicsCollide)");
+  const tp = makeTransport();
+  const sv = makeRealm("server", "base", tp);
+  const S = sv.ctx;
+
+  const calls = [];
+  S.scripted_ents.Register({
+    Type: "anim", Base: "base_anim",
+    Initialize() { calls.push("Initialize"); },
+    StartTouch(other) { calls.push("StartTouch:" + other.GetClass()); },
+    Touch(other) { calls.push("Touch:" + other.GetClass()); },
+    EndTouch(other) { calls.push("EndTouch:" + other.GetClass()); },
+    Use(activator) { calls.push("Use:" + (activator && activator.GetClass ? activator.GetClass() : "?")); },
+    OnTakeDamage(info) { calls.push("OnTakeDamage:" + info.GetDamage()); },
+    KeyValue(k, v) { calls.push("KeyValue:" + k + "=" + v); },
+    AcceptInput(input, _activator, _caller, value) { calls.push("AcceptInput:" + input + ":" + value); return true; },
+    PhysicsCollide(data) { calls.push("PhysicsCollide:" + data.Speed); },
+  }, "test_toucher");
+
+  const ent = S.ents.Create("test_toucher");
+  ent.Spawn();
+  const other = S.ents.Create("test_toucher");
+  other.Spawn();
+  ok(calls.filter((c) => c === "Initialize").length === 2, "ENT:Initialize on Spawn");
+
+  ent.TriggerStartTouch(other);
+  ent.TriggerTouch(other);
+  ent.TriggerEndTouch(other);
+  ok(calls.includes("StartTouch:test_toucher"), "TriggerStartTouch -> ENT:StartTouch");
+  ok(calls.includes("Touch:test_toucher"), "TriggerTouch -> ENT:Touch");
+  ok(calls.includes("EndTouch:test_toucher"), "TriggerEndTouch -> ENT:EndTouch");
+
+  ent.Use(other, other, S.SIMPLE_USE, 0);
+  ok(calls.includes("Use:test_toucher"), "ENT:Use dispatched");
+
+  ent.SetKeyValue("skin", "2");
+  ok(calls.includes("KeyValue:skin=2"), "SetKeyValue -> ENT:KeyValue");
+
+  ent.TakeDamage(13, S.NULL, S.NULL);
+  ok(calls.includes("OnTakeDamage:13"), "TakeDamage -> ENT:OnTakeDamage");
+
+  ent.Fire("Explode", "5");
+  ok(calls.includes("AcceptInput:Explode:5"), "logical ent.Fire -> ENT:AcceptInput");
+
+  ent.TriggerPhysicsCollide({ Speed: 420 }, null);
+  ok(calls.includes("PhysicsCollide:420"), "TriggerPhysicsCollide -> ENT:PhysicsCollide");
+
+  ok(other.UpdateTransmitState() === S.TRANSMIT_PVS, "UpdateTransmitState stub returns TRANSMIT_PVS");
+  ok(S.TRANSMIT_ALWAYS === 0 && S.TRANSMIT_NEVER === 1 && S.TRANSMIT_PVS === 2, "TRANSMIT_* enums defined");
+  const plain = S.ents.Create("test_dispatchless"); // no scripted def
+  ok(plain.TriggerTouch(other) === undefined && plain.AcceptInput("x") === false, "dispatchers safe on non-scripted entities");
+}
+
+// ---- WEAPON_Hooks extras (DryFire/CanSecondaryAttack/OnWeaponEquipped/holster-abort/drop/ammo) ----
+{
+  section("WEAPON hook extras (DryFire/CanSecondaryAttack/OnWeaponEquipped/holster/drop/ammo)");
+  const tp = makeTransport();
+  const sv = makeRealm("server", "sandbox", tp);
+  const W = sv.ctx;
+  sv.addPlayer(1, "Gunner");
+  const ply = W.player.GetByUserID(1);
+
+  // DryFire on empty clip.
+  const pistol = W.weapons.Create("weapon_ov_pistol");
+  let dry = 0;
+  pistol.DryFire = function () { dry++; };
+  pistol.SetClip1(0);
+  pistol.PrimaryAttack();
+  ok(dry === 1 && pistol.Clip1() === 0, "empty clip PrimaryAttack -> SWEP:DryFire, no shot");
+
+  // CanSecondaryAttack: timing + clip2 gates.
+  ok(pistol.CanSecondaryAttack() === true, "CanSecondaryAttack true with no clip2 (-1)");
+  pistol.SetNextSecondaryFire(tp.now() + 5);
+  ok(pistol.CanSecondaryAttack() === false, "CanSecondaryAttack gated by NextSecondaryFire");
+  pistol.SetNextSecondaryFire(0);
+  pistol.SetClip2(0);
+  ok(pistol.CanSecondaryAttack() === false && dry === 2, "empty clip2 -> DryFire + no secondary");
+
+  // OnWeaponEquipped + SWEP:Equip on Give.
+  let equippedHook = null, equipMethod = null;
+  W.hook.Add("OnWeaponEquipped", "t", (wep, p) => { equippedHook = { cls: wep.GetClass(), p }; });
+  const smgStored = W.scripted_weapons.GetStored("weapon_ov_smg");
+  W.scripted_weapons.Register(Object.assign({}, smgStored.t, { Equip(newOwner) { equipMethod = newOwner; } }), "weapon_ov_smg");
+  const smg = ply.Give("weapon_ov_smg");
+  ok(equippedHook && equippedHook.cls === "weapon_ov_smg" && equippedHook.p === ply, "hook.Run OnWeaponEquipped(wep, ply) on Give");
+  ok(equipMethod === ply, "SWEP:Equip(newOwner) called on Give");
+  W.hook.Remove("OnWeaponEquipped", "t");
+
+  // Holster-abort semantics on SelectWeapon.
+  const shotgun = ply.Give("weapon_ov_shotgun");
+  ply.SelectWeapon("weapon_ov_smg");
+  ok(ply.GetActiveWeapon() === smg, "SelectWeapon switched to smg");
+  smg.Holster = function () { return false; };
+  ply.SelectWeapon("weapon_ov_shotgun");
+  ok(ply.GetActiveWeapon() === smg, "Holster()=false aborts the switch");
+  smg.Holster = function () { return true; };
+  ply.SelectWeapon("weapon_ov_shotgun");
+  ok(ply.GetActiveWeapon() === shotgun, "Holster()=true allows the switch");
+  ok(shotgun._w.deployed === true, "Deploy ran on the newly selected weapon");
+
+  // Reserve ammo + SWEP:Ammo1.
+  ply.GiveAmmo(30, "Pistol");
+  ply.GiveAmmo(12, "pistol"); // case-insensitive type key
+  ok(ply.GetAmmoCount("Pistol") === 42, `GiveAmmo/GetAmmoCount reserve (${ply.GetAmmoCount("Pistol")})`);
+  const pistol2 = ply.Give("weapon_ov_pistol");
+  ok(pistol2.Ammo1() === 42, "SWEP:Ammo1 reads owner's reserve for Primary.Ammo");
+  ply.RemoveAmmo(40, "Pistol");
+  ok(ply.GetAmmoCount("Pistol") === 2 && pistol2.Ammo2() === 0, "RemoveAmmo + Ammo2 (no secondary ammo type)");
+
+  // DropWeapon -> SWEP:OnDrop, out of inventory.
+  let dropped = 0;
+  shotgun.OnDrop = function () { dropped++; };
+  ply.DropWeapon(shotgun);
+  ok(dropped === 1 && !ply.HasWeapon("weapon_ov_shotgun"), "DropWeapon fired OnDrop + removed from inventory");
+  ok(shotgun.IsValid() === true, "dropped weapon entity stays alive");
+
+  // Strip -> entity removal pipeline -> SWEP:OnRemove + EntityRemoved.
+  let removed = 0;
+  smg.OnRemove = function () { removed++; };
+  ply.StripWeapon("weapon_ov_smg");
+  ok(!ply.HasWeapon("weapon_ov_smg"), "StripWeapon removed from inventory");
+  W.gamemode.call("Think"); // flush deferred removals
+  ok(removed === 1 && smg.IsValid() === false, "StripWeapon -> OnRemove via entity removal (end of tick)");
+}
+
+// ---- player_manager (PLAYER class lifecycle) ----
+{
+  section("player_manager class lifecycle");
+  const tp = makeTransport();
+  const sv = makeRealm("server", "base", tp);
+  const S = sv.ctx;
+  const PM = S.player_manager;
+
+  ok(PM && PM.__openvibe, "player_manager present");
+  ok(PM.GetRegistered("player_default") !== null, "player_default registered by core");
+
+  const life = [];
+  PM.RegisterClass("player_test", {
+    DisplayName: "Test Class",
+    PlayerModel: "models/player/test.mdl",
+    Init() { life.push("Init:" + this.Player.Nick()); },
+    Loadout() { life.push("Loadout"); this.Player.Give("weapon_ov_pistol"); },
+    Death(_inflictor, attacker) { life.push("Death:" + (attacker && attacker.IsValid && attacker.IsValid() ? "killed" : "world")); },
+  }, "player_default");
+  ok(PM.GetRegistered("player_test").DisplayName === "Test Class", "RegisterClass stored");
+  ok(PM.GetRegistered().includes("player_test"), "GetRegistered() lists classes");
+
+  S.gamemode.call("Initialize");
+  const nat1 = sv.addPlayer(1, "Classy");
+  const ply = S.Player.fromNative(nat1);
+  PM.SetPlayerClass(ply, "player_test");
+  ok(PM.GetPlayerClass(ply) === "player_test", "SetPlayerClass/GetPlayerClass");
+
+  S.gamemode.call("PlayerInitialSpawn", nat1);
+  ok(life.includes("Init:Classy"), "PLAYER:Init ran from PlayerInitialSpawn flow");
+
+  S.gamemode.call("PlayerSpawn", nat1);
+  ok(life.includes("Loadout"), "PLAYER:Loadout ran (PlayerSpawn -> PlayerLoadout -> class)");
+  ok(ply.HasWeapon("weapon_ov_pistol"), "class Loadout granted a weapon");
+  ok(ply.GetModel() === "models/player/test.mdl", "inherited player_default Spawn set the class PlayerModel");
+
+  ply.Kill();
+  ok(life.some((l) => l.startsWith("Death:")), "PLAYER:Death ran from PlayerDeath flow");
+
+  // default class auto-assigned when none set
+  const nat2 = sv.addPlayer(2, "Vanilla");
+  S.gamemode.call("PlayerInitialSpawn", nat2);
+  const ply2 = S.player.GetByUserID(2);
+  ok(PM.GetPlayerClass(ply2) === "player_default", "PlayerInitialSpawn auto-assigns player_default");
+  S.gamemode.call("PlayerSpawn", nat2);
+  ok(ply2.GetModel() === "models/player/kleiner.mdl", "player_default Spawn applied its model");
+}
+
 console.log(`\n${checks - failures}/${checks} checks passed`);
 if (failures) { console.error(`${failures} FAILURES`); process.exit(1); }
 console.log("[test-gmodjs] ALL PASS");

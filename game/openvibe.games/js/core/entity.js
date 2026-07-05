@@ -40,6 +40,7 @@
   globalThis.COLLISION_GROUP_NONE = 0; globalThis.COLLISION_GROUP_DEBRIS = 1; globalThis.COLLISION_GROUP_WORLD = 3;
   globalThis.RENDERMODE_NORMAL = 0; globalThis.RENDERMODE_TRANSALPHA = 4;
   globalThis.SIMPLE_USE = 0; globalThis.CONTINUOUS_USE = 1; globalThis.ONOFF_USE = 2;
+  globalThis.TRANSMIT_ALWAYS = 0; globalThis.TRANSMIT_NEVER = 1; globalThis.TRANSMIT_PVS = 2;
 
   // ---- registry ----
   var registry = Object.create(null);   // key(entIndex) -> Entity
@@ -212,12 +213,44 @@
   P.GetKeyValues = function () { var out = {}; for (var k in this._r.keyvalues) out[k] = this._r.keyvalues[k]; return out; };
   P.SetName = function (n) { this._r.name = String(n); };
   P.GetName = function () { return this._r.name; };
-  P.Fire = function (input, param, delay) { if (this._r.isNative && native()) ncall(this._key, "fire", [String(input), String(param || ""), +delay || 0]); };
+  P.Fire = function (input, param, delay) {
+    if (this._r.isNative && native()) { ncall(this._key, "fire", [String(input), String(param || ""), +delay || 0]); return; }
+    // Logical backend: route the input through ENT:AcceptInput (GMod ENTITY_Hooks).
+    var self = this;
+    var run = function () {
+      if (self._r.removed) return;
+      try { self.AcceptInput(String(input), self, self, String(param || "")); }
+      catch (e) { OV && OV.error && OV.error("ENT:AcceptInput " + self._r.class + ": " + (e && e.message)); }
+    };
+    if (+delay > 0 && globalThis.timer && timer.simple) timer.simple(+delay, run); else run();
+  };
+  // ENT:AcceptInput(input, activator, caller, value) — stub; scripted classes
+  // override. Return true marks the input handled (GMod: suppresses default).
+  P.AcceptInput = function (_input, _activator, _caller, _value) { return false; };
   P.SetUseType = function (t) { this._r.useType = t | 0; };
   P.SetTrigger = function (b) { this._r.trigger = !!b; };
   P.Use = function (activator, caller, useType, value) {
     if (typeof this._useHook === "function") { try { this._useHook(activator, caller, useType, value); } catch {} }
   };
+
+  // ---- collision / touch dispatch (ENTITY_Hooks) ----
+  // There is no JS-side collision simulation: these Trigger* entry points are
+  // what the C++/net layer (or tests) call to deliver engine touch events into
+  // the scripted ENT:StartTouch/Touch/EndTouch/PhysicsCollide methods.
+  function dispatchEntHook(ent, method, args) {
+    var fn = ent[method];
+    if (typeof fn !== "function") return undefined;
+    try { return fn.apply(ent, args); }
+    catch (e) { OV && OV.error && OV.error("ENT:" + method + " " + ent._r.class + ": " + (e && e.message)); }
+    return undefined;
+  }
+  P.TriggerStartTouch = function (other) { return dispatchEntHook(this, "StartTouch", [other]); };
+  P.TriggerTouch = function (other) { return dispatchEntHook(this, "Touch", [other]); };
+  P.TriggerEndTouch = function (other) { return dispatchEntHook(this, "EndTouch", [other]); };
+  // data: { HitPos, HitNormal, Speed, DeltaTime, HitEntity, ... } (CollisionData-shaped)
+  P.TriggerPhysicsCollide = function (data, physobj) { return dispatchEntHook(this, "PhysicsCollide", [data || {}, physobj || null]); };
+  // ENT:UpdateTransmitState — stub default (PVS), scripted classes override.
+  P.UpdateTransmitState = function () { return globalThis.TRANSMIT_PVS; };
   P.EmitSound = function (name) { if (this._r.isNative && native()) ncall(this._key, "emitSound", [String(name)]); };
   P.NextThink = function (t) { this._r.nextThink = +t || 0; };
   P.SetNextClientThink = P.NextThink;

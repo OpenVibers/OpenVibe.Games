@@ -126,6 +126,134 @@ Freeze/ChatPrint/ConCommand/Frags/...` plus the legacy lowercase API
 Iterator`; `LocalPlayer()` on the client. Native handles from either backend
 are wrapped automatically in hook arguments.
 
+## Hook parity (GM / ENTITY / WEAPON / PLAYER)
+
+Status legend:
+
+- **JS** — fully JS-side: the framework itself fires it (works today in every
+  backend, including the pure-JS harness).
+- **engine** — dispatch-ready: the JS side dispatches it, but it only fires
+  when the C++ forwards the engine event (`{t:'event', name, args}` →
+  `ov-runtime.js onGameMessage` → `gamemode.call(name, ...)`; player args are
+  wrapped automatically). Until the C++ forwards it, nothing fires.
+- **stub** — a default implementation/overridable hook exists; no automatic
+  trigger yet beyond direct invocation.
+
+### GM hooks
+
+| Hook | Status | Fired from |
+|---|---|---|
+| `Initialize` | JS | runtime `hello` + hot-reload |
+| `OnGamemodeLoaded` | JS | `OVLoader.loadAll` after gamemode+entities+weapons+addons |
+| `MapInitialize` | JS | runtime `hello` (map name) |
+| `InitPostEntity` | JS | base gamemode, one tick after `MapInitialize` |
+| `Think` | JS | runtime `think` (10Hz) |
+| `Tick` | JS | base `shared.js` alias — fires alongside every `Think` (both realms) |
+| `PlayerConnect(name, ip)` | JS | runtime `player_connect` |
+| `PlayerInitialSpawn(ply)` | JS + engine | JS call sites (file sync, tests); engine event flows through |
+| `PlayerSpawn(ply)` | JS + engine | base gamemode chain; engine event flows through |
+| `PlayerLoadout(ply)` | JS | base `GM.PlayerSpawn` → `hook.Run("PlayerLoadout")` |
+| `PlayerDeath(victim, inflictor, attacker)` | JS + engine | `Player.Kill`/lethal `Player.TakeDamage`; engine event flows through |
+| `PlayerDeathThink(ply)` | JS | base gamemode: every `Think` per dead player |
+| `PlayerDisconnected(ply)` | JS | runtime `player_disconnect` |
+| `PlayerSay(ply, text)` | JS | runtime `say` |
+| `OnEntityCreated(ent)` | JS | `ents.Create`/`weapons.Create` construction |
+| `EntityRemoved(ent)` | JS | entity removal flush (end of tick) |
+| `EntityTakeDamage(ent, dmginfo)` | JS | `Entity.TakeDamage` / `Player.TakeDamage` (return `true` to block) |
+| `RoundStart` / `RoundEnd` | JS | base gamemode round machine |
+| `CanPlayerSuicide(ply)` | JS | `Player.Kill` consults it (base GM default `true`) |
+| `GetFallDamage(ply, speed)` | JS + engine | base `OnPlayerHitGround` handler consults it; the engine event is not forwarded yet. On the logical backend the damage is applied JS-side; in-engine C++ stays authoritative |
+| `OnPlayerHitGround(ply, inWater, onFloater, speed)` | engine | dispatch-ready (base handler wired) |
+| `PlayerCanHearPlayersVoice(listener, talker)` | engine + stub | base GM default `true`; needs C++ voice forwarding |
+| `ShutDown` | engine + stub | base GM stub; needs C++ to forward server shutdown |
+| `HUDShouldDraw(elementId)` | JS (client) | HUD library before every snapshot push — see below |
+| `ConsoleCommand`, `OVNetReceive`, `OVHudState`, `OVFilesSynced`, `OnWeaponEquipped`, `WeaponEquip`, `OnWeaponPrimaryAttack/SecondaryAttack`, `EntityFireBullets` | JS | framework-internal call sites |
+
+Any other engine event name forwarded by C++ as `{t:'event'}` flows through
+`hook.Run` unchanged — the GM-side table above only lists what fires today.
+
+### GM:HUDShouldDraw + stock HUD elements
+
+Before the client HUD library pushes a layout snapshot (`HUD.Flush` /
+`CompactSnapshot` / `Snapshot` — including the base `client.js` HUD-state
+apply path), it runs `hook.Run("HUDShouldDraw", elementId)` for every declared
+JS HUD element id; a `false` return hides that element from the pushed
+snapshot (server truth untouched, `HUD.GetLayout()` stays unfiltered).
+Script-side visibility is also available: `HUD.SetElementVisible(id, bool)` /
+`HUD.GetElementVisible(id)`.
+
+Stock (C++) HUD element names are exposed as `HUD.STOCK_ELEMENTS`:
+`CHudHealth, CHudBattery, CHudSuitPower, CHudAmmo, CHudCrosshair, CHudChat,
+CHudWeaponSelection`. Returning `false` for **any** of
+`CHudHealth`/`CHudBattery`/`CHudSuitPower` pushes `ov_hud_stock 0` to the
+client console (restoring pushes `ov_hud_stock 1`); the convar is never
+touched until a hook first hides one of them. Limitations:
+
+- `ov_hud_stock` is coarse — it controls the health/suit/aux-power group as a
+  whole (`HIDEHUD_HEALTH|HIDEHUD_FLASHLIGHT|HIDEHUD_BONUS_PROGRESS`).
+  `CHudAmmo`, `CHudCrosshair`, `CHudChat`, `CHudWeaponSelection` have **no**
+  per-element C++ control yet — returning `false` for them only affects JS
+  elements of the same id.
+- Bridge TODO (do not edit `ov-runtime.js` casually): `buildOV()` has no
+  explicit `OV.clientCommand`. The HUD library uses `OV.clientCommand` when
+  present and otherwise falls back to `OV.serverCommand`, which on the
+  **client realm** routes `{t:'concmd'}` to the attached client DLL
+  (`ClientCmd_Unrestricted`) — i.e. it *is* a client console command there.
+  A future bridge revision should add `OV.clientCommand` as a first-class
+  alias.
+
+### ENTITY hooks (scripted_ents)
+
+| Hook | Status | Fired from |
+|---|---|---|
+| `Initialize` | JS | `ent.Spawn()` |
+| `OnRemove` | JS | removal flush (`ent.Remove()`, end of tick) |
+| `Think` | JS | ents think pump on the `Think` hook (honors `NextThink`) |
+| `OnTakeDamage(dmginfo)` | JS | `ent.TakeDamage(...)` (after `EntityTakeDamage`) |
+| `Use(activator, caller, useType, value)` | JS | `ent.Use(...)` / `ents.FireTargets` |
+| `KeyValue(key, value)` | JS | `ent.SetKeyValue(...)` |
+| `StartTouch/Touch/EndTouch(other)` | engine (dispatch methods ready) | `ent.TriggerStartTouch/TriggerTouch/TriggerEndTouch(other)` — the C++/net layer calls these; no JS collision simulation exists |
+| `PhysicsCollide(data, physobj)` | engine (dispatch ready) | `ent.TriggerPhysicsCollide(data, physobj)` |
+| `AcceptInput(input, activator, caller, value)` | JS (logical) / engine (native) | logical `ent.Fire(input, param, delay)` dispatches it; native entities route `Fire` through the engine |
+| `UpdateTransmitState` | stub | default returns `TRANSMIT_PVS` (`TRANSMIT_ALWAYS/NEVER/PVS` globals defined) |
+| `SetupDataTables`, `OnReloaded` | JS | construction / hot-repatch |
+
+### WEAPON hooks (SWEP, `weapon_base`)
+
+| Hook | Status | Fired from |
+|---|---|---|
+| `Initialize`, `Deploy`, `Holster(next)`, `PrimaryAttack`, `SecondaryAttack`, `Reload`, `Think`, `CanPrimaryAttack` | JS | existing base behaviour |
+| `CanSecondaryAttack` | JS | `weapon_base.SecondaryAttack` gate (timing + clip2) |
+| `DryFire` | JS | `CanPrimaryAttack`/`CanSecondaryAttack` on an empty clip |
+| `Equip(newOwner)` | JS | `Player.Give` |
+| `OnDrop` | JS | `Player.DropWeapon(wep)` |
+| `OnRemove` | JS | `Player.StripWeapon(s)` → entity removal pipeline |
+| `ShootEffects` | stub | engine-backed on native, no-op logical |
+| `Ammo1()/Ammo2()` | JS | owner reserve ammo (`ply.GiveAmmo/GetAmmoCount/SetAmmo/RemoveAmmo`) |
+| holster-abort | JS | `Player.SelectWeapon`: current weapon's `Holster(next) === false` aborts the switch; `Deploy` runs on the new weapon |
+| `hook.Run("OnWeaponEquipped", wep, ply)` | JS | fires (with legacy `WeaponEquip`) whenever a player receives a weapon via `Player.Give` |
+
+### PLAYER hooks (player_manager)
+
+Minimal GMod-shaped class system (`js/core/player.js`):
+
+```js
+player_manager.RegisterClass("player_scout", {
+  DisplayName: "Scout", PlayerModel: "models/player/scout.mdl",
+  Init() {}, Spawn() {}, Loadout() { this.Player.Give("weapon_ov_pistol"); },
+  Death(inflictor, attacker) {},
+}, "player_default");
+player_manager.SetPlayerClass(ply, "player_scout"); // replicates via NWString
+player_manager.GetPlayerClass(ply);
+player_manager.RunClass(ply, "Spawn");
+```
+
+Class methods run with `this.Player` set. The base gamemode drives the
+lifecycle: `PlayerInitialSpawn` → assigns `player_default` if unset + `Init`;
+`PlayerSpawn` → `Spawn` (default applies `PlayerModel`); `PlayerLoadout` →
+`Loadout`; `PlayerDeath` → `Death(inflictor, attacker)`.
+`SetupDataTables` runs once when a class instance is first built for a player.
+
 ## AddCSJSFile / include / client script sync
 
 `AddCSJSFile(path?)` (alias `AddCSLuaFile`) marks a `js/`-relative file for
@@ -197,7 +325,7 @@ POST /eval {code}   POST /exec {command}   POST /npm {args}   POST /openscript {
 ## Testing (no C++ build needed)
 
 ```bash
-node tools/test-gmodjs.mjs        # 131-check framework suite (paired realms)
+node tools/test-gmodjs.mjs        # 302-check framework suite (paired realms)
 node tools/smoke-js-core-node.mjs # legacy core smoke
 node tools/smoke-js-gamemodes.mjs # all five modes lifecycle
 node tools/smoke-runtime-ipc.mjs  # real TCP IPC flow across both runtimes

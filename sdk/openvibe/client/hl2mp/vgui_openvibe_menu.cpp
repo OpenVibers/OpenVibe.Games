@@ -341,12 +341,16 @@ public:
 		m_pHTML->SetKeyBoardInputEnabled( false );
 	}
 
+	// NOTE: no reparent here. The GameUI panel layer only paints while
+	// GameUI is visible, and popup re-sorting lags a reparent by one GameUI
+	// raise — which made the first ESC show nothing and the second show the
+	// menu. In-game states (HUD + pause) stay on PANEL_CLIENTDLL (paints
+	// during gameplay); only the out-of-level main menu uses PANEL_GAMEUIDLL.
 	void LeaveHudMode()
 	{
 		if ( !m_bHudMode )
 			return;
 		m_bHudMode = false;
-		SetParent( enginevgui->GetPanel( PANEL_GAMEUIDLL ) );
 		SetMouseInputEnabled( true );
 		SetKeyBoardInputEnabled( true );
 		m_pHTML->SetMouseInputEnabled( true );
@@ -355,9 +359,23 @@ public:
 
 	bool IsHudMode() const { return m_bHudMode; }
 
+	// Re-assert the panel above a stock GameUI raise (disconnect/error
+	// dialogs) without touching the loaded page. NEVER OpenURL here — this
+	// runs from the keep-alive and a reload per tick is a reload loop.
+	void EnsureOnTop()
+	{
+		LeaveHudMode();
+		SetPauseOverlay( false );
+		SetVisible( true );
+		MoveToFront();
+	}
+
 	void Open( const char *pszURL = NULL )
 	{
 		LeaveHudMode();
+		// Full shell: out of a level this must live in the GameUI layer;
+		// in a level the client layer paints reliably (see LeaveHudMode).
+		SetParent( enginevgui->GetPanel( engine->IsInGame() ? PANEL_CLIENTDLL : PANEL_GAMEUIDLL ) );
 		SetPauseOverlay( false ); // full opaque shell (main menu / route open)
 		const char *pszTarget = ( pszURL && pszURL[0] ) ? pszURL : ov_menu_url.GetString();
 		Q_strncpy( m_szCurrentURL, pszTarget, sizeof( m_szCurrentURL ) );
@@ -376,6 +394,7 @@ public:
 	void OpenPause()
 	{
 		LeaveHudMode();
+		SetParent( enginevgui->GetPanel( PANEL_CLIENTDLL ) ); // in-game layer paints during gameplay
 		SetPauseOverlay( true );
 		MakeFullScreen();
 		SetVisible( true );
@@ -932,9 +951,20 @@ void OpenVibe_MenuKeepAlive()
 		// The HUD overlay is "visible" but is not a menu — ESC over it must
 		// still swap the stock GameUI for our pause overlay.
 		const bool bOursMenuVisible = s_pOpenVibeMenu && s_pOpenVibeMenu->IsVisible() && !s_pOpenVibeMenu->IsHudMode();
-		if ( bStockUIVisible && !bOursMenuVisible )
+		if ( bStockUIVisible )
 		{
-			OV_GetHTMLMenu()->OpenPause();
+			if ( !bOursMenuVisible )
+			{
+				// ESC from gameplay: replace the stock pause menu with ours.
+				OV_GetHTMLMenu()->OpenPause();
+			}
+			else
+			{
+				// ESC while OUR menu is open re-raises stock GameUI over it
+				// (that's how the leaked stock menu screenshot happens) —
+				// treat it as "close": back to gameplay + HUD overlay.
+				s_pOpenVibeMenu->CloseMenu();
+			}
 			return;
 		}
 
@@ -966,8 +996,10 @@ void OpenVibe_MenuKeepAlive()
 	else if ( enginevgui && enginevgui->IsGameUIVisible() )
 	{
 		// Ours is visible but the stock menu was raised above it (error
-		// dialog path): put ours back on top and leave HUD mode if stale.
-		s_pOpenVibeMenu->Open();
+		// dialog path): re-front WITHOUT reloading the page — calling
+		// Open() here re-OpenURL'd every tick and the menu reload-looped
+		// while the engine's error dialog kept GameUI visible.
+		s_pOpenVibeMenu->EnsureOnTop();
 	}
 }
 // OPENVIBE_CONSOLE_SPEW_TAP_END
@@ -1151,7 +1183,11 @@ static void OV_ConsoleToggle_f( const CCommand &args )
 {
 	COpenVibeHTMLPanel *pMenu = OV_GetHTMLMenu();
 
-	if ( pMenu->IsVisible() )
+	// In HUD mode the panel is "visible" but is NOT an open menu — the
+	// console key must open the pause menu on the console route, not
+	// silently route the input-transparent overlay (which just made the
+	// HUD vanish on the first press).
+	if ( pMenu->IsVisible() && !pMenu->IsHudMode() )
 	{
 		if ( engine->IsInGame() )
 		{

@@ -187,6 +187,11 @@
       loadCades();
       if (globalThis.Addon && Addon.loadAll) Addon.loadAll();
       if (globalThis.weapons && weapons.ValidateBases) weapons.ValidateBases();
+      // GM:OnGamemodeLoaded — everything (gamemode chain, entities, weapons,
+      // addons) is loaded; fires before the engine's Initialize.
+      if (opts.gamemodes !== false && globalThis.hook && typeof hook.Run === "function") {
+        try { hook.Run("OnGamemodeLoaded"); } catch (e) { warn("OnGamemodeLoaded: " + (e && e.message)); }
+      }
       log("realm load complete (mode=" + mode + ", realm=" + realmDir + ")");
       return true;
     },

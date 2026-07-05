@@ -87,14 +87,14 @@ is_patched_openvibe_client_dll() {
   local dll="$1"
   [[ -f "$dll" ]] || return 1
   command -v strings >/dev/null 2>&1 || return 1
-  strings -a "$dll" | grep -Eq 'ov_join|ov_menu|OpenVibe'
+  [[ "$(strings -a "$dll" | grep -Ec 'ov_join|ov_menu|OpenVibe')" -gt 0 ]]
 }
 
 is_patched_openvibe_server_dll() {
   local dll="$1"
   [[ -f "$dll" ]] || return 1
   command -v strings >/dev/null 2>&1 || return 1
-  strings -a "$dll" | grep -Eq 'ov_js_status|ov_js_cmd|OpenVibe'
+  [[ "$(strings -a "$dll" | grep -Ec 'ov_js_status|ov_js_cmd|OpenVibe')" -gt 0 ]]
 }
 
 try_copy_windows_pair() {
