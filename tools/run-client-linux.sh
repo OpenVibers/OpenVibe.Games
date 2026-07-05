@@ -42,9 +42,19 @@ if [[ "${OPENVIBE_STOCK_CONSOLE:-0}" == "1" ]]; then
   CONSOLE_ARGS=(-console)
 fi
 
+# Display prefs from the Electron launcher (launcher/.ov-display.json), passed
+# as env vars. Defaults match the previous hardcoded -sw -w 1280 -h 720.
+RES_W="${OPENVIBE_RES_W:-1280}"
+RES_H="${OPENVIBE_RES_H:-720}"
+case "${OPENVIBE_RES_MODE:-windowed}" in
+  fullscreen) DISPLAY_MODE_ARGS=(-fullscreen) ;;
+  borderless) DISPLAY_MODE_ARGS=(-sw -noborder) ;;
+  *)          DISPLAY_MODE_ARGS=(-sw) ;;
+esac
+
 exec "$HL2_LINUX" \
   -game "$GAME_DIR" \
-  "${CONSOLE_ARGS[@]}" -dev -novid -sw -w 1280 -h 720 \
+  "${CONSOLE_ARGS[@]}" -dev -novid "${DISPLAY_MODE_ARGS[@]}" -w "$RES_W" -h "$RES_H" \
   -port 27115 -clientport 27105 \
   +exec openvibe_proton_client.cfg \
   +exec openvibe_client_default.cfg \

@@ -117,6 +117,34 @@ const OVERLAY_MARKERS = [
   'engCacheClear',
   'engCachePut',
   'SUGG_MAX',
+  // ?loading=1 splash polish: vignette, mode/map banner, bar sheen,
+  // phase fade+slide, "did you know" tip card.
+  'loading-vignette',
+  'loading-banner',
+  'loading-map',
+  'loading-bar-sheen',
+  'phase-swap',
+  'loading-tipcard',
+  'loading-tip-label',
+];
+
+// Settings route extras: Controls (curated keybinds via the openvibe:// cmd
+// bridge + key_listboundkeys spew tap + 'ov_binds' pending store) and Display
+// (resolution/window mode via mat_setvideomode / electronOV.setDisplayPrefs
+// + 'ov_display' store).
+const SETTINGS_MARKERS = [
+  'settings-controls',
+  'controls-bind-list',
+  'bindCapture',
+  'key_listboundkeys',
+  'ov_binds',
+  'host_writeconfig',
+  'settings-display',
+  'display-res',
+  'display-mode',
+  'mat_setvideomode',
+  'setDisplayPrefs',
+  'ov_display',
 ];
 
 function assertUnifiedHtml(label, html) {
@@ -128,6 +156,9 @@ function assertUnifiedHtml(label, html) {
   }
   for (const marker of OVERLAY_MARKERS) {
     check(`${label}: overlay UI contains ${marker}`, html.includes(marker));
+  }
+  for (const marker of SETTINGS_MARKERS) {
+    check(`${label}: settings extras contain ${marker}`, html.includes(marker));
   }
   check(`${label}: contains HUD overlay (ov-hud)`, html.includes('ov-hud'));
   check(`${label}: loads ui-sync.js`, html.includes('ui-sync.js'));

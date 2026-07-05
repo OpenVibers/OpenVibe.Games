@@ -20,6 +20,71 @@ let appIsQuitting = false;
 
 let lastLaunchState = { phase: 'idle', message: 'Ready', pid: null };
 
+// ── Shared display preferences ────────────────────────────────────────────────
+// {w,h,mode} with mode 'windowed' | 'fullscreen' | 'borderless', persisted in
+// launcher/.ov-display.json (gitignored) so the Electron shell, the loading
+// overlay and the game client all share one resolution. The in-game client
+// page writes these through the 'ov-display-prefs' IPC channel
+// (electronOV.setDisplayPrefs / getDisplayPrefs); the game picks them up via
+// OPENVIBE_RES_W / OPENVIBE_RES_H / OPENVIBE_RES_MODE env vars consumed by
+// tools/run-client-*.sh.
+const DISPLAY_PREFS_PATH = path.join(__dirname, '.ov-display.json');
+const DISPLAY_MODES = ['windowed', 'fullscreen', 'borderless'];
+const DEFAULT_DISPLAY_PREFS = { w: 1280, h: 800, mode: 'windowed' };
+
+function sanitizeDisplayPrefs(raw) {
+  const p = { ...DEFAULT_DISPLAY_PREFS };
+  if (raw && typeof raw === 'object') {
+    const w = Math.floor(Number(raw.w));
+    const h = Math.floor(Number(raw.h));
+    if (Number.isFinite(w) && w >= 640 && w <= 7680) p.w = w;
+    if (Number.isFinite(h) && h >= 480 && h <= 4320) p.h = h;
+    if (DISPLAY_MODES.includes(raw.mode)) p.mode = raw.mode;
+  }
+  return p;
+}
+
+let displayPrefs = (() => {
+  try {
+    return sanitizeDisplayPrefs(JSON.parse(fs.readFileSync(DISPLAY_PREFS_PATH, 'utf8')));
+  } catch {
+    return { ...DEFAULT_DISPLAY_PREFS };
+  }
+})();
+
+function saveDisplayPrefs() {
+  try {
+    fs.writeFileSync(DISPLAY_PREFS_PATH, JSON.stringify(displayPrefs, null, 2) + '\n');
+  } catch (e) {
+    console.error('[launcher] could not save display prefs:', e && e.message);
+  }
+}
+
+function applyDisplayPrefsToMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (displayPrefs.mode === 'fullscreen') {
+    mainWindow.setFullScreen(true);
+  } else {
+    // 'borderless' behaves like windowed for the launcher shell — the window
+    // is already frameless; the distinction matters for the game client args.
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+    mainWindow.setSize(displayPrefs.w, displayPrefs.h);
+    mainWindow.center();
+  }
+}
+
+// Bring the launcher back (used when the game exits/errors). Airtight: if the
+// window was somehow destroyed while the game ran, recreate it.
+function showLauncherWindow() {
+  if (appIsQuitting) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 function broadcastLaunchState(state) {
   lastLaunchState = { ...lastLaunchState, ...state, at: Date.now() };
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -268,9 +333,11 @@ async function ensureClientUiServer(root) {
 //   connected → state.gameConnected === true          ("Loading gamemode…")
 //   map       → state.map is non-empty                ("Entering <map>…")
 //   ready     → map set AND (players.length > 0 OR 8s elapsed since map set)
-// On ready: overlay closes and the launcher main window hides (single code
-// path — the old timer-based OPENVIBE_HIDE_LAUNCHER_ON_GAME_READY hide is gone).
-// On game exit / 180s safety timeout: overlay closes, launcher stays/returns.
+// NEVER OPEN TOGETHER: the launcher main window hides the moment the game
+// process spawns (the overlay covers the screen from then on). On ready the
+// overlay fades out and only the game remains. On game exit/error the launcher
+// returns (see launchGame handlers). On the 180s safety timeout the overlay
+// closes hard, but the launcher stays hidden while the game process is alive.
 const CONTROL_STATE_URL = 'http://127.0.0.1:41996/state';
 const LOADING_OVERLAY_MAX_MS = 180_000;      // safety: never cover the screen forever
 const LOADING_READY_AFTER_MAP_MS = 8_000;    // ready fallback once a map is set
@@ -313,28 +380,50 @@ function setOverlayPhaseText(text) {
   loadingOverlay.webContents.executeJavaScript(js, true).catch(() => {});
 }
 
-function closeLoadingOverlay() {
+// Close the overlay. { fade: true } asks the page to fade to black first and
+// destroys the window ~250ms later (used on READY). Timeout/exit/error paths
+// call without options and close hard — never risk a stuck fullscreen window.
+function closeLoadingOverlay(opts = {}) {
   if (loadingPollTimer) { clearInterval(loadingPollTimer); loadingPollTimer = null; }
   if (loadingSafetyTimer) { clearTimeout(loadingSafetyTimer); loadingSafetyTimer = null; }
   loadingSession = null;
-  if (loadingOverlay && !loadingOverlay.isDestroyed()) {
-    loadingOverlay.destroy();
-  }
+
+  const win = loadingOverlay;
   loadingOverlay = null;
+  if (!win || win.isDestroyed()) return;
+
+  if (opts.fade) {
+    // Both the remote loading page and the local fallback fade via this class
+    // (the local page transitions body opacity; harmless if the CSS is absent).
+    win.webContents.executeJavaScript(
+      `try { document.documentElement.classList.add('ov-fade-out'); } catch (e) {}`,
+      true
+    ).catch(() => {});
+    setTimeout(() => { if (!win.isDestroyed()) win.destroy(); }, 260);
+  } else {
+    win.destroy();
+  }
 }
 
 function openLoadingOverlay(mode) {
   closeLoadingOverlay();
 
+  // Match the shared display prefs: fullscreen-on-primary in fullscreen mode,
+  // otherwise a centered window at the same resolution the game will use.
+  const overlayFullscreen = displayPrefs.mode === 'fullscreen';
   let bounds = null;
   try { bounds = screen.getPrimaryDisplay().bounds; } catch {}
 
+  const sizing = overlayFullscreen
+    ? (bounds
+        ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
+        : { width: 1280, height: 800 })
+    : { width: displayPrefs.w, height: displayPrefs.h };
+
   loadingOverlay = new BrowserWindow({
-    ...(bounds
-      ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }
-      : { width: 1280, height: 800 }),
+    ...sizing,
     frame: false,
-    fullscreen: true,
+    fullscreen: overlayFullscreen,
     alwaysOnTop: true,
     backgroundColor: '#0d0d14',
     autoHideMenuBar: true,
@@ -359,7 +448,9 @@ function openLoadingOverlay(mode) {
   loadingOverlay.loadURL(remoteUrl).catch(() => {
     // Backend down — fall back to the bundled local page.
     if (loadingOverlay && !loadingOverlay.isDestroyed()) {
-      loadingOverlay.loadFile(path.join(__dirname, 'loading.html')).catch(() => {});
+      loadingOverlay.loadFile(path.join(__dirname, 'loading.html'), {
+        query: { mode: mode || 'hub' },
+      }).catch(() => {});
     }
   });
 
@@ -378,7 +469,11 @@ function openLoadingOverlay(mode) {
   loadingSafetyTimer = setTimeout(() => {
     console.log('[launcher] loading overlay safety timeout — closing');
     sendLoadingPhase('timeout', 'Still waiting for Source — overlay dismissed.');
-    closeLoadingOverlay();
+    closeLoadingOverlay(); // hard close, no fade — never leave the screen covered
+    // Game still alive → launcher stays hidden (the game window is the UI now).
+    // Game already gone with no exit event (shouldn't happen) → never strand
+    // the user with zero windows: bring the launcher back.
+    if (!gameProcess) showLauncherWindow();
   }, LOADING_OVERLAY_MAX_MS);
 
   loadingPollTimer = setInterval(pollLoadingState, 1000);
@@ -427,16 +522,27 @@ async function pollLoadingState() {
   if (ready) {
     s.ready = true;
     sendLoadingPhase('ready', s.map ? `In game — ${s.map}` : 'In game');
-    closeLoadingOverlay();
-    // Single hide code path: launcher hides only when the game is READY.
-    if (gameProcess && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.hide();
-    }
+    // Launcher was already hidden at spawn; the overlay just fades out over
+    // the game window.
+    closeLoadingOverlay({ fade: true });
   }
 }
 
 // ── Game launch ────────────────────────────────────────────────────────────────
 async function launchGame(serverIp, serverPort, mode) {
+  // A second Source instance always fails on the engine lock — if the game is
+  // already running, focus it and toast the UI instead of spawning again.
+  if (gameProcess) {
+    focusGameWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('ov-toast', {
+        message: 'OpenVibe is already running — switched to the game window.',
+        kind: 'info',
+      });
+    }
+    return { ok: true, alreadyRunning: true, pid: gameProcess.pid };
+  }
+
   const root = path.resolve(__dirname, '..');
 
   const uiReady = await ensureClientUiServer(root);
@@ -471,6 +577,11 @@ async function launchGame(serverIp, serverPort, mode) {
       ...process.env,
       OPENVIBE_ROOT: root,
       DISPLAY: process.env.DISPLAY || ':0',
+      // Shared display prefs → consumed by tools/run-client-*.sh to build the
+      // engine's -w/-h and windowed/fullscreen/borderless flags.
+      OPENVIBE_RES_W: String(displayPrefs.w),
+      OPENVIBE_RES_H: String(displayPrefs.h),
+      OPENVIBE_RES_MODE: displayPrefs.mode,
     },
   });
 
@@ -482,29 +593,32 @@ async function launchGame(serverIp, serverPort, mode) {
     closeLoadingOverlay();
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('game-exited', -1);
-      mainWindow.show();
-      mainWindow.focus();
     }
+    showLauncherWindow();
   });
   gameProcess.on('exit', (code) => {
     console.log('[launcher] game exited with code', code);
     gameProcess = null;
     closeLoadingOverlay();
-    mainWindow?.webContents.send('game-exited', code);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
+      mainWindow.webContents.send('game-exited', code);
     }
+    showLauncherWindow();
   });
 
   mainWindow?.webContents.send('game-started', gameProcess.pid);
 
-  // Show the "waiting for Source" overlay immediately; the launcher main
-  // window is hidden later, only once the game is READY (see pollLoadingState).
+  // NEVER OPEN TOGETHER: the overlay covers the screen from the moment the
+  // game process spawns, and the launcher hides immediately. It comes back
+  // only via the exit/error handlers above (or the safety-timeout dead-game
+  // fallback in openLoadingOverlay).
   openLoadingOverlay(mode);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+  }
 
   gameProcess.unref();
-  return true;
+  return { ok: true, pid: gameProcess.pid };
 }
 
 // ── Steam OpenID sign-in ──────────────────────────────────────────────────────
@@ -643,6 +757,18 @@ ipcMain.handle('game:launch-direct', async (_e, mode) => {
   return launchGame(srv.ip, srv.port, mode in MODE_SERVER_MAP ? mode : 'hub');
 });
 
+// Shared display preferences. Invoke with a {w,h,mode} object to set (persists
+// to launcher/.ov-display.json and applies to the launcher window right away),
+// or with no argument to read. Always returns the current prefs.
+ipcMain.handle('ov-display-prefs', (_e, prefs) => {
+  if (prefs && typeof prefs === 'object') {
+    displayPrefs = sanitizeDisplayPrefs(prefs);
+    saveDisplayPrefs();
+    applyDisplayPrefsToMainWindow();
+  }
+  return { ...displayPrefs };
+});
+
 ipcMain.handle('game:status', () => ({
   running: gameProcess !== null,
   pid: gameProcess?.pid ?? null,
@@ -671,8 +797,10 @@ ipcMain.on('ui:set-route', (_e, route) => {
 // ── Window creation ────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    // Startup size/mode comes from the shared display prefs (launcher/.ov-display.json).
+    width: displayPrefs.w,
+    height: displayPrefs.h,
+    fullscreen: displayPrefs.mode === 'fullscreen',
     minWidth: 900,
     minHeight: 600,
     frame: false,          // Custom titlebar in HTML

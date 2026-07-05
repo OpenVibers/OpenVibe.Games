@@ -88,6 +88,16 @@ if [[ "${OPENVIBE_STOCK_CONSOLE:-0}" == "1" ]]; then
   CONSOLE_ARGS="-console"
 fi
 
+# Display prefs from the Electron launcher (launcher/.ov-display.json), passed
+# as env vars. Defaults match the previous hardcoded -sw -w 1280 -h 720.
+RES_W="${OPENVIBE_RES_W:-1280}"
+RES_H="${OPENVIBE_RES_H:-720}"
+case "${OPENVIBE_RES_MODE:-windowed}" in
+  fullscreen) DISPLAY_MODE_ARGS="-fullscreen" ;;
+  borderless) DISPLAY_MODE_ARGS="-sw -noborder" ;;
+  *)          DISPLAY_MODE_ARGS="-sw" ;;
+esac
+
 # Single canonical log via -condebug (writes game/openvibe.games/console.log).
 # Do NOT also set +con_logfile: it hijacks the console log mid-startup, so the
 # two split and neither is complete. -condebug alone keeps one full log.
@@ -98,7 +108,7 @@ fi
 exec "$GE_PROTON/proton" waitforexitandrun \
   "$HL2_EXE" \
   -game "$GAME_DIR" \
-  $CONSOLE_ARGS -dev -condebug -novid -sw -w 1280 -h 720 \
+  $CONSOLE_ARGS -dev -condebug -novid $DISPLAY_MODE_ARGS -w "$RES_W" -h "$RES_H" \
   -port 27115 -clientport 27105 \
   -nojoy -nohltv \
   +developer 1 \

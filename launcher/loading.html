@@ -17,6 +17,19 @@
     cursor: default;
   }
 
+  /* Whole-page fade: in when the window shows, out when the main process adds
+     .ov-fade-out to <html> ~250ms before destroying the window. */
+  body {
+    opacity: 0;
+    animation: page-in 0.45s ease 0.05s forwards;
+    transition: opacity 0.25s ease;
+  }
+  html.ov-fade-out body {
+    animation: none;
+    opacity: 0 !important;
+  }
+  @keyframes page-in { to { opacity: 1; } }
+
   /* Subtle animated background: drifting radial glows */
   .bg {
     position: fixed;
@@ -67,9 +80,43 @@
     -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
   }
 
+  /* Rising particles (populated by script) */
+  #particles {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .p {
+    position: absolute;
+    bottom: -8px;
+    border-radius: 50%;
+    opacity: 0;
+    animation: rise linear infinite;
+  }
+  @keyframes rise {
+    0%   { transform: translate(0, 0); opacity: 0; }
+    12%  { opacity: var(--o, 0.35); }
+    88%  { opacity: var(--o, 0.35); }
+    100% { transform: translate(var(--dx, 0px), -108vh); opacity: 0; }
+  }
+
+  /* Vignette above everything decorative, below the content */
+  .vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center,
+      transparent 42%,
+      rgba(6, 6, 12, 0.45) 74%,
+      rgba(3, 3, 8, 0.82) 100%);
+  }
+
   .stage {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -84,8 +131,15 @@
     letter-spacing: 0.14em;
     text-transform: uppercase;
   }
-  .wordmark .open  { color: #e8e8f0; }
-  .wordmark .vibe  { color: #00c8ff; text-shadow: 0 0 24px rgba(0, 200, 255, 0.45); }
+  .wordmark .open { color: #e8e8f0; }
+  .wordmark .vibe {
+    color: #00c8ff;
+    animation: glow-pulse 2.8s ease-in-out infinite;
+  }
+  @keyframes glow-pulse {
+    0%, 100% { text-shadow: 0 0 18px rgba(0, 200, 255, 0.35), 0 0 46px rgba(0, 200, 255, 0.12); }
+    50%      { text-shadow: 0 0 30px rgba(0, 200, 255, 0.75), 0 0 80px rgba(0, 200, 255, 0.32); }
+  }
   .wordmark .source {
     display: block;
     text-align: center;
@@ -103,11 +157,11 @@
     letter-spacing: 0.06em;
     color: #b8b8cc;
     text-align: center;
-    transition: opacity 0.25s ease;
+    transition: opacity 0.25s ease, transform 0.25s ease;
   }
-  .phase.swap { opacity: 0; }
+  .phase.swap { opacity: 0; transform: translateY(4px); }
 
-  /* Indeterminate shimmer bar */
+  /* Indeterminate sheen bar with a soft under-glow */
   .bar {
     width: min(460px, 70vw);
     height: 4px;
@@ -115,6 +169,7 @@
     background: rgba(255, 255, 255, 0.07);
     overflow: hidden;
     position: relative;
+    box-shadow: 0 0 18px rgba(0, 200, 255, 0.18);
   }
   .bar::before {
     content: '';
@@ -125,9 +180,9 @@
     height: 100%;
     border-radius: 4px;
     background: linear-gradient(90deg, transparent, #00c8ff, #06ffa5, transparent);
-    animation: shimmer 1.6s ease-in-out infinite;
+    animation: sheen 1.6s ease-in-out infinite;
   }
-  @keyframes shimmer {
+  @keyframes sheen {
     from { left: -40%; }
     to   { left: 100%; }
   }
@@ -139,11 +194,40 @@
     text-transform: uppercase;
   }
 
+  /* Footer: mode name */
+  .footer {
+    position: fixed;
+    left: 24px;
+    bottom: 20px;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #55556a;
+  }
+  .footer .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #00c8ff;
+    box-shadow: 0 0 8px rgba(0, 200, 255, 0.8);
+    animation: dot-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes dot-pulse {
+    0%, 100% { opacity: 0.4; }
+    50%      { opacity: 1; }
+  }
+  .footer .mode { color: #00c8ff; }
+
   .hide-btn {
     position: fixed;
     right: 22px;
     bottom: 20px;
-    z-index: 3;
+    z-index: 4;
     padding: 8px 18px;
     font-size: 12px;
     font-weight: 600;
@@ -167,6 +251,8 @@
 <body>
   <div class="bg"></div>
   <div class="grid"></div>
+  <div id="particles"></div>
+  <div class="vignette"></div>
 
   <div class="stage">
     <div class="wordmark">
@@ -178,6 +264,12 @@
     <div class="hint">The game window will take over when ready</div>
   </div>
 
+  <div class="footer">
+    <span>Launching</span>
+    <span class="dot"></span>
+    <span class="mode" id="mode-name">Hub</span>
+  </div>
+
   <button class="hide-btn" id="hide" type="button">Hide</button>
 
 <script>
@@ -186,7 +278,43 @@
     var phaseEl = document.getElementById('phase');
     var swapTimer = null;
 
+    // Footer mode name from the ?mode= query the main process passes along.
+    var MODE_LABELS = {
+      hub: 'Hub',
+      prophunt: 'Prop Hunt',
+      deathrun: 'Deathrun',
+      fortwars: 'Fort Wars',
+      traitortown: 'Traitor Town',
+    };
+    try {
+      var mode = new URLSearchParams(window.location.search).get('mode') || 'hub';
+      document.getElementById('mode-name').textContent =
+        MODE_LABELS[mode] || mode.toUpperCase();
+    } catch (e) {}
+
+    // Rising background particles.
+    (function () {
+      var host = document.getElementById('particles');
+      if (!host) return;
+      var COLORS = ['#00c8ff', '#06ffa5', '#a855f7', '#e8e8f0'];
+      for (var i = 0; i < 26; i++) {
+        var p = document.createElement('div');
+        p.className = 'p';
+        var size = 1.5 + Math.random() * 2.5;
+        p.style.width = size + 'px';
+        p.style.height = size + 'px';
+        p.style.left = (Math.random() * 100) + '%';
+        p.style.background = COLORS[i % COLORS.length];
+        p.style.setProperty('--o', String(0.12 + Math.random() * 0.3));
+        p.style.setProperty('--dx', ((Math.random() - 0.5) * 120).toFixed(0) + 'px');
+        p.style.animationDuration = (9 + Math.random() * 14).toFixed(1) + 's';
+        p.style.animationDelay = (-Math.random() * 20).toFixed(1) + 's';
+        host.appendChild(p);
+      }
+    })();
+
     // Well-known hook: main process pushes phase text via executeJavaScript.
+    // Phase swaps fade the old text out, then the new text in.
     window.__ovSetPhase = function (text) {
       if (!text || typeof text !== 'string') return;
       window.__ovPhase = text;

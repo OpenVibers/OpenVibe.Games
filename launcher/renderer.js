@@ -134,8 +134,13 @@ async function launchMode(mode) {
   toast(`Connecting to ${info.label}…`);
 
   try {
-    const ok = await Bridge.launchMode(mode);
-    if (ok) {
+    const res = await Bridge.launchMode(mode);
+    if (res && res.alreadyRunning) {
+      // Main process focused the existing game window instead of spawning a
+      // second Source instance (which always fails on the engine lock).
+      hideLaunchOverlay();
+      updateGameStatus(true);
+    } else if (res) {
       toast(`✓ ${info.label} launched — port ${info.port}`);
       updateGameStatus(true);
     } else {
@@ -191,6 +196,10 @@ if (isElectron) {
     hideLaunchOverlay();
     updateGameStatus(false);
     toast(`Game exited (code ${code})`);
+  });
+  // Toasts pushed from the main process (e.g. "already running — focused it").
+  window.OV.onToast?.((info) => {
+    if (info?.message) toast(info.message, info.kind === 'error');
   });
   // Boot progress from the main-process control-server poller (drives the
   // fullscreen loading overlay window; mirrored here for the in-page overlay).

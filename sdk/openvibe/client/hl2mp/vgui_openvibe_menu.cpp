@@ -948,16 +948,27 @@ void OpenVibe_MenuKeepAlive()
 		return;
 	}
 
-	// Out of a level: keep our menu covering the stock main menu (e.g. after
-	// the engine pops a "Disconnected" dialog). Throttled — no urgency here.
+	// Out of a level: keep our menu covering the stock main menu. After a
+	// connection error ("Connection failed after 4 retries") the engine
+	// raises stock GameUI OVER our still-visible panel, so checking only
+	// our own visibility left the stock menu on top — re-front whenever the
+	// stock UI is up, and (throttled) re-open if we somehow got hidden.
 	static float s_flNextCheck = 0.0f;
 	const float flNow = Plat_FloatTime();
 	if ( flNow < s_flNextCheck )
 		return;
-	s_flNextCheck = flNow + 2.0f;
+	s_flNextCheck = flNow + 0.5f;
 
 	if ( !s_pOpenVibeMenu || !s_pOpenVibeMenu->IsVisible() )
+	{
 		OV_GetHTMLMenu()->Open();
+	}
+	else if ( enginevgui && enginevgui->IsGameUIVisible() )
+	{
+		// Ours is visible but the stock menu was raised above it (error
+		// dialog path): put ours back on top and leave HUD mode if stale.
+		s_pOpenVibeMenu->Open();
+	}
 }
 // OPENVIBE_CONSOLE_SPEW_TAP_END
 

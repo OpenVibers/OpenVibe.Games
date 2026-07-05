@@ -2,7 +2,7 @@
 'use strict';
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('OV', {
+const api = {
   // API calls (proxied through main process)
   health:      ()            => ipcRenderer.invoke('api:health'),
   servers:     ()            => ipcRenderer.invoke('api:servers'),
@@ -20,6 +20,12 @@ contextBridge.exposeInMainWorld('OV', {
   focusGame:   ()            => ipcRenderer.invoke('game:focus'),
   showLauncher: ()           => ipcRenderer.invoke('launcher:show'),
 
+  // Shared display preferences ({w,h,mode} with mode 'windowed'|'fullscreen'|
+  // 'borderless'), persisted in launcher/.ov-display.json by the main process
+  // and applied to the launcher window, loading overlay and game launch args.
+  setDisplayPrefs: (prefs)   => ipcRenderer.invoke('ov-display-prefs', prefs),
+  getDisplayPrefs: ()        => ipcRenderer.invoke('ov-display-prefs'),
+
   // Window controls
   minimize:    ()            => ipcRenderer.send('window:minimize'),
   maximize:    ()            => ipcRenderer.send('window:maximize'),
@@ -35,4 +41,12 @@ contextBridge.exposeInMainWorld('OV', {
   onLaunchPhase: (cb) => ipcRenderer.on('game-launch-phase', (_e, info) => cb(info)),
   onGameExit: (cb) => ipcRenderer.on('game-exited', (_e, code) => cb(code)),
   onRoute:    (cb) => ipcRenderer.on('ui:set-route', (_e, route) => cb(route)),
-});
+  // Toast notifications from main: { message, kind: 'info'|'error' }
+  // (e.g. "game already running" when a launch button is clicked twice).
+  onToast:    (cb) => ipcRenderer.on('ov-toast', (_e, info) => cb(info)),
+};
+
+contextBridge.exposeInMainWorld('OV', api);
+// The client UI page (served by the backend / client UI server) addresses the
+// bridge as `electronOV` — expose the same API under both names.
+contextBridge.exposeInMainWorld('electronOV', api);

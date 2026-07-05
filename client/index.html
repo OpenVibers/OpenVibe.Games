@@ -542,6 +542,33 @@
     }
     .settings-input:focus { outline: none; border-color: var(--accent); }
 
+    /* ── Controls (keybinds) section ──────────────────── */
+    .bind-cell { display: flex; align-items: center; gap: 8px; }
+    .bind-chip {
+      display: inline-block;
+      min-width: 58px;
+      text-align: center;
+      padding: 3px 10px;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--text-head);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      white-space: nowrap;
+    }
+    .bind-chip.unbound { color: var(--text-dim); font-style: italic; }
+    .bind-chip.capturing {
+      color: var(--accent);
+      border-color: var(--accent);
+      animation: ovBindPulse 1s ease-in-out infinite;
+    }
+    @keyframes ovBindPulse { 50% { box-shadow: 0 0 0 3px rgba(26,159,255,0.18); } }
+    @media (prefers-reduced-motion: reduce) { .bind-chip.capturing { animation: none; } }
+
     /* ── Electron titlebar (launcher chrome, shell=electron only) ── */
     .ov-titlebar {
       display: none;
@@ -795,6 +822,13 @@
       opacity: 0.45;
       background: repeating-linear-gradient(0deg, rgba(255,255,255,0.022) 0 1px, transparent 1px 3px);
     }
+    /* soft vignette above the gradient, below the content */
+    .loading-vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(2,5,9,0.55) 100%);
+    }
     .loading-particles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
     .ov-lp {
       position: absolute;
@@ -803,9 +837,18 @@
       height: 3px;
       border-radius: 50%;
       background: var(--accent);
+      box-shadow: 0 0 6px rgba(26,159,255,0.55);
       animation: ovRise 9s linear infinite;
     }
-    @keyframes ovRise { from { transform: translateY(0); } to { transform: translateY(-105vh); } }
+    /* drift sideways (--lp-drift, set per particle) while rising */
+    @keyframes ovRise {
+      from { transform: translate(0, 0); }
+      to   { transform: translate(var(--lp-drift, 0px), -105vh); }
+    }
+    @keyframes ovFadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: none; }
+    }
     .loading-wordmark {
       position: relative;
       font-size: clamp(30px, 6vw, 46px);
@@ -813,27 +856,60 @@
       letter-spacing: 0.12em;
       color: var(--text-head);
       text-shadow: 0 0 26px rgba(26,159,255,0.35);
+      animation: ovFadeUp 0.7s ease both, ovLogoPulse 3.6s ease-in-out 0.7s infinite;
     }
     .loading-wordmark span { color: var(--accent); }
-    .loading-mode {
+    @keyframes ovLogoPulse {
+      0%, 100% { letter-spacing: 0.12em;  text-shadow: 0 0 18px rgba(26,159,255,0.28); }
+      50%      { letter-spacing: 0.155em; text-shadow: 0 0 34px rgba(26,159,255,0.6), 0 0 90px rgba(26,159,255,0.22); }
+    }
+    /* mode + map banner chips under the wordmark */
+    .loading-banner {
       position: relative;
-      margin-top: 8px;
-      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 14px;
+      min-height: 26px;
+      animation: ovFadeUp 0.7s ease 0.12s both;
+    }
+    .loading-mode {
+      font-size: 14px;
       font-weight: 700;
-      letter-spacing: 0.3em;
+      letter-spacing: 0.28em;
+      text-indent: 0.28em; /* optically recenter the tracked text */
       text-transform: uppercase;
       color: var(--accent);
-      min-height: 22px;
+      padding: 3px 14px;
+      border: 1px solid rgba(26,159,255,0.35);
+      border-radius: 14px;
+      background: rgba(26,159,255,0.08);
     }
+    .loading-mode:empty { display: none; }
+    .loading-map {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 4px 12px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+    }
+    .loading-map[hidden] { display: none; }
     .loading-bar {
       position: relative;
       width: min(420px, 70vw);
       height: 6px;
-      margin-top: 34px;
+      margin-top: 32px;
       border-radius: 3px;
       overflow: hidden;
       background: rgba(255,255,255,0.07);
       border: 1px solid var(--border);
+      box-shadow: 0 0 18px rgba(26,159,255,0.12);
+      animation: ovFadeUp 0.7s ease 0.2s both;
     }
     .loading-bar-fill {
       position: absolute;
@@ -843,28 +919,74 @@
       animation: ovShimmer 1.4s linear infinite;
     }
     @keyframes ovShimmer { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+    /* slower white sheen layered over the shimmer */
+    .loading-bar-sheen {
+      position: absolute;
+      inset: 0;
+      width: 26%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent);
+      animation: ovSheen 2.8s ease-in-out infinite;
+    }
+    @keyframes ovSheen {
+      0%        { transform: translateX(-130%); }
+      55%, 100% { transform: translateX(520%); }
+    }
     .loading-phase {
       position: relative;
       margin-top: 14px;
       font-size: 13px;
       color: var(--text);
       min-height: 20px;
+      transition: opacity 0.28s ease, transform 0.28s ease;
+      animation: ovFadeUp 0.7s ease 0.28s both;
+    }
+    .loading-phase.phase-swap { opacity: 0; transform: translateY(8px); }
+    /* "did you know" tip card */
+    .loading-tipcard {
+      position: relative;
+      margin-top: 30px;
+      width: min(460px, 84vw);
+      padding: 13px 18px 14px 20px;
+      text-align: left;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(10,18,28,0.55);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+      animation: ovFadeUp 0.7s ease 0.36s both;
+    }
+    .loading-tipcard::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 10px;
+      bottom: 10px;
+      width: 2px;
+      border-radius: 1px;
+      background: linear-gradient(180deg, var(--accent), transparent);
+    }
+    .loading-tip-label {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 6px;
     }
     .loading-tip {
-      position: relative;
-      margin-top: 26px;
-      max-width: 500px;
-      padding: 0 20px;
-      font-size: 12px;
-      color: var(--text-dim);
-      min-height: 36px;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--text);
+      min-height: 34px;
       opacity: 1;
-      transition: opacity 0.35s ease;
+      transition: opacity 0.35s ease, transform 0.35s ease;
     }
+    .loading-tip.tip-swap { opacity: 0; transform: translateY(5px); }
     @media (prefers-reduced-motion: reduce) {
       .loading-bar-fill { animation: none; width: 100%; opacity: 0.5; }
+      .loading-bar-sheen { display: none; }
       .ov-lp { display: none; }
-      .loading-tip { transition: none; }
+      .loading-wordmark, .loading-banner, .loading-bar, .loading-phase, .loading-tipcard { animation: none; }
+      .loading-tip, .loading-phase { transition: none; }
     }
 
     /* ── Cade / spawn quick menu (OVApp.toggleCadeMenu) ── */
@@ -1541,6 +1663,49 @@
           </button>
         </div>
       </div>
+
+      <!-- Controls: curated keybinds (bind/unbind via openvibe:// bridge in-game,
+           localStorage 'ov_binds' pending store elsewhere) -->
+      <div class="settings-section" id="settings-controls">
+        <div class="options-title">Controls</div>
+        <div id="controls-note" class="opt-note" style="display:none"></div>
+        <div id="controls-bind-list"></div>
+      </div>
+
+      <!-- Display: resolution + window mode (mat_setvideomode in-game,
+           electronOV.setDisplayPrefs in the launcher, 'ov_display' storage) -->
+      <div class="settings-section" id="settings-display">
+        <div class="options-title">Display</div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Resolution</div>
+            <div class="settings-desc">Applied with mat_setvideomode in-game</div>
+          </div>
+          <select id="display-res" class="settings-input narrow">
+            <option value="current">Current</option>
+            <option value="1280x720">1280 &times; 720</option>
+            <option value="1600x900">1600 &times; 900</option>
+            <option value="1920x1080">1920 &times; 1080</option>
+            <option value="2560x1440">2560 &times; 1440</option>
+            <option value="3840x2160">3840 &times; 2160</option>
+          </select>
+        </div>
+        <div class="settings-row">
+          <div>
+            <div class="settings-label">Window Mode</div>
+            <div class="settings-desc">Borderless runs windowed &mdash; add -noborder to launch options</div>
+          </div>
+          <select id="display-mode" class="settings-input narrow">
+            <option value="windowed">Windowed</option>
+            <option value="fullscreen">Fullscreen</option>
+            <option value="borderless">Borderless</option>
+          </select>
+        </div>
+        <div class="settings-row" style="border:none;">
+          <span id="display-note" class="settings-desc"></span>
+          <button class="btn-console" onclick="OVApp.displayApply()">Apply display settings</button>
+        </div>
+      </div>
     </div>
 
     <!-- Options: game/UI settings (account auth stays on #settings) -->
@@ -1713,11 +1878,18 @@
      window while the game boots (/client/?loading=1&mode=<mode>). -->
 <div id="ov-loading">
   <div id="loading-particles" class="loading-particles"></div>
+  <div class="loading-vignette"></div>
   <div class="loading-wordmark">OPENVIBE<span>: SOURCE</span></div>
-  <div id="loading-mode" class="loading-mode"></div>
-  <div class="loading-bar"><div class="loading-bar-fill"></div></div>
+  <div class="loading-banner">
+    <span id="loading-mode" class="loading-mode"></span>
+    <span id="loading-map" class="loading-map" hidden></span>
+  </div>
+  <div class="loading-bar"><div class="loading-bar-fill"></div><div class="loading-bar-sheen"></div></div>
   <div id="loading-phase" class="loading-phase">Starting Source engine&hellip;</div>
-  <div id="loading-tip" class="loading-tip"></div>
+  <div class="loading-tipcard">
+    <div class="loading-tip-label">Did you know?</div>
+    <div id="loading-tip" class="loading-tip"></div>
+  </div>
 </div>
 
 <!-- ─────────────────────────────────────────────── CADE QUICK MENU -->
@@ -1938,7 +2110,9 @@
       el.classList.toggle('active', el.dataset.route === routeName);
     });
 
-    if (!_routeLoaded[routeName] || routeName === 'options') {
+    // options + settings re-run their loader on every visit (live convar /
+    // keybind reads go stale otherwise).
+    if (!_routeLoaded[routeName] || routeName === 'options' || routeName === 'settings') {
       _routeLoaded[routeName] = true;
       loadRoute(routeName);
     }
@@ -1953,6 +2127,7 @@
       case 'shop':        loadShop();        break;
       case 'console':     consoleEnsure();   break;
       case 'options':     loadOptions();     break;
+      case 'settings':    loadSettingsExtras(); break;
     }
   }
 
@@ -3575,6 +3750,13 @@
     up: { server: false, client: false }   // runtime control servers reachable?
   };
 
+  // Extra listeners on the engine console spew (window.OV.onConsoleLine).
+  // Push a fn(line) to observe every engine line alongside the console log;
+  // remove it when done. Used by the Controls section to parse
+  // key_listboundkeys output — deliberately additive, the console pipeline
+  // itself is untouched.
+  var _conTaps = [];
+
   // In-game the engine bridge (openvibe://cmd → js_run/js_run_cl, output back
   // through the console spew tap) covers JS eval even with no Node runtimes.
   function conHasEngineBridge() { return embedded && shell === 'source'; }
@@ -4141,6 +4323,20 @@
     if (accentEl && prefs.accent)      accentEl.value = prefs.accent;
     if (scaleEl  && prefs.hudScale)    scaleEl.value  = prefs.hudScale;
     if (fontEl   && prefs.consoleFont) fontEl.value   = prefs.consoleFont;
+
+    // Display prefs ride along on the options-sync broadcast: mirror them
+    // into the local 'ov_display' store and the Settings selects if visible.
+    if (prefs.display && typeof prefs.display === 'object') {
+      try { localStorage.setItem('ov_display', JSON.stringify(prefs.display)); } catch (e) {}
+      var resEl2 = document.getElementById('display-res');
+      var modeEl2 = document.getElementById('display-mode');
+      if (resEl2) {
+        var want2 = Number(prefs.display.w) ? prefs.display.w + 'x' + prefs.display.h : 'current';
+        resEl2.value = want2;
+        if (resEl2.value !== want2) resEl2.value = 'current';
+      }
+      if (modeEl2 && prefs.display.mode) modeEl2.value = prefs.display.mode;
+    }
   }
 
   function saveOptPrefs(prefs, broadcast) {
@@ -4268,6 +4464,356 @@
   }
 
   // ══════════════════════════════════════════════════════════════════════
+  // Settings extras — Controls (keybinds) + Display (resolution)
+  // ══════════════════════════════════════════════════════════════════════
+  // Controls: curated action list. In-game changes go through the
+  // openvibe:// cmd bridge (`bind` / `unbind` / `host_writeconfig`); current
+  // binds are read live by tapping the console spew while `key_listboundkeys`
+  // prints. Outside the game the desired binds persist in localStorage
+  // 'ov_binds' as a pending set and are applied once on the next in-game load.
+  var BIND_KEY = 'ov_binds';
+  var BIND_ACTIONS = [
+    { id: 'console', label: 'Console',       cmd: 'ov_console',                def: '`' },
+    { id: 'menu',    label: 'Main Menu',     cmd: 'ov_menu_main',              def: 'F1' },
+    { id: 'cade',    label: 'Cade Menu',     cmd: 'ov_js_cmd_cl ov_econ_menu', def: 'c' },
+    { id: 'spawn',   label: 'Spawn Menu',    cmd: 'ov_qmenu',                  def: 'q' },
+    { id: 'forward', label: 'Move Forward',  cmd: '+forward',                  def: 'w' },
+    { id: 'back',    label: 'Move Back',     cmd: '+back',                     def: 's' },
+    { id: 'left',    label: 'Move Left',     cmd: '+moveleft',                 def: 'a' },
+    { id: 'right',   label: 'Move Right',    cmd: '+moveright',                def: 'd' },
+    { id: 'jump',    label: 'Jump',          cmd: '+jump',                     def: 'SPACE' },
+    { id: 'crouch',  label: 'Crouch',        cmd: '+duck',                     def: 'CTRL' },
+    { id: 'sprint',  label: 'Sprint',        cmd: '+speed',                    def: 'SHIFT' },
+    { id: 'use',     label: 'Use',           cmd: '+use',                      def: 'e' },
+    { id: 'reload',  label: 'Reload',        cmd: '+reload',                   def: 'r' },
+    { id: 'voice',   label: 'Voice Chat',    cmd: '+voicerecord',              def: 'v' },
+    { id: 'chat',    label: 'Chat',          cmd: 'messagemode',               def: 'y' },
+    { id: 'score',   label: 'Scoreboard',    cmd: '+showscores',               def: 'TAB' }
+  ];
+  var _bindCurrent = null;   // action id → Source key name (live/stored/default)
+  var _bindCap = null;       // action id being captured, or null
+  var _bindPendingApplied = false;
+
+  function bindActionById(id) {
+    for (var i = 0; i < BIND_ACTIONS.length; i++) if (BIND_ACTIONS[i].id === id) return BIND_ACTIONS[i];
+    return null;
+  }
+
+  function bindsLoadStore() {
+    try {
+      var d = JSON.parse(localStorage.getItem(BIND_KEY) || 'null');
+      if (d && typeof d === 'object' && d.binds && typeof d.binds === 'object') return d;
+    } catch (e) {}
+    return { binds: {}, pending: false };
+  }
+  function bindsSaveStore(st) {
+    try { localStorage.setItem(BIND_KEY, JSON.stringify(st)); } catch (e) {}
+  }
+
+  // Send engine console commands through the openvibe:// cmd bridge, staggered
+  // so consecutive location.href navigations don't swallow each other. Every
+  // command stays well under 512 chars and contains no ';'.
+  function sendEngineCmds(cmds) {
+    if (!(embedded && shell === 'source')) return false;
+    cmds.forEach(function (c, i) {
+      setTimeout(function () {
+        location.href = 'openvibe://cmd?c=' + encodeURIComponent(c);
+      }, i * 90);
+    });
+    return true;
+  }
+
+  // Map a JS KeyboardEvent to the Source bind key name. Returns null for keys
+  // we refuse to bind (unmappable, or ones that would break bind quoting).
+  function jsKeyToSource(ev) {
+    var k = ev.key;
+    var code = ev.code || '';
+    if (code.indexOf('Numpad') === 0) {
+      var kp = {
+        Numpad0: 'KP_INS', Numpad1: 'KP_END', Numpad2: 'KP_DOWNARROW', Numpad3: 'KP_PGDN',
+        Numpad4: 'KP_LEFTARROW', Numpad5: 'KP_5', Numpad6: 'KP_RIGHTARROW', Numpad7: 'KP_HOME',
+        Numpad8: 'KP_UPARROW', Numpad9: 'KP_PGUP', NumpadEnter: 'KP_ENTER', NumpadAdd: 'KP_PLUS',
+        NumpadSubtract: 'KP_MINUS', NumpadMultiply: 'KP_MULTIPLY', NumpadDivide: 'KP_SLASH',
+        NumpadDecimal: 'KP_DEL'
+      };
+      if (kp[code]) return kp[code];
+    }
+    var named = {
+      ' ': 'SPACE',
+      'ArrowUp': 'UPARROW', 'ArrowDown': 'DOWNARROW', 'ArrowLeft': 'LEFTARROW', 'ArrowRight': 'RIGHTARROW',
+      'Control': 'CTRL', 'Shift': 'SHIFT', 'Alt': 'ALT', 'Tab': 'TAB', 'Enter': 'ENTER',
+      'Backspace': 'BACKSPACE', 'Delete': 'DEL', 'Insert': 'INS', 'Home': 'HOME', 'End': 'END',
+      'PageUp': 'PGUP', 'PageDown': 'PGDN', 'CapsLock': 'CAPSLOCK', 'Pause': 'PAUSE',
+      'ScrollLock': 'SCROLLLOCK', 'NumLock': 'NUMLOCK'
+    };
+    if (named[k]) return named[k];
+    if (/^F([1-9]|1[0-2])$/.test(k)) return k;
+    if (k === '`' || k === '~') return '`';
+    if (k === ';' || k === ':') return 'SEMICOLON';   // ';' would split the bind command
+    if (k === '"') return null;                        // would break bind quoting
+    if (typeof k === 'string' && k.length === 1) return k.toLowerCase();
+    return null;
+  }
+
+  function bindDisplayKey(key) {
+    if (!key) return '—';
+    return key.length === 1 ? key.toUpperCase() : key;
+  }
+
+  function bindsInitCurrent() {
+    if (_bindCurrent) return;
+    _bindCurrent = {};
+    var st = bindsLoadStore();
+    BIND_ACTIONS.forEach(function (a) { _bindCurrent[a.id] = st.binds[a.id] || a.def; });
+  }
+
+  function bindsRender() {
+    var list = document.getElementById('controls-bind-list');
+    if (!list) return;
+    bindsInitCurrent();
+    list.innerHTML = BIND_ACTIONS.map(function (a) {
+      return '<div class="settings-row">' +
+        '<div><div class="settings-label">' + escHtml(a.label) + '</div>' +
+        '<div class="settings-desc">' + escHtml(a.cmd) + '</div></div>' +
+        '<div class="bind-cell">' +
+        '<span class="bind-chip" id="bind-chip-' + a.id + '"></span>' +
+        '<button class="btn-console" onclick="OVApp.bindCapture(\'' + a.id + '\')">Rebind</button>' +
+        '</div></div>';
+    }).join('');
+    bindsRenderKeys();
+  }
+
+  function bindsRenderKeys() {
+    if (!_bindCurrent) return;
+    BIND_ACTIONS.forEach(function (a) {
+      var chip = document.getElementById('bind-chip-' + a.id);
+      if (!chip) return;
+      if (_bindCap === a.id) {
+        chip.textContent = 'press a key…';
+        chip.className = 'bind-chip capturing';
+      } else {
+        var key = _bindCurrent[a.id];
+        chip.textContent = bindDisplayKey(key);
+        chip.className = 'bind-chip' + (key ? '' : ' unbound');
+      }
+    });
+  }
+
+  // ── Capture: next keydown / mousedown becomes the bind; Esc cancels ──
+  function bindKeydownCapture(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ev.key === 'Escape') { bindCaptureEnd(null); return; }
+    var src = jsKeyToSource(ev);
+    if (!src) return; // unmappable — keep listening
+    bindCaptureEnd(src);
+  }
+  function bindMousedownCapture(ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    var m = { 0: 'MOUSE1', 1: 'MOUSE3', 2: 'MOUSE2' }[ev.button];
+    bindCaptureEnd(m || null);
+  }
+  function bindCtxCapture(ev) { ev.preventDefault(); ev.stopPropagation(); }
+
+  function bindCaptureStart(id) {
+    bindsInitCurrent();
+    if (_bindCap) bindCaptureEnd(null); // cancel a previous capture
+    _bindCap = id;
+    bindsRenderKeys();
+    document.addEventListener('keydown', bindKeydownCapture, true);
+    document.addEventListener('mousedown', bindMousedownCapture, true);
+    document.addEventListener('contextmenu', bindCtxCapture, true);
+  }
+
+  function bindCaptureEnd(srcKey) {
+    document.removeEventListener('keydown', bindKeydownCapture, true);
+    document.removeEventListener('mousedown', bindMousedownCapture, true);
+    document.removeEventListener('contextmenu', bindCtxCapture, true);
+    var id = _bindCap;
+    _bindCap = null;
+    if (id && srcKey) bindsSetKey(bindActionById(id), srcKey);
+    bindsRenderKeys();
+  }
+
+  // Apply a new key for an action. In-game: bind the new key, unbind the
+  // action's old key (so the old key stops triggering it — this is how the
+  // console key itself stays rebindable: new key → ov_console, old key
+  // unbound), persist with host_writeconfig. If the new key was taken by a
+  // different curated action, that action shows as unbound (the engine bind
+  // is per-key, so `bind` already stole it). Outside the game: store as
+  // pending in 'ov_binds'.
+  function bindsSetKey(action, srcKey) {
+    if (!action || !srcKey) return;
+    bindsInitCurrent();
+    var st = bindsLoadStore();
+    var oldKey = _bindCurrent[action.id] || null;
+    var stolen = null;
+    BIND_ACTIONS.forEach(function (a) {
+      if (a.id !== action.id && _bindCurrent[a.id] &&
+          String(_bindCurrent[a.id]).toLowerCase() === srcKey.toLowerCase()) stolen = a;
+    });
+    if (embedded && shell === 'source') {
+      var cmds = ['bind "' + srcKey + '" "' + action.cmd + '"'];
+      if (oldKey && oldKey.toLowerCase() !== srcKey.toLowerCase()) cmds.push('unbind "' + oldKey + '"');
+      cmds.push('host_writeconfig');
+      sendEngineCmds(cmds);
+      toast(action.label + ' bound to ' + bindDisplayKey(srcKey) + '.', 'success');
+    } else {
+      st.pending = true;
+      toast(action.label + ' → ' + bindDisplayKey(srcKey) + ' saved — applies in-game.', 'info');
+    }
+    _bindCurrent[action.id] = srcKey;
+    st.binds[action.id] = srcKey;
+    if (stolen) {
+      _bindCurrent[stolen.id] = null;
+      delete st.binds[stolen.id];
+    }
+    bindsSaveStore(st);
+  }
+
+  // Read the live binds in-game: tap the console spew, run key_listboundkeys
+  // through the bridge, and for ~2s parse lines shaped `"<key>" = "<command>"`,
+  // matching commands against the curated list (first key per command wins).
+  function bindsReadLive() {
+    if (!(embedded && shell === 'source')) return;
+    var found = {};
+    var tap = function (line) {
+      var m = /^\s*"(.+?)"\s*=\s*"(.*)"\s*$/.exec(line);
+      if (!m) return;
+      var key = m[1];
+      var cmd = m[2].trim().toLowerCase();
+      BIND_ACTIONS.forEach(function (a) {
+        if (!found[a.id] && cmd === a.cmd.toLowerCase()) found[a.id] = key;
+      });
+    };
+    _conTaps.push(tap);
+    sendEngineCmds(['key_listboundkeys']);
+    setTimeout(function () {
+      var i = _conTaps.indexOf(tap);
+      if (i !== -1) _conTaps.splice(i, 1);
+      var any = false;
+      for (var id in found) { any = true; break; }
+      if (!any) return; // engine didn't answer — keep stored/default view
+      bindsInitCurrent();
+      BIND_ACTIONS.forEach(function (a) { _bindCurrent[a.id] = found[a.id] || null; });
+      bindsRenderKeys();
+    }, 2000);
+  }
+
+  // Pending binds saved in a browser/Electron session get applied once when
+  // the page next loads inside the game panel, then the pending flag clears.
+  function bindsApplyPendingOnce() {
+    if (!(embedded && shell === 'source') || _bindPendingApplied) return;
+    _bindPendingApplied = true;
+    var st = bindsLoadStore();
+    if (!st.pending) return;
+    var cmds = [];
+    for (var id in st.binds) {
+      var a = bindActionById(id);
+      if (a && st.binds[id]) cmds.push('bind "' + st.binds[id] + '" "' + a.cmd + '"');
+    }
+    if (cmds.length) {
+      cmds.push('host_writeconfig');
+      sendEngineCmds(cmds);
+    }
+    st.pending = false;
+    bindsSaveStore(st);
+  }
+
+  // ── Display: resolution + window mode ────────────────────────────────
+  var DISPLAY_KEY = 'ov_display';
+
+  function displayLoadStore() {
+    try {
+      var d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || 'null');
+      if (d && typeof d === 'object') return { w: Number(d.w) || 0, h: Number(d.h) || 0, mode: d.mode || 'windowed' };
+    } catch (e) {}
+    return { w: 0, h: 0, mode: 'windowed' };
+  }
+
+  function displaySectionLoad() {
+    var d = displayLoadStore();
+    var resEl = document.getElementById('display-res');
+    var modeEl = document.getElementById('display-mode');
+    if (resEl) {
+      var want = d.w ? d.w + 'x' + d.h : 'current';
+      resEl.value = want;
+      if (resEl.value !== want) resEl.value = 'current'; // stored res not in the list
+    }
+    if (modeEl) modeEl.value = ['windowed', 'fullscreen', 'borderless'].indexOf(d.mode) !== -1 ? d.mode : 'windowed';
+    var note = document.getElementById('display-note');
+    if (note) {
+      note.textContent = (embedded && shell === 'source')
+        ? 'Applies immediately via mat_setvideomode.'
+        : (isElectron ? 'Shared with the launcher and future game launches.'
+                      : 'Saved — applies in-game / in the launcher.');
+    }
+  }
+
+  function displayApply() {
+    var resEl = document.getElementById('display-res');
+    var modeEl = document.getElementById('display-mode');
+    var mode = (modeEl && modeEl.value) || 'windowed';
+    var w = 0, h = 0;
+    var sel = (resEl && resEl.value) || 'current';
+    if (sel !== 'current') {
+      var parts = sel.split('x');
+      w = Number(parts[0]) || 0;
+      h = Number(parts[1]) || 0;
+    }
+    var disp = { w: w, h: h, mode: mode };
+    try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(disp)); } catch (e) {}
+
+    // Broadcast on the existing options-sync path so the other host mirrors it.
+    var prefs = loadOptPrefs();
+    prefs.display = disp;
+    saveOptPrefs(prefs);
+
+    // Electron launcher: hand the prefs to the shell (setDisplayPrefs is being
+    // added launcher-side — guard so older preloads don't throw).
+    if (electronOV) {
+      if (typeof electronOV.setDisplayPrefs === 'function') {
+        try { electronOV.setDisplayPrefs(disp); } catch (e) {}
+        toast('Display preferences saved to the launcher.', 'success');
+      } else {
+        toast('Display preferences saved (launcher update pending).', 'info');
+      }
+      return;
+    }
+
+    if (embedded && shell === 'source') {
+      // Borderless has no dedicated convar: run windowed (windowed=1) and rely
+      // on the -noborder launch option for the frameless window.
+      var effW = w || (window.screen && screen.width) || 1920;
+      var effH = h || (window.screen && screen.height) || 1080;
+      var windowed = mode === 'fullscreen' ? 0 : 1;
+      sendEngineCmds(['mat_setvideomode ' + effW + ' ' + effH + ' ' + windowed, 'host_writeconfig']);
+      toast(mode === 'borderless'
+        ? 'Applied ' + effW + 'x' + effH + ' windowed — add -noborder to launch options for borderless.'
+        : 'Applied ' + effW + 'x' + effH + ' ' + mode + '.', 'success');
+      return;
+    }
+    toast('Display preferences saved — they apply in-game or in the launcher.', 'success');
+  }
+
+  // Route loader for #settings extras (Controls + Display).
+  function loadSettingsExtras() {
+    var note = document.getElementById('controls-note');
+    if (note) {
+      if (embedded && shell === 'source') {
+        note.style.display = 'none';
+      } else {
+        note.style.display = 'block';
+        note.textContent = 'Not in-game — rebinds are saved here and applied automatically the next time the game panel loads.';
+      }
+    }
+    bindsRender();
+    bindsReadLive();
+    displaySectionLoad();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
   // HUD overlay (#hud / ?hud=1) — translucent in-game overlay
   // ══════════════════════════════════════════════════════════════════════
   var _hudActive = false;
@@ -4367,10 +4913,26 @@
   ];
   var _loadAutoPhase = null;   // last phase the /state poller computed
   var _loadTipIdx = -1;
+  var _loadPhaseTok = 0;       // cancels an in-flight phase swap animation
 
+  function loadingReducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  // Phase line transitions: fade+slide the old text out, swap, slide back in.
   function loadingSetPhase(text) {
     var el = document.getElementById('loading-phase');
-    if (el) el.textContent = String(text);
+    if (!el) return;
+    var next = String(text);
+    if (el.textContent === next) return;
+    if (loadingReducedMotion()) { el.textContent = next; return; }
+    var tok = ++_loadPhaseTok;
+    el.classList.add('phase-swap');
+    setTimeout(function () {
+      if (tok !== _loadPhaseTok) return;
+      el.textContent = next;
+      el.classList.remove('phase-swap');
+    }, 280);
   }
 
   // Self-driving phases off the client runtime control server (same /state
@@ -4383,6 +4945,12 @@
     fetch(RT.client + '/state')
       .then(function (r) { return r.json(); })
       .then(function (st) {
+        // Map banner chip lights up as soon as the engine reports a map.
+        var mapEl = document.getElementById('loading-map');
+        if (mapEl && st && st.gameConnected && st.map && mapEl.textContent !== String(st.map)) {
+          mapEl.textContent = String(st.map);
+          mapEl.hidden = false;
+        }
         if (st && st.gameConnected) auto(st.map ? 'Entering ' + st.map + '…' : 'Loading gamemode…');
         else auto('Starting Source engine…');
       })
@@ -4393,11 +4961,11 @@
     var el = document.getElementById('loading-tip');
     if (!el) return;
     _loadTipIdx = (_loadTipIdx + 1) % LOADING_TIPS.length;
-    if (immediate) { el.textContent = LOADING_TIPS[_loadTipIdx]; return; }
-    el.style.opacity = '0';
+    if (immediate || loadingReducedMotion()) { el.textContent = LOADING_TIPS[_loadTipIdx]; return; }
+    el.classList.add('tip-swap');
     setTimeout(function () {
       el.textContent = LOADING_TIPS[_loadTipIdx];
-      el.style.opacity = '1';
+      el.classList.remove('tip-swap');
     }, 350);
   }
 
@@ -4408,17 +4976,21 @@
     var modeEl = document.getElementById('loading-mode');
     if (modeEl) modeEl.textContent = mode;
 
-    // Ambient rising particles (skipped under prefers-reduced-motion).
-    var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Ambient rising + drifting particles (skipped under prefers-reduced-motion).
+    var reduced = loadingReducedMotion();
     var pWrap = document.getElementById('loading-particles');
     if (pWrap && !reduced) {
-      for (var i = 0; i < 18; i++) {
+      for (var i = 0; i < 22; i++) {
         var d = document.createElement('div');
         d.className = 'ov-lp';
+        var sz = 2 + Math.random() * 2.5;
+        d.style.width = sz + 'px';
+        d.style.height = sz + 'px';
         d.style.left = (Math.random() * 100) + '%';
+        d.style.setProperty('--lp-drift', (Math.random() * 90 - 45).toFixed(0) + 'px');
         d.style.animationDuration = (6 + Math.random() * 10) + 's';
         d.style.animationDelay = (-Math.random() * 12) + 's';
-        d.style.opacity = String(0.15 + Math.random() * 0.4);
+        d.style.opacity = String(0.12 + Math.random() * 0.4);
         pWrap.appendChild(d);
       }
     }
@@ -4824,7 +5396,12 @@
     onConsoleLine: function (lines) {
       if (lines == null) return;
       var arr = Array.isArray(lines) ? lines : [lines];
-      for (var i = 0; i < arr.length; i++) conAppend('engine', arr[i]);
+      for (var i = 0; i < arr.length; i++) {
+        conAppend('engine', arr[i]);
+        for (var t = 0; t < _conTaps.length; t++) {
+          try { _conTaps[t](String(arr[i])); } catch (e) { /* tap errors never break the spew */ }
+        }
+      }
     },
 
     // Called by C++ (openvibe://complete) with live command-registry matches:
@@ -4900,6 +5477,10 @@
       saveOptPrefs({ accent: '#1a9fff', hudScale: 1, consoleFont: 12 });
       toast('UI preferences reset.', 'success');
     },
+
+    // ── Settings: Controls (keybinds) + Display ───────────────────────
+    bindCapture: function (id) { bindCaptureStart(id); },
+    displayApply: function () { displayApply(); },
 
     // Applied when the other host broadcasts option changes (ui-sync.js).
     applyOptions: function (prefs, fromRemote) {
@@ -5099,6 +5680,8 @@
     if (embedded && shell === 'source') {
       var readyImg = new Image();
       readyImg.src = 'openvibe://ready';
+      // Binds queued from the browser/Electron Settings page apply now, once.
+      setTimeout(bindsApplyPendingOnce, 400);
     }
   }
 

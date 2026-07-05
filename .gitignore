@@ -35,6 +35,7 @@ steam_appid.txt
 
 # node_modules are tracked via package-lock.json; exclude the installed version to reduce repo size
 launcher/node_modules/
+launcher/.ov-display.json
 backend/node_modules/
 
 # OpenVibe local/generated build junk
