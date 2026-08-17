@@ -1,0 +1,70 @@
+import type {
+  InventoryDto,
+  ItemStack,
+  ReputationDto,
+  SkillsDto,
+  SurvivalStats,
+} from '@openvibe/gameplay'
+import type { Appearance } from '@openvibe/protocol'
+
+/**
+ * Persistence DTOs: the explicit, versionable disk representation of game
+ * state. Runtime objects (Babylon meshes, Havok bodies, live Inventory
+ * instances) are transient — they are rebuilt FROM these records, never
+ * serialized directly.
+ */
+
+export interface WorldEntityDto {
+  id: string
+  kind: 'prop' | 'resource' | 'npc'
+  defId: string
+  ownerId: string | null
+  pos: [number, number, number]
+  rot: [number, number, number, number]
+  motion: 'dynamic' | 'frozen' | 'static'
+  /** Kind-specific extra state (resource remaining, container slots...) as JSON. */
+  state: Record<string, unknown> | null
+  updatedAt: number
+}
+
+export interface PlayerDto {
+  id: string
+  /** Identity token from the client (interim auth; see ADR-0004). */
+  token: string
+  name: string
+  pos: [number, number, number]
+  yaw: number
+  inventory: InventoryDto
+  /** Total XP per skill id (levels are derived at runtime). */
+  skills: SkillsDto
+  /** Player ids this player trusts with their props (one-directional). */
+  friends: string[]
+  /** Avatar customization; null until the player first customizes. */
+  appearance: Appearance | null
+  /** Character slot under this account token (0..2, MMO-style). */
+  charSlot: number
+  /** Worn armor piece; null for none (durability in stack meta). */
+  armor: ItemStack | null
+  /** Faction reputation scores (absent factions = 0). */
+  reputation: ReputationDto
+  /** Unlocked blueprint recipe ids. */
+  unlocks: string[]
+  /** Active job/contract state; null when none. */
+  activeJob: { job: string; progress: number } | null
+  /** Survival vitals; null/partial rows predate newer fields — the loader
+   * normalizes (see @openvibe/gameplay normalizeStats). */
+  stats: Partial<SurvivalStats> | null
+  updatedAt: number
+}
+
+/** Persistent constraint between two world entities (weld/rope/hinge/axis/slider/spring/motor). */
+export interface ConstraintDto {
+  id: string
+  /** Gameplay constraint type id. Unknown types are pruned on restore. */
+  type: string
+  entityA: string
+  entityB: string
+  /** Type-specific parameters (anchors, axes, lengths, limits, motor...). */
+  params: Record<string, unknown> | null
+  updatedAt: number
+}

@@ -1,0 +1,81 @@
+import type { ContentRegistry } from '@openvibe/content';
+import type { Connection } from '../net/connection.js';
+import type { ClientState } from '../state/clientState.js';
+import type { IconFactory } from './iconFactory.js';
+import { type WeaponSettings } from '../weapons/registry.js';
+export declare class Hud {
+    private readonly state;
+    private readonly content;
+    private readonly connection;
+    private readonly icons;
+    private readonly weaponSettings;
+    private root;
+    private hotbarEl;
+    private menuEl;
+    private menuBodyEl;
+    private promptEl;
+    private statusEl;
+    private toastArea;
+    menuOpen: boolean;
+    private activeTab;
+    private dragFrom;
+    onUiCaptureChange: ((captured: boolean) => void) | null;
+    constructor(root: HTMLElement, state: ClientState, content: ContentRegistry, connection: Connection, icons: IconFactory, weaponSettings: WeaponSettings);
+    private build;
+    private openContainerId;
+    private containerData;
+    private lastHp;
+    private hitmarkerTimer;
+    /** Brief crosshair X when a melee hit lands on another player. */
+    flashHitmarker(): void;
+    private flashDamage;
+    private shopOpen;
+    private showDeathScreen;
+    /** Merchant trade sheet (content-driven; server validates every trade). */
+    /** Shop entity currently open (market requests target it). */
+    private shopTargetId;
+    /** Latest market data from the server. */
+    private marketData;
+    /** Contracts at the open trading post. */
+    private jobsData;
+    openShop(targetId: string): void;
+    setMarket(data: NonNullable<typeof this.marketData>): void;
+    closeShop(): void;
+    private renderShop;
+    private announceTimer;
+    private showAnnounce;
+    private renderVitals;
+    /** Opens (or refreshes) the storage panel for a container entity. */
+    showContainer(id: string, size: number, slots: {
+        i: number;
+        def: string;
+        count: number;
+    }[]): void;
+    closeContainer(): void;
+    get containerOpen(): boolean;
+    private renderContainer;
+    private byId;
+    toggleMenu(): void;
+    closeAll(): void;
+    private setTab;
+    private editMode;
+    private renderTabs;
+    renderMenu(): void;
+    /** Faction standings: who likes you, who wants you dead. */
+    private renderStanding;
+    private slotStack;
+    private dropToWorld;
+    private slotEl;
+    private firstFreeSlot;
+    renderHotbar(): void;
+    private renderInventory;
+    private renderCrafting;
+    /** Modular per-weapon settings/info — modules register per tool kind. */
+    private renderEquipment;
+    private renderSkills;
+    private renderPlayers;
+    setPrompt(text: string | null): void;
+    setStatus(text: string): void;
+    toast(text: string, isError?: boolean): void;
+}
+//# sourceMappingURL=hud.d.ts.map

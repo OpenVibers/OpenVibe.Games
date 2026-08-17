@@ -1,0 +1,38 @@
+{
+  "name": "openvibe-games",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Scraplandia — persistent multiplayer physics sandbox (browser)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.6.5",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @openvibe/server --filter @openvibe/client dev",
+    "dev:server": "pnpm --filter @openvibe/server dev",
+    "dev:client": "pnpm --filter @openvibe/client dev",
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "audit:editor": "vitest run --config vitest.audit.config.ts",
+    "test:editor": "node --import tsx apps/client/e2e/editorCheck.ts",
+    "test:collab": "node --import tsx apps/client/e2e/editorCollabCheck.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build tsconfig.solution.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.23.0",
+    "@types/node": "^22.13.0",
+    "eslint": "^9.23.0",
+    "jsdom": "^30.0.1",
+    "playwright": "^1.62.1",
+    "prettier": "^3.5.3",
+    "tsx": "^4.23.11",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.29.0",
+    "vitest": "^3.1.1"
+  }
+}

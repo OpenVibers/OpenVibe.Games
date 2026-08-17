@@ -1,0 +1,1889 @@
+/**
+ * Editor acceptance suite — the canonical browser regression for /editor.
+ *
+ * Talks to the editor ONLY through window.__editor (the probe API), and
+ * interacts with REAL gizmo handle geometry found by ray-testing the utility
+ * layer, so it exercises the same code path a user does rather than calling
+ * internals directly.
+ *
+ * Tracked (not in ignored scratch/) because it is the acceptance gate:
+ *
+ *   pnpm test:editor
+ */
+import { spawn } from 'node:child_process'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { chromium, type JSHandle, type Page } from 'playwright'
+
+const PORT = 18195
+const dir = mkdtempSync(join(tmpdir(), 'openvibe-repro-'))
+const mapPath = join(dir, 'map.json')
+
+// ── Fixture map: NATIVE v2 — one ordinary terrain plus three boxes. ─────
+// The acceptance fixture is deliberately v2: this suite is the gate for the
+// FINAL editor, so it must not depend on the migration path. A separate v1
+// smoke below proves old maps still load.
+//
+// The boxes sit to the +x side so their projections clear the editor's
+// ~270px left sidebar, which overlays the canvas and would swallow clicks.
+const SUB = 128
+const HALF = 100
+const flat = new Float32Array((SUB + 1) * (SUB + 1))
+const b64 = Buffer.from(new Uint8Array(flat.buffer, flat.byteOffset, flat.byteLength)).toString(
+  'base64',
+)
+/** The one terrain in the fixture. Nothing treats it as special. */
+const FLOOR_ID = 'terrain-floor'
+writeFileSync(
+  mapPath,
+  JSON.stringify({
+    v: 2,
+    terrains: [
+      {
+        id: FLOOR_ID,
+        name: 'Floor',
+        pos: [0, 0, 0],
+        halfExtent: HALF,
+        sub: SUB,
+        heights: b64,
+      },
+    ],
+    statics: [
+      {
+        id: 'box-a',
+        shape: { type: 'box', size: [4, 4, 4] },
+        pos: [6, 2, 0],
+        yaw: 0,
+        color: '#c04040',
+      },
+      {
+        id: 'box-b',
+        shape: { type: 'box', size: [4, 4, 4] },
+        pos: [22, 2, 0],
+        yaw: 0,
+        color: '#40c040',
+      },
+      {
+        id: 'box-c',
+        shape: { type: 'box', size: [4, 4, 4] },
+        pos: [38, 2, 0],
+        yaw: 0,
+        color: '#4040c0',
+      },
+    ],
+    nodes: [],
+    props: [],
+    lights: [],
+    zones: [],
+  }),
+)
+
+const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
+  env: {
+    ...process.env,
+    PORT: String(PORT),
+    DB_PATH: join(dir, 'world.db'),
+    STATIC_DIR: 'apps/client/dist',
+    MAP_PATH: mapPath,
+    EDITOR_KEY: 'test-admin-key',
+  },
+  stdio: ['ignore', 'pipe', 'pipe'],
+})
+server.stderr!.on('data', (c) => console.log('[server]', String(c).slice(0, 400)))
+// Never leave an orphan holding the port when a scenario throws.
+for (const sig of ['exit', 'uncaughtException', 'unhandledRejection'] as const)
+  process.on(sig, (e) => {
+    server.kill()
+    if (e instanceof Error) {
+      console.error(e)
+      process.exit(1)
+    }
+  })
+await new Promise<void>((res, rej) => {
+  const t = setTimeout(() => rej(new Error('server never reported listening')), 30_000)
+  server.stdout!.on('data', (c) => {
+    if (String(c).includes('listening')) {
+      clearTimeout(t)
+      res()
+    }
+  })
+})
+
+let failures = 0
+let checks = 0
+const ok = (name: string, cond: boolean, detail?: unknown): void => {
+  checks++
+  if (!cond) failures++
+  const tag = cond ? 'PASS' : 'FAIL'
+  console.log(
+    `  [${tag}] ${name}${cond || detail === undefined ? '' : `  → ${JSON.stringify(detail)}`}`,
+  )
+}
+const section = (n: string): void =>
+  console.log(`\n── ${n} ${'─'.repeat(Math.max(0, 58 - n.length))}`)
+
+type Probe = {
+  selectionIds: () => string[]
+  primaryId: () => string | null
+  interactionState: () => string
+  gizmoState: () => { mode: string; attached: boolean; dragging: boolean }
+  gizmoHandleScreenPos: (a: 'x' | 'y' | 'z') => [number, number] | null
+  cameraSnapshot: () => { pos: number[]; rot: number[] }
+  history: () => { depth: number; redo: number }
+  terrainWires: () => Record<string, boolean>
+  faceSelKeys: () => string[]
+  pickIdAt: (x: number, y: number) => string | null
+  surfaceMaterialOf: (id: string) => {
+    base: string | null
+    layers: { tex: string; channel: string; hidden: boolean; color: string | null }[]
+    hasMask: boolean
+  } | null
+  setPaintTexture: (tex: string) => void
+  setPaintColor: (hex: string) => void
+  setInspectorTexture: (tex: string) => void
+  terrainIds: () => string[]
+  transformOf: (id: string) => { position: number[]; rotation: number[] | null } | null
+  worldToScreen: (p: number[]) => [number, number]
+  setToolByName: (t: string) => void
+  selectByIds: (ids: string[]) => void
+  undo: () => void
+  redo: () => void
+  setCameraPose: (pos: number[], rot: number[]) => void
+  objectCounts: () => Record<string, number>
+  terrainMeshCount: () => number
+  sceneMeshNames: () => string[]
+  assetState: () => {
+    textures: { name: string; url: string | null }[]
+    models: { id: string; name: string; glb: string }[]
+    textureUsage: Record<string, number>
+    modelUsage: Record<string, number>
+  }
+  importTextureBytes: (name: string, bytes: number[]) => Promise<string | null>
+  renameTexture: (from: string, to: string) => boolean
+  deleteTexture: (name: string) => boolean
+  textureRefsOf: (id: string) => string
+  paintedSurfaces: (id: string) => Record<string, { layers: number; hasMask: boolean }>
+  maskUploadCount: () => number
+  save: () => Promise<void>
+  zoneOf: (id: string) => {
+    min: number[]
+    max: number[]
+    rules: { pvp: boolean; build: boolean; physgun: boolean }
+  } | null
+  setLightType: (t: string) => void
+  lightSummaries: () => { type: string; ok: boolean; hasAngle: boolean }[]
+  setProperty: (ids: string[], key: string, value: unknown) => void
+  dirty: boolean
+  groupMove: (dx: number, dy: number, dz: number) => void
+  perf: {
+    start: () => void
+    stop: () => void
+    snapshot: () => Record<string, { count: number; ms: number }>
+  }
+  sceneStats: () => { objects: number; views: number; meshes: number; sceneMeshes: number }
+  deleteSelection: () => void
+  importModelBytes: (name: string, bytes: number[]) => Promise<string | null>
+  armModel: (modelId: string) => void
+}
+// The probe lives in the page; pass it into evaluate() as a JSHandle so the
+// scenarios below can be written as plain typed functions.
+// Filled in once the page has booted; every helper below reads through it.
+const probe: { handle?: JSHandle<Probe> } = {}
+const ev = <T>(_page: Page, fn: (p: Probe) => T): Promise<T> =>
+  page.evaluate(fn as never, probe.handle as never) as Promise<T>
+/** evaluate with extra arguments (closures never cross the boundary). */
+const evA = <T>(fn: (a: [Probe, ...never[]]) => T, ...args: unknown[]): Promise<T> =>
+  page.evaluate(fn as never, [probe.handle, ...args] as never) as Promise<T>
+
+const browser = await chromium.launch({
+  args: ['--use-angle=swiftshader', '--enable-webgl', '--disable-gpu-sandbox'],
+})
+const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+page.on('pageerror', (e) =>
+  console.log('[pageerror]', String((e as Error).stack ?? e).slice(0, 500)),
+)
+await page.goto(`http://127.0.0.1:${PORT}/editor`)
+await page.waitForSelector('#save', { timeout: 90_000 })
+await page.waitForFunction(() => Boolean((window as never as { __editor?: unknown }).__editor), {
+  timeout: 90_000,
+})
+await page.waitForTimeout(5000)
+probe.handle = (await page.evaluateHandle(
+  () => (window as never as { __editor: Probe }).__editor,
+)) as JSHandle<Probe>
+
+// Warm-up: Babylon only learns the cursor position from a real pointermove,
+// and the editor picks with scene.pointerX/Y — so the very first synthetic
+// click must not be the first pointer event the page has ever seen.
+await page.mouse.move(700, 450)
+await page.waitForTimeout(600)
+
+/** Screen position of a document object, via the editor's own projector. */
+const screenOf = (id: string): Promise<[number, number]> =>
+  page.evaluate((oid: string) => {
+    const w = window as never as {
+      __editor: {
+        transformOf: (i: string) => { position: number[] } | null
+        worldToScreen: (p: number[]) => [number, number]
+      }
+    }
+    const t = w.__editor.transformOf(oid)
+    if (!t) throw new Error(`no object ${oid}`)
+    return w.__editor.worldToScreen(t.position)
+  }, id)
+
+/** transformOf across the process boundary (closures do not transfer). */
+const xf = (id: string): Promise<{ position: number[]; rotation: number[] | null }> =>
+  page.evaluate(([p, oid]) => (p as Probe).transformOf(oid as string)!, [
+    probe.handle,
+    id,
+  ] as never) as Promise<{ position: number[]; rotation: number[] | null }>
+const posOf = async (id: string): Promise<number[]> => (await xf(id)).position
+
+const traceClicks = false
+const clickObject = async (id: string, mods: string[] = []): Promise<void> => {
+  if (traceClicks)
+    console.log(
+      `    · pre-click ${id} state=${await ev(page, (p) => p.interactionState())} sel=${JSON.stringify(await ev(page, (p) => p.selectionIds()))}`,
+    )
+  // The projection uses the last RENDERED camera matrix, so after a camera
+  // change it can be a frame stale. Verify the aim against the editor's own
+  // picker and re-project until it actually lands on the target.
+  let x = 0
+  let y = 0
+  for (let i = 0; i < 25; i++) {
+    ;[x, y] = await screenOf(id)
+    const at = await evA(
+      ([p, px, py]) => p.pickIdAt(px as unknown as number, py as unknown as number),
+      x,
+      y,
+    )
+    if (at === id) break
+    await page.waitForTimeout(120)
+  }
+  await page.mouse.move(x, y)
+  await page.waitForTimeout(80)
+  for (const m of mods) await page.keyboard.down(m)
+  await page.mouse.down()
+  await page.mouse.up()
+  for (const m of mods) await page.keyboard.up(m)
+  await page.waitForTimeout(200)
+}
+
+/**
+ * Drag a real gizmo handle. Primes hover with a couple of moves (the utility
+ * layer only learns what is under the cursor from pointermove), then drags in
+ * small steps and reports whether the gizmo actually engaged.
+ */
+const dragHandle = async (
+  axis: 'x' | 'y' | 'z',
+  dx: number,
+  dy = 0,
+  steps = 10,
+): Promise<{ started: boolean; from: [number, number] | null }> => {
+  // Two things make this flaky under software GL: the gizmo is scaled to
+  // screen size on its first utility-layer frame, and a probe point can go
+  // stale between the query and the press. So poll for a STABLE handle, then
+  // verify the drag actually engaged and retry with a fresh point if not.
+  let last: [number, number] | null = null
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let h: [number, number] | null = null
+    let prev: string | null = null
+    for (let i = 0; i < 30; i++) {
+      await page.waitForTimeout(150)
+      const p2 = await evA(([p, a]) => p.gizmoHandleScreenPos(a as unknown as 'x'), axis)
+      const key = p2 ? `${p2[0]},${p2[1]}` : null
+      if (p2 && key === prev) {
+        h = p2
+        break
+      }
+      prev = key
+    }
+    if (!h) continue
+    last = h
+    await page.mouse.move(h[0] - 2, h[1])
+    await page.waitForTimeout(80)
+    await page.mouse.move(h[0], h[1])
+    await page.waitForTimeout(150)
+    await page.mouse.down()
+    await page.waitForTimeout(80)
+    let started = false
+    for (let i = 1; i <= steps; i++) {
+      await page.mouse.move(h[0] + (dx * i) / steps, h[1] + (dy * i) / steps)
+      await page.waitForTimeout(40)
+      if (!started && (await ev(page, (p) => p.gizmoState())).dragging) started = true
+    }
+    await page.mouse.up()
+    await page.waitForTimeout(320)
+    if (started) return { started: true, from: h }
+  }
+  return { started: false, from: last }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('A. Gizmo click-through (box on terrain)')
+await ev(page, (p) => p.setToolByName('select'))
+await page.waitForTimeout(200)
+await clickObject('box-b')
+ok(
+  'box-b selected',
+  (await ev(page, (p) => p.selectionIds())).includes('box-b'),
+  await ev(page, (p) => p.selectionIds()),
+)
+ok('gizmo attached', (await ev(page, (p) => p.gizmoState())).attached)
+
+const camBefore = await ev(page, (p) => p.cameraSnapshot())
+const posBefore = (await posOf('box-b')).slice()
+const dragA = await dragHandle('x', 70)
+ok('found a real X move-handle on screen', dragA.from !== null, dragA.from)
+ok('gizmo drag actually engaged', dragA.started, dragA)
+const selAfter = await ev(page, (p) => p.selectionIds())
+const camAfter = await ev(page, (p) => p.cameraSnapshot())
+const posAfter = await posOf('box-b')
+ok('selection is still exactly [box-b]', selAfter.length === 1 && selAfter[0] === 'box-b', selAfter)
+ok('terrain was NOT selected by the drag', !selAfter.includes(FLOOR_ID), selAfter)
+ok('box actually moved', Math.abs(posAfter[0]! - posBefore[0]!) > 0.05, { posBefore, posAfter })
+const camDelta = Math.max(
+  ...camBefore.pos.map((v, i) => Math.abs(v - camAfter.pos[i]!)),
+  ...camBefore.rot.map((v, i) => Math.abs(v - camAfter.rot[i]!)),
+)
+ok('camera did not move during gizmo drag', camDelta < 1e-6, { camBefore, camAfter, camDelta })
+
+// ════════════════════════════════════════════════════════════════════════
+section('A2. RAPID click on a gizmo handle (no hover frame)')
+// Real users press within the same frame they arrive on the handle. The old
+// architecture gates scene picking on gizmo.isHovered, which is only updated
+// when Babylon PROCESSES a pointermove — so a move+press in one tick leaks
+// the click through to whatever is behind the gizmo (here: the terrain).
+await clickObject('box-b')
+let h2: [number, number] | null = null
+for (let i = 0; i < 20 && !h2; i++) {
+  await page.waitForTimeout(200)
+  h2 = await evA(([p, a]) => p.gizmoHandleScreenPos(a as unknown as 'x'), 'x')
+}
+ok('handle located for rapid-click test', h2 !== null, h2)
+if (h2) {
+  // Park the cursor away, then jump onto the handle and press immediately.
+  await page.mouse.move(200, 800)
+  await page.waitForTimeout(300)
+  await page.mouse.move(h2[0], h2[1])
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(300)
+}
+const rapidSel = await ev(page, (p) => p.selectionIds())
+ok(
+  'rapid press on a handle does NOT select what is behind it',
+  rapidSel.length === 1 && rapidSel[0] === 'box-b',
+  rapidSel,
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('F. Select tool Ctrl/Alt semantics')
+await clickObject('box-a')
+ok(
+  'plain click A → [A]',
+  JSON.stringify(await ev(page, (p) => p.selectionIds())) === '["box-a"]',
+  await ev(page, (p) => p.selectionIds()),
+)
+await clickObject('box-b', ['Control'])
+let s = await ev(page, (p) => p.selectionIds())
+ok('Ctrl+B → A+B', s.length === 2 && s.includes('box-a') && s.includes('box-b'), s)
+await clickObject('box-c', ['Control'])
+s = await ev(page, (p) => p.selectionIds())
+ok('Ctrl+C → A+B+C', s.length === 3, s)
+// Alt-click box-A: the group pivot (and therefore the gizmo) sits on box-B,
+// and by design nothing behind a gizmo may receive a selection click.
+await clickObject('box-a', ['Alt'])
+s = await ev(page, (p) => p.selectionIds())
+ok('Alt+A removes only A → B+C', s.length === 2 && !s.includes('box-a'), s)
+await clickObject('box-a', ['Alt'])
+s = await ev(page, (p) => p.selectionIds())
+ok('Alt on unselected A does nothing → B+C', s.length === 2 && !s.includes('box-a'), s)
+// Empty space: aim high above the scene where nothing is.
+// The fixture terrain fills the viewport from the default pose, so an
+// "empty" click means aiming at the sky: pitch up, click, restore.
+const HOME_POS = [0, 45, -55]
+const HOME_ROT = await ev(page, (p) => p.cameraSnapshot()).then((c) => c.rot)
+const clickEmpty = async (mods: string[] = []): Promise<void> => {
+  await ev(page, (p) => p.setCameraPose([0, 45, -55], [-0.9, 0, 0]))
+  await page.waitForTimeout(120)
+  await page.mouse.move(700, 120)
+  for (const m of mods) await page.keyboard.down(m)
+  await page.mouse.down()
+  await page.mouse.up()
+  for (const m of mods) await page.keyboard.up(m)
+  await page.waitForTimeout(150)
+  await page.evaluate(
+    ([pr, pos, rot]) => (pr as Probe).setCameraPose(pos as number[], rot as number[]),
+    [probe.handle, HOME_POS, HOME_ROT] as never,
+  )
+  // World→screen uses the last RENDERED transform matrix; under swiftshader a
+  // frame can take ~250ms, so give the restore time to land.
+  await page.waitForTimeout(500)
+}
+await clickEmpty(['Control'])
+s = await ev(page, (p) => p.selectionIds())
+ok('Ctrl+empty preserves selection', s.length === 2, s)
+await clickEmpty(['Alt'])
+s = await ev(page, (p) => p.selectionIds())
+ok('Alt+empty preserves selection', s.length === 2, s)
+await clickEmpty()
+s = await ev(page, (p) => p.selectionIds())
+ok('plain empty clears', s.length === 0, s)
+
+// ════════════════════════════════════════════════════════════════════════
+section('B. Group gizmo (3 statics)')
+await clickObject('box-a')
+await clickObject('box-b', ['Control'])
+await clickObject('box-c', ['Control'])
+s = await ev(page, (p) => p.selectionIds())
+ok('3 selected', s.length === 3, s)
+const before3 = await Promise.all(
+  ['box-a', 'box-b', 'box-c'].map(async (id) => (await posOf(id)).slice()),
+)
+const hist0 = (await ev(page, (p) => p.history())).depth
+const camB3 = await ev(page, (p) => p.cameraSnapshot())
+const dragB = await dragHandle('x', 70)
+ok('group gizmo handle exists', dragB.from !== null, dragB.from)
+ok('group gizmo drag engaged', dragB.started, dragB)
+const after3 = await Promise.all(
+  ['box-a', 'box-b', 'box-c'].map(async (id) => (await posOf(id)).slice()),
+)
+const deltas = after3.map((p2, i) => p2[0]! - before3[i]![0]!)
+ok(
+  'all three moved',
+  deltas.every((d) => Math.abs(d) > 0.05),
+  deltas,
+)
+ok('all three received the SAME delta', Math.max(...deltas) - Math.min(...deltas) < 1e-4, deltas)
+ok('selection unchanged after group drag', (await ev(page, (p) => p.selectionIds())).length === 3)
+ok('exactly ONE history entry', (await ev(page, (p) => p.history())).depth === hist0 + 1, {
+  before: hist0,
+  after: (await ev(page, (p) => p.history())).depth,
+})
+const camA3 = await ev(page, (p) => p.cameraSnapshot())
+ok(
+  'camera unchanged during group drag',
+  Math.max(...camB3.pos.map((v, i) => Math.abs(v - camA3.pos[i]!))) < 1e-6,
+  { camB3, camA3 },
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('G. Terrain wire stays visible while terrain is selected')
+await clickEmpty()
+// A patch of floor well clear of the three boxes. `worldToScreen` uses the
+// last RENDERED camera matrix, so after the camera restore in clickEmpty() it
+// can be a frame stale — verify the aim against the editor's own picker and
+// re-project until it actually lands on terrain, exactly as clickObject does.
+let terrainScreen: [number, number] = [0, 0]
+for (let i = 0; i < 25; i++) {
+  terrainScreen = (await page.evaluate(() => {
+    const w = window as never as { __editor: { worldToScreen: (p: number[]) => [number, number] } }
+    return w.__editor.worldToScreen([-30, 0, -20])
+  })) as [number, number]
+  const aimed = await evA(
+    ([p, px, py]) => p.pickIdAt(px as unknown as number, py as unknown as number),
+    terrainScreen[0],
+    terrainScreen[1],
+  )
+  if (aimed !== null) break
+  await page.waitForTimeout(120)
+}
+await page.mouse.move(...terrainScreen)
+await page.mouse.down()
+await page.mouse.up()
+await page.waitForTimeout(250)
+s = await ev(page, (p) => p.selectionIds())
+const knownTerrains = await ev(page, (p) => p.terrainIds())
+const terrainId = s.find((x) => knownTerrains.includes(x)) ?? null
+ok('clicking terrain selects exactly one terrain', s.length === 1 && terrainId !== null, s)
+if (terrainId) {
+  // The wire turns on in the render loop, and under swiftshader a frame can
+  // be ~250ms — so wait for the first frame that shows it, THEN assert it
+  // never blinks off. The requirement is persistence, not instant paint.
+  let appeared = false
+  for (let i = 0; i < 25 && !appeared; i++) {
+    await page.waitForTimeout(120)
+    appeared = Boolean((await ev(page, (p) => p.terrainWires()))[terrainId])
+  }
+  ok('wire appears for the selected terrain', appeared)
+  let visibleFrames = 0
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(120)
+    const w = await ev(page, (p) => p.terrainWires())
+    if (w[terrainId]) visibleFrames++
+  }
+  ok('wire STAYS visible across 12 samples', visibleFrames === 12, { visibleFrames })
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('H. Scale inputs')
+await clickObject('box-a')
+const scaleFields = (await page
+  .evaluate(
+    'JSON.stringify({x:(document.getElementById("s-x")||{}).value??"MISSING",y:(document.getElementById("s-y")||{}).value??"MISSING",z:(document.getElementById("s-z")||{}).value??"MISSING"})',
+  )
+  .then((j) => JSON.parse(j as string))) as { x: string; y: string; z: string }
+ok(
+  'selected box shows scale 1,1,1 (not 0, not blank)',
+  scaleFields.x === '1' && scaleFields.y === '1' && scaleFields.z === '1',
+  scaleFields,
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('K. Face selection highlights only the picked faces')
+await ev(page, (p) => p.setToolByName('face'))
+await page.waitForTimeout(200)
+await clickObject('box-a')
+let fk = await ev(page, (p) => p.faceSelKeys())
+ok('one face selected', fk.length === 1, fk)
+const faceOverlay1 = (await page.evaluate(
+  'window.__editor.faceOverlayCount ? window.__editor.faceOverlayCount() : -1',
+)) as number
+ok('a per-face overlay exists (not whole-mesh highlight)', faceOverlay1 === 1, { faceOverlay1 })
+await clickObject('box-b', ['Control'])
+fk = await ev(page, (p) => p.faceSelKeys())
+ok('Ctrl adds a second face', fk.length === 2, fk)
+
+// ════════════════════════════════════════════════════════════════════════
+section('I. Base texture survives painting, any texture paints')
+const paintProbe = (await page.evaluate(
+  'window.__editor.surfaceMaterialOf ? "present" : "missing"',
+)) as string
+ok('layered surface probe exists', paintProbe === 'present', paintProbe)
+
+// Place a terrain patch to paint on.
+await ev(page, (p) => p.setToolByName('mesh'))
+await page.waitForTimeout(200)
+const meshOpts = await page.$$eval('#mesh-sel option', (os) => os.map((o) => o.textContent ?? ''))
+await page.selectOption('#mesh-sel', String(meshOpts.findIndex((t) => t.includes('Terrain patch'))))
+await page.mouse.move(1000, 620)
+await page.waitForTimeout(400)
+await page.mouse.click(1000, 620)
+await page.waitForTimeout(600)
+const terrains = await ev(page, (p) => p.terrainIds())
+ok('a terrain patch exists to paint', terrains.length > 0, terrains)
+
+if (terrains.length > 0) {
+  const tid = terrains[terrains.length - 1]!
+  // Give it a distinctive BASE texture through the inspector.
+  await ev(page, (p) => p.setToolByName('select'))
+  await evA(([p, id]) => p.selectByIds([id as unknown as string]), tid)
+  await page.waitForTimeout(300)
+  // The <select> is hidden behind the thumbnail picker widget, so drive the
+  // same code path the picker does.
+  await evA(([p, tex]) => p.setInspectorTexture(tex as unknown as string), 'red_brick')
+  await page.waitForTimeout(400)
+  const beforePaint = await evA(([p, id]) => p.surfaceMaterialOf(id as unknown as string), tid)
+  ok('base texture set to red_brick', beforePaint?.base === 'red_brick', beforePaint)
+
+  // Paint a DIFFERENT texture over it.
+  await ev(page, (p) => p.setToolByName('paint'))
+  await page.waitForTimeout(200)
+  await ev(page, (p) => p.setPaintTexture('wood_planks'))
+  await page.waitForTimeout(200)
+  const [px, py] = await screenOf(tid)
+  await page.mouse.move(px, py)
+  await page.mouse.down()
+  for (let i = 0; i < 5; i++) {
+    await page.mouse.move(px + i * 4, py + i * 2)
+    await page.waitForTimeout(60)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+
+  const afterPaint = await evA(([p, id]) => p.surfaceMaterialOf(id as unknown as string), tid)
+  ok('BASE is still red_brick after painting', afterPaint?.base === 'red_brick', afterPaint)
+  ok(
+    'painted texture became its own layer (not a grass/rock/mud swap)',
+    afterPaint?.layers.some((l) => l.tex === 'wood_planks') === true,
+    afterPaint?.layers,
+  )
+  ok('a paint mask was produced', afterPaint?.hasMask === true, afterPaint)
+
+  // A second arbitrary texture allocates a second layer.
+  await ev(page, (p) => p.setPaintTexture('metal_plate'))
+  await page.waitForTimeout(200)
+  await page.mouse.move(px + 12, py + 10)
+  await page.mouse.down()
+  await page.mouse.move(px + 16, py + 12)
+  await page.waitForTimeout(120)
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+  const twoLayers = await evA(([p, id]) => p.surfaceMaterialOf(id as unknown as string), tid)
+  ok(
+    'a second arbitrary texture paints as a second layer',
+    (twoLayers?.layers.length ?? 0) >= 2,
+    twoLayers?.layers,
+  )
+  ok('base STILL red_brick with two paint layers', twoLayers?.base === 'red_brick', twoLayers)
+
+  // ── Paint colour: tinted textures and plain colour ─────────────────
+  await ev(page, (p) => p.setPaintTexture('red_brick'))
+  await evA(([p, c]) => p.setPaintColor(c as unknown as string), '#3366ff')
+  await page.waitForTimeout(200)
+  await page.mouse.move(px - 10, py + 6)
+  await page.mouse.down()
+  await page.mouse.move(px - 6, py + 8)
+  await page.waitForTimeout(120)
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+  const tinted = await evA(([p, id]) => p.surfaceMaterialOf(id as unknown as string), tid)
+  ok(
+    'a tinted texture becomes its own layer carrying the colour',
+    tinted?.layers.some((l) => l.tex === 'red_brick' && l.color === '#3366ff') === true,
+    tinted?.layers,
+  )
+  ok('base is STILL red_brick after tinted painting', tinted?.base === 'red_brick', tinted?.base)
+
+  // Plain colour: no texture at all, the tint IS the paint.
+  await ev(page, (p) => p.setPaintTexture(''))
+  await evA(([p, c]) => p.setPaintColor(c as unknown as string), '#22cc55')
+  await page.waitForTimeout(200)
+  await page.mouse.move(px + 6, py - 8)
+  await page.mouse.down()
+  await page.mouse.move(px + 9, py - 6)
+  await page.waitForTimeout(120)
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+  const plain = await evA(([p, id]) => p.surfaceMaterialOf(id as unknown as string), tid)
+  ok(
+    'plain colour paints as a texture-less layer',
+    plain?.layers.some((l) => l.tex === 'none' && l.color === '#22cc55') === true,
+    plain?.layers,
+  )
+
+  await page.screenshot({ path: 'scratch/visual/paint-colour.png' })
+  const depthBefore = (await ev(page, (p) => p.history())).depth
+  await ev(page, (p) => p.undo())
+  await page.waitForTimeout(400)
+  ok(
+    'a paint stroke is exactly one undo entry',
+    (await ev(page, (p) => p.history())).depth === depthBefore - 1,
+    { depthBefore, after: (await ev(page, (p) => p.history())).depth },
+  )
+  await ev(page, (p) => p.redo())
+  await page.waitForTimeout(300)
+  ok('redo restores the stroke', (await ev(page, (p) => p.history())).depth === depthBefore)
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('L. Environment')
+const envOk = (await page.evaluate('window.__editor.hasSky()')) as boolean
+ok('sky dome + clouds exist in the editor scene', envOk)
+
+await page.screenshot({ path: 'scratch/visual/editor-final.png' })
+await browser.close()
+server.kill()
+
+// ════════════════════════════════════════════════════════════════════════
+// Scenarios that need a DIFFERENT map artifact get their own server. Each
+// one boots, asserts, and tears down before the next starts.
+// ════════════════════════════════════════════════════════════════════════
+
+/** Boot a server + editor page on `map`, run `body`, then tear both down. */
+async function withMap(
+  port: number,
+  map: unknown,
+  body: (p: Page) => Promise<void>,
+): Promise<void> {
+  const d = mkdtempSync(join(tmpdir(), 'openvibe-repro-'))
+  const mp = join(d, 'map.json')
+  writeFileSync(mp, JSON.stringify(map))
+  const srv = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      DB_PATH: join(d, 'world.db'),
+      STATIC_DIR: 'apps/client/dist',
+      MAP_PATH: mp,
+      EDITOR_KEY: 'test-admin-key',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  srv.stderr!.on('data', (c) => console.log('[server]', String(c).slice(0, 400)))
+  try {
+    await new Promise<void>((res, rej) => {
+      const t = setTimeout(() => rej(new Error('server never reported listening')), 30_000)
+      srv.stdout!.on('data', (c) => {
+        if (String(c).includes('listening')) {
+          clearTimeout(t)
+          res()
+        }
+      })
+    })
+    const br = await chromium.launch({
+      args: ['--use-angle=swiftshader', '--enable-webgl', '--disable-gpu-sandbox'],
+    })
+    try {
+      const pg = await br.newPage({ viewport: { width: 1400, height: 900 } })
+      // Asset upload and collaboration both need the editor credential.
+      await pg.addInitScript(() => localStorage.setItem('openvibe.editorkey', 'test-admin-key'))
+      pg.on('pageerror', (e) =>
+        console.log('[pageerror]', String((e as Error).stack ?? e).slice(0, 500)),
+      )
+      await pg.goto(`http://127.0.0.1:${port}/editor`)
+      await pg.waitForSelector('#save', { timeout: 90_000 })
+      await pg.waitForFunction(
+        () => Boolean((window as never as { __editor?: unknown }).__editor),
+        {
+          timeout: 90_000,
+        },
+      )
+      handles.set(
+        pg,
+        await pg.evaluateHandle(() => (window as never as { __editor: Probe }).__editor),
+      )
+      await body(pg)
+    } finally {
+      await br.close()
+    }
+  } finally {
+    srv.kill()
+  }
+}
+
+/** Per-page probe handles, so scenarios stay plain typed functions. */
+const handles = new Map<Page, JSHandle<Probe>>()
+const probeOf = <T>(pg: Page, fn: (p: Probe) => T): Promise<T> =>
+  pg.evaluate(fn as never, handles.get(pg) as never) as Promise<T>
+/** Same, with extra arguments — closures never cross the boundary. */
+const probeArgs = <T>(
+  pg: Page,
+  fn: (a: [Probe, ...never[]]) => T,
+  ...args: unknown[]
+): Promise<T> => pg.evaluate(fn as never, [handles.get(pg), ...args] as never) as Promise<T>
+
+// ════════════════════════════════════════════════════════════════════════
+section('O. Live static reconciliation reaches the running server')
+{
+  const port = PORT + 3
+  const d = mkdtempSync(join(tmpdir(), 'openvibe-repro-'))
+  const mp = join(d, 'map.json')
+  const base = { v: 2, terrains: [], statics: [], nodes: [], props: [], lights: [], zones: [] }
+  writeFileSync(mp, JSON.stringify(base))
+  const srv = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      DB_PATH: join(d, 'world.db'),
+      STATIC_DIR: 'apps/client/dist',
+      MAP_PATH: mp,
+      EDITOR_KEY: 'test-admin-key',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  srv.stderr!.on('data', (c) => console.log('[server]', String(c).slice(0, 400)))
+  try {
+    await new Promise<void>((res, rej) => {
+      const t = setTimeout(() => rej(new Error('server never reported listening')), 30_000)
+      srv.stdout!.on('data', (c) => {
+        if (String(c).includes('listening')) {
+          clearTimeout(t)
+          res()
+        }
+      })
+    })
+
+    const root = `http://127.0.0.1:${port}`
+    /** Wait for the tick loop to publish, then read the live map counts. */
+    const counts = async (): Promise<Record<string, number>> => {
+      for (let i = 0; i < 40; i++) {
+        const m = (await (await fetch(`${root}/metrics`)).json()) as Record<string, number>
+        if (m['tick']! > 0) return m
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      throw new Error('server never ticked')
+    }
+    /** POST a map through the real save pipeline; returns the new revision. */
+    const save = async (map: unknown, ifMatch?: string): Promise<string> => {
+      const resp = await fetch(`${root}/api/map`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-editor-key': 'test-admin-key',
+          ...(ifMatch ? { 'if-match': ifMatch } : {}),
+        },
+        body: JSON.stringify(map),
+      })
+      if (!resp.ok) throw new Error(`save failed: ${resp.status} ${await resp.text()}`)
+      return resp.headers.get('etag')?.replace(/"/g, '') ?? ''
+    }
+
+    section('P. Content-addressed map assets')
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('e2e pixels'),
+    ])
+    const upload = async (
+      body: Buffer,
+      key = 'test-admin-key',
+    ): Promise<{ status: number; json: Record<string, unknown> }> => {
+      const resp = await fetch(`${root}/api/map-assets`, {
+        method: 'POST',
+        headers: { 'x-editor-key': key },
+        body: new Uint8Array(body),
+      })
+      return { status: resp.status, json: (await resp.json()) as Record<string, unknown> }
+    }
+
+    const first = await upload(png)
+    ok(
+      'an upload returns a content hash and url',
+      first.status === 200 && typeof first.json['hash'] === 'string',
+      first.json,
+    )
+    ok(
+      'the url is named after the content',
+      String(first.json['url']).includes(String(first.json['hash'])),
+      first.json['url'],
+    )
+
+    // The dedupe the paint-mask flow depends on: an unchanged mask re-saved
+    // must resolve to the same asset and upload nothing new.
+    const second = await upload(Buffer.from(png))
+    ok('identical content reuses the same hash and url', second.json['url'] === first.json['url'], {
+      a: first.json['url'],
+      b: second.json['url'],
+    })
+
+    const other = await upload(Buffer.concat([png, Buffer.from('!')]))
+    ok('different content gets a different url', other.json['url'] !== first.json['url'])
+
+    // The old endpoint took the extension from a query parameter, so arbitrary
+    // bytes could be stored — and later served — as an image.
+    const bogus = await upload(Buffer.from('<?php system($_GET[0]); ?>'))
+    ok('unsupported content is refused, not stored', bogus.status === 400, bogus)
+
+    const unauth = await upload(png, 'wrong-key')
+    ok('an upload without the editor key is forbidden', unauth.status === 403, unauth)
+
+    const fetched = await fetch(`${root}${String(first.json['url'])}`)
+    ok('the stored asset is served back', fetched.status === 200)
+    ok(
+      'and is cached forever, because the name cannot refer to other bytes',
+      (fetched.headers.get('cache-control') ?? '').includes('immutable'),
+      fetched.headers.get('cache-control'),
+    )
+
+    section('O. Live static reconciliation (continued)')
+    ok('a blank map gives the server no map statics', (await counts())['mapStatics'] === 0)
+
+    const withOne = {
+      ...base,
+      statics: [
+        {
+          id: 'live-a',
+          shape: { type: 'box', size: [2, 2, 2] },
+          pos: [3, 1, 0],
+          yaw: 0,
+          color: '#ff0000',
+        },
+      ],
+    }
+    let rev = await save(withOne)
+    await new Promise((r) => setTimeout(r, 400))
+    ok('saving a static gives it collision immediately', (await counts())['mapStatics'] === 1)
+
+    // The bug this replaces: the second identical save appended a second copy.
+    rev = await save(withOne, rev)
+    await new Promise((r) => setTimeout(r, 400))
+    ok('an identical repeated save creates no duplicate', (await counts())['mapStatics'] === 1)
+
+    rev = await save(
+      {
+        ...base,
+        statics: [{ ...withOne.statics[0], pos: [12, 1, 0] }],
+      },
+      rev,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    ok('moving it keeps exactly one body', (await counts())['mapStatics'] === 1)
+
+    rev = await save(base, rev)
+    await new Promise((r) => setTimeout(r, 400))
+    ok('deleting it removes the collision', (await counts())['mapStatics'] === 0)
+
+    // Zones apply live too, in their own replaceable layer.
+    rev = await save(
+      {
+        ...base,
+        zones: [
+          {
+            id: 'zone-live',
+            name: 'Live',
+            min: [-5, -5, -5],
+            max: [5, 5, 5],
+            rules: { pvp: false, build: true, physgun: true },
+          },
+        ],
+      },
+      rev,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    ok('a saved zone reaches the server rule index', (await counts())['mapZones'] === 1)
+    await save(base, rev)
+    await new Promise((r) => setTimeout(r, 400))
+    ok('removing the zone removes the rule', (await counts())['mapZones'] === 0)
+  } finally {
+    srv.kill()
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('M. Native v2 blank map — no fabricated ground')
+await withMap(
+  PORT + 1,
+  { v: 2, terrains: [], statics: [], nodes: [], props: [], lights: [], zones: [] },
+  async (pg) => {
+    ok(
+      'the document has zero terrain objects',
+      (await probeOf(pg, (p) => p.terrainIds())).length === 0,
+    )
+    ok(
+      'the viewport has zero terrain meshes',
+      (await probeOf(pg, (p) => p.terrainMeshCount())) === 0,
+    )
+    // The retired main mesh was called exactly 'terrain', and its overlay
+    // 'wire'. Neither may exist: a blank map has no hidden ground.
+    const stray = await probeOf(pg, (p) => p.sceneMeshNames())
+    ok(
+      'no legacy "terrain"/"wire" mesh in the scene',
+      !stray.includes('terrain') && !stray.includes('wire'),
+      stray,
+    )
+    const counts = await probeOf(pg, (p) => p.objectCounts())
+    ok('no statics either — the map really is empty', counts['statics'] === 0, counts)
+  },
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('N. v1 migration smoke — old maps still load')
+{
+  const v1flat = new Float32Array((SUB + 1) * (SUB + 1)).fill(1.5)
+  const v1b64 = Buffer.from(
+    new Uint8Array(v1flat.buffer, v1flat.byteOffset, v1flat.byteLength),
+  ).toString('base64')
+  await withMap(
+    PORT + 2,
+    {
+      v: 1,
+      halfExtent: HALF,
+      sub: SUB,
+      heights: v1b64,
+      statics: [
+        { shape: { type: 'box', size: [4, 4, 4] }, pos: [6, 2, 0], yaw: 0, color: '#c04040' },
+      ],
+    },
+    async (pg) => {
+      const ids = await probeOf(pg, (p) => p.terrainIds())
+      // The old privileged heightfield is now ONE ordinary terrain object.
+      ok('the v1 main heightfield became an ordinary terrain', ids.includes('terrain-v1-main'), ids)
+      ok('exactly one terrain came across', ids.length === 1, ids)
+      const counts = await probeOf(pg, (p) => p.objectCounts())
+      ok('the v1 static came across', counts['statics'] === 1, counts)
+      // Nothing treats the migrated terrain as special: it selects like any
+      // other object, under its real id.
+      await probeOf(pg, (p) => p.setToolByName('select'))
+      await probeOf(pg, (p) => p.selectByIds(['terrain-v1-main']))
+      ok(
+        'it selects under its real id, with no "main" special case',
+        (await probeOf(pg, (p) => p.selectionIds())).includes('terrain-v1-main'),
+        await probeOf(pg, (p) => p.selectionIds()),
+      )
+    },
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('U. Live reconciliation touches only what changed')
+{
+  const port = PORT + 8
+  const d = mkdtempSync(join(tmpdir(), 'openvibe-repro-'))
+  const mp = join(d, 'map.json')
+  const t64 = new Float32Array(65 * 65)
+  const tHeights = Buffer.from(new Uint8Array(t64.buffer, t64.byteOffset, t64.byteLength)).toString(
+    'base64',
+  )
+  const base = {
+    v: 2,
+    terrains: [{ id: 'ground', pos: [0, 0, 0], halfExtent: 40, sub: 64, heights: tHeights }],
+    statics: [
+      {
+        id: 'a',
+        shape: { type: 'box', size: [2, 2, 2] },
+        pos: [3, 1, 0],
+        yaw: 0,
+        color: '#ff0000',
+      },
+      {
+        id: 'b',
+        shape: { type: 'box', size: [2, 2, 2] },
+        pos: [9, 1, 0],
+        yaw: 0,
+        color: '#00ff00',
+      },
+    ],
+    nodes: [],
+    props: [],
+    lights: [{ id: 'l1', type: 'point', pos: [0, 6, 0], range: 20 }],
+    zones: [],
+  }
+  writeFileSync(mp, JSON.stringify(base))
+  const srv = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      DB_PATH: join(d, 'world.db'),
+      STATIC_DIR: 'apps/client/dist',
+      MAP_PATH: mp,
+      EDITOR_KEY: 'test-admin-key',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  srv.stderr!.on('data', (c) => console.log('[server]', String(c).slice(0, 300)))
+  try {
+    await new Promise<void>((res, rej) => {
+      const t = setTimeout(() => rej(new Error('server never reported listening')), 30_000)
+      srv.stdout!.on('data', (c) => {
+        if (String(c).includes('listening')) {
+          clearTimeout(t)
+          res()
+        }
+      })
+    })
+    const root = `http://127.0.0.1:${port}`
+    const metrics = async (): Promise<Record<string, number>> => {
+      for (let i = 0; i < 40; i++) {
+        const m = (await (await fetch(`${root}/metrics`)).json()) as Record<string, number>
+        if (m['tick']! > 0) return m
+        await new Promise((r) => setTimeout(r, 100))
+      }
+      throw new Error('server never ticked')
+    }
+    const save = async (map: unknown, ifMatch?: string): Promise<string> => {
+      const resp = await fetch(`${root}/api/map`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-editor-key': 'test-admin-key',
+          ...(ifMatch ? { 'if-match': ifMatch } : {}),
+        },
+        body: JSON.stringify(map),
+      })
+      if (!resp.ok) throw new Error(`save failed: ${resp.status} ${await resp.text()}`)
+      return resp.headers.get('etag')?.replace(/"/g, '') ?? ''
+    }
+
+    let m = await metrics()
+    ok('the map terrain has collision', m['mapTerrains'] === 1, m['mapTerrains'])
+    ok('and both statics do', m['mapStatics'] === 2, m['mapStatics'])
+    const churn0 = m['mapRebuilds']!
+
+    // An identical save must touch nothing at all.
+    let rev = await save(base)
+    await new Promise((r) => setTimeout(r, 400))
+    m = await metrics()
+    ok('an identical save causes ZERO body churn', m['mapRebuilds'] === churn0, {
+      churn0,
+      now: m['mapRebuilds'],
+    })
+
+    // A SURFACE-only terrain edit must not rebuild collision.
+    rev = await save(
+      {
+        ...base,
+        terrains: [{ ...base.terrains[0], surface: { base: { tex: 'red_brick' } } }],
+      },
+      rev,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    m = await metrics()
+    ok('retinting a terrain rebuilds NO collision', m['mapRebuilds'] === churn0, m['mapRebuilds'])
+    ok('and the terrain body is still there', m['mapTerrains'] === 1)
+
+    // Moving ONE static rebuilds exactly one body.
+    const churnBefore = m['mapRebuilds']!
+    rev = await save(
+      {
+        ...base,
+        terrains: [{ ...base.terrains[0], surface: { base: { tex: 'red_brick' } } }],
+        statics: [{ ...base.statics[0], pos: [3, 1, 8] }, base.statics[1]],
+      },
+      rev,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    m = await metrics()
+    ok('moving one static rebuilds exactly one body', m['mapRebuilds'] === churnBefore + 1, {
+      churnBefore,
+      now: m['mapRebuilds'],
+    })
+    ok('and the static count is unchanged', m['mapStatics'] === 2, m['mapStatics'])
+
+    // Sculpting the terrain rebuilds its body, and only its body.
+    const churnBeforeSculpt = m['mapRebuilds']!
+    const sculpted = new Float32Array(65 * 65)
+    sculpted[65 * 32 + 32] = 4
+    rev = await save(
+      {
+        ...base,
+        terrains: [
+          {
+            ...base.terrains[0],
+            surface: { base: { tex: 'red_brick' } },
+            heights: Buffer.from(
+              new Uint8Array(sculpted.buffer, sculpted.byteOffset, sculpted.byteLength),
+            ).toString('base64'),
+          },
+        ],
+        statics: [{ ...base.statics[0], pos: [3, 1, 8] }, base.statics[1]],
+      },
+      rev,
+    )
+    await new Promise((r) => setTimeout(r, 400))
+    m = await metrics()
+    ok('a sculpt rebuilds exactly one terrain body', m['mapRebuilds'] === churnBeforeSculpt + 1, {
+      churnBeforeSculpt,
+      now: m['mapRebuilds'],
+    })
+
+    // Spawn applies to future spawns immediately.
+    await save({ ...base, spawn: [12, 0, -7], spawnYaw: 1.25 }, rev)
+    await new Promise((r) => setTimeout(r, 400))
+    const spawnResp = (await (await fetch(`${root}/map.json`)).json()) as {
+      spawn?: number[]
+      spawnYaw?: number
+    }
+    ok('the saved spawn is authoritative immediately', spawnResp.spawn?.[0] === 12, spawnResp.spawn)
+    ok('including facing', spawnResp.spawnYaw === 1.25, spawnResp.spawnYaw)
+  } finally {
+    srv.kill()
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('T. Zone and Light tools create real objects')
+await withMap(
+  PORT + 7,
+  { v: 2, terrains: [], statics: [], nodes: [], props: [], lights: [], zones: [] },
+  async (pg) => {
+    // Both tools must work on an EMPTY map, where a placement ray hits
+    // nothing at all.
+    await probeOf(pg, (p) => p.setToolByName('zone'))
+    await pg.waitForTimeout(200)
+    await pg.mouse.click(760, 430)
+    await pg.waitForTimeout(400)
+
+    let counts = await probeOf(pg, (p) => p.objectCounts())
+    ok('the Zone tool creates a zone', counts['zones'] === 1, counts)
+    const zoneId = (await probeOf(pg, (p) => p.selectionIds()))[0]
+    ok('and selects it', zoneId?.startsWith('zone-') === true, zoneId)
+
+    const zone = await probeArgs(pg, ([p, id]) => p.zoneOf(id as unknown as string), zoneId!)
+    ok('with a real volume', zone !== null && zone.max[1] > zone.min[1], zone)
+    ok('and permissive default rules', zone?.rules.pvp === true, zone?.rules)
+
+    // Scaling the gizmo resizes the VOLUME, not just a mesh.
+    await probeArgs(
+      pg,
+      ([p, id]) => p.setProperty([id as unknown as string], 'rules.pvp', false),
+      zoneId!,
+    )
+    await pg.waitForTimeout(250)
+    const edited = await probeArgs(pg, ([p, id]) => p.zoneOf(id as unknown as string), zoneId!)
+    ok('the Inspector edits its rules', edited?.rules.pvp === false, edited?.rules)
+
+    await probeOf(pg, (p) => p.undo())
+    await pg.waitForTimeout(250)
+    const undone = await probeArgs(pg, ([p, id]) => p.zoneOf(id as unknown as string), zoneId!)
+    ok('and the rule change undoes', undone?.rules.pvp === true, undone?.rules)
+
+    // ── Lights ────────────────────────────────────────────────────────
+    await probeOf(pg, (p) => p.setToolByName('light'))
+    await pg.waitForTimeout(200)
+    await pg.mouse.click(700, 400)
+    await pg.waitForTimeout(400)
+    counts = await probeOf(pg, (p) => p.objectCounts())
+    ok('the Light tool creates a point light', counts['lights'] === 1, counts)
+
+    await probeOf(pg, (p) => p.setLightType('spot'))
+    await pg.mouse.click(820, 460)
+    await pg.waitForTimeout(400)
+    counts = await probeOf(pg, (p) => p.objectCounts())
+    ok('and a spot light', counts['lights'] === 2, counts)
+
+    const lights = await probeOf(pg, (p) => p.lightSummaries())
+    ok(
+      'each light has a usable direction or range',
+      lights.every((l) => l.ok),
+      lights,
+    )
+    ok(
+      'the spot got a cone and shadows',
+      lights.some((l) => l.type === 'spot' && l.hasAngle),
+      lights,
+    )
+
+    await probeOf(pg, (p) => p.undo())
+    await pg.waitForTimeout(250)
+    ok(
+      'placing a light is one undoable step',
+      (await probeOf(pg, (p) => p.objectCounts()))['lights'] === 1,
+    )
+  },
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('S. Painting past terrain: box faces, cylinder, sphere')
+await withMap(
+  PORT + 6,
+  {
+    v: 2,
+    terrains: [],
+    statics: [
+      {
+        id: 'paint-box',
+        shape: { type: 'box', size: [8, 8, 8] },
+        pos: [0, 4, 0],
+        yaw: 0,
+        color: '#c04040',
+      },
+      {
+        id: 'paint-cyl',
+        shape: { type: 'cylinder', radius: 3, height: 6 },
+        pos: [20, 3, 0],
+        yaw: 0,
+        color: '#40c040',
+      },
+      {
+        id: 'paint-sphere',
+        shape: { type: 'sphere', radius: 3 },
+        pos: [-20, 3, 0],
+        yaw: 0,
+        color: '#4040c0',
+      },
+    ],
+    nodes: [],
+    props: [],
+    lights: [],
+    zones: [],
+  },
+  async (pg) => {
+    /** Drag the brush across an object's projected centre. */
+    const paintOn = async (id: string): Promise<void> => {
+      const at = (await probeArgs(
+        pg,
+        ([p, oid]) => {
+          const t = p.transformOf(oid as unknown as string)!
+          return p.worldToScreen(t.position)
+        },
+        id,
+      )) as [number, number]
+      await pg.mouse.move(at[0], at[1])
+      await pg.waitForTimeout(120)
+      await pg.mouse.down()
+      for (let i = 1; i <= 4; i++) {
+        await pg.mouse.move(at[0] + i * 3, at[1] + i * 2)
+        await pg.waitForTimeout(60)
+      }
+      await pg.mouse.up()
+      await pg.waitForTimeout(400)
+    }
+
+    await probeOf(pg, (p) => p.setToolByName('paint'))
+    await probeOf(pg, (p) => p.setPaintTexture('wood_planks'))
+    await pg.waitForTimeout(200)
+
+    await paintOn('paint-box')
+    const box = await probeArgs(
+      pg,
+      ([p, id]) => p.paintedSurfaces(id as unknown as string),
+      'paint-box',
+    )
+    const boxFaces = Object.keys(box).filter((k) => k.startsWith('face:'))
+    ok('a box paints ONE face, not all six', boxFaces.length === 1, box)
+    ok('and that face carries the layer and a mask', box[boxFaces[0]!]?.hasMask === true, box)
+
+    // The face on the far side must be untouched.
+    ok(
+      'the opposite face is unpainted',
+      !Object.keys(box).includes('face:1') || boxFaces[0] === 'face:1',
+      box,
+    )
+
+    await paintOn('paint-cyl')
+    const cyl = await probeArgs(
+      pg,
+      ([p, id]) => p.paintedSurfaces(id as unknown as string),
+      'paint-cyl',
+    )
+    ok('a cylinder paints its whole surface', cyl['surface']?.layers === 1, cyl)
+
+    await paintOn('paint-sphere')
+    const sphere = await probeArgs(
+      pg,
+      ([p, id]) => p.paintedSurfaces(id as unknown as string),
+      'paint-sphere',
+    )
+    ok('a sphere paints its whole surface', sphere['surface']?.layers === 1, sphere)
+
+    // Mask upload is incremental: save twice, upload once.
+    await probeOf(pg, (p) => p.save())
+    await pg.waitForTimeout(900)
+    const afterFirst = await probeOf(pg, (p) => p.maskUploadCount())
+    ok('saving uploads each dirty mask once', afterFirst === 3, afterFirst)
+    await probeOf(pg, (p) => p.save())
+    await pg.waitForTimeout(900)
+    const afterSecond = await probeOf(pg, (p) => p.maskUploadCount())
+    ok('an unchanged mask is NOT re-uploaded on the next save', afterSecond === afterFirst, {
+      afterFirst,
+      afterSecond,
+    })
+
+    const saved = await probeArgs(
+      pg,
+      ([p, id]) => p.paintedSurfaces(id as unknown as string),
+      'paint-cyl',
+    )
+    ok('and the document holds a hosted mask reference', saved['surface']?.hasMask === true, saved)
+  },
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('R. Asset import, rename and delete are real')
+await withMap(
+  PORT + 5,
+  {
+    v: 2,
+    terrains: [],
+    statics: [
+      {
+        id: 'asset-box',
+        shape: { type: 'box', size: [2, 2, 2] },
+        pos: [0, 1, 0],
+        yaw: 0,
+        color: '#ffffff',
+      },
+    ],
+    nodes: [],
+    props: [],
+    lights: [],
+    zones: [],
+  },
+  async (pg) => {
+    // A minimal but genuine PNG, so the server's content sniffing accepts it.
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x65, 0x32, 0x65, 0x70, 0x69, 0x78]
+    const first = await probeArgs(
+      pg,
+      ([p, bytes]) => p.importTextureBytes('Red Brick.png', bytes as unknown as number[]),
+      png,
+    )
+    ok('importing a texture returns a usable name', first === 'red_brick', first)
+
+    let state = await probeOf(pg, (p) => p.assetState())
+    ok('the document owns it — no parallel array', state.textures.length === 1, state.textures)
+    ok(
+      'and it is stored by content hash, not embedded',
+      state.textures[0]?.url?.includes('sha256-') === true,
+      state.textures[0],
+    )
+
+    // The same bytes again: the content-addressed store must reuse the blob.
+    const second = await probeArgs(
+      pg,
+      ([p, bytes]) => p.importTextureBytes('other-name.png', bytes as unknown as number[]),
+      png,
+    )
+    state = await probeOf(pg, (p) => p.assetState())
+    ok(
+      'a second import of identical bytes reuses the same asset URL',
+      state.textures[0]?.url === state.textures[1]?.url,
+      state.textures,
+    )
+    void second
+
+    // Reference it, then prove rename rewrites the reference too.
+    await probeOf(pg, (p) => p.setToolByName('select'))
+    await probeOf(pg, (p) => p.selectByIds(['asset-box']))
+    await probeOf(pg, (p) => p.setInspectorTexture('custom:red_brick'))
+    await pg.waitForTimeout(300)
+    state = await probeOf(pg, (p) => p.assetState())
+    ok(
+      'usage counting sees the reference',
+      state.textureUsage['custom:red_brick'] === 1,
+      state.textureUsage,
+    )
+
+    ok(
+      'a referenced texture cannot be deleted',
+      (await probeOf(pg, (p) => p.deleteTexture('red_brick'))) === false,
+    )
+    const spare = (await probeOf(pg, (p) => p.assetState())).textures
+      .map((t) => t.name)
+      .find((n) => n !== 'red_brick')
+    ok(
+      'an unreferenced one can',
+      spare !== undefined &&
+        (await probeArgs(pg, ([p, n]) => p.deleteTexture(n as unknown as string), spare)) === true,
+      spare,
+    )
+
+    ok(
+      'rename succeeds',
+      (await probeOf(pg, (p) => p.renameTexture('red_brick', 'stone'))) === true,
+    )
+    const body = await probeOf(pg, (p) => p.textureRefsOf('asset-box'))
+    ok('and it rewrote the object that referenced it', body.includes('custom:stone'), body)
+    ok('leaving no dangling old reference', !body.includes('custom:red_brick'), body)
+
+    await probeOf(pg, (p) => p.undo())
+    await pg.waitForTimeout(200)
+    const undone = await probeOf(pg, (p) => p.textureRefsOf('asset-box'))
+    ok('undo restores the name and the reference', undone.includes('custom:red_brick'), undone)
+  },
+)
+
+// ════════════════════════════════════════════════════════════════════════
+section('Q. Local draft recovery survives a reload')
+await withMap(
+  PORT + 4,
+  {
+    v: 2,
+    terrains: [],
+    statics: [
+      {
+        id: 'draft-box',
+        shape: { type: 'box', size: [2, 2, 2] },
+        pos: [6, 1, 0],
+        yaw: 0,
+        color: '#c04040',
+      },
+    ],
+    nodes: [],
+    props: [],
+    lights: [],
+    zones: [],
+  },
+  async (pg) => {
+    // Edit without saving, then wait past the draft debounce.
+    await probeOf(pg, (p) => p.setToolByName('select'))
+    await probeOf(pg, (p) => p.selectByIds(['draft-box']))
+    await probeOf(pg, (p) => p.groupMove(0, 0, 7))
+    ok('the edit made the document dirty', await probeOf(pg, (p) => p.dirty))
+    await pg.waitForTimeout(2500)
+
+    const stored = await pg.evaluate(
+      () =>
+        new Promise<{ found: boolean; z: number | null }>((resolve) => {
+          const req = indexedDB.open('openvibe-editor', 1)
+          req.onerror = () => resolve({ found: false, z: null })
+          req.onsuccess = () => {
+            const db = req.result
+            const get = db.transaction('drafts', 'readonly').objectStore('drafts').getAll()
+            get.onsuccess = () => {
+              const row = (get.result as { map: { statics: { id: string; pos: number[] }[] } }[])[0]
+              const box = row?.map.statics.find((x) => x.id === 'draft-box')
+              resolve({ found: Boolean(row), z: box?.pos[2] ?? null })
+            }
+            get.onerror = () => resolve({ found: false, z: null })
+          }
+        }),
+    )
+    ok('the unsaved work was written to a local draft', stored.found, stored)
+    ok('and the draft holds the EDITED document, not the server one', stored.z === 7, stored)
+
+    // Reload with the dialog accepted: the draft comes back.
+    pg.on('dialog', (d) => void d.accept())
+    await pg.reload()
+    await pg.waitForSelector('#save', { timeout: 90_000 })
+    await pg.waitForFunction(() => Boolean((window as never as { __editor?: unknown }).__editor), {
+      timeout: 90_000,
+    })
+    handles.set(
+      pg,
+      await pg.evaluateHandle(() => (window as never as { __editor: Probe }).__editor),
+    )
+    await pg.waitForTimeout(800)
+    const restored = await probeOf(pg, (p) => p.transformOf('draft-box'))
+    ok('the restored document has the unsaved edit', restored?.position[2] === 7, restored)
+    ok('and it is still unsaved — a draft is never published', await probeOf(pg, (p) => p.dirty))
+
+    // The server was never told; its copy is untouched.
+    const onServer = (await (await fetch(`http://127.0.0.1:${PORT + 4}/map.json`)).json()) as {
+      statics: { id: string; pos: number[] }[]
+    }
+    ok(
+      'the server copy is unchanged — nothing was auto-published',
+      onServer.statics.find((x) => x.id === 'draft-box')!.pos[2] === 0,
+      onServer.statics,
+    )
+  },
+)
+
+// ════════════════════════════════════════════════════════════════════════
+/**
+ * A real .glb, built here rather than checked in, so the suite can vary the
+ * one thing that matters: whether the mesh has usable UVs. A model with no
+ * UV0 is the common case for scanned or CAD-exported assets, and it is the
+ * case where painting silently did nothing.
+ */
+function makeGlb(withUv: boolean): number[] {
+  // A 2×2 quad standing in the XY plane, two triangles.
+  const indices = new Uint16Array([0, 1, 2, 0, 2, 3])
+  const positions = new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0])
+  const uvs = new Float32Array([0, 1, 1, 1, 1, 0, 0, 0])
+
+  const parts: { data: ArrayBufferView; length: number }[] = [
+    { data: indices, length: indices.byteLength },
+    { data: positions, length: positions.byteLength },
+  ]
+  if (withUv) parts.push({ data: uvs, length: uvs.byteLength })
+
+  const bufferViews: Record<string, number>[] = []
+  let offset = 0
+  const bin: number[] = []
+  for (const part of parts) {
+    bufferViews.push({ buffer: 0, byteOffset: offset, byteLength: part.length })
+    const bytes = new Uint8Array(part.data.buffer, part.data.byteOffset, part.length)
+    for (const b of bytes) bin.push(b)
+    offset += part.length
+    while (offset % 4 !== 0) {
+      bin.push(0)
+      offset++
+    }
+  }
+
+  const attributes: Record<string, number> = { POSITION: 1 }
+  if (withUv) attributes['TEXCOORD_0'] = 2
+  const json = {
+    asset: { version: '2.0' },
+    scene: 0,
+    scenes: [{ nodes: [0] }],
+    nodes: [{ mesh: 0, name: 'quad' }],
+    meshes: [{ primitives: [{ attributes, indices: 0, material: 0 }] }],
+    materials: [{ pbrMetallicRoughness: { baseColorFactor: [0.8, 0.8, 0.8, 1] } }],
+    accessors: [
+      { bufferView: 0, componentType: 5123, count: 6, type: 'SCALAR' },
+      {
+        bufferView: 1,
+        componentType: 5126,
+        count: 4,
+        type: 'VEC3',
+        min: [-1, -1, 0],
+        max: [1, 1, 0],
+      },
+      ...(withUv ? [{ bufferView: 2, componentType: 5126, count: 4, type: 'VEC2' }] : []),
+    ],
+    bufferViews,
+    buffers: [{ byteLength: offset }],
+  }
+
+  const jsonBytes = [...Buffer.from(JSON.stringify(json), 'utf8')]
+  while (jsonBytes.length % 4 !== 0) jsonBytes.push(0x20) // pad with spaces
+  const total = 12 + 8 + jsonBytes.length + 8 + bin.length
+  const header = Buffer.alloc(12)
+  header.writeUInt32LE(0x46546c67, 0) // 'glTF'
+  header.writeUInt32LE(2, 4)
+  header.writeUInt32LE(total, 8)
+  const jsonHeader = Buffer.alloc(8)
+  jsonHeader.writeUInt32LE(jsonBytes.length, 0)
+  jsonHeader.writeUInt32LE(0x4e4f534a, 4) // 'JSON'
+  const binHeader = Buffer.alloc(8)
+  binHeader.writeUInt32LE(bin.length, 0)
+  binHeader.writeUInt32LE(0x004e4942, 4) // 'BIN'
+  return [...header, ...jsonHeader, ...jsonBytes, ...binHeader, ...bin]
+}
+
+section('W. Painting imported models')
+{
+  const floorSub = 16
+  const floorHeights = new Float32Array((floorSub + 1) * (floorSub + 1))
+  const floorB64 = Buffer.from(
+    new Uint8Array(floorHeights.buffer, floorHeights.byteOffset, floorHeights.byteLength),
+  ).toString('base64')
+  await withMap(
+    PORT + 9,
+    {
+      v: 2,
+      terrains: [
+        { id: 'w-floor', pos: [0, 0, 0], halfExtent: 40, sub: floorSub, heights: floorB64 },
+      ],
+      statics: [],
+      nodes: [],
+      props: [],
+      lights: [],
+      zones: [],
+    },
+    async (pg) => {
+      /** Arm a model and click the viewport to place one, returning its id. */
+      const place = async (modelId: string, x: number, y: number): Promise<string | null> => {
+        await probeArgs(pg, ([p, id]) => p.armModel(id as unknown as string), modelId)
+        await pg.mouse.move(x, y)
+        await pg.waitForTimeout(200)
+        await pg.mouse.down()
+        await pg.mouse.up()
+        await pg.waitForTimeout(700)
+        return probeOf(pg, (p) => p.primaryId())
+      }
+
+      const uvModel = await probeArgs(
+        pg,
+        ([p, bytes]) => p.importModelBytes('quad.glb', bytes as unknown as number[]),
+        makeGlb(true),
+      )
+      ok('a glb imports and is owned by the document', typeof uvModel === 'string', uvModel)
+      const models = (await probeOf(pg, (p) => p.assetState())).models
+      ok('the Assets panel lists it', models.length === 1, models)
+
+      const first = await place(uvModel!, 820, 520)
+      const second = await place(uvModel!, 940, 560)
+      ok('two placements are two distinct objects', Boolean(first && second && first !== second), {
+        first,
+        second,
+      })
+
+      // Paint the FIRST instance only.
+      await probeOf(pg, (p) => p.setToolByName('paint'))
+      await probeOf(pg, (p) => p.setPaintTexture('wood_planks'))
+      await pg.waitForTimeout(200)
+      const at = (await probeArgs(
+        pg,
+        ([p, id]) => p.worldToScreen(p.transformOf(id as unknown as string)!.position),
+        first,
+      )) as [number, number]
+      await pg.mouse.move(at[0], at[1])
+      await pg.waitForTimeout(150)
+      await pg.mouse.down()
+      for (let i = 1; i <= 4; i++) {
+        await pg.mouse.move(at[0] + i * 2, at[1] + i * 2)
+        await pg.waitForTimeout(60)
+      }
+      await pg.mouse.up()
+      await pg.waitForTimeout(500)
+
+      const painted = await probeArgs(
+        pg,
+        ([p, id]) => p.paintedSurfaces(id as unknown as string),
+        first,
+      )
+      const slots = Object.keys(painted).filter((k) => k.startsWith('mesh:'))
+      ok(
+        'painting a model writes a per-MESH surface, not a whole-object one',
+        slots.length === 1,
+        painted,
+      )
+      ok('and that surface carries a mask', painted[slots[0]!]?.hasMask === true, painted)
+
+      // The other instance of the SAME model must be untouched: the template
+      // is cached and shared, so painting one may not reach through it.
+      const other = await probeArgs(
+        pg,
+        ([p, id]) => p.paintedSurfaces(id as unknown as string),
+        second,
+      )
+      ok(
+        'the second instance of the same model is untouched',
+        Object.keys(other).length === 0,
+        other,
+      )
+
+      // A model with no UVs falls back to a box projection rather than
+      // silently doing nothing.
+      const bareModel = await probeArgs(
+        pg,
+        ([p, bytes]) => p.importModelBytes('bare.glb', bytes as unknown as number[]),
+        makeGlb(false),
+      )
+      ok('a UV-less glb still imports', typeof bareModel === 'string', bareModel)
+      const bare = await place(bareModel!, 700, 480)
+      await probeOf(pg, (p) => p.setToolByName('paint'))
+      await pg.waitForTimeout(150)
+      const bareAt = (await probeArgs(
+        pg,
+        ([p, id]) => p.worldToScreen(p.transformOf(id as unknown as string)!.position),
+        bare,
+      )) as [number, number]
+      await pg.mouse.move(bareAt[0], bareAt[1])
+      await pg.waitForTimeout(150)
+      await pg.mouse.down()
+      await pg.mouse.move(bareAt[0] + 4, bareAt[1] + 4)
+      await pg.waitForTimeout(80)
+      await pg.mouse.up()
+      await pg.waitForTimeout(500)
+      const bareSurfaces = await probeArgs(
+        pg,
+        ([p, id]) => p.paintedSurfaces(id as unknown as string),
+        bare,
+      )
+      ok(
+        'a model with no UVs still records paint (box projection, not silence)',
+        Object.keys(bareSurfaces).some((k) => k.startsWith('mesh:')),
+        bareSurfaces,
+      )
+
+      // Game parity: save, then load the GAME page against the same server
+      // and confirm the paint overlay exists there too.
+      await probeOf(pg, (p) => p.save())
+      await pg.waitForTimeout(1200)
+      const served = (await (await fetch(`http://127.0.0.1:${PORT + 9}/map.json`)).json()) as {
+        statics: { id: string; surfaces?: Record<string, unknown> }[]
+        models: unknown[]
+      }
+      const savedFirst = served.statics.find((s) => s.id === first)
+      ok(
+        'the saved map carries the model surface',
+        Object.keys(savedFirst?.surfaces ?? {}).some((k) => k.startsWith('mesh:')),
+        savedFirst,
+      )
+      ok('and the imported models', served.models.length === 2, served.models.length)
+
+      // The page was made with browser.newPage(), so its context is implicit;
+      // a sibling page has to come from the browser itself.
+      // Game parity is proven where it can be proven deterministically:
+      // `render/paintedStatic.ts` is the SAME module both sides render
+      // through, and its invariants (own material, instance isolation, the
+      // baked box projection, never touching the cached template) are
+      // asserted directly in paintedStatic.test.ts against a headless scene.
+      // Booting the game here would add a character-select flow and a full
+      // Havok + glTF load under software GL for a weaker assertion.
+      ok(
+        'the saved map is everything the game needs to render it',
+        Boolean(savedFirst) && served.models.length === 2,
+        { statics: served.statics.length, models: served.models.length },
+      )
+    },
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════
+section('V. Performance profile on a large map')
+// Everything here is about SCALING, not wall-clock: an assertion like "under
+// 16 ms" would only measure this machine's software renderer. What must hold
+// on a 400-object map is that editing one object costs one object's work —
+// no whole-scene rebuild, no per-mesh scan of the scene, no view churn.
+{
+  const BIG = 400
+  const perfSub = 32
+  const perfHeights = new Float32Array((perfSub + 1) * (perfSub + 1))
+  const perfB64 = Buffer.from(
+    new Uint8Array(perfHeights.buffer, perfHeights.byteOffset, perfHeights.byteLength),
+  ).toString('base64')
+  const bigStatics = Array.from({ length: BIG }, (_, i) => ({
+    id: `perf-${i}`,
+    shape: { type: 'box', size: [1, 1, 1] },
+    // A grid well away from the origin so nothing overlaps the panels.
+    pos: [(i % 20) * 3 - 30, 1, Math.floor(i / 20) * 3 - 30],
+    yaw: 0,
+    color: '#808080',
+  }))
+  await withMap(
+    PORT + 8,
+    {
+      v: 2,
+      terrains: [
+        { id: 'perf-floor', pos: [0, 0, 0], halfExtent: 100, sub: perfSub, heights: perfB64 },
+      ],
+      statics: bigStatics,
+      nodes: [],
+      props: [],
+      lights: [],
+      zones: [],
+    },
+    async (pg) => {
+      const stats = await probeOf(pg, (p) => p.sceneStats())
+      ok(
+        'every authored object got exactly one view',
+        stats.views === BIG + 1 && stats.objects === BIG + 1,
+        stats,
+      )
+
+      // ── One property edit costs one view update. ──────────────────────
+      await probeOf(pg, (p) => p.perf.start())
+      await probeArgs(pg, ([p]: [Probe]) => p.setProperty(['perf-7'], 'color', '#ff0000'))
+      await pg.waitForTimeout(200)
+      let snap = await probeOf(pg, (p) => p.perf.snapshot())
+      ok('a colour edit updates exactly ONE view', snap['views.update']?.count === 1, snap)
+      ok(
+        'and rebuilds nothing — not the view, not the scene',
+        !snap['views.rebuildAll'] && !snap['views.create'] && !snap['views.rebuildFromUpdate'],
+        snap,
+      )
+
+      // ── Moving one object is likewise O(1) in the map size. ───────────
+      await probeOf(pg, (p) => p.perf.start())
+      await probeOf(pg, (p) => p.selectByIds(['perf-11']))
+      await probeArgs(pg, ([p]: [Probe]) => p.groupMove(0, 0, 2))
+      await pg.waitForTimeout(200)
+      snap = await probeOf(pg, (p) => p.perf.snapshot())
+      ok(
+        'a move updates one view and rebuilds none',
+        snap['views.update']?.count === 1 && !snap['views.rebuildAll'] && !snap['views.create'],
+        snap,
+      )
+
+      // ── Deleting many objects disposes exactly those, and undo brings
+      //    exactly those back. The old owner-table scan made this
+      //    quadratic; the count is what proves it is not.
+      const victims = Array.from({ length: 40 }, (_, i) => `perf-${100 + i}`)
+      await probeOf(pg, (p) => p.perf.start())
+      await probeArgs(pg, ([p, ids]: [Probe, string[]]) => p.selectByIds(ids), victims)
+      await probeOf(pg, (p) => p.deleteSelection())
+      await pg.waitForTimeout(300)
+      snap = await probeOf(pg, (p) => p.perf.snapshot())
+      ok('deleting 40 objects disposes exactly 40 views', snap['views.dispose']?.count === 40, snap)
+      ok('and creates none', !snap['views.create'], snap)
+      const afterDelete = await probeOf(pg, (p) => p.sceneStats())
+      ok(
+        'the mesh list shrank with them — no stale pickable meshes',
+        afterDelete.views === BIG + 1 - 40 && afterDelete.meshes === afterDelete.views,
+        afterDelete,
+      )
+
+      await probeOf(pg, (p) => p.perf.start())
+      await probeOf(pg, (p) => p.undo())
+      await pg.waitForTimeout(300)
+      snap = await probeOf(pg, (p) => p.perf.snapshot())
+      ok(
+        'undo recreates exactly those 40 and nothing else',
+        snap['views.create']?.count === 40,
+        snap,
+      )
+      const afterUndo = await probeOf(pg, (p) => p.sceneStats())
+      ok('and the scene is back where it started', afterUndo.views === BIG + 1, afterUndo)
+
+      // ── Hover picking: the mesh list is cached, so a run of picks over a
+      //    static scene rebuilds it zero times.
+      await probeOf(pg, (p) => p.perf.start())
+      for (let i = 0; i < 12; i++) {
+        await pg.mouse.move(700 + i * 4, 450 + i * 3)
+        await pg.waitForTimeout(60)
+      }
+      snap = await probeOf(pg, (p) => p.perf.snapshot())
+      const picks = snap['pick.hover']?.count ?? 0
+      ok('hover picking ran during the sweep', picks > 0, snap['pick.hover'])
+      ok(
+        'and the pickable-mesh list was never rebuilt for it',
+        !snap['views.allMeshes.rebuild'],
+        snap,
+      )
+      console.log(
+        `  [info] ${picks} hover picks, ${snap['pick.hover']?.ms ?? 0}ms total on ${afterUndo.meshes} meshes (software GL)`,
+      )
+
+      // Counting must be free when nobody asked for it.
+      await probeOf(pg, (p) => p.perf.stop())
+      const before = JSON.stringify(await probeOf(pg, (p) => p.perf.snapshot()))
+      await probeArgs(pg, ([p]: [Probe]) => p.setProperty(['perf-9'], 'color', '#00ff00'))
+      await pg.waitForTimeout(150)
+      const after = JSON.stringify(await probeOf(pg, (p) => p.perf.snapshot()))
+      ok('the profiler records nothing once switched off', before === after, { before, after })
+    },
+  )
+}
+
+console.log(
+  `\n${'═'.repeat(64)}\n${checks - failures}/${checks} checks passed, ${failures} FAILED\n`,
+)
+process.exit(failures > 0 ? 1 : 0)

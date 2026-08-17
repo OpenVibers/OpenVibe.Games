@@ -1,0 +1,382 @@
+import { CropDefSchema, type CropDef } from './schema/crop.js'
+import {
+  FactionSchema,
+  NpcArchetypeSchema,
+  type FactionDef,
+  type NpcArchetype,
+} from './schema/npc.js'
+import { ItemDefSchema, type ItemDef } from './schema/item.js'
+import { JobSchema, type JobDef } from './schema/job.js'
+import { MarketSchema, type MarketDef } from './schema/market.js'
+import { RecipeSchema, type Recipe } from './schema/recipe.js'
+import { ResourceNodeTypeSchema, type ResourceNodeType } from './schema/resourceNode.js'
+import { SkillDefSchema, type SkillDef } from './schema/skill.js'
+import { WorldDefSchema, type WorldDef } from './schema/world.js'
+
+export interface ContentDefs {
+  items: ItemDef[]
+  recipes: Recipe[]
+  skills: SkillDef[]
+  nodeTypes: ResourceNodeType[]
+  crops: CropDef[]
+  npcs: NpcArchetype[]
+  factions: FactionDef[]
+  markets: MarketDef[]
+  jobs: JobDef[]
+  world: WorldDef
+}
+
+/**
+ * Immutable, validated content registry built once at startup on both server
+ * and client. Fails fast on invalid definitions, duplicate ids, or dangling
+ * cross-references — a content mistake should kill the dev server, not
+ * corrupt a live world.
+ */
+export class ContentRegistry {
+  private readonly items = new Map<string, ItemDef>()
+  private readonly recipes = new Map<string, Recipe>()
+  private readonly skills = new Map<string, SkillDef>()
+  private readonly nodeTypes = new Map<string, ResourceNodeType>()
+  private readonly crops = new Map<string, CropDef>()
+  private readonly npcs = new Map<string, NpcArchetype>()
+  private readonly factions = new Map<string, FactionDef>()
+  private readonly markets = new Map<string, MarketDef>()
+  private readonly jobs = new Map<string, JobDef>()
+  readonly world: WorldDef
+
+  constructor(defs: ContentDefs) {
+    const errors: string[] = []
+
+    for (const raw of defs.items) {
+      const parsed = ItemDefSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`item '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      if (this.items.has(parsed.data.id)) errors.push(`duplicate item id '${parsed.data.id}'`)
+      this.items.set(parsed.data.id, parsed.data)
+    }
+
+    // Health-capability cross references (after every item is registered).
+    for (const item of this.items.values()) {
+      if (!item.health) continue
+      if (item.health.repair && !this.items.has(item.health.repair.item)) {
+        errors.push(`item '${item.id}' repairs with unknown item '${item.health.repair.item}'`)
+      }
+      for (const loot of item.health.destroyLoot) {
+        if (!this.items.has(loot.item)) {
+          errors.push(`item '${item.id}' destroy loot references unknown item '${loot.item}'`)
+        }
+      }
+    }
+
+    for (const raw of defs.crops) {
+      const parsed = CropDefSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`crop '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      const crop = parsed.data
+      if (this.crops.has(crop.id)) errors.push(`duplicate crop id '${crop.id}'`)
+      for (const y of crop.yield) {
+        if (!this.items.has(y.item)) {
+          errors.push(`crop '${crop.id}' yields unknown item '${y.item}'`)
+        }
+      }
+      this.crops.set(crop.id, crop)
+    }
+    // Seeds must reference known crops; machine recipes known machine kinds.
+    const machineKinds = new Set<string>()
+    for (const item of this.items.values()) {
+      if (item.machine) machineKinds.add(item.machine.kind)
+      if (item.seed && !this.crops.has(item.seed.crop)) {
+        errors.push(`item '${item.id}' seeds unknown crop '${item.seed.crop}'`)
+      }
+    }
+
+    for (const raw of defs.factions) {
+      const parsed = FactionSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`faction '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      if (this.factions.has(parsed.data.id)) errors.push(`duplicate faction '${parsed.data.id}'`)
+      this.factions.set(parsed.data.id, parsed.data)
+    }
+    for (const raw of defs.npcs) {
+      const parsed = NpcArchetypeSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`npc '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      const npc = parsed.data
+      if (this.npcs.has(npc.id)) errors.push(`duplicate npc archetype '${npc.id}'`)
+      if (!this.factions.has(npc.faction)) {
+        errors.push(`npc '${npc.id}' references unknown faction '${npc.faction}'`)
+      }
+      for (const loot of npc.loot) {
+        if (!this.items.has(loot.item)) {
+          errors.push(`npc '${npc.id}' loot references unknown item '${loot.item}'`)
+        }
+      }
+      this.npcs.set(npc.id, npc)
+    }
+
+    for (const raw of defs.markets) {
+      const parsed = MarketSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`market '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      const market = parsed.data
+      if (this.markets.has(market.id)) errors.push(`duplicate market '${market.id}'`)
+      if (!this.factions.has(market.faction)) {
+        errors.push(`market '${market.id}' references unknown faction '${market.faction}'`)
+      }
+      for (const entry of [...market.sells, ...market.buys]) {
+        if (!this.items.has(entry.item)) {
+          errors.push(`market '${market.id}' references unknown item '${entry.item}'`)
+        }
+      }
+      this.markets.set(market.id, market)
+    }
+    for (const raw of defs.jobs) {
+      const parsed = JobSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`job '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      const job = parsed.data
+      if (this.jobs.has(job.id)) errors.push(`duplicate job '${job.id}'`)
+      if (!this.markets.has(job.market)) {
+        errors.push(`job '${job.id}' references unknown market '${job.market}'`)
+      }
+      if (job.objective.kind === 'deliver' && !this.items.has(job.objective.item)) {
+        errors.push(`job '${job.id}' delivers unknown item '${job.objective.item}'`)
+      }
+      if (job.objective.kind === 'kill' && !this.npcs.has(job.objective.archetype)) {
+        errors.push(`job '${job.id}' targets unknown archetype '${job.objective.archetype}'`)
+      }
+      for (const it of job.reward.items) {
+        if (!this.items.has(it.item)) {
+          errors.push(`job '${job.id}' rewards unknown item '${it.item}'`)
+        }
+      }
+      this.jobs.set(job.id, job)
+    }
+    // Blueprint items must unlock known blueprint recipes (checked later,
+    // after recipes parse) — collected here.
+    // Shop props must reference known markets.
+    for (const item of this.items.values()) {
+      if (item.shop && !this.markets.has(item.shop.market)) {
+        errors.push(`item '${item.id}' opens unknown market '${item.shop.market}'`)
+      }
+    }
+
+    for (const raw of defs.skills) {
+      const parsed = SkillDefSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`skill '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      if (this.skills.has(parsed.data.id)) errors.push(`duplicate skill id '${parsed.data.id}'`)
+      this.skills.set(parsed.data.id, parsed.data)
+    }
+
+    for (const raw of defs.nodeTypes) {
+      const parsed = ResourceNodeTypeSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`node type '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      const node = parsed.data
+      if (this.nodeTypes.has(node.id)) errors.push(`duplicate node type id '${node.id}'`)
+      if (!this.items.has(node.item)) {
+        errors.push(`node type '${node.id}' yields unknown item '${node.item}'`)
+      }
+      if (!this.skills.has(node.skill)) {
+        errors.push(`node type '${node.id}' references unknown skill '${node.skill}'`)
+      }
+      this.nodeTypes.set(node.id, node)
+    }
+
+    for (const raw of defs.recipes) {
+      const parsed = RecipeSchema.safeParse(raw)
+      if (!parsed.success) {
+        errors.push(`recipe '${raw.id}': ${parsed.error.message}`)
+        continue
+      }
+      const recipe = parsed.data
+      if (this.recipes.has(recipe.id)) errors.push(`duplicate recipe id '${recipe.id}'`)
+      for (const ref of [...recipe.inputs, ...recipe.outputs]) {
+        if (!this.items.has(ref.item)) {
+          errors.push(`recipe '${recipe.id}' references unknown item '${ref.item}'`)
+        }
+      }
+      if (recipe.requiredSkill && !this.skills.has(recipe.requiredSkill.skill)) {
+        errors.push(
+          `recipe '${recipe.id}' references unknown skill '${recipe.requiredSkill.skill}'`,
+        )
+      }
+      if (recipe.machine && !machineKinds.has(recipe.machine)) {
+        errors.push(`recipe '${recipe.id}' targets unknown machine kind '${recipe.machine}'`)
+      }
+      if (recipe.machine && recipe.workstation) {
+        errors.push(`recipe '${recipe.id}' cannot be both machine and hand recipe`)
+      }
+      this.recipes.set(recipe.id, recipe)
+    }
+
+    // Blueprint cross-checks (items ↔ recipes are both registered now).
+    for (const item of this.items.values()) {
+      if (!item.blueprint) continue
+      const recipe = this.recipes.get(item.blueprint.recipe)
+      if (!recipe) {
+        errors.push(`item '${item.id}' unlocks unknown recipe '${item.blueprint.recipe}'`)
+      } else if (!recipe.blueprint) {
+        errors.push(`item '${item.id}' unlocks non-blueprint recipe '${recipe.id}'`)
+      }
+    }
+
+    const parsedWorld = WorldDefSchema.safeParse(defs.world)
+    if (!parsedWorld.success) {
+      errors.push(`world '${defs.world.id}': ${parsedWorld.error.message}`)
+      this.world = defs.world
+    } else {
+      this.world = parsedWorld.data
+      for (const node of this.world.resourceNodes) {
+        if (!this.nodeTypes.has(node.node)) {
+          errors.push(`world places unknown resource node type '${node.node}'`)
+        }
+      }
+      for (const prop of this.world.initialProps) {
+        const def = this.items.get(prop.item)
+        if (!def) errors.push(`world prop references unknown item '${prop.item}'`)
+        else if (!def.world) errors.push(`world prop item '${prop.item}' has no world capability`)
+      }
+    }
+
+    if (errors.length > 0) {
+      throw new Error(`Content validation failed:\n  - ${errors.join('\n  - ')}`)
+    }
+  }
+
+  item(id: string): ItemDef | undefined {
+    return this.items.get(id)
+  }
+
+  itemOrThrow(id: string): ItemDef {
+    const def = this.items.get(id)
+    if (!def) throw new Error(`unknown item def '${id}'`)
+    return def
+  }
+
+  recipe(id: string): Recipe | undefined {
+    return this.recipes.get(id)
+  }
+
+  skill(id: string): SkillDef | undefined {
+    return this.skills.get(id)
+  }
+
+  nodeType(id: string): ResourceNodeType | undefined {
+    return this.nodeTypes.get(id)
+  }
+
+  nodeTypeOrThrow(id: string): ResourceNodeType {
+    const def = this.nodeTypes.get(id)
+    if (!def) throw new Error(`unknown node type '${id}'`)
+    return def
+  }
+
+  allItems(): readonly ItemDef[] {
+    return [...this.items.values()]
+  }
+
+  allRecipes(): readonly Recipe[] {
+    return [...this.recipes.values()]
+  }
+
+  allSkills(): readonly SkillDef[] {
+    return [...this.skills.values()]
+  }
+
+  allNodeTypes(): readonly ResourceNodeType[] {
+    return [...this.nodeTypes.values()]
+  }
+
+  crop(id: string): CropDef | undefined {
+    return this.crops.get(id)
+  }
+
+  cropOrThrow(id: string): CropDef {
+    const def = this.crops.get(id)
+    if (!def) throw new Error(`unknown crop '${id}'`)
+    return def
+  }
+
+  allCrops(): readonly CropDef[] {
+    return [...this.crops.values()]
+  }
+
+  npc(id: string): NpcArchetype | undefined {
+    return this.npcs.get(id)
+  }
+
+  allNpcs(): readonly NpcArchetype[] {
+    return [...this.npcs.values()]
+  }
+
+  faction(id: string): FactionDef | undefined {
+    return this.factions.get(id)
+  }
+
+  allFactions(): readonly FactionDef[] {
+    return [...this.factions.values()]
+  }
+
+  market(id: string): MarketDef | undefined {
+    return this.markets.get(id)
+  }
+
+  job(id: string): JobDef | undefined {
+    return this.jobs.get(id)
+  }
+
+  jobsForMarket(marketId: string): JobDef[] {
+    return [...this.jobs.values()].filter((j) => j.market === marketId)
+  }
+
+  /** Machine recipes for one machine kind (unattended production). */
+  machineRecipes(kind: string): Recipe[] {
+    return [...this.recipes.values()].filter((r) => r.machine === kind)
+  }
+
+  /**
+   * Physical representation for ANY item: its authored world capability, or
+   * a category-styled fallback so every item can exist in the world (drops,
+   * loot). Keeping this in content means "everything is physical" without
+   * per-item boilerplate.
+   */
+  worldRepOf(id: string): NonNullable<ItemDef['world']> {
+    const def = this.itemOrThrow(id)
+    if (def.world) return def.world
+    const color = FALLBACK_COLORS[def.category] ?? '#8a7a5a'
+    return {
+      shape: { type: 'box', size: [0.28, 0.28, 0.28] },
+      massKg: 3,
+      color,
+      physgun: true,
+    }
+  }
+}
+
+const FALLBACK_COLORS: Record<string, string> = {
+  material: '#9a8a6a',
+  resource: '#7a8a72',
+  component: '#7a8a92',
+  tool: '#4a5866',
+  food: '#a08a5a',
+  seed: '#6a8a5a',
+  misc: '#8a8a8a',
+}

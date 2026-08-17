@@ -1,0 +1,16 @@
+{
+  "name": "@openvibe/content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@openvibe/shared": "workspace:*",
+    "zod": "^3.24.2"
+  }
+}

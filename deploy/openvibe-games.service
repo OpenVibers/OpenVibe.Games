@@ -1,0 +1,31 @@
+# OpenVibe.Games — authoritative game server (Scraplandia) + portal static host.
+# Install: cp deploy/openvibe-games.service /etc/systemd/system/ && systemctl daemon-reload
+# Env secrets (OV_OAUTH_CLIENT_SECRET, EDITOR_KEY, ...) live in /etc/openvibe/games.env (0600).
+[Unit]
+Description=OpenVibe.Games server (Scraplandia)
+After=network.target
+
+[Service]
+Type=simple
+User=openvibe
+Group=openvibe
+WorkingDirectory=/opt/openvibe.games/apps/server
+# tsx runs the TypeScript entry directly (no build step for the server).
+ExecStart=/usr/bin/env node --import tsx src/main.ts
+Environment=NODE_ENV=production
+Environment=PORT=8000
+Environment=HOST=127.0.0.1
+Environment=DB_PATH=/opt/openvibe.games/data/world.db
+Environment=MAP_PATH=/opt/openvibe.games/data/map.json
+Environment=STATIC_DIR=/opt/openvibe.games/apps/client/dist
+Environment=SELF_URL=https://openvibe.games
+Environment=PLAY_URL=https://play.openvibe.games
+EnvironmentFile=/etc/openvibe/games.env
+Restart=always
+RestartSec=3
+# The world flushes to SQLite on SIGTERM — give it time to finish.
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

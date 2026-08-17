@@ -1,0 +1,157 @@
+import type { ServerConstraintState, ServerMessage, WireEntity, WireInventory, WireSkill } from '@openvibe/protocol';
+import { TypedEmitter } from '@openvibe/shared';
+/**
+ * Replicated game state as this client knows it, decoupled from both the
+ * network layer (which writes it) and rendering/UI (which read it via
+ * events or polling). No Babylon types in here.
+ */
+export interface ClientStateEvents {
+    welcome: {
+        entityId: string;
+        tickRate: number;
+    };
+    entityAdded: WireEntity;
+    entityRemoved: string;
+    entityUpdated: WireEntity;
+    inventory: {
+        inv: WireInventory;
+        activeHotbar: number;
+    };
+    craftJobs: {
+        recipe: string;
+        readyTick: number;
+    }[];
+    actionResult: {
+        action: string;
+        ok: boolean;
+        error?: string;
+    };
+    physgunBeam: {
+        player: string;
+        target: string | null;
+    };
+    skills: WireSkill[];
+    levelUp: {
+        skill: string;
+        level: number;
+    };
+    constraintState: ServerConstraintState;
+    tracer: {
+        shooter: string;
+        from: [number, number, number];
+        to: [number, number, number];
+        hit: boolean;
+    };
+    armorChanged: undefined;
+    friendsChanged: {
+        id: string;
+        name: string;
+    }[];
+    stats: {
+        hp: number;
+        hunger: number;
+        thirst: number;
+        stamina: number;
+        temp: number;
+        statuses: string[];
+        died?: boolean;
+    };
+    timeSync: number;
+    weather: string;
+    container: {
+        id: string;
+        size: number;
+        slots: {
+            i: number;
+            def: string;
+            count: number;
+        }[];
+    };
+    announce: string;
+    market: unknown;
+    jobs: unknown;
+    reputation: {
+        id: string;
+        name: string;
+        value: number;
+        stance: string;
+    }[];
+    fx: {
+        kind: 'hurt' | 'death';
+        id: string;
+    };
+    disconnected: undefined;
+    [key: string]: unknown;
+}
+export declare class ClientState {
+    readonly events: TypedEmitter<ClientStateEvents>;
+    readonly entities: Map<string, WireEntity>;
+    myEntityId: string;
+    /** OpenVibe rank from welcome (owner/admin/moderator, null = player). */
+    myRank: 'owner' | 'admin' | 'moderator' | null;
+    myPlayerId: string;
+    /** Player ids I trust with my props. */
+    friends: {
+        id: string;
+        name: string;
+    }[];
+    tickRate: number;
+    snapshotRate: number;
+    serverTick: number;
+    ack: number;
+    inventory: WireInventory | null;
+    /** Worn armor stack (def/count/meta with dur), or null. */
+    armor: {
+        def: string;
+        count: number;
+        meta?: Record<string, number | string>;
+    } | null;
+    activeHotbar: number;
+    /** Mirrors the server's holster toggle (same deterministic rules). */
+    holstered: boolean;
+    craftJobs: {
+        recipe: string;
+        readyTick: number;
+    }[];
+    skills: WireSkill[];
+    /** Unlocked blueprint recipe ids. */
+    unlocks: Set<string>;
+    /** entityId -> holder player entityId, for beam/highlight rendering. */
+    readonly heldBy: Map<string, string>;
+    /** Live constraints touching entities this client knows (for visuals). */
+    readonly constraints: Map<string, ServerConstraintState>;
+    /** Holder entity id -> grab point in the held body's local space. */
+    readonly heldGrab: Map<string, [number, number, number]>;
+    stats: {
+        hp: number;
+        hunger: number;
+        thirst: number;
+        stamina: number;
+        temp: number;
+        statuses: string[];
+    };
+    /** Shared world clock (fraction of the day cycle). */
+    dayFraction: number;
+    /** Authoritative weather (rendering + prompts). */
+    weather: 'clear' | 'cloudy' | 'rain' | 'storm' | 'fog';
+    /** Faction standings (welcome + on change). */
+    reputation: {
+        id: string;
+        name: string;
+        value: number;
+        stance: string;
+    }[];
+    apply(msg: ServerMessage): void;
+    countOf(defId: string): number;
+    /** Item def id in the active hotbar slot (null when holstered). */
+    activeItemDef(): string | null;
+    skillLevel(id: string): number;
+    isFriend(playerId: string): boolean;
+    /** Online players (from replicated player entities with identity meta). */
+    onlinePlayers(): {
+        playerId: string;
+        name: string;
+        entityId: string;
+    }[];
+}
+//# sourceMappingURL=clientState.d.ts.map
