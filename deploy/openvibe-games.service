@@ -7,8 +7,8 @@ After=network.target
 
 [Service]
 Type=simple
-User=openvibe
-Group=openvibe
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=/opt/openvibe.games/apps/server
 # tsx runs the TypeScript entry directly (no build step for the server).
 ExecStart=/usr/bin/env node --import tsx src/main.ts
