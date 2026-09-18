@@ -11,6 +11,20 @@ export interface NetworkUser {
     name: string;
     rank: OpenVibeRank;
 }
+/** The account record as openvibe.network's /api/auth/me returns it. */
+export interface NetworkAccount {
+    id?: string | number;
+    username?: string;
+    role?: string;
+    is_banned?: number;
+    [key: string]: unknown;
+}
+/**
+ * Fetches the raw account behind a bearer token from openvibe.network, or
+ * null when the token is missing, rejected or the Network is unreachable.
+ * The same-origin /auth/me endpoint hands this object to the shared navbar.
+ */
+export declare function fetchNetworkAccount(url: string | null, auth: string | undefined): Promise<NetworkAccount | null>;
 export declare function resolveNetworkUser(url: string | null, auth: string | undefined): Promise<NetworkUser | null>;
 export declare function canEditMap(rank: OpenVibeRank): boolean;
 //# sourceMappingURL=networkAuth.d.ts.map

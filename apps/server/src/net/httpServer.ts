@@ -4,7 +4,22 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { dirname, extname, join, normalize, resolve } from 'node:path'
 import type { Logger } from '@openvibe/shared'
 import type { ServerMetrics } from '../observability/metrics.js'
-import { canEditMap, resolveNetworkUser } from './networkAuth.js'
+import { canEditMap, fetchNetworkAccount, resolveNetworkUser } from './networkAuth.js'
+import {
+  LOGIN_STATE_COOKIE,
+  SESSION_COOKIE,
+  clearLoginStateCookie,
+  clearSessionCookie,
+  decodeLoginState,
+  isSilentDenial,
+  loginStateCookie,
+  parseCookies,
+  safeNext,
+  sessionCookie,
+  sessionHandoffHtml,
+  ssoHintCookie,
+  withSsoNone,
+} from './sso.js'
 import { MAX_MAP_BYTES, loadMap, saveMap } from './mapStore.js'
 import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore.js'
 import type { MapFileV2 } from '@openvibe/content'
@@ -13,6 +28,8 @@ import type { MapFileV2 } from '@openvibe/content'
  * Minimal HTTP layer: health/metrics endpoints and (in production) the
  * built client bundle. Game traffic itself is WebSocket-only.
  */
+
+const DEFAULT_NETWORK_URL = 'https://openvibe.network'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -263,75 +280,168 @@ export function createHttpServer(
     // /auth/login redirects to the openvibe.network account chooser; the
     // callback exchanges the code server-side (client secret never
     // reaches the browser), then hands the access token to the page.
-    if (url === '/auth/login' && oauth) {
-      // Both callbacks are registered with the provider; using the host the
-      // player came from means the callback lands back on that same host.
-      const redirectBase = playHost ? oauth.playUrl : oauth.selfUrl
-      const params = new URLSearchParams({
-        client_id: oauth.clientId,
-        redirect_uri: `${redirectBase}/auth/callback`,
-        response_type: 'code',
-        scope: 'profile theme',
-        state: randomBytes(16).toString('hex'),
-      })
-      res.writeHead(302, { location: `${oauth.baseUrl}/oauth/authorize?${params.toString()}` })
-      res.end()
-      return
-    }
-    if (url === '/auth/callback' && oauth) {
-      const code = new URL(req.url ?? '/', 'http://x').searchParams.get('code')
-      if (!code) {
-        res.writeHead(400, { 'content-type': 'text/plain' })
-        res.end('missing code')
+    //
+    // `?silent=1` adds prompt=none (the Network's sign-in-everywhere chain
+    // and the shared navbar's one-shot silent attempt); `?next=` may be a
+    // same-site path or an https://openvibe.network/... hop. See sso.ts.
+    if (url.startsWith('/auth/')) {
+      const query = new URL(req.url ?? '/', 'http://x').searchParams
+      const cookies = parseCookies(req.headers.cookie)
+      const redirectBase = oauth ? (playHost ? oauth.playUrl : oauth.selfUrl) : null
+      const secure = redirectBase ? redirectBase.startsWith('https') : false
+      const origins = {
+        network: oauth?.baseUrl ?? DEFAULT_NETWORK_URL,
+        self: oauth ? [oauth.selfUrl, oauth.playUrl] : [],
+      }
+      // The game IS the root on the play host; on the apex it lives at /play.
+      const home = playHost ? '/' : '/play'
+
+      if (url === '/auth/login' && oauth && redirectBase) {
+        // Both callbacks are registered with the provider; using the host the
+        // player came from means the callback lands back on that same host.
+        const silent = query.get('silent') === '1'
+        const next = safeNext(query.get('next'), origins)
+        const state = randomBytes(16).toString('hex')
+        const params = new URLSearchParams({
+          client_id: oauth.clientId,
+          redirect_uri: `${redirectBase}/auth/callback`,
+          response_type: 'code',
+          scope: 'profile theme',
+          state,
+        })
+        if (silent) params.set('prompt', 'none')
+        res.writeHead(302, {
+          location: `${oauth.baseUrl}/oauth/authorize?${params.toString()}`,
+          'set-cookie': loginStateCookie({ state, next, silent }, secure),
+          'cache-control': 'no-store',
+        })
+        res.end()
         return
       }
-      void (async () => {
-        try {
-          // The exchange must repeat the redirect_uri the authorize step
-          // used; the callback arrives on that same host, so Host decides.
-          const redirectBase = playHost ? oauth.playUrl : oauth.selfUrl
-          const resp = await fetch(`${oauth.baseUrl}/oauth/token`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              grant_type: 'authorization_code',
-              client_id: oauth.clientId,
-              client_secret: oauth.clientSecret,
-              code,
-              redirect_uri: `${redirectBase}/auth/callback`,
-            }),
-          })
-          const data = (await resp.json()) as {
-            access_token?: string
-            error_description?: string
-            error?: string
-            user?: { username?: string }
-          }
-          if (!data.access_token) {
-            res.writeHead(400, { 'content-type': 'text/plain' })
-            res.end(`sign-in failed: ${data.error_description ?? data.error ?? 'no token'}`)
+      if (url === '/auth/callback' && oauth && redirectBase) {
+        const login = decodeLoginState(cookies[LOGIN_STATE_COOKIE])
+        const next = login?.next ?? null
+        const error = query.get('error')
+        if (error) {
+          // prompt=none found nobody signed in (or the silent attempt was
+          // refused): land quietly where the caller asked, flagged sso=none.
+          if (login?.silent || isSilentDenial(error)) {
+            res.writeHead(302, {
+              location: withSsoNone(next ?? home),
+              'set-cookie': clearLoginStateCookie(),
+              'cache-control': 'no-store',
+            })
+            res.end()
             return
           }
-          const tok = JSON.stringify(data.access_token)
-          // Secure cookies are dropped over plain http (local dev).
-          const secure = redirectBase.startsWith('https') ? '; Secure' : ''
-          // Land back where the player started: play-host logins go to the
-          // game at its root, apex logins to /play.
-          const dest = playHost ? '/' : '/play'
-          res.writeHead(200, {
-            'content-type': 'text/html; charset=utf-8',
-            'set-cookie': `ovg_sso=${encodeURIComponent(data.access_token)}; Path=/; Max-Age=${7 * 86400}; SameSite=Lax${secure}`,
+          res.writeHead(400, {
+            'content-type': 'text/plain',
+            'set-cookie': clearLoginStateCookie(),
           })
-          res.end(`<!doctype html><title>Signing in…</title><script>
-localStorage.setItem('ovg_sso', ${tok});
-location.href = ${JSON.stringify(dest)};
-</script><noscript><a href="${dest}">Continue</a></noscript>`)
-        } catch (err) {
-          log.warn('oauth callback failed', { error: String(err) })
-          res.writeHead(502, { 'content-type': 'text/plain' })
-          res.end('openvibe.network is unreachable — try again shortly')
+          res.end(`sign-in failed: ${query.get('error_description') ?? error}`)
+          return
         }
-      })()
+        const code = query.get('code')
+        if (!code) {
+          res.writeHead(400, { 'content-type': 'text/plain' })
+          res.end('missing code')
+          return
+        }
+        // A login-state cookie is only ever missing when the browser refused
+        // it; when present, the state it pinned must be the one coming back.
+        if (login && login.state !== query.get('state')) {
+          log.warn('oauth callback state mismatch', {})
+          res.writeHead(400, {
+            'content-type': 'text/plain',
+            'set-cookie': clearLoginStateCookie(),
+          })
+          res.end('sign-in failed: state mismatch — start again')
+          return
+        }
+        void (async () => {
+          try {
+            // The exchange must repeat the redirect_uri the authorize step
+            // used; the callback arrives on that same host, so Host decides.
+            const resp = await fetch(`${oauth.baseUrl}/oauth/token`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                grant_type: 'authorization_code',
+                client_id: oauth.clientId,
+                client_secret: oauth.clientSecret,
+                code,
+                redirect_uri: `${redirectBase}/auth/callback`,
+              }),
+            })
+            const data = (await resp.json()) as {
+              access_token?: string
+              error_description?: string
+              error?: string
+              user?: { username?: string }
+            }
+            if (!data.access_token) {
+              res.writeHead(400, {
+                'content-type': 'text/plain',
+                'set-cookie': clearLoginStateCookie(),
+              })
+              res.end(`sign-in failed: ${data.error_description ?? data.error ?? 'no token'}`)
+              return
+            }
+            // Land where the login asked to (a same-site page or the next hop
+            // of the Network's sign-in-everywhere chain), else at the game.
+            const dest = next ?? home
+            res.writeHead(200, {
+              'content-type': 'text/html; charset=utf-8',
+              'cache-control': 'no-store',
+              'set-cookie': [
+                sessionCookie(data.access_token, secure),
+                ssoHintCookie('account', secure),
+                clearLoginStateCookie(),
+              ],
+            })
+            res.end(sessionHandoffHtml(data.access_token, 'account', dest))
+          } catch (err) {
+            log.warn('oauth callback failed', { error: String(err) })
+            res.writeHead(502, { 'content-type': 'text/plain' })
+            res.end('openvibe.network is unreachable — try again shortly')
+          }
+        })()
+        return
+      }
+      if (url === '/auth/logout') {
+        // Drops this site's session and marks the browser a guest for the
+        // whole network; `next` lets the sign-out-everywhere chain continue.
+        const dest = safeNext(query.get('next'), origins) ?? home
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-store',
+          'set-cookie': [
+            clearSessionCookie(),
+            ssoHintCookie('guest', secure),
+            clearLoginStateCookie(),
+          ],
+        })
+        res.end(sessionHandoffHtml(null, 'guest', dest))
+        return
+      }
+      if (url === '/auth/me') {
+        // Same-origin session lookup for the shared navbar: { user } for the
+        // ovg_sso cookie (or a bearer token), { user: null } otherwise.
+        const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]
+        const token = cookies[SESSION_COOKIE] || bearer
+        const authUrl =
+          editorAuth?.networkAuthUrl ?? (oauth ? `${oauth.baseUrl}/api/auth/me` : null)
+        void fetchNetworkAccount(authUrl, token).then((user) => {
+          res.writeHead(200, {
+            'content-type': 'application/json',
+            'cache-control': 'private, no-store',
+          })
+          res.end(JSON.stringify({ user }))
+        })
+        return
+      }
+      res.writeHead(404, { 'content-type': 'application/json' })
+      res.end('{"error":"not_found"}')
       return
     }
     if (url === '/healthz') {

@@ -51,9 +51,9 @@ export function characterSelect(
       out.className = 'char-logout'
       out.textContent = 'Log out'
       out.addEventListener('click', () => {
-        localStorage.removeItem('ovg_sso')
-        document.cookie = 'ovg_sso=; Path=/; Max-Age=0'
-        location.reload()
+        // Server-side sign-out: drops the session cookie, marks the browser a
+        // guest for the network's silent sign-in, clears localStorage, reloads.
+        location.href = `/auth/logout?next=${encodeURIComponent(location.pathname)}`
       })
       bar.appendChild(out)
       panel.appendChild(bar)
