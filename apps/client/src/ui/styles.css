@@ -21,6 +21,28 @@ input {
   -webkit-user-select: text;
 }
 
+/* ── Page frame ────────────────────────────────────────────────────
+   Shared navbar on top, the game stage filling the rest, a one-line
+   footer below. Once the player is in the world the chrome folds away
+   (body.ovg-chrome-hidden, see public/chrome.js) and the stage takes the
+   whole viewport; the engine resizes off the canvas's CSS box. */
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#navbar-mount {
+  flex: none;
+  position: relative;
+  z-index: 30;
+}
+
+#stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 #game {
   width: 100%;
   height: 100%;
@@ -29,9 +51,53 @@ input {
 }
 
 #ui {
-  position: fixed;
+  position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+#ov-footer {
+  flex: none;
+}
+#ov-footer.ovf {
+  margin-top: 0 !important;
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+body.ovg-chrome-hidden #navbar-mount,
+body.ovg-chrome-hidden #ov-footer {
+  display: none;
+}
+
+/* Floating "bring the chrome back" pill (chrome.js adds it once the game starts). */
+#ovg-chrome-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #2a3340);
+  background: var(--bg-secondary, rgba(10, 14, 18, 0.8));
+  color: var(--text-secondary, #b0b0b8);
+  font:
+    600 12px/1 system-ui,
+    sans-serif;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+#ovg-chrome-toggle:hover,
+#ovg-chrome-toggle:focus-visible {
+  opacity: 1;
+  color: var(--text-primary, #e6e6e6);
+}
+#ovg-chrome-toggle[hidden] {
+  display: none;
 }
 
 .crosshair {

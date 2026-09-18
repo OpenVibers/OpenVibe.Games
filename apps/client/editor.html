@@ -3,7 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Scraplandia Map Editor</title>
+    <title>Scraplandia Map Editor — OpenVibe.Games</title>
+    <meta
+      name="description"
+      content="Collaborative map editor for Scraplandia on OpenVibe.Games."
+    />
+    <!-- An admin tool: not for search engines. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="canonical" href="https://openvibe.games/editor" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OpenVibe.Games" />
+    <meta property="og:title" content="Scraplandia Map Editor" />
+    <meta
+      property="og:description"
+      content="Collaborative map editor for Scraplandia on OpenVibe.Games."
+    />
+    <meta property="og:url" content="https://openvibe.games/editor" />
+    <meta property="og:image" content="https://openvibe.games/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- Shared network chrome: the user's theme before first paint, then navbar + footer. -->
+    <script src="https://openvibe.network/shared/theme-loader.js"></script>
+    <script src="https://openvibe.network/shared/navbar.js" defer></script>
+    <script src="https://openvibe.network/shared/footer.js" defer></script>
+    <script>
+      window.__ovgChrome = { page: 'editor', collapsible: true, toggleFromStart: true }
+    </script>
+    <script src="/chrome.js" defer></script>
   </head>
   <body>
     <!--
@@ -15,39 +40,47 @@
       What stays here is what must exist before any script runs (the canvas)
       and the overlays that are not part of the workspace grid.
     -->
-    <canvas id="game"></canvas>
-    <div id="shell"></div>
+    <div id="navbar-mount"></div>
+    <div id="stage">
+      <canvas id="game"></canvas>
+      <div id="shell"></div>
 
-    <!-- Revision conflict. Nothing here merges, and it says so. -->
-    <div id="conflict" class="overlay" style="display: none">
-      <div class="overlay-card">
-        <h2>⚠ Newer map saved by another admin</h2>
-        <div id="conflict-summary" class="hint"></div>
-        <div class="overlay-actions">
-          <button id="conflict-load" class="mini" type="button">Discard mine · load theirs</button>
-          <button id="conflict-keep" class="mini" type="button">Keep mine · dismiss</button>
-          <button id="conflict-export" class="mini" type="button">💾 Download my local copy</button>
-        </div>
-        <div class="hint">
-          "Keep mine" only dismisses this panel — Save stays refused until you reload.
-        </div>
-      </div>
-    </div>
-
-    <!-- Keyboard shortcuts. Every action is here; none are hardcoded. -->
-    <div id="settings" class="overlay" style="display: none">
-      <div class="overlay-card">
-        <h2>⌨ Keyboard shortcuts</h2>
-        <div id="keys-list" class="keys-list"></div>
-        <div class="overlay-actions">
-          <button id="keys-reset" class="mini" type="button">Reset to defaults</button>
-          <button id="settings-close" class="mini" type="button">Close</button>
+      <!-- Revision conflict. Nothing here merges, and it says so. -->
+      <div id="conflict" class="overlay" style="display: none">
+        <div class="overlay-card">
+          <h2>⚠ Newer map saved by another admin</h2>
+          <div id="conflict-summary" class="hint"></div>
+          <div class="overlay-actions">
+            <button id="conflict-load" class="mini" type="button">
+              Discard mine · load theirs
+            </button>
+            <button id="conflict-keep" class="mini" type="button">Keep mine · dismiss</button>
+            <button id="conflict-export" class="mini" type="button">
+              💾 Download my local copy
+            </button>
+          </div>
+          <div class="hint">
+            "Keep mine" only dismisses this panel — Save stays refused until you reload.
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Co-editor name tags, positioned over the viewport. -->
-    <div id="peers"></div>
+      <!-- Keyboard shortcuts. Every action is here; none are hardcoded. -->
+      <div id="settings" class="overlay" style="display: none">
+        <div class="overlay-card">
+          <h2>⌨ Keyboard shortcuts</h2>
+          <div id="keys-list" class="keys-list"></div>
+          <div class="overlay-actions">
+            <button id="keys-reset" class="mini" type="button">Reset to defaults</button>
+            <button id="settings-close" class="mini" type="button">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Co-editor name tags, positioned over the viewport. -->
+      <div id="peers"></div>
+    </div>
+    <footer id="ov-footer" class="ovf"></footer>
 
     <script type="module" src="/src/editor/main.ts"></script>
   </body>

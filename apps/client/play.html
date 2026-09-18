@@ -3,12 +3,79 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Scraplandia</title>
+    <title>Scraplandia — OpenVibe.Games</title>
+    <meta
+      name="description"
+      content="Play Scraplandia: scrappy multiplayer survival-building in and around Scrap City, in your browser, no download. Part of the OpenVibe network."
+    />
+    <!-- Shared network chrome: the user's theme before first paint, then navbar + footer. -->
+    <script src="https://openvibe.network/shared/theme-loader.js"></script>
+    <script src="https://openvibe.network/shared/navbar.js" defer></script>
+    <script src="https://openvibe.network/shared/footer.js" defer></script>
+    <link rel="canonical" href="https://play.openvibe.games/" />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OpenVibe.Games" />
+    <meta property="og:title" content="Scraplandia — play in your browser" />
+    <meta
+      property="og:description"
+      content="Scrappy multiplayer survival-building in and around Scrap City. Physgun anything, weld it to anything else, haul your salvage home. No download."
+    />
+    <meta property="og:url" content="https://play.openvibe.games/" />
+    <meta property="og:image" content="https://openvibe.games/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Scraplandia — play in your browser" />
+    <meta
+      name="twitter:description"
+      content="Multiplayer survival-building on the OpenVibe network. In your browser, no download."
+    />
+    <meta name="twitter:image" content="https://openvibe.games/og-image.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "@id": "https://play.openvibe.games/#game",
+        "name": "Scraplandia",
+        "url": "https://play.openvibe.games/",
+        "image": "https://openvibe.games/og-image.png",
+        "description": "Scrappy multiplayer survival-building in and around Scrap City: physgun anything, weld it to anything else, chase supply drops in the wilds and haul your salvage home.",
+        "genre": ["Survival", "Sandbox", "Building"],
+        "playMode": "MultiPlayer",
+        "gamePlatform": "Web browser",
+        "applicationCategory": "Game",
+        "operatingSystem": "Any",
+        "isPartOf": {
+          "@type": "WebSite",
+          "name": "OpenVibe.Games",
+          "url": "https://openvibe.games/"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "OpenVibe",
+          "url": "https://openvibe.network/"
+        }
+      }
+    </script>
     <link rel="stylesheet" href="/src/ui/styles.css" />
+    <script>
+      window.__ovgChrome = { page: 'play', title: 'Scraplandia', collapsible: true }
+    </script>
+    <script src="/chrome.js" defer></script>
   </head>
   <body>
-    <canvas id="game"></canvas>
-    <div id="ui"></div>
+    <!--
+      The shared navbar mounts at the top; the game fills the stage below it.
+      Once the player is in the world (the `ovg:playing` event) the chrome
+      folds away and a small floating button brings it back — see chrome.js.
+    -->
+    <div id="navbar-mount"></div>
+    <div id="stage">
+      <canvas id="game"></canvas>
+      <div id="ui"></div>
+    </div>
+    <footer id="ov-footer" class="ovf"></footer>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

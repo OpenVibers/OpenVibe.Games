@@ -3,28 +3,93 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenVibe.Games — free browser games on the OpenVibe network</title>
+    <title>OpenVibe.Games — browser games on the OpenVibe network</title>
     <meta
       name="description"
-      content="The games arm of the OpenVibe network. Play Scraplandia — scrappy multiplayer survival-building in Scrap City — free, in your browser, no download."
+      content="The games arm of the OpenVibe network. Play Scraplandia — scrappy multiplayer survival-building in Scrap City — in your browser, no download."
     />
+    <!-- Shared network chrome: the user's theme before first paint, then navbar + footer. -->
+    <script src="https://openvibe.network/shared/theme-loader.js"></script>
+    <script src="https://openvibe.network/shared/navbar.js" defer></script>
+    <script src="https://openvibe.network/shared/footer.js" defer></script>
+    <link rel="canonical" href="https://openvibe.games/" />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OpenVibe.Games" />
+    <meta property="og:title" content="OpenVibe.Games — browser games on the OpenVibe network" />
+    <meta
+      property="og:description"
+      content="Play Scraplandia — scrappy multiplayer survival-building in Scrap City — in your browser, no download. One OpenVibe account across the whole network."
+    />
+    <meta property="og:url" content="https://openvibe.games/" />
+    <meta property="og:image" content="https://openvibe.games/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="OpenVibe.Games — browser games on the OpenVibe network" />
+    <meta
+      name="twitter:description"
+      content="Play Scraplandia — multiplayer survival-building in your browser, no download."
+    />
+    <meta name="twitter:image" content="https://openvibe.games/og-image.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://openvibe.games/#website",
+            "name": "OpenVibe.Games",
+            "url": "https://openvibe.games/",
+            "description": "Browser games on the OpenVibe network — multiplayer, in your browser, no download.",
+            "publisher": {
+              "@type": "Organization",
+              "name": "OpenVibe",
+              "url": "https://openvibe.network/"
+            }
+          },
+          {
+            "@type": "VideoGame",
+            "@id": "https://play.openvibe.games/#game",
+            "name": "Scraplandia",
+            "url": "https://play.openvibe.games/",
+            "image": "https://openvibe.games/og-image.png",
+            "description": "Scrappy multiplayer survival-building in and around Scrap City: physgun anything, weld it to anything else, chase supply drops in the wilds and haul your salvage home.",
+            "genre": ["Survival", "Sandbox", "Building"],
+            "playMode": "MultiPlayer",
+            "gamePlatform": "Web browser",
+            "applicationCategory": "Game",
+            "operatingSystem": "Any",
+            "isPartOf": { "@id": "https://openvibe.games/#website" },
+            "publisher": {
+              "@type": "Organization",
+              "name": "OpenVibe",
+              "url": "https://openvibe.network/"
+            }
+          }
+        ]
+      }
+    </script>
     <style>
       * {
         margin: 0;
         box-sizing: border-box;
       }
+      /* Page palette. The shared theme-loader sets --accent, --accent-light, --accent-dark,
+         --accent-rgb, --bg-primary, --text-primary… on <html>, so the portal follows the
+         signed-in user's theme; the values here are the fallbacks before it runs. */
       :root {
-        --accent: #8b5cf6;
-        --accent-light: #a78bfa;
-        --accent-dark: #6d28d9;
+        --accent: #3b82f6;
+        --accent-light: #60a5fa;
+        --accent-dark: #1d4ed8;
         --secondary: #22d3ee;
-        --bg: #131318;
-        --bg-raised: #1a1a22;
-        --bg-card: rgba(26, 26, 34, 0.88);
-        --border: #2a2a36;
-        --text: #e8e8f0;
-        --text-dim: #a0a0b2;
-        --text-faint: #6a6a7a;
+        --bg: var(--bg-primary, #0a0f1c);
+        --bg-raised: var(--bg-secondary, #101828);
+        --bg-card: var(--bg-card-page, rgba(19, 28, 46, 0.88));
+        --border: #1f2d47;
+        --text: var(--text-primary, #e6edf7);
+        --text-dim: var(--text-secondary, #96a7c2);
+        --text-faint: var(--text-muted, #7386a3);
       }
       html,
       body {
@@ -45,68 +110,19 @@
         inset: 0;
         z-index: -2;
         background:
-          radial-gradient(1100px 520px at 50% -8%, rgba(139, 92, 246, 0.22), transparent 68%),
+          radial-gradient(
+            1100px 520px at 50% -8%,
+            rgba(var(--accent-rgb, 59, 130, 246), 0.22),
+            transparent 68%
+          ),
           radial-gradient(800px 420px at 88% 28%, rgba(34, 211, 238, 0.07), transparent 60%),
-          linear-gradient(180deg, #16121f 0%, var(--bg) 46%);
+          linear-gradient(180deg, var(--bg-raised) 0%, var(--bg) 46%);
       }
       .stars {
         position: fixed;
         inset: 0;
         z-index: -1;
         opacity: 0.7;
-      }
-
-      /* ── nav ─────────────────────────────────────────────────────── */
-      nav {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        padding: 16px clamp(16px, 4vw, 40px);
-        max-width: 1200px;
-        margin: 0 auto;
-      }
-      .brand {
-        font-weight: 900;
-        font-size: 19px;
-        letter-spacing: 0.02em;
-        text-decoration: none;
-        color: var(--text);
-        white-space: nowrap;
-      }
-      .brand b {
-        background: linear-gradient(120deg, var(--accent-light), var(--accent));
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-      }
-      .nav-links {
-        margin-left: auto;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-      .nav-links a {
-        color: var(--text-dim);
-        text-decoration: none;
-        font-size: 14px;
-        padding: 8px 12px;
-        border-radius: 8px;
-        transition:
-          color 0.15s,
-          background 0.15s;
-      }
-      .nav-links a:hover {
-        color: var(--text);
-        background: rgba(139, 92, 246, 0.12);
-      }
-      .nav-links a.signin {
-        color: #fff;
-        background: linear-gradient(120deg, var(--accent), var(--accent-dark));
-        font-weight: 700;
-      }
-      .nav-links a.signin:hover {
-        background: linear-gradient(120deg, var(--accent-light), var(--accent));
       }
 
       /* ── hero ────────────────────────────────────────────────────── */
@@ -122,11 +138,16 @@
         animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
       }
       .hero-title b {
-        background: linear-gradient(120deg, var(--accent-light) 10%, var(--accent) 55%, var(--secondary) 110%);
+        background: linear-gradient(
+          120deg,
+          var(--accent-light) 10%,
+          var(--accent) 55%,
+          var(--secondary) 110%
+        );
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
-        filter: drop-shadow(0 6px 34px rgba(139, 92, 246, 0.35));
+        filter: drop-shadow(0 6px 34px rgba(var(--accent-rgb, 59, 130, 246), 0.35));
       }
       .hero-sub {
         margin: 18px auto 0;
@@ -171,7 +192,7 @@
       .game-card:hover {
         transform: translateY(-5px);
         border-color: var(--accent);
-        box-shadow: 0 14px 44px rgba(139, 92, 246, 0.18);
+        box-shadow: 0 14px 44px rgba(var(--accent-rgb, 59, 130, 246), 0.18);
       }
       .game-card.featured {
         grid-column: 1 / -1;
@@ -190,17 +211,21 @@
         align-items: center;
         justify-content: center;
         background:
-          radial-gradient(420px 200px at 30% 20%, rgba(139, 92, 246, 0.35), transparent 70%),
+          radial-gradient(
+            420px 200px at 30% 20%,
+            rgba(var(--accent-rgb, 59, 130, 246), 0.35),
+            transparent 70%
+          ),
           radial-gradient(380px 220px at 75% 85%, rgba(34, 211, 238, 0.18), transparent 70%),
-          linear-gradient(160deg, #221a33, #141420 70%);
+          linear-gradient(160deg, var(--bg-raised), var(--bg) 70%);
       }
       .shot::after {
         content: '';
         position: absolute;
         inset: 0;
         background-image:
-          linear-gradient(rgba(167, 139, 250, 0.06) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(167, 139, 250, 0.06) 1px, transparent 1px);
+          linear-gradient(rgba(var(--accent-rgb, 59, 130, 246), 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(var(--accent-rgb, 59, 130, 246), 0.06) 1px, transparent 1px);
         background-size: 34px 34px;
         mask-image: radial-gradient(closest-side, #000, transparent);
         -webkit-mask-image: radial-gradient(closest-side, #000, transparent);
@@ -231,8 +256,8 @@
       }
       .badge.soon {
         color: var(--accent-light);
-        background: rgba(139, 92, 246, 0.14);
-        border: 1px solid rgba(139, 92, 246, 0.35);
+        background: rgba(var(--accent-rgb, 59, 130, 246), 0.14);
+        border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.35);
       }
       .game-body h2 {
         font-size: clamp(26px, 3.4vw, 38px);
@@ -273,7 +298,7 @@
         text-decoration: none;
         color: #fff;
         background: linear-gradient(120deg, var(--accent), var(--accent-dark));
-        box-shadow: 0 8px 30px rgba(139, 92, 246, 0.4);
+        box-shadow: 0 8px 30px rgba(var(--accent-rgb, 59, 130, 246), 0.4);
         transition:
           transform 0.15s ease,
           box-shadow 0.15s ease;
@@ -285,10 +310,10 @@
       @keyframes pulse {
         0%,
         100% {
-          box-shadow: 0 8px 30px rgba(139, 92, 246, 0.4);
+          box-shadow: 0 8px 30px rgba(var(--accent-rgb, 59, 130, 246), 0.4);
         }
         50% {
-          box-shadow: 0 8px 48px rgba(139, 92, 246, 0.7);
+          box-shadow: 0 8px 48px rgba(var(--accent-rgb, 59, 130, 246), 0.7);
         }
       }
       .game-card.soon {
@@ -309,8 +334,12 @@
         padding: 0 20px;
       }
       .account-inner {
-        background: linear-gradient(160deg, rgba(139, 92, 246, 0.12), rgba(26, 26, 34, 0.9) 55%);
-        border: 1px solid rgba(139, 92, 246, 0.3);
+        background: linear-gradient(
+          160deg,
+          rgba(var(--accent-rgb, 59, 130, 246), 0.12),
+          var(--bg-card) 55%
+        );
+        border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.3);
         border-radius: 20px;
         padding: clamp(26px, 5vw, 44px);
         text-align: center;
@@ -348,27 +377,14 @@
         color: var(--text-faint);
       }
 
-      /* ── footer ──────────────────────────────────────────────────── */
-      footer {
-        border-top: 1px solid var(--border);
-        padding: 30px 20px 40px;
-        text-align: center;
-        color: var(--text-faint);
-        font-size: 13px;
-        line-height: 2;
+      /* ── shared chrome ───────────────────────────────────────────── */
+      #navbar-mount {
+        position: relative;
+        z-index: 5;
       }
-      footer a {
-        color: var(--text-dim);
-        text-decoration: none;
-        margin: 0 10px;
-      }
-      footer a:hover {
-        color: var(--accent-light);
-      }
-      .foot-brand {
-        font-weight: 800;
-        color: var(--text-dim);
-        letter-spacing: 0.06em;
+      #ov-footer {
+        max-width: 1200px;
+        margin: 0 auto;
       }
     </style>
   </head>
@@ -376,24 +392,13 @@
     <div class="backdrop"></div>
     <canvas class="stars" id="stars"></canvas>
 
-    <nav>
-      <a class="brand" href="/">Open<b>Vibe</b>.Games</a>
-      <div class="nav-links">
-        <a href="https://openvibe.live" target="_blank" rel="noopener">openvibe.live</a>
-        <a href="https://openvibe.tools" target="_blank" rel="noopener">openvibe.tools</a>
-        <a
-          class="signin"
-          href="https://openvibe.network/login?redirect=https%3A%2F%2Fplay.openvibe.games"
-          >Sign in</a
-        >
-      </div>
-    </nav>
+    <div id="navbar-mount"></div>
 
     <header>
       <h1 class="hero-title">Open<b>Vibe.Games</b></h1>
       <p class="hero-sub">
-        Free multiplayer games that run in your browser. No installs, no launchers — one OpenVibe
-        account across the whole network.
+        Multiplayer games that run in your browser. No installs, no launchers — one OpenVibe account
+        across the whole network.
       </p>
     </header>
 
@@ -416,7 +421,7 @@
             ><span>PvP wilds</span><span>bottle caps</span>
           </div>
           <a class="play-cta" href="https://play.openvibe.games" data-dev-href="/play"
-            >▶ PLAY FREE — NO DOWNLOAD</a
+            >▶ PLAY — NO DOWNLOAD</a
           >
         </div>
       </div>
@@ -427,7 +432,9 @@
         <div class="game-body">
           <span class="badge soon">COMING SOON</span>
           <h3>Vibe Tables</h3>
-          <p>Casual card and board nights with your stream chat — join from a link, no account walls.</p>
+          <p>
+            Casual card and board nights with your stream chat — join from a link, no account walls.
+          </p>
         </div>
       </div>
       <div class="game-card soon">
@@ -453,31 +460,22 @@
         <h2>One character as a guest. <b>Three</b> with an OpenVibe account.</h2>
         <p>
           Jump into any game instantly as a guest — your character is tied to this browser and
-          connection. Sign in with your free <b>OpenVibe</b> account to unlock three character
-          slots, keep progress safe across devices and IP changes, and carry one identity across
+          connection. Sign in with your <b>OpenVibe</b> account to unlock three character slots,
+          keep progress safe across devices and IP changes, and carry one identity across
           openvibe.live, openvibe.tools and every game here.
         </p>
-        <a
-          class="signin"
-          href="https://openvibe.network/login?redirect=https%3A%2F%2Fplay.openvibe.games"
-          >Sign in with OpenVibe</a
-        >
+        <a class="signin" href="/auth/login?next=%2F">Sign in with OpenVibe</a>
         <div class="fine">One account. All of OpenVibe.</div>
       </div>
     </section>
 
-    <footer>
-      <div>
-        <a href="https://openvibe.network">openvibe.network</a>
-        <a href="https://openvibe.live">openvibe.live</a>
-        <a href="https://openvibe.tools">openvibe.tools</a>
-        <a href="https://openvibe.media">openvibe.media</a>
-        <a href="https://openvibe.community">openvibe.community</a>
-      </div>
-      <div class="foot-brand">OPENVIBE.GAMES</div>
-      <div>Part of the OpenVibe network · One Account. All of OpenVibe.</div>
-    </footer>
+    <!-- Shared cross-site footer (openvibe.network/shared/footer.js): network links, legal, signed-in row. -->
+    <footer id="ov-footer" class="ovf"></footer>
 
+    <script>
+      window.__ovgChrome = { page: 'portal' }
+    </script>
+    <script src="/chrome.js" defer></script>
     <script>
       // Dev convenience: on localhost the play. vhost doesn't exist, so PLAY
       // buttons fall back to the same-origin /play route (Vite alias / server).
@@ -506,7 +504,11 @@
         ctx.clearRect(0, 0, c.width, c.height)
         for (const [x, y, r, tint] of stars) {
           ctx.globalAlpha = 0.25 + Math.random() * 0.5
-          ctx.fillStyle = tint ? '#a78bfa' : '#ffffff'
+          ctx.fillStyle = tint
+            ? getComputedStyle(document.documentElement)
+                .getPropertyValue('--accent-light')
+                .trim() || '#60a5fa'
+            : '#ffffff'
           ctx.beginPath()
           ctx.arc(x * c.width, y * c.height, r, 0, 7)
           ctx.fill()
