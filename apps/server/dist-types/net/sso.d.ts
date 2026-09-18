@@ -45,6 +45,46 @@ export declare function ssoHintCookie(value: 'account' | 'guest', secure: boolea
 export declare function loginStateCookie(s: LoginState, secure: boolean): string;
 export declare function clearLoginStateCookie(): string;
 /**
+ * Decodes a JWT's payload WITHOUT checking its signature. Only for reading
+ * claims we cross-check locally (the FedCM nonce); never for trusting an
+ * identity.
+ */
+export declare function decodeJwtPayload(token: string): Record<string, unknown> | null;
+/** True when the assertion's `nonce` claim is exactly the nonce the page posted. */
+export declare function fedcmNonceMatches(token: string, nonce: string): boolean;
+export interface FedcmBody {
+    token: string;
+    nonce: string;
+}
+/** Max bytes a /auth/fedcm body may carry: an assertion JWT is a few KB at most. */
+export declare const MAX_FEDCM_BODY_BYTES: number;
+/**
+ * Parses and validates the JSON body of POST /auth/fedcm. Returns an error
+ * code (for a 400) instead of the body when it is malformed, incomplete or
+ * its nonce does not match the assertion's.
+ */
+export declare function parseFedcmBody(raw: string): {
+    body: FedcmBody;
+} | {
+    error: string;
+};
+/**
+ * Remembers, briefly, which session tokens openvibe.network last confirmed so
+ * the silent-login shortcut (`/auth/login?silent=1` with an ovg_sso cookie
+ * that already resolves) does not cost a Network lookup on every page. Only
+ * positive answers are kept: a miss just falls through to the normal
+ * prompt=none round trip, which is the right answer for it anyway.
+ */
+export declare class SessionCheckCache {
+    private readonly ttlMs;
+    private readonly maxEntries;
+    private readonly hits;
+    constructor(ttlMs?: number, maxEntries?: number);
+    has(token: string, now?: number): boolean;
+    remember(token: string, now?: number): void;
+    forget(token: string): void;
+}
+/**
  * The page the callback answers with: it mirrors the session into
  * localStorage (the game client reads it from there) before moving on, so a
  * cross-origin `next` still leaves this origin signed in.

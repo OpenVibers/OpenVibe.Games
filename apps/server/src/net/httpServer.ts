@@ -7,13 +7,16 @@ import type { ServerMetrics } from '../observability/metrics.js'
 import { canEditMap, fetchNetworkAccount, resolveNetworkUser } from './networkAuth.js'
 import {
   LOGIN_STATE_COOKIE,
+  MAX_FEDCM_BODY_BYTES,
   SESSION_COOKIE,
+  SessionCheckCache,
   clearLoginStateCookie,
   clearSessionCookie,
   decodeLoginState,
   isSilentDenial,
   loginStateCookie,
   parseCookies,
+  parseFedcmBody,
   safeNext,
   sessionCookie,
   sessionHandoffHtml,
@@ -80,6 +83,35 @@ async function editorAuthorized(auth: EditorAuth, token: string | undefined): Pr
   return auth.key !== null && token === auth.key
 }
 
+/** Reads a small request body as utf8, or null when it exceeds `limit`. */
+function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
+  return new Promise((resolvePromise) => {
+    const chunks: Buffer[] = []
+    let size = 0
+    let tooBig = false
+    req.on('data', (c: Buffer) => {
+      size += c.length
+      if (size > limit) {
+        tooBig = true
+        req.destroy()
+      } else chunks.push(c)
+    })
+    req.on('end', () => resolvePromise(tooBig ? null : Buffer.concat(chunks).toString('utf8')))
+    req.on('close', () => resolvePromise(null))
+    req.on('error', () => resolvePromise(null))
+  })
+}
+
+/** The token endpoint's answer, for both the code and the jwt-bearer grant. */
+interface TokenResponse {
+  access_token?: string
+  refresh_token?: string
+  error_description?: string
+  error?: string
+  user?: { username?: string; [key: string]: unknown }
+  preferences?: unknown
+}
+
 export function createHttpServer(
   staticDir: string | null,
   metrics: ServerMetrics,
@@ -94,6 +126,9 @@ export function createHttpServer(
   oauth?: OAuthConfig | null,
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
+  // Sessions the Network confirmed recently: lets a silent login on a signed-in
+  // browser answer without the Network round trip. See /auth/login.
+  const knownSessions = new SessionCheckCache()
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = (req.url ?? '/').split('?')[0] ?? '/'
     // Host-based routing: play.openvibe.games serves the game at its root
@@ -295,27 +330,59 @@ export function createHttpServer(
       }
       // The game IS the root on the play host; on the apex it lives at /play.
       const home = playHost ? '/' : '/play'
+      // Where a session token is resolved to an account (see networkAuth.ts).
+      const networkMeUrl =
+        editorAuth?.networkAuthUrl ?? (oauth ? `${oauth.baseUrl}/api/auth/me` : null)
 
       if (url === '/auth/login' && oauth && redirectBase) {
-        // Both callbacks are registered with the provider; using the host the
-        // player came from means the callback lands back on that same host.
         const silent = query.get('silent') === '1'
         const next = safeNext(query.get('next'), origins)
-        const state = randomBytes(16).toString('hex')
-        const params = new URLSearchParams({
-          client_id: oauth.clientId,
-          redirect_uri: `${redirectBase}/auth/callback`,
-          response_type: 'code',
-          scope: 'profile theme',
-          state,
+        const startLogin = () => {
+          // Both callbacks are registered with the provider; using the host the
+          // player came from means the callback lands back on that same host.
+          const state = randomBytes(16).toString('hex')
+          const params = new URLSearchParams({
+            client_id: oauth.clientId,
+            redirect_uri: `${redirectBase}/auth/callback`,
+            response_type: 'code',
+            scope: 'profile theme',
+            state,
+          })
+          if (silent) params.set('prompt', 'none')
+          res.writeHead(302, {
+            location: `${oauth.baseUrl}/oauth/authorize?${params.toString()}`,
+            'set-cookie': loginStateCookie({ state, next, silent }, secure),
+            'cache-control': 'no-store',
+          })
+          res.end()
+        }
+        const existing = silent ? cookies[SESSION_COOKIE] : undefined
+        if (!existing) {
+          startLogin()
+          return
+        }
+        // Silent login on a browser that is already signed in here: the
+        // Network would only hand back the session we hold, so go straight
+        // to `next`. Confirmed either from the short-lived cache or by one
+        // /api/auth/me lookup (the same check /auth/me itself makes).
+        const shortcut = () => {
+          res.writeHead(302, {
+            location: next ?? home,
+            'set-cookie': clearLoginStateCookie(),
+            'cache-control': 'no-store',
+          })
+          res.end()
+        }
+        if (knownSessions.has(existing)) {
+          shortcut()
+          return
+        }
+        void fetchNetworkAccount(networkMeUrl, existing).then((user) => {
+          if (user) {
+            knownSessions.remember(existing)
+            shortcut()
+          } else startLogin()
         })
-        if (silent) params.set('prompt', 'none')
-        res.writeHead(302, {
-          location: `${oauth.baseUrl}/oauth/authorize?${params.toString()}`,
-          'set-cookie': loginStateCookie({ state, next, silent }, secure),
-          'cache-control': 'no-store',
-        })
-        res.end()
         return
       }
       if (url === '/auth/callback' && oauth && redirectBase) {
@@ -373,12 +440,7 @@ export function createHttpServer(
                 redirect_uri: `${redirectBase}/auth/callback`,
               }),
             })
-            const data = (await resp.json()) as {
-              access_token?: string
-              error_description?: string
-              error?: string
-              user?: { username?: string }
-            }
+            const data = (await resp.json()) as TokenResponse
             if (!data.access_token) {
               res.writeHead(400, {
                 'content-type': 'text/plain',
@@ -387,6 +449,7 @@ export function createHttpServer(
               res.end(`sign-in failed: ${data.error_description ?? data.error ?? 'no token'}`)
               return
             }
+            knownSessions.remember(data.access_token)
             // Land where the login asked to (a same-site page or the next hop
             // of the Network's sign-in-everywhere chain), else at the game.
             const dest = next ?? home
@@ -408,10 +471,86 @@ export function createHttpServer(
         })()
         return
       }
+      if (url === '/auth/fedcm' && oauth) {
+        // Browser-native FedCM sign-in: the shared navbar posts the assertion
+        // JWT openvibe.network issued through the browser's account chooser,
+        // plus the nonce it put in the FedCM request. Same-origin JSON only.
+        // Both hosts serve it, like /auth/login: the play host's navbar
+        // posts to its own origin.
+        const json = (status: number, body: unknown, setCookie?: string[]) => {
+          res.writeHead(status, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+            ...(setCookie ? { 'set-cookie': setCookie } : {}),
+          })
+          res.end(JSON.stringify(body))
+        }
+        if (req.method !== 'POST') {
+          res.writeHead(405, { allow: 'POST', 'content-type': 'application/json' })
+          res.end('{"error":"method_not_allowed"}')
+          return
+        }
+        const contentType = (req.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase()
+        if (contentType !== 'application/json') {
+          json(400, { error: 'invalid_request', error_description: 'Expected application/json' })
+          return
+        }
+        void readBody(req, MAX_FEDCM_BODY_BYTES).then(async (raw) => {
+          if (raw === null) {
+            json(400, { error: 'invalid_request', error_description: 'Body missing or too large' })
+            return
+          }
+          const parsed = parseFedcmBody(raw)
+          if ('error' in parsed) {
+            json(400, { error: 'invalid_request', error_description: parsed.error })
+            return
+          }
+          try {
+            // Same endpoint and answer shape as the code exchange; the
+            // Network verifies the assertion's signature and audience.
+            const resp = await fetch(`${oauth.baseUrl}/oauth/token`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                assertion: parsed.body.token,
+                client_id: oauth.clientId,
+                client_secret: oauth.clientSecret,
+              }),
+            })
+            const data = (await resp.json().catch(() => ({}))) as TokenResponse
+            if (!data.access_token) {
+              log.warn('fedcm exchange rejected', { error: data.error ?? 'no_token' })
+              json(401, {
+                error: data.error ?? 'invalid_grant',
+                error_description: data.error_description ?? 'openvibe.network rejected the assertion',
+              })
+              return
+            }
+            knownSessions.remember(data.access_token)
+            const user =
+              data.user ?? (await fetchNetworkAccount(networkMeUrl, data.access_token)) ?? null
+            // Exactly the session the callback sets up: the ovg_sso cookie
+            // plus the year-long, JS-readable ov_sso_hint=account.
+            json(200, { ok: true, user }, [
+              sessionCookie(data.access_token, secure),
+              ssoHintCookie('account', secure),
+            ])
+          } catch (err) {
+            log.warn('fedcm exchange failed', { error: String(err) })
+            json(502, {
+              error: 'server_error',
+              error_description: 'openvibe.network is unreachable — try again shortly',
+            })
+          }
+        })
+        return
+      }
       if (url === '/auth/logout') {
         // Drops this site's session and marks the browser a guest for the
         // whole network; `next` lets the sign-out-everywhere chain continue.
         const dest = safeNext(query.get('next'), origins) ?? home
+        if (cookies[SESSION_COOKIE]) knownSessions.forget(cookies[SESSION_COOKIE])
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
@@ -429,9 +568,7 @@ export function createHttpServer(
         // ovg_sso cookie (or a bearer token), { user: null } otherwise.
         const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]
         const token = cookies[SESSION_COOKIE] || bearer
-        const authUrl =
-          editorAuth?.networkAuthUrl ?? (oauth ? `${oauth.baseUrl}/api/auth/me` : null)
-        void fetchNetworkAccount(authUrl, token).then((user) => {
+        void fetchNetworkAccount(networkMeUrl, token).then((user) => {
           res.writeHead(200, {
             'content-type': 'application/json',
             'cache-control': 'private, no-store',

@@ -7,6 +7,8 @@
  * Kept free of http.Server types so the rules are unit-testable on their own.
  */
 
+import { timingSafeEqual } from 'node:crypto'
+
 /** Name of the cookie holding the openvibe.network access token. */
 export const SESSION_COOKIE = 'ovg_sso'
 /**
@@ -146,6 +148,112 @@ export function loginStateCookie(s: LoginState, secure: boolean): string {
 
 export function clearLoginStateCookie(): string {
   return `${LOGIN_STATE_COOKIE}=; Path=/auth; Max-Age=0; HttpOnly; SameSite=Lax`
+}
+
+// ── FedCM ──────────────────────────────────────────────────────────────
+// The shared navbar gets an assertion JWT from openvibe.network through the
+// browser's own account chooser and POSTs it to /auth/fedcm with the nonce
+// it put in the FedCM request. We only pre-check that nonce here; the
+// Network verifies the signature when it swaps the assertion for tokens.
+
+/**
+ * Decodes a JWT's payload WITHOUT checking its signature. Only for reading
+ * claims we cross-check locally (the FedCM nonce); never for trusting an
+ * identity.
+ */
+export function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const claims: unknown = JSON.parse(Buffer.from(parts[1] ?? '', 'base64url').toString('utf8'))
+    return claims && typeof claims === 'object' && !Array.isArray(claims)
+      ? (claims as Record<string, unknown>)
+      : null
+  } catch {
+    return null
+  }
+}
+
+/** True when the assertion's `nonce` claim is exactly the nonce the page posted. */
+export function fedcmNonceMatches(token: string, nonce: string): boolean {
+  if (!nonce || nonce.length > 256) return false
+  const claims = decodeJwtPayload(token)
+  if (!claims || typeof claims.nonce !== 'string') return false
+  const a = Buffer.from(claims.nonce)
+  const b = Buffer.from(nonce)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+export interface FedcmBody {
+  token: string
+  nonce: string
+}
+
+/** Max bytes a /auth/fedcm body may carry: an assertion JWT is a few KB at most. */
+export const MAX_FEDCM_BODY_BYTES = 16 * 1024
+
+/**
+ * Parses and validates the JSON body of POST /auth/fedcm. Returns an error
+ * code (for a 400) instead of the body when it is malformed, incomplete or
+ * its nonce does not match the assertion's.
+ */
+export function parseFedcmBody(raw: string): { body: FedcmBody } | { error: string } {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { error: 'malformed_json' }
+  }
+  if (!parsed || typeof parsed !== 'object') return { error: 'malformed_json' }
+  const { token, nonce } = parsed as { token?: unknown; nonce?: unknown }
+  if (typeof token !== 'string' || !token || typeof nonce !== 'string' || !nonce) {
+    return { error: 'missing_token_or_nonce' }
+  }
+  if (!fedcmNonceMatches(token, nonce)) return { error: 'nonce_mismatch' }
+  return { body: { token, nonce } }
+}
+
+// ── Session check cache ─────────────────────────────────────────────────
+
+/**
+ * Remembers, briefly, which session tokens openvibe.network last confirmed so
+ * the silent-login shortcut (`/auth/login?silent=1` with an ovg_sso cookie
+ * that already resolves) does not cost a Network lookup on every page. Only
+ * positive answers are kept: a miss just falls through to the normal
+ * prompt=none round trip, which is the right answer for it anyway.
+ */
+export class SessionCheckCache {
+  private readonly hits = new Map<string, number>()
+
+  constructor(
+    private readonly ttlMs = 60_000,
+    private readonly maxEntries = 5000,
+  ) {}
+
+  has(token: string, now = Date.now()): boolean {
+    const until = this.hits.get(token)
+    if (until === undefined) return false
+    if (until <= now) {
+      this.hits.delete(token)
+      return false
+    }
+    return true
+  }
+
+  remember(token: string, now = Date.now()): void {
+    if (this.hits.size >= this.maxEntries) {
+      for (const [k, until] of this.hits) if (until <= now) this.hits.delete(k)
+      if (this.hits.size >= this.maxEntries) {
+        const oldest = this.hits.keys().next().value
+        if (oldest !== undefined) this.hits.delete(oldest)
+      }
+    }
+    this.hits.set(token, now + this.ttlMs)
+  }
+
+  forget(token: string): void {
+    this.hits.delete(token)
+  }
 }
 
 /** A JS string literal that cannot close the <script> it sits in. */

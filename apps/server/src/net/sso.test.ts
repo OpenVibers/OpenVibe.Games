@@ -1,13 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import {
+  SessionCheckCache,
+  decodeJwtPayload,
   decodeLoginState,
   encodeLoginState,
+  fedcmNonceMatches,
   isSilentDenial,
   parseCookies,
+  parseFedcmBody,
   safeNext,
   sessionHandoffHtml,
   withSsoNone,
 } from './sso.js'
+
+/** An unsigned-but-well-formed JWT carrying `claims` (the Network checks signatures, not us). */
+function fakeJwt(claims: unknown): string {
+  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url')
+  return `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(claims)}.c2ln`
+}
 
 const origins = {
   network: 'https://openvibe.network',
@@ -56,6 +66,65 @@ describe('login state cookie', () => {
   it('tolerates garbage', () => {
     expect(decodeLoginState('not-base64-json')).toBeNull()
     expect(decodeLoginState(undefined)).toBeNull()
+  })
+})
+
+describe('fedcm assertion', () => {
+  it('decodes a payload without trusting it', () => {
+    expect(decodeJwtPayload(fakeJwt({ sub: 7, nonce: 'n1' }))).toEqual({ sub: 7, nonce: 'n1' })
+    expect(decodeJwtPayload('not-a-jwt')).toBeNull()
+    expect(decodeJwtPayload('a.b.c')).toBeNull()
+    expect(decodeJwtPayload(fakeJwt([1, 2]))).toBeNull()
+  })
+  it('accepts only the nonce the assertion was minted for', () => {
+    const token = fakeJwt({ sub: 7, nonce: 'expected' })
+    expect(fedcmNonceMatches(token, 'expected')).toBe(true)
+    expect(fedcmNonceMatches(token, 'other')).toBe(false)
+    expect(fedcmNonceMatches(token, 'expecte')).toBe(false)
+    expect(fedcmNonceMatches(token, '')).toBe(false)
+    expect(fedcmNonceMatches(fakeJwt({ sub: 7 }), 'expected')).toBe(false)
+    expect(fedcmNonceMatches(fakeJwt({ nonce: 7 }), '7')).toBe(false)
+  })
+  it('parses the posted body and rejects mismatches before anything reaches the Network', () => {
+    const token = fakeJwt({ sub: 7, nonce: 'n1' })
+    expect(parseFedcmBody(JSON.stringify({ token, nonce: 'n1' }))).toEqual({
+      body: { token, nonce: 'n1' },
+    })
+    expect(parseFedcmBody(JSON.stringify({ token, nonce: 'n2' }))).toEqual({
+      error: 'nonce_mismatch',
+    })
+    expect(parseFedcmBody(JSON.stringify({ nonce: 'n1' }))).toEqual({
+      error: 'missing_token_or_nonce',
+    })
+    expect(parseFedcmBody(JSON.stringify({ token, nonce: 5 }))).toEqual({
+      error: 'missing_token_or_nonce',
+    })
+    expect(parseFedcmBody('{nope')).toEqual({ error: 'malformed_json' })
+    expect(parseFedcmBody('"str"')).toEqual({ error: 'malformed_json' })
+    expect(parseFedcmBody('null')).toEqual({ error: 'malformed_json' })
+  })
+})
+
+describe('session check cache (silent-login shortcut)', () => {
+  it('remembers a confirmed session only until its ttl', () => {
+    const cache = new SessionCheckCache(1000)
+    expect(cache.has('tok', 0)).toBe(false)
+    cache.remember('tok', 0)
+    expect(cache.has('tok', 999)).toBe(true)
+    expect(cache.has('tok', 1000)).toBe(false)
+    expect(cache.has('tok', 500)).toBe(false) // an expired entry is gone for good
+  })
+  it('forgets on logout and never grows past its cap', () => {
+    const cache = new SessionCheckCache(1000, 2)
+    cache.remember('a', 0)
+    cache.forget('a')
+    expect(cache.has('a', 1)).toBe(false)
+    cache.remember('a', 0)
+    cache.remember('b', 0)
+    cache.remember('c', 0)
+    expect(cache.has('a', 1)).toBe(false) // oldest evicted
+    expect(cache.has('b', 1)).toBe(true)
+    expect(cache.has('c', 1)).toBe(true)
   })
 })
 
