@@ -93,8 +93,19 @@ SQLite (WAL) behind `PersistenceStore` repositories: `world_entities`
 (props/resources with motion + kind-specific state JSON), `players` (token,
 transform, inventory JSON), `meta` (schema version, world-seeded flag).
 Dirty tracking batches writes; flush on interval, on settle, and on shutdown.
-First boot seeds from the world definition; afterwards the DB is the world's
-source of truth.
+Each flush is one transaction, together with the outbox events describing
+it. First boot seeds from the world definition; afterwards the DB is the
+world's source of truth. Platform tables (schema 12): `identity_legacy_map`,
+`mods`, `mod_grants`, `mod_placements`, `mod_audit`, `media_mirrors`, and the
+SDK's `event_outbox`.
+
+## Platform boundary
+
+Adapters to the OpenVibe platform live in `apps/server/src/platform` and
+`apps/server/src/mods` (ADR-0006): canonical subject accounts, the `games`
+service principal, the events outbox, the Media mirror, and the mod registry
+with its runtime seam (`ModApi`: capability-checked bindings, the only thing a
+mod can reach). No package under `packages/` imports any of it.
 
 ## Zones
 
@@ -121,4 +132,6 @@ entity context fields and never spam per-tick.
 Assume hostile clients: protocol validation at the edge, range checks on every
 interaction (gather, place, physgun grab/unfreeze), zone rules, ownership
 recorded on placement, inventory ops validated against authoritative state,
-one live session per identity token. Client-side rays exist purely for UX.
+one live session per identity token, guest tokens restricted to a format
+that can never name an account key. Client-side rays
+exist purely for UX.

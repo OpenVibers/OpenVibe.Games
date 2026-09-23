@@ -84,7 +84,76 @@ STATIC_DIR=apps/client/dist PORT=8000 DB_PATH=data/world.db pnpm --filter @openv
 
 The server serves the built client, `/healthz`, `/metrics`, and the game
 WebSocket on one port. Environment: `PORT`, `HOST`, `DB_PATH`, `STATIC_DIR`,
-`MAX_PLAYERS`, `LOG_LEVEL`.
+`MAX_PLAYERS`, `LOG_LEVEL` (platform variables below).
 
 Deployed at https://openvibe.games (nginx TLS termination → server on :8000,
 systemd unit `openvibe-games.service`; play.openvibe.games Host-routes to the same process).
+
+## Platform integration (OpenVibe network)
+
+Games integrates with the rest of OpenVibe at its service boundary only
+(`apps/server/src/platform`, `apps/server/src/mods`); the simulation packages
+do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects-and-platform-boundary.md).
+
+- **Identity.** Signed-in players are keyed by their canonical
+  openvibe.network subject (`usr_…`/`gst_…`, the token's `subject_id`).
+  Characters created under the old `ovn:<network id>` key are adopted on the
+  next sign-in, or in bulk with `apps/server/scripts/migrateIdentity.ts`
+  (`--dry-run` first). Guest tokens that look like account keys (`ovn:…`, `usr_…`) are refused.
+- **Service principal.** Calls to Events, Media and Network identity carry a
+  client-credentials token of the `games` OAuth client (same client id and
+  secret as SSO), one per audience. There are no shared keys. The SSO calls
+  made for a player (`/api/auth/me`, code and FedCM exchanges) keep using the
+  player's own token.
+- **Events** (OpenVibe.Events, through a transactional outbox in
+  `world.db`, table `event_outbox`): `games.player.joined|left`,
+  `games.skill.leveled`, `games.blueprint.unlocked`, `games.world.saved`
+  (at most one checkpoint per `WORLD_SAVED_EVENT_MINUTES`, plus shutdown) and
+  `games.mod.installed|enabled|disabled|grants_changed|revoked`. There is no
+  achievement system in Scraplandia, so there are no achievement events.
+  Progression events come from what a save actually wrote, in the same
+  transaction.
+- **Media.** Map-editor assets (textures, paint masks, glb models; the only
+  uploaded files Games has) are still served from local disk and are also
+  copied into Media objects (`kind: asset`, namespace `MEDIA_NAMESPACE`), with
+  a restart-safe queue (`media_mirrors`). There are no screenshots or blueprint
+  files to upload: blueprints are per-player recipe unlocks.
+- **Mods** (ADR-013 in OpenVibe.Contracts). Manifests follow
+  `mods/mod-manifest.v1` (proposed in `docs/contracts-proposal/`), validated
+  with the JSON Schema itself. The only runtime today is `games-content@1`:
+  declarative data packs checked against `@openvibe/content` (announcements;
+  inert, mod-owned props). Each install stores the approved subset of its
+  requested capabilities; every runtime binding checks it at call time, a
+  revoked install or capability stops affecting the world on the next tick,
+  and install/grant/use/deny/revoke are audited (`mod_audit`). Trust tiers are
+  metadata only. Executable mods (scripts) are refused until sandboxed
+  execution exists in OpenVibe.Host (Stage C). API: `GET /api/v1/mods`,
+  `GET /api/v1/mods/:id` (public); `POST /api/v1/mods`,
+  `POST /api/v1/mods/:id/enable|disable|revoke|grants`,
+  `DELETE /api/v1/mods/:id/grants/:capability`, `GET /api/v1/mods/:id/audit`
+  (owner/admin session, or a principal token with `games.mod.manage`).
+- **Status:** `GET /api/v1/platform` reports whether events and the Media
+  mirror are on, the outbox backlog and mirror counts (no secrets).
+- **Shared chrome.** The portal, `/play` and `/editor` load the network
+  navbar and footer from `https://openvibe.network/shared/`.
+- **Persistence proof.** `apps/server/src/game/platformIntegration.test.ts`
+  boots the real server twice on one database and checks characters, world
+  props, the world clock and the mod registry survive the restart;
+  `sliceTest.ts` covers the gameplay state end to end.
+
+Platform environment (all optional; unset = off):
+
+| Variable                    | Purpose                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------- |
+| `OV_OAUTH_CLIENT_ID`        | OAuth client / principal id (default `games`)                                         |
+| `OV_OAUTH_CLIENT_SECRET`    | Its secret: enables SSO and every service call                                        |
+| `OV_NETWORK_INTERNAL_URL`   | Network base for `/oauth/token`, identity and the JWKS (e.g. `http://127.0.0.1:4000`) |
+| `EVENTS_URL`                | OpenVibe.Events base; enables the outbox (`EVENTS_PUBLISH=off` disables)              |
+| `MEDIA_URL`                 | OpenVibe.Media base; enables the asset mirror (`MEDIA_MIRROR=off` disables)           |
+| `MEDIA_NAMESPACE`           | Media tenant for the copies (default `games`)                                         |
+| `WORLD_SAVED_EVENT_MINUTES` | Checkpoint event interval (default 15)                                                |
+
+Grants the `games` principal needs in OpenVibe.Network:
+`events.event.publish` (openvibe.events), `media.object.upload`
+(openvibe.media, namespace `games`), `identity.subject.resolve`
+(openvibe.network).

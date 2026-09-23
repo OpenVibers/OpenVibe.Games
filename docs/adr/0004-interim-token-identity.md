@@ -1,6 +1,6 @@
 # ADR-0004: Interim identity = client-generated persistent token
 
-**Status:** accepted (explicitly temporary) · **Date:** 2026-08-09
+**Status:** accepted (explicitly temporary) · **Date:** 2026-08-09 · signed-in accounts: superseded by ADR-0006 (guest tokens stay, restricted to the client-minted format)
 
 ## Decision
 

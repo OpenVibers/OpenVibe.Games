@@ -1,6 +1,8 @@
 # OpenVibe.Games — authoritative game server (Scraplandia) + portal static host.
 # Install: cp deploy/openvibe-games.service /etc/systemd/system/ && systemctl daemon-reload
 # Env secrets (OV_OAUTH_CLIENT_SECRET, EDITOR_KEY, ...) live in /etc/openvibe/games.env (0600).
+# Platform (optional, see README "Platform integration"): OV_NETWORK_INTERNAL_URL=http://127.0.0.1:4000,
+# EVENTS_URL=http://127.0.0.1:4300, MEDIA_URL=http://127.0.0.1:4100 (MEDIA_NAMESPACE=games) in the same file.
 [Unit]
 Description=OpenVibe.Games server (Scraplandia)
 After=network.target

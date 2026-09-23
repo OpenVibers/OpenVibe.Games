@@ -151,6 +151,17 @@ with live world reconciliation.
   → extraction → sell → blueprint → restart-verified persistence)
 - Hostile-client test sweep across every network action
 
+## Platform integration (network roadmap Wave 12) — partial
+
+- done: canonical Network subjects as account keys + legacy adoption;
+  `games` service principal; durable events via outbox; Media copies of
+  map-editor assets; mod manifest validation, registry (install / grant /
+  enable / disable / revoke, audit) and the capability-checked runtime seam
+  for declarative `games-content@1` packs
+- waiting on the platform: mod principals and grants in OpenVibe.Network;
+  sandboxed executable mods (OpenVibe.Host Stage C); `games.progress.summary`
+  user-module writes are granted but not implemented
+
 ## Standing engineering rules
 
 - The slice test must stay green; new systems extend it
