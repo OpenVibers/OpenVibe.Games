@@ -29,8 +29,14 @@ export interface WorldEntityDto {
 
 export interface PlayerDto {
   id: string
-  /** Identity token from the client (interim auth; see ADR-0004). */
+  /**
+   * Account key. Signed-in accounts use their canonical openvibe.network
+   * subject (`usr_…`/`gst_…`, ADR-0006); guests use their browser token
+   * (ADR-0004), which can never take that shape.
+   */
   token: string
+  /** Canonical openvibe.network subject when the account is signed in; absent for local guests. */
+  subjectId?: string
   name: string
   pos: [number, number, number]
   yaw: number
@@ -66,5 +72,81 @@ export interface ConstraintDto {
   entityB: string
   /** Type-specific parameters (anchors, axes, lengths, limits, motor...). */
   params: Record<string, unknown> | null
+  updatedAt: number
+}
+
+/** How far the platform trusts a mod's publisher. Metadata only (ADR-013): never consulted by a grant check. */
+export type ModTrustTier = 'unreviewed' | 'reviewed' | 'first-party'
+
+/** An installed mod lifecycle state. `revoked` is terminal for the install. */
+export type ModStatus = 'enabled' | 'disabled' | 'revoked'
+
+/** One installed mod: its validated manifest, its runtime payload and its lifecycle. */
+export interface ModInstallDto {
+  /** `mod_<ULID>` from the manifest. */
+  id: string
+  name: string
+  version: string
+  /** Runtime target, e.g. `games.browser`. */
+  target: string
+  /** Runtime adapter, e.g. `games-content@1`. */
+  runtime: string
+  /** The full manifest as installed (mods/mod-manifest.v1). */
+  manifest: Record<string, unknown>
+  /** The runtime-specific payload (a content data pack for `games-content@1`). */
+  pack: Record<string, unknown>
+  trustTier: ModTrustTier
+  status: ModStatus
+  /** Who installed it: a subject id or `svc:<client>`. */
+  installedBy: string
+  installedAt: number
+  updatedAt: number
+}
+
+/** An approved capability of an installed mod; `revokedAt` set = no longer granted. */
+export interface ModGrantDto {
+  modId: string
+  capability: string
+  grantedBy: string
+  grantedAt: number
+  revokedAt: number | null
+  revokedBy: string | null
+}
+
+/** Append-only audit record: install, grant, use, deny, revoke, … */
+export interface ModAuditDto {
+  id?: number
+  modId: string
+  action: string
+  capability: string | null
+  actor: string
+  detail: Record<string, unknown> | null
+  at: number
+}
+
+/** A world entity a mod placed, keyed by the placement key in its pack. */
+export interface ModPlacementDto {
+  modId: string
+  key: string
+  /** The world entity id; null once the entity is gone (destroyed) — it is not placed again. */
+  entityId: string | null
+  at: number
+}
+
+/** A durable copy of a local content-addressed asset in OpenVibe.Media. */
+export interface MediaMirrorDto {
+  /** `sha256-<hex>` — the local asset identity. */
+  assetHash: string
+  /** Local file name under the map-assets directory. */
+  fileName: string
+  mime: string
+  bytes: number
+  status: 'pending' | 'mirrored' | 'failed'
+  /** Media object id (`med_…`) once mirrored. */
+  mediaId: string | null
+  publicUrl: string | null
+  attempts: number
+  lastError: string | null
+  nextAttemptAt: number
   updatedAt: number
 }

@@ -9,6 +9,20 @@ import type {
   PlayerRepository,
   WorldEntityRepository,
 } from '../repositories.js'
+import {
+  createIdentityRepository,
+  createMediaMirrorRepository,
+  createModRepository,
+} from './platformRepositories.js'
+
+/**
+ * The SQLite store plus its database handle. Only apps/server's platform
+ * adapters use `db` directly — for the event outbox, whose rows must commit
+ * in the same transaction as the game state they describe.
+ */
+export interface SqlitePersistenceStore extends PersistenceStore {
+  readonly db: Database.Database
+}
 
 /**
  * SQLite implementation. Synchronous better-sqlite3 is intentional: batched
@@ -19,7 +33,7 @@ import type {
  * a database is upgraded step by step inside a transaction per step.
  */
 
-const SCHEMA_VERSION = 11
+const SCHEMA_VERSION = 12
 
 const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS world_entities (
@@ -49,6 +63,7 @@ CREATE TABLE IF NOT EXISTS players (
   reputation TEXT NOT NULL DEFAULT '{}',
   unlocks TEXT NOT NULL DEFAULT '[]',
   active_job TEXT,
+  subject_id TEXT,
   updated_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_players_token_slot ON players (token, char_slot);
@@ -68,6 +83,77 @@ CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+`
+
+/**
+ * Platform integration tables (schema 12): canonical identity, the mod
+ * registry and the Media mirror queue. Shared by the fresh-database path and
+ * the 11 -> 12 migration so both end up identical.
+ */
+const PLATFORM_SCHEMA = `
+CREATE INDEX IF NOT EXISTS idx_players_subject ON players (subject_id);
+CREATE TABLE IF NOT EXISTS identity_legacy_map (
+  legacy_key TEXT PRIMARY KEY,
+  subject_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  moved INTEGER NOT NULL DEFAULT 0,
+  conflicts INTEGER NOT NULL DEFAULT 0,
+  adopted_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mods (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  version TEXT NOT NULL,
+  target TEXT NOT NULL,
+  runtime TEXT NOT NULL,
+  manifest TEXT NOT NULL,
+  pack TEXT NOT NULL,
+  trust_tier TEXT NOT NULL,
+  status TEXT NOT NULL,
+  installed_by TEXT NOT NULL,
+  installed_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS mod_grants (
+  mod_id TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  granted_by TEXT NOT NULL,
+  granted_at INTEGER NOT NULL,
+  revoked_at INTEGER,
+  revoked_by TEXT,
+  PRIMARY KEY (mod_id, capability)
+);
+CREATE TABLE IF NOT EXISTS mod_placements (
+  mod_id TEXT NOT NULL,
+  placement_key TEXT NOT NULL,
+  entity_id TEXT,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (mod_id, placement_key)
+);
+CREATE TABLE IF NOT EXISTS mod_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mod_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  capability TEXT,
+  actor TEXT NOT NULL,
+  detail TEXT,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mod_audit_mod ON mod_audit (mod_id, id);
+CREATE TABLE IF NOT EXISTS media_mirrors (
+  asset_hash TEXT PRIMARY KEY,
+  file_name TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  bytes INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  media_id TEXT,
+  public_url TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  next_attempt_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_media_mirrors_due ON media_mirrors (status, next_attempt_at);
 `
 
 /** Migration from version N applies index N-1. Each runs in a transaction. */
@@ -146,6 +232,12 @@ const MIGRATIONS: Record<number, (db: Database.Database) => void> = {
       ALTER TABLE players ADD COLUMN active_job TEXT;
     `)
   },
+  11: (db) => {
+    // Platform integration: canonical subject per account (ADR-0006), the
+    // legacy identity map, the mod registry and the Media mirror queue.
+    db.exec('ALTER TABLE players ADD COLUMN subject_id TEXT;')
+    db.exec(PLATFORM_SCHEMA)
+  },
 }
 
 interface WorldEntityRow {
@@ -182,6 +274,7 @@ interface PlayerRow {
   reputation: string
   unlocks: string
   active_job: string | null
+  subject_id: string | null
   char_slot: number
   updated_at: number
 }
@@ -195,7 +288,7 @@ interface ConstraintRow {
   updated_at: number
 }
 
-export function openSqliteStore(path: string): PersistenceStore {
+export function openSqliteStore(path: string): SqlitePersistenceStore {
   const db = new Database(path)
   db.pragma('journal_mode = WAL')
   db.pragma('synchronous = NORMAL')
@@ -206,6 +299,7 @@ export function openSqliteStore(path: string): PersistenceStore {
   if (!hasMeta) {
     // Fresh database: create the full current schema.
     db.exec(BASE_SCHEMA)
+    db.exec(PLATFORM_SCHEMA)
     db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
       'schema_version',
       String(SCHEMA_VERSION),
@@ -293,9 +387,10 @@ export function openSqliteStore(path: string): PersistenceStore {
   }
 
   const upsertPlayer = db.prepare(`
-    INSERT INTO players (id, token, char_slot, name, pos_x, pos_y, pos_z, yaw, inventory, skills, friends, appearance, stats, armor, reputation, unlocks, active_job, updated_at)
-    VALUES (@id, @token, @char_slot, @name, @pos_x, @pos_y, @pos_z, @yaw, @inventory, @skills, @friends, @appearance, @stats, @armor, @reputation, @unlocks, @active_job, @updated_at)
+    INSERT INTO players (id, token, char_slot, name, pos_x, pos_y, pos_z, yaw, inventory, skills, friends, appearance, stats, armor, reputation, unlocks, active_job, subject_id, updated_at)
+    VALUES (@id, @token, @char_slot, @name, @pos_x, @pos_y, @pos_z, @yaw, @inventory, @skills, @friends, @appearance, @stats, @armor, @reputation, @unlocks, @active_job, @subject_id, @updated_at)
     ON CONFLICT(id) DO UPDATE SET
+      subject_id=COALESCE(excluded.subject_id, players.subject_id),
       name=excluded.name, pos_x=excluded.pos_x, pos_y=excluded.pos_y, pos_z=excluded.pos_z,
       yaw=excluded.yaw, inventory=excluded.inventory, skills=excluded.skills, friends=excluded.friends, appearance=excluded.appearance, stats=excluded.stats, armor=excluded.armor, reputation=excluded.reputation, unlocks=excluded.unlocks, active_job=excluded.active_job, updated_at=excluded.updated_at
   `)
@@ -320,6 +415,7 @@ export function openSqliteStore(path: string): PersistenceStore {
     activeJob: row.active_job ? (JSON.parse(row.active_job) as PlayerDto['activeJob']) : null,
     stats: row.stats ? (JSON.parse(row.stats) as PlayerDto['stats']) : null,
     charSlot: row.char_slot ?? 0,
+    ...(row.subject_id ? { subjectId: row.subject_id } : {}),
     updatedAt: row.updated_at,
   })
 
@@ -341,6 +437,7 @@ export function openSqliteStore(path: string): PersistenceStore {
     unlocks: JSON.stringify(p.unlocks ?? []),
     active_job: p.activeJob ? JSON.stringify(p.activeJob) : null,
     char_slot: p.charSlot ?? 0,
+    subject_id: p.subjectId ?? null,
     updated_at: p.updatedAt,
   })
 
@@ -448,11 +545,18 @@ export function openSqliteStore(path: string): PersistenceStore {
   }
 
   return {
+    db,
     worldEntities,
     players,
     guests,
     constraints,
     meta,
+    identity: createIdentityRepository(db),
+    mods: createModRepository(db),
+    mediaMirrors: createMediaMirrorRepository(db),
+    transaction<T>(fn: () => T): T {
+      return db.transaction(fn)()
+    },
     close(): void {
       db.close()
     },

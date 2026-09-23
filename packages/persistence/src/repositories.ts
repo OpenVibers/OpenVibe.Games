@@ -1,4 +1,14 @@
-import type { ConstraintDto, PlayerDto, WorldEntityDto } from './dto.js'
+import type {
+  ConstraintDto,
+  MediaMirrorDto,
+  ModAuditDto,
+  ModGrantDto,
+  ModInstallDto,
+  ModPlacementDto,
+  ModStatus,
+  PlayerDto,
+  WorldEntityDto,
+} from './dto.js'
 
 /**
  * Repository boundary: gameplay/server code never touches SQL or the
@@ -39,6 +49,72 @@ export interface ConstraintRepository {
   deleteMany(ids: readonly string[]): void
 }
 
+/**
+ * Canonical identity (ADR-0006): signed-in accounts are keyed by their
+ * openvibe.network subject. Accounts created before that were keyed by a
+ * legacy key (`ovn:<network user id>`); adoption moves them over once and
+ * remembers the mapping.
+ */
+export interface IdentityRepository {
+  /**
+   * Moves every character under `legacyKey` to `subjectId` (slots the subject
+   * does not already use) and records the mapping. Idempotent: a second call
+   * moves nothing. Characters whose slot is taken stay under the legacy key
+   * and are reported as `conflicts`.
+   */
+  adoptLegacyAccount(
+    legacyKey: string,
+    subjectId: string,
+    source: string,
+    now: number,
+  ): { moved: number; conflicts: number }
+  /** The subject a legacy key was adopted into, if any. */
+  subjectForLegacy(legacyKey: string): string | null
+  /** Distinct account keys under a legacy prefix that still own characters. */
+  legacyAccountKeys(prefix: string): string[]
+}
+
+/** Installed mods, their approved capabilities, placements and audit log. */
+export interface ModRepository {
+  list(): ModInstallDto[]
+  get(id: string): ModInstallDto | null
+  insert(mod: ModInstallDto): void
+  setStatus(id: string, status: ModStatus, at: number): void
+  grants(modId: string): ModGrantDto[]
+  /** Grants (or re-grants) a capability. */
+  upsertGrant(grant: ModGrantDto): void
+  /** Returns false when the capability was not actively granted. */
+  revokeGrant(modId: string, capability: string, by: string, at: number): boolean
+  audit(entry: ModAuditDto): void
+  auditLog(modId: string, limit: number): ModAuditDto[]
+  placements(modId: string): ModPlacementDto[]
+  setPlacement(placement: ModPlacementDto): void
+  deletePlacement(modId: string, key: string): void
+}
+
+/** Queue of local assets to copy into OpenVibe.Media. */
+export interface MediaMirrorRepository {
+  /** Queues an asset; false when it is already known (queued or mirrored). */
+  enqueue(
+    asset: { assetHash: string; fileName: string; mime: string; bytes: number },
+    now: number,
+  ): boolean
+  get(assetHash: string): MediaMirrorDto | null
+  /** Pending rows whose next attempt is due, oldest first. */
+  due(now: number, limit: number): MediaMirrorDto[]
+  /** Remembers the Media object created for an asset before its bytes are confirmed. */
+  noteObject(assetHash: string, mediaId: string, now: number): void
+  markMirrored(assetHash: string, mediaId: string, publicUrl: string | null, now: number): void
+  markFailed(
+    assetHash: string,
+    error: string,
+    nextAttemptAt: number,
+    terminal: boolean,
+    now: number,
+  ): void
+  counts(): Record<MediaMirrorDto['status'], number>
+}
+
 export interface MetaRepository {
   get(key: string): string | null
   set(key: string, value: string): void
@@ -50,5 +126,14 @@ export interface PersistenceStore {
   guests: GuestRepository
   readonly constraints: ConstraintRepository
   readonly meta: MetaRepository
+  readonly identity: IdentityRepository
+  readonly mods: ModRepository
+  readonly mediaMirrors: MediaMirrorRepository
+  /**
+   * Runs `fn` in one transaction (nested calls become savepoints). Anything
+   * written inside — world rows, player rows, outbox events — commits or
+   * rolls back together.
+   */
+  transaction<T>(fn: () => T): T
   close(): void
 }

@@ -153,7 +153,7 @@ describe('sqlite store', () => {
     const loaded = store.constraints.loadAll()
     expect(loaded).toHaveLength(2)
     expect(loaded.find((c) => c.id === 'c2')?.params).toEqual({ length: 2 })
-    expect(store.meta.get('schema_version')).toBe('11')
+    expect(store.meta.get('schema_version')).toBe('12')
     // v9 armor column round-trips.
     store.players.upsert({
       ...store.players.findByToken('tok_11111111')!,

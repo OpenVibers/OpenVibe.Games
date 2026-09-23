@@ -1,1 +1,1 @@
-export { openSqliteStore } from './sqliteStore.js'
+export { openSqliteStore, type SqlitePersistenceStore } from './sqliteStore.js'
