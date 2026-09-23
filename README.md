@@ -83,7 +83,11 @@ STATIC_DIR=apps/client/dist PORT=8000 DB_PATH=data/world.db pnpm --filter @openv
 ```
 
 The server serves the built client, `/healthz` (liveness), `/api/ready`, `/metrics`, and the game
-WebSocket on one port. `/api/ready` is 200 only while `world.db` answers a query and the simulation
+WebSocket on one port. Pages are `/` (portal), `/play` and `/editor`; on play.openvibe.games `/` is
+the game and `/play` redirects there. `/game` and `/canvas` (the URLs from when the game lived on
+OpenVibe.Live) redirect to `/play` and `/`. Any other path that is neither a file of the build nor a route
+answers 404 (an HTML page with links to those pages; `{"error":"not_found"}` under `/api`; plain text
+for a missing asset), never the portal with a 200. `/api/ready` is 200 only while `world.db` answers a query and the simulation
 has ticked within the last 5 s, otherwise 503 naming the failed check (`status`
 `ready`/`not_ready`, `checks.db`, `checks.tick`); nginx keeps it off the public vhosts. Environment: `PORT`, `HOST`, `DB_PATH`, `STATIC_DIR`,
 `MAX_PLAYERS`, `LOG_LEVEL` (platform variables below).

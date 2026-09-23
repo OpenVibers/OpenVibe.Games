@@ -25,14 +25,17 @@ import {
 } from './sso.js'
 import { MAX_MAP_BYTES, loadMap, saveMap } from './mapStore.js'
 import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore.js'
+import { sendNotFound, type NotFoundLink } from './notFound.js'
 import type { MapFileV2 } from '@openvibe/content'
 
 /**
  * Minimal HTTP layer: health/metrics endpoints and (in production) the
- * built client bundle. Game traffic itself is WebSocket-only.
+ * built client bundle. Game traffic itself is WebSocket-only. A path no
+ * route matches is a 404 (see notFound.ts), never the landing page.
  */
 
 const DEFAULT_NETWORK_URL = 'https://openvibe.network'
+const DEFAULT_PORTAL_URL = 'https://openvibe.games'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -138,12 +141,25 @@ export function createHttpServer(
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
   // browser answer without the Network round trip. See /auth/login.
   const knownSessions = new SessionCheckCache()
+  // The real entry points, offered on the 404 page of each host.
+  const portalHome = `${(oauth?.selfUrl ?? DEFAULT_PORTAL_URL).replace(/\/+$/, '')}/`
+  const apexLinks: NotFoundLink[] = [
+    { href: '/', label: 'OpenVibe.Games home' },
+    { href: '/play', label: 'Play Scraplandia' },
+    { href: '/editor', label: 'Map editor' },
+  ]
+  const playLinks: NotFoundLink[] = [
+    { href: '/', label: 'Play Scraplandia' },
+    { href: '/editor', label: 'Map editor' },
+    { href: portalHome, label: 'OpenVibe.Games home' },
+  ]
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = (req.url ?? '/').split('?')[0] ?? '/'
     // Host-based routing: play.openvibe.games serves the game at its root
     // (the apex root is the games portal). Everything else — /assets,
     // /map.json, /api, /auth, websockets — behaves identically on both.
     const playHost = (req.headers.host ?? '').toLowerCase().startsWith('play.')
+    const notFound = () => sendNotFound(req, res, url, playHost ? playLinks : apexLinks)
     if (platform?.handle?.(req, res)) return
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
@@ -603,15 +619,19 @@ export function createHttpServer(
       res.end(JSON.stringify(metrics.snapshot()))
       return
     }
+    // Every API route has answered above; what is left under /api is unknown.
+    if (url === '/api' || url.startsWith('/api/')) {
+      notFound()
+      return
+    }
     if (!root) {
-      res.writeHead(404)
-      res.end('not found')
+      notFound()
       return
     }
     // Pretty page routes: on the apex, / is the games portal, /play the
     // game and /editor the map editor. On the play host the game IS the
     // root page (with /play redirecting there so old links keep working).
-    // The old .html URLs redirect so bookmarks keep working.
+    // The old .html URLs and a trailing slash redirect to the canonical URL.
     if (url === '/play.html' || url === '/editor.html') {
       res.writeHead(301, {
         location: url === '/play.html' ? (playHost ? '/' : '/play') : '/editor',
@@ -619,14 +639,29 @@ export function createHttpServer(
       res.end()
       return
     }
-    if (playHost && url === '/play') {
+    if (playHost && (url === '/play' || url === '/play/')) {
       res.writeHead(301, { location: '/' })
       res.end()
       return
     }
+    if (url === '/play/' || url === '/editor/') {
+      res.writeHead(301, { location: url.slice(0, -1) })
+      res.end()
+      return
+    }
+    // The game's URLs from when it lived on OpenVibe.Live, which still links
+    // and 301s to them: the game is /play now, and the pixel canvas is gone
+    // (its nearest page is the portal).
+    if (url === '/game' || url === '/canvas') {
+      res.writeHead(301, { location: url === '/game' && !playHost ? '/play' : '/' })
+      res.end()
+      return
+    }
     const pageAlias =
-      playHost && url === '/'
-        ? 'play.html'
+      url === '/'
+        ? playHost
+          ? 'play.html'
+          : 'index.html'
         : url === '/play'
           ? 'play.html'
           : url === '/editor'
@@ -635,21 +670,21 @@ export function createHttpServer(
 
     // Static files with path traversal guard.
     const safePath = normalize(pageAlias ?? url).replace(/^(\.\.[/\\])+/, '')
-    let filePath = join(root, safePath)
+    const filePath = join(root, safePath)
     if (!filePath.startsWith(root)) {
       res.writeHead(403)
       res.end()
       return
     }
     if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
-      // Unknown paths fall back to the host's landing page (apex: portal
-      // home; play host: the game itself).
-      filePath = join(root, playHost ? 'play.html' : 'index.html')
-      if (!existsSync(filePath)) {
+      if (pageAlias) {
         res.writeHead(404)
         res.end('client build missing')
         return
       }
+      // No route and no such file: a real 404, not the landing page.
+      notFound()
+      return
     }
     const type = MIME[extname(filePath)] ?? 'application/octet-stream'
     res.writeHead(200, {
