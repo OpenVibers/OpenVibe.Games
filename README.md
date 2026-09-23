@@ -121,8 +121,9 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   a restart-safe queue (`media_mirrors`). There are no screenshots or blueprint
   files to upload: blueprints are per-player recipe unlocks.
 - **Mods** (ADR-013 in OpenVibe.Contracts). Manifests follow
-  `mods/mod-manifest.v1` (proposed in `docs/contracts-proposal/`), validated
-  with the JSON Schema itself. The only runtime today is `games-content@1`:
+  `mods/mod-manifest.v1` (published in OpenVibe.Contracts v0.14.0; Games
+  validates with its own copy in `apps/server/src/mods/manifestSchema.ts`,
+  because it pins openvibe-contracts v0.8.0). The only runtime today is `games-content@1`:
   declarative data packs checked against `@openvibe/content` (announcements;
   inert, mod-owned props). Each install stores the approved subset of its
   requested capabilities; every runtime binding checks it at call time, a
@@ -136,6 +137,11 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   (owner/admin session, or a principal token with `games.mod.manage`).
 - **Status:** `GET /api/v1/platform` reports whether events and the Media
   mirror are on, the outbox backlog and mirror counts (no secrets).
+- **In production (2026-09-23, release `f11e21c`):** events and the Media
+  mirror are on. `games.world.saved` events reach OpenVibe.Events; no mod is
+  installed, no grant exists and no asset has been mirrored to Media yet.
+  Player progress and canvas rows from Live's old HoboQuest tables have not
+  been imported.
 - **Shared chrome.** The portal, `/play` and `/editor` load the network
   navbar and footer from `https://openvibe.network/shared/`.
 - **Persistence proof.** `apps/server/src/game/platformIntegration.test.ts`
