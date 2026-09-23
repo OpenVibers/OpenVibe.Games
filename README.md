@@ -141,7 +141,9 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   mirror are on. `games.world.saved` events reach OpenVibe.Events; no mod is
   installed, no grant exists and no asset has been mirrored to Media yet.
   Player progress and canvas rows from Live's old HoboQuest tables have not
-  been imported.
+  been imported yet. The decisions, the importer
+  (`apps/server/scripts/importLiveLegacy.ts`, dry run by default) and the
+  host commands are in [docs/legacy-import.md](docs/legacy-import.md).
 - **Shared chrome.** The portal, `/play` and `/editor` load the network
   navbar and footer from `https://openvibe.network/shared/`.
 - **Persistence proof.** `apps/server/src/game/platformIntegration.test.ts`

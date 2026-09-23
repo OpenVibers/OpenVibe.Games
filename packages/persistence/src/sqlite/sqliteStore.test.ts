@@ -153,7 +153,13 @@ describe('sqlite store', () => {
     const loaded = store.constraints.loadAll()
     expect(loaded).toHaveLength(2)
     expect(loaded.find((c) => c.id === 'c2')?.params).toEqual({ length: 2 })
-    expect(store.meta.get('schema_version')).toBe('12')
+    expect(store.meta.get('schema_version')).toBe('13')
+    // v13 legacy archive table exists.
+    expect(
+      store.db
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='legacy_live_rows'")
+        .get(),
+    ).toBeTruthy()
     // v9 armor column round-trips.
     store.players.upsert({
       ...store.players.findByToken('tok_11111111')!,

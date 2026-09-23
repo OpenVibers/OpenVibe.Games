@@ -18,12 +18,14 @@
     "@openvibe/protocol": "workspace:*",
     "@openvibe/shared": "workspace:*",
     "ajv": "^8.17.1",
+    "better-sqlite3": "^11.9.1",
     "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.8.0",
     "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.2.2",
     "tsx": "^4.19.3",
     "ws": "^8.18.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/ws": "^8.18.0",
     "esbuild": "^0.25.2"
   }

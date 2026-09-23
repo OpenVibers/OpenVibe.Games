@@ -107,6 +107,9 @@ importers:
       ajv:
         specifier: ^8.17.1
         version: 8.20.0
+      better-sqlite3:
+        specifier: ^11.9.1
+        version: 11.10.0
       openvibe-contracts:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.8.0
         version: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.8.0
@@ -120,6 +123,9 @@ importers:
         specifier: ^8.18.1
         version: 8.21.3
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
       '@types/ws':
         specifier: ^8.18.0
         version: 8.18.1

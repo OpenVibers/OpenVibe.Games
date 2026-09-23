@@ -158,6 +158,10 @@ with live world reconciliation.
   map-editor assets; mod manifest validation, registry (install / grant /
   enable / disable / revoke, audit) and the capability-checked runtime seam
   for declarative `games-content@1` packs
+- migration gate: Live's legacy HoboQuest/canvas tables are decided and
+  reconciled ([docs/legacy-import.md](docs/legacy-import.md)): per-player
+  HoboQuest rows are archived under subjects, and the canvas and expired
+  rows are excluded. Dry run on production copies done; apply pending review
 - waiting on the platform: mod principals and grants in OpenVibe.Network;
   sandboxed executable mods (OpenVibe.Host Stage C); `games.progress.summary`
   user-module writes are granted but not implemented

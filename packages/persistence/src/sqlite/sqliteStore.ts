@@ -33,7 +33,7 @@ export interface SqlitePersistenceStore extends PersistenceStore {
  * a database is upgraded step by step inside a transaction per step.
  */
 
-const SCHEMA_VERSION = 12
+const SCHEMA_VERSION = 13
 
 const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS world_entities (
@@ -156,6 +156,26 @@ CREATE TABLE IF NOT EXISTS media_mirrors (
 CREATE INDEX IF NOT EXISTS idx_media_mirrors_due ON media_mirrors (status, next_attempt_at);
 `
 
+/**
+ * Rows imported from OpenVibe.Live's retired HoboQuest game (schema 13),
+ * written only by apps/server/scripts/importLiveLegacy.ts. Scraplandia has no
+ * equivalent for them, so each source row is kept verbatim (canonical JSON)
+ * under its owner's Network subject; `(source_table, source_key)` is the
+ * source row's primary key, which makes the import idempotent.
+ */
+const LEGACY_SCHEMA = `
+CREATE TABLE IF NOT EXISTS legacy_live_rows (
+  source_table TEXT NOT NULL,
+  source_key TEXT NOT NULL,
+  live_user_id INTEGER NOT NULL,
+  subject_id TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  imported_at INTEGER NOT NULL,
+  PRIMARY KEY (source_table, source_key)
+);
+CREATE INDEX IF NOT EXISTS idx_legacy_live_rows_subject ON legacy_live_rows (subject_id);
+`
+
 /** Migration from version N applies index N-1. Each runs in a transaction. */
 const MIGRATIONS: Record<number, (db: Database.Database) => void> = {
   1: (db) => {
@@ -238,6 +258,10 @@ const MIGRATIONS: Record<number, (db: Database.Database) => void> = {
     db.exec('ALTER TABLE players ADD COLUMN subject_id TEXT;')
     db.exec(PLATFORM_SCHEMA)
   },
+  12: (db) => {
+    // Archive of OpenVibe.Live's HoboQuest rows (docs/legacy-import.md).
+    db.exec(LEGACY_SCHEMA)
+  },
 }
 
 interface WorldEntityRow {
@@ -300,6 +324,7 @@ export function openSqliteStore(path: string): SqlitePersistenceStore {
     // Fresh database: create the full current schema.
     db.exec(BASE_SCHEMA)
     db.exec(PLATFORM_SCHEMA)
+    db.exec(LEGACY_SCHEMA)
     db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
       'schema_version',
       String(SCHEMA_VERSION),

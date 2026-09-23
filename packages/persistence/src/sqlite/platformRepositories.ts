@@ -11,7 +11,7 @@ import type {
 import type { IdentityRepository, MediaMirrorRepository, ModRepository } from '../repositories.js'
 
 /**
- * SQLite repositories for the platform-integration tables (schema 12): the
+ * SQLite repositories for the platform-integration tables (schema 12+): the
  * legacy identity map, the mod registry and the Media mirror queue. The game
  * simulation never touches these; apps/server's platform adapters do.
  */
