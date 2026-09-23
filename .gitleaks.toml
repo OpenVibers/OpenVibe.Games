@@ -1,0 +1,11 @@
+# gitleaks configuration, used by the shared security workflow
+# (OpenVibers/OpenVibe.Shared/.github/workflows/security.yml). The default rules stay on; every
+# allowlist below is one proven false positive, matched on path AND value so nothing else is hidden.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Made-up player/session tokens in unit tests"
+condition = "AND"
+paths = ['''^packages/(persistence/src/sqlite/sqliteStore|protocol/src/codec)\.test\.ts$''']
+regexes = ['''^(tok_12345678|abcdefgh12345678)$''']
