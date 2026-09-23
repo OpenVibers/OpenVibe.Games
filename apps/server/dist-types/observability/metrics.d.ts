@@ -6,6 +6,8 @@ import type { Logger } from '@openvibe/shared';
  */
 export declare class ServerMetrics {
     tick: number;
+    /** When the last simulation tick completed (epoch ms; 0 = none yet). /api/ready reads it. */
+    lastTickAt: number;
     tickDurationMs: number;
     physicsMs: number;
     sessions: number;

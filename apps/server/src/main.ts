@@ -19,6 +19,7 @@ import { createHttpServer } from './net/httpServer.js'
 import { resolveNetworkUser } from './net/networkAuth.js'
 import { attachWebSocket } from './net/wsTransport.js'
 import { ServerMetrics } from './observability/metrics.js'
+import { createReadiness } from './observability/readiness.js'
 import { ModRegistry } from './mods/registry.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
@@ -152,6 +153,13 @@ async function main(): Promise<void> {
     mods: modRuntime,
   })
 
+  // GET /api/ready: world.db answers and the simulation ticks (/healthz stays liveness only).
+  const schemaVersion = store.db.prepare('SELECT value FROM meta WHERE key = ?')
+  const readiness = createReadiness({
+    pingDb: () => schemaVersion.get('schema_version') !== undefined,
+    metrics,
+  })
+
   const http = createHttpServer(
     config.staticDir,
     metrics,
@@ -199,6 +207,7 @@ async function main(): Promise<void> {
     config.oauth,
     {
       handle: (req, res) => {
+        if (readiness.handle(req, res)) return true
         if ((req.url ?? '').split('?')[0] === '/api/v1/platform' && req.method === 'GET') {
           // Operational status of the platform adapters; never secrets.
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })

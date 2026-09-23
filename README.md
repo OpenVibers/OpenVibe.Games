@@ -82,8 +82,10 @@ pnpm build
 STATIC_DIR=apps/client/dist PORT=8000 DB_PATH=data/world.db pnpm --filter @openvibe/server start
 ```
 
-The server serves the built client, `/healthz`, `/metrics`, and the game
-WebSocket on one port. Environment: `PORT`, `HOST`, `DB_PATH`, `STATIC_DIR`,
+The server serves the built client, `/healthz` (liveness), `/api/ready`, `/metrics`, and the game
+WebSocket on one port. `/api/ready` is 200 only while `world.db` answers a query and the simulation
+has ticked within the last 5 s, otherwise 503 naming the failed check (`status`
+`ready`/`not_ready`, `checks.db`, `checks.tick`); nginx keeps it off the public vhosts. Environment: `PORT`, `HOST`, `DB_PATH`, `STATIC_DIR`,
 `MAX_PLAYERS`, `LOG_LEVEL` (platform variables below).
 
 Deployed at https://openvibe.games (nginx TLS termination → server on :8000,

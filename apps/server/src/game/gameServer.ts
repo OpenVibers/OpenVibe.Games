@@ -2323,6 +2323,7 @@ export class GameServer {
     }
 
     this.metrics.tick = this.tick
+    this.metrics.lastTickAt = Date.now()
     this.metrics.entities = this.world.entities.size
     this.metrics.constraints = this.world.constraintCount
     this.metrics.constraintIslands = this.world.islands.islandCount()
