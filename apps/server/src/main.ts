@@ -1,5 +1,11 @@
 import { mkdirSync, existsSync, readFileSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
+import {
+  createEventsClient,
+  createOutbox,
+  type Outbox,
+  type SqliteDatabase,
+} from 'openvibe-sdk/events'
 import { compileMapFileV2, createContent, parseMapFile, setMapOverride } from '@openvibe/content'
 import { openSqliteStore } from '@openvibe/persistence/sqlite'
 import { createHeadlessHavokWorld } from '@openvibe/physics/havok'
@@ -13,6 +19,20 @@ import { createHttpServer } from './net/httpServer.js'
 import { resolveNetworkUser } from './net/networkAuth.js'
 import { attachWebSocket } from './net/wsTransport.js'
 import { ServerMetrics } from './observability/metrics.js'
+import { ModRegistry } from './mods/registry.js'
+import { handleModsRequest } from './mods/routes.js'
+import { ModRuntime } from './mods/runtime.js'
+import { accountForNetworkUser, isGuestToken } from './platform/accounts.js'
+import {
+  EVENT_SOURCE,
+  GameEventRecorder,
+  NO_EVENTS,
+  outboxSink,
+  type EventSink,
+} from './platform/gameEvents.js'
+import { MediaMirror } from './platform/mediaMirror.js'
+import { createPlatformClient } from './platform/serviceClient.js'
+import { createStaffAuthorizer } from './platform/staffAuth.js'
 
 /**
  * Dedicated authoritative server entry point.
@@ -71,7 +91,66 @@ async function main(): Promise<void> {
   const world = new GameWorld(content, physics, log.child({ system: 'world' }))
   world.seedOrRestore(store)
 
-  const game = new GameServer(config, world, store, metrics, log.child({ system: 'game' }))
+  // ── Platform integration (roadmap Wave 12) ─────────────────────────
+  // Every service call carries the `games` principal's client-credentials
+  // token; with no client secret configured none of this talks to anything.
+  const platform = createPlatformClient(config.platform)
+  const platformLog = log.child({ system: 'platform' })
+  let outbox: Outbox | null = null
+  let sink: EventSink = NO_EVENTS
+  if (platform && config.platform.eventsUrl) {
+    let lastError: string | null = null
+    // better-sqlite3's Transaction<F> is a callable F; the SDK types it as plain F.
+    outbox = createOutbox(store.db as unknown as SqliteDatabase, {
+      events: createEventsClient(platform.client, { source: EVENT_SOURCE }),
+      intervalMs: 2000,
+      onError: (err) => {
+        const message = String((err as Error | undefined)?.message ?? err)
+        if (message !== lastError)
+          platformLog.warn('event publish failed (will retry)', { error: message })
+        lastError = message
+      },
+    })
+    outbox.ensureSchema()
+    sink = outboxSink(outbox)
+    outbox.start()
+    platformLog.info('events on', { url: config.platform.eventsUrl, pending: outbox.pending() })
+  }
+  const recorder = sink.enabled
+    ? new GameEventRecorder(sink, content.world.id, config.platform.worldSavedEventMinutes * 60_000)
+    : undefined
+  const mods = new ModRegistry(store, content, sink)
+  const modRuntime = new ModRuntime(mods, store, content, log.child({ system: 'mods' }), {
+    reconcileEveryTicks: config.tickRate,
+  })
+  const mirror =
+    platform && config.platform.mediaUrl
+      ? new MediaMirror({
+          client: platform.client,
+          store,
+          namespace: config.platform.mediaNamespace,
+          assetsDir: join(dirname(config.mapPath), 'map-assets'),
+          log: platformLog.child({ system: 'media-mirror' }),
+        })
+      : null
+  if (mirror) {
+    void mirror.backfill().then((queued) => {
+      platformLog.info('media mirror on', { url: config.platform.mediaUrl ?? '', queued })
+      mirror.start()
+    })
+  }
+  const authorizeStaff = createStaffAuthorizer({
+    networkAuthUrl: config.networkAuthUrl,
+    networkUrl: config.platform.networkUrl,
+    editorKey: config.editorKey,
+  })
+  const pruneTimer = setInterval(() => outbox?.prune(), 6 * 3600 * 1000)
+  pruneTimer.unref()
+
+  const game = new GameServer(config, world, store, metrics, log.child({ system: 'game' }), {
+    ...(recorder ? { events: recorder } : {}),
+    mods: modRuntime,
+  })
 
   const http = createHttpServer(
     config.staticDir,
@@ -107,7 +186,10 @@ async function main(): Promise<void> {
       if (auth) {
         const user = await resolveNetworkUser(config.networkAuthUrl, auth)
         if (!user) return []
-        account = `ovn:${user.id}`.slice(0, 64)
+        account = accountForNetworkUser(store, user, Date.now()).key
+      } else if (!isGuestToken(token)) {
+        // Never list an account key's characters for a guest query.
+        return []
       }
       return store.players
         .listByToken(account)
@@ -115,6 +197,40 @@ async function main(): Promise<void> {
         .map((p) => ({ slot: p.charSlot, name: p.name, appearance: p.appearance }))
     },
     config.oauth,
+    {
+      handle: (req, res) => {
+        if ((req.url ?? '').split('?')[0] === '/api/v1/platform' && req.method === 'GET') {
+          // Operational status of the platform adapters; never secrets.
+          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+          res.end(
+            JSON.stringify({
+              principal: platform ? platform.clientId : null,
+              events: outbox
+                ? { enabled: true, pending: outbox.pending(), rejected: outbox.rejected() }
+                : { enabled: false },
+              media: mirror
+                ? {
+                    enabled: true,
+                    namespace: config.platform.mediaNamespace,
+                    ...store.mediaMirrors.counts(),
+                  }
+                : { enabled: false },
+              mods: {
+                installed: mods.list().length,
+                active: mods.list().filter((m) => mods.isActive(m.mod.id)).length,
+              },
+            }),
+          )
+          return true
+        }
+        return handleModsRequest(req, res, {
+          registry: mods,
+          authorize: authorizeStaff,
+          log: log.child({ system: 'mods-api' }),
+        })
+      },
+      onAssetStored: (asset) => mirror?.enqueue(asset),
+    },
   )
   world.reconcileMapNodes()
   world.reconcileMapProps()
@@ -163,6 +279,9 @@ async function main(): Promise<void> {
     running = false
     clearInterval(metricsTimer)
     game.shutdown()
+    mirror?.stop()
+    // Unsent events stay in the outbox table and go out after the restart.
+    void outbox?.stop()
     store.close()
     http.close()
     physics.dispose()

@@ -1,0 +1,14 @@
+{
+  "id": "mods.grant.manage",
+  "version": "1.0",
+  "owner": "network",
+  "status": "planned",
+  "visibility": "first-party",
+  "description": "Planned (ADR-013, grants in Network): create the `mod` principal (mod:mod_<ULID>) for an install and approve or revoke the subset of its manifest's requested capabilities, so a mod's grants are checked like any other principal's. Until Network implements it, each runtime keeps the approved subset itself (OpenVibe.Games: mod_grants).",
+  "inputSchema": "mods.mod-manifest@1",
+  "permissions": ["network:grants:admin"],
+  "resourceConstraints": ["none"],
+  "quotaClass": "network-admin",
+  "events": [],
+  "implementedBy": []
+}

@@ -1,0 +1,13 @@
+{
+  "id": "games.world.announce",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Runtime binding for mods (games-content@1): broadcast a short server announcement to every player in the world, prefixed with the mod's name, at most once a minute per announcement. Checked at call time against the install's approved capabilities; a revoked grant stops it on the next tick.",
+  "permissions": ["games:world:announce"],
+  "resourceConstraints": ["none"],
+  "quotaClass": "games-mod-runtime",
+  "events": [],
+  "implementedBy": ["mod runtime binding ModApi.announce (apps/server/src/mods/runtime.ts)"]
+}

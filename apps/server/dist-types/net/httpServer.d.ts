@@ -1,4 +1,4 @@
-import { type Server } from 'node:http';
+import { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Logger } from '@openvibe/shared';
 import type { ServerMetrics } from '../observability/metrics.js';
 import type { MapFileV2 } from '@openvibe/content';
@@ -19,9 +19,21 @@ export interface OAuthConfig {
     /** Public base of the play vhost, e.g. https://play.openvibe.games. */
     playUrl: string;
 }
+/** Platform seams (roadmap Wave 12): extra API routes and a stored-asset hook. */
+export interface HttpPlatformHooks {
+    /** Answers a request it owns (returns true), e.g. the mod registry API. */
+    handle?: (req: IncomingMessage, res: ServerResponse) => boolean;
+    /** A map asset was stored (or found already stored) locally. */
+    onAssetStored?: (asset: {
+        hash: string;
+        url: string;
+        bytes: number;
+        mime: string;
+    }) => void;
+}
 export declare function createHttpServer(staticDir: string | null, metrics: ServerMetrics, log: Logger, mapPath?: string, editorAuth?: EditorAuth, onMapSaved?: (next: MapFileV2, revision: string) => void, listCharacters?: (token: string, auth: string | undefined) => Promise<{
     slot: number;
     name: string;
     appearance: unknown;
-}[]>, oauth?: OAuthConfig | null): Server;
+}[]>, oauth?: OAuthConfig | null, platform?: HttpPlatformHooks): Server;
 //# sourceMappingURL=httpServer.d.ts.map

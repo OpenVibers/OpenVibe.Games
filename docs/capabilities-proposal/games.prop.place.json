@@ -1,0 +1,15 @@
+{
+  "id": "games.prop.place",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Runtime binding for mods (games-content@1): place and remove inert props (existing content items without health, storage, shop, machine or vehicle-part capabilities) in the world, owned by the mod so players cannot pick them up or move them. The props exist only while the capability is granted and the install enabled: revoking either despawns them on the next tick.",
+  "permissions": ["games:world:place"],
+  "resourceConstraints": ["none"],
+  "quotaClass": "games-mod-runtime",
+  "events": [],
+  "implementedBy": [
+    "mod runtime binding ModApi.placeProp / ModApi.removeProp (apps/server/src/mods/runtime.ts)"
+  ]
+}

@@ -102,6 +102,14 @@ function readBody(req: IncomingMessage, limit: number): Promise<string | null> {
   })
 }
 
+/** Platform seams (roadmap Wave 12): extra API routes and a stored-asset hook. */
+export interface HttpPlatformHooks {
+  /** Answers a request it owns (returns true), e.g. the mod registry API. */
+  handle?: (req: IncomingMessage, res: ServerResponse) => boolean
+  /** A map asset was stored (or found already stored) locally. */
+  onAssetStored?: (asset: { hash: string; url: string; bytes: number; mime: string }) => void
+}
+
 /** The token endpoint's answer, for both the code and the jwt-bearer grant. */
 interface TokenResponse {
   access_token?: string
@@ -124,6 +132,7 @@ export function createHttpServer(
     auth: string | undefined,
   ) => Promise<{ slot: number; name: string; appearance: unknown }[]>,
   oauth?: OAuthConfig | null,
+  platform?: HttpPlatformHooks,
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
@@ -135,6 +144,7 @@ export function createHttpServer(
     // (the apex root is the games portal). Everything else — /assets,
     // /map.json, /api, /auth, websockets — behaves identically on both.
     const playHost = (req.headers.host ?? '').toLowerCase().startsWith('play.')
+    if (platform?.handle?.(req, res)) return
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
       // wire format: there is no v1 projection any more.
@@ -255,6 +265,7 @@ export function createHttpServer(
                 res.end(JSON.stringify({ error: outcome.error }))
                 return
               }
+              platform?.onAssetStored?.(outcome.asset)
               log.info('map asset stored', {
                 hash: outcome.asset.hash,
                 bytes: outcome.asset.bytes,
@@ -523,7 +534,8 @@ export function createHttpServer(
               log.warn('fedcm exchange rejected', { error: data.error ?? 'no_token' })
               json(401, {
                 error: data.error ?? 'invalid_grant',
-                error_description: data.error_description ?? 'openvibe.network rejected the assertion',
+                error_description:
+                  data.error_description ?? 'openvibe.network rejected the assertion',
               })
               return
             }

@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "contractRanges": {
+    "openvibe-contracts": ">=0.8.0 <1.0.0"
+  },
+  "id": "games",
+  "name": "OpenVibe.Games",
+  "status": "stable",
+  "repository": "OpenVibers/OpenVibe.Games",
+  "domains": ["openvibe.games", "play.openvibe.games"],
+  "publicOrigin": "https://openvibe.games",
+  "health": "/healthz",
+  "capabilities": [
+    "games.mod.manage",
+    "games.mod.read",
+    "games.world.announce",
+    "games.prop.place"
+  ],
+  "eventsProduced": [
+    "games.player.joined",
+    "games.player.left",
+    "games.skill.leveled",
+    "games.blueprint.unlocked",
+    "games.world.saved",
+    "games.mod.installed",
+    "games.mod.enabled",
+    "games.mod.disabled",
+    "games.mod.grants_changed",
+    "games.mod.revoked"
+  ],
+  "eventsConsumed": [],
+  "namespacesOwned": ["games.*"],
+  "notes": "Scraplandia (browser runtime). Players are keyed by canonical Network subjects (ADR-0006 in the repo). Calls Events (events.event.publish), Media (media.object.upload, namespace games: map-editor assets) and Network identity (identity.subject.resolve, batch legacy adoption) with the games client-credentials principal. Mods: games-content@1 declarative packs only; executable mods wait for OpenVibe.Host Stage C. No achievement system exists, so there are no games.achievement.* events."
+}

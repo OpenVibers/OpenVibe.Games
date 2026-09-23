@@ -18,6 +18,12 @@ export interface ServerConfig {
         /** Public base of the play host (Host-routed game vhost). */
         playUrl: string;
     } | null;
+    /**
+     * Platform integration (roadmap Wave 12): Games calls OpenVibe services with
+     * a client-credentials token of its own `games` principal. Everything here
+     * is off until OV_OAUTH_CLIENT_SECRET (the same OAuth client as SSO) is set.
+     */
+    platform: PlatformConfig;
     tickRate: number;
     /** Send a snapshot every N ticks. */
     snapshotEvery: number;
@@ -29,5 +35,22 @@ export interface ServerConfig {
     /** Multiplier on world-event cadences (tests shrink it). */
     eventIntervalScale: number;
 }
+export interface PlatformConfig {
+    /** OAuth client id of the `games` principal (shared with SSO). */
+    clientId: string;
+    /** Its client secret; null = no service calls at all. */
+    clientSecret: string | null;
+    /** Network base for /oauth/token, identity and the JWKS (host-internal in production). */
+    networkUrl: string;
+    /** OpenVibe.Events base; null = no durable events (the outbox is not even created). */
+    eventsUrl: string | null;
+    /** OpenVibe.Media base; null = map assets stay local only. */
+    mediaUrl: string | null;
+    /** Media namespace (tenant app id) Games writes objects into. */
+    mediaNamespace: string;
+    /** At most one `games.world.saved` checkpoint event per this many minutes. */
+    worldSavedEventMinutes: number;
+}
+export declare function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig;
 export declare function loadConfig(env: NodeJS.ProcessEnv): ServerConfig;
 //# sourceMappingURL=config.d.ts.map

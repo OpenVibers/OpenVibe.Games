@@ -68,6 +68,9 @@ import {
 } from '@openvibe/shared'
 import type { ServerConfig } from '../config.js'
 import { resolveNetworkUser } from '../net/networkAuth.js'
+import { accountForNetworkUser, isGuestToken } from '../platform/accounts.js'
+import type { EventPlayer, GameEventRecorder, ProgressSnapshot } from '../platform/gameEvents.js'
+import type { ModHost, ModRuntime } from '../mods/runtime.js'
 import { worldSpawn } from '@openvibe/content'
 import type { ServerMetrics } from '../observability/metrics.js'
 import type { GameWorld } from './gameWorld.js'
@@ -106,6 +109,17 @@ export interface GameConnection {
 const MOVE = DEFAULT_MOVEMENT
 const MAX_INPUT_QUEUE = 6
 
+/**
+ * Platform adapters the server drives (roadmap Wave 12). Both optional: the
+ * game runs exactly as before without them.
+ */
+export interface GameIntegrations {
+  /** Durable lifecycle/progression events through the outbox. */
+  events?: GameEventRecorder
+  /** Installed mods (content packs), reconciled every tick. */
+  mods?: ModRuntime
+}
+
 export class GameServer {
   private readonly sessions = new Map<PlayerId, PlayerSession>()
   private readonly sessionsByConn = new Map<GameConnection, PlayerSession>()
@@ -138,6 +152,7 @@ export class GameServer {
     private readonly store: PersistenceStore,
     private readonly metrics: ServerMetrics,
     private readonly log: Logger,
+    private readonly integrations: GameIntegrations = {},
   ) {
     // The world clock and weather survive restarts (a rainy dusk stays a
     // rainy dusk).
@@ -1173,7 +1188,7 @@ export class GameServer {
     }
     this.world.entities.remove(session.entityId)
     this.world.spatial.remove(session.entityId)
-    this.savePlayer(session)
+    this.savePlayer(session, true)
     this.broadcastDespawn(session.entityId)
     this.metrics.sessions = this.sessions.size
     this.log.info('player disconnected', { playerId: session.playerId, name: session.name })
@@ -1197,6 +1212,7 @@ export class GameServer {
     // character bound to their connection: browser token first, IP as the
     // recovery path when the token is gone.
     let token = msg.token
+    let subjectId: string | null = null
     let rank: 'owner' | 'admin' | 'moderator' | null = null
     if (msg.auth) {
       const user = await resolveNetworkUser(this.config.networkAuthUrl, msg.auth)
@@ -1205,9 +1221,29 @@ export class GameServer {
         conn.close(4009, 'auth_failed')
         return
       }
-      token = `ovn:${user.id}`.slice(0, 64)
+      // Canonical subject key (ADR-0006); pre-subject characters are adopted
+      // from their legacy `ovn:<id>` key on the way in.
+      const account = accountForNetworkUser(this.store, user, Date.now(), (conflict) =>
+        this.log.warn('legacy identity conflict', conflict),
+      )
+      if (account.adopted > 0) {
+        this.log.info('legacy characters adopted', {
+          subject: account.subjectId ?? '',
+          moved: account.adopted,
+        })
+      }
+      token = account.key
+      subjectId = account.subjectId
       rank = user.rank
     } else {
+      // A guest token may never look like an account key (`usr_…`,
+      // `ovn:…`): that would open someone else's characters. The client
+      // mints plain alphanumerics; anything key-shaped is refused.
+      if (!isGuestToken(msg.token)) {
+        conn.send(encodeServerMessage({ t: 'reject', reason: 'invalid_hello' }))
+        conn.close(4007, 'invalid_guest_token')
+        return
+      }
       if (slot > 0) {
         conn.send(encodeServerMessage({ t: 'reject', reason: 'guest_one_character' }))
         conn.close(4010, 'guest_one_character')
@@ -1261,6 +1297,7 @@ export class GameServer {
       charSlot: slot,
       entityId: newEntityId(),
       token,
+      subjectId,
       rank,
       name: msg.name,
       spawn,
@@ -1322,6 +1359,17 @@ export class GameServer {
     this.send(session, this.timeWire())
     this.sendReputation(session)
     this.metrics.sessions = this.sessions.size
+    const recorder = this.integrations.events
+    if (recorder) {
+      // Baseline = what the database holds for this character (nothing for a
+      // new one), so the first save reports only what was earned since.
+      const stored = existing
+        ? progressOf(SkillSet.fromDto(existing.skills, this.world.content), existing.unlocks)
+        : { levels: {}, unlocks: [] }
+      this.store.transaction(() =>
+        recorder.recordJoin(eventPlayer(session), stored, existing !== null),
+      )
+    }
     this.log.info('player connected', {
       playerId: playerId as string,
       name: msg.name,
@@ -2264,7 +2312,11 @@ export class GameServer {
       this.replicate()
     }
 
-    // 8. Periodic persistence flush.
+    // 8. Mods: reconcile installs (a revoked or disabled mod's effects are
+    // retracted on the first tick after the change).
+    this.integrations.mods?.tick(this.tick, this.modHost)
+
+    // 9. Periodic persistence flush.
     if (this.tick - this.lastFlushTick >= this.config.persistFlushSeconds * this.config.tickRate) {
       this.lastFlushTick = this.tick
       this.flush()
@@ -2406,36 +2458,90 @@ export class GameServer {
 
   // ── Persistence ────────────────────────────────────────────────────
 
-  flush(): void {
-    // World clock + weather ride along with every flush (tiny meta writes).
-    this.store.meta.set('env_time', String(this.env.timeOfDay))
-    this.store.meta.set('env_weather', this.env.weather)
-    this.persistMarkets()
-    this.npcs.flush(this.store, Date.now())
-    const wrote = this.world.flushDirty(this.store)
-    const dirtyPlayers: PlayerDto[] = []
-    for (const session of this.sessions.values()) {
-      if (!session.dirty) continue
-      dirtyPlayers.push(this.playerToDto(session))
-      session.dirty = false
-    }
-    if (dirtyPlayers.length > 0) this.store.players.upsertMany(dirtyPlayers)
+  /**
+   * One transaction per flush: world rows, player rows and the outbox
+   * events describing them commit together (or not at all).
+   */
+  flush(reason: 'checkpoint' | 'shutdown' = 'checkpoint'): void {
+    const recorder = this.integrations.events
+    const dirty: PlayerSession[] = []
+    const afterCommit = this.store.transaction(() => {
+      // World clock + weather ride along with every flush (tiny meta writes).
+      this.store.meta.set('env_time', String(this.env.timeOfDay))
+      this.store.meta.set('env_weather', this.env.weather)
+      this.persistMarkets()
+      this.npcs.flush(this.store, Date.now())
+      const wrote = this.world.flushDirty(this.store)
+      const dirtyPlayers: PlayerDto[] = []
+      for (const session of this.sessions.values()) {
+        if (!session.dirty) continue
+        dirtyPlayers.push(this.playerToDto(session))
+        dirty.push(session)
+      }
+      if (dirtyPlayers.length > 0) this.store.players.upsertMany(dirtyPlayers)
+      if (wrote > 0 || dirtyPlayers.length > 0) {
+        this.log.debug('persistence flush', { entities: wrote, players: dirtyPlayers.length })
+      }
+      if (!recorder) return []
+      return [
+        recorder.recordPlayersSaved(
+          dirty.map((sess) => ({ player: eventPlayer(sess), progress: sessionProgress(sess) })),
+        ),
+        recorder.recordWorldSaved(wrote, dirtyPlayers.length, reason),
+      ]
+    })
+    for (const session of dirty) session.dirty = false
+    for (const done of afterCommit) done()
     this.metrics.dbDirtyQueue = 0
-    if (wrote > 0 || dirtyPlayers.length > 0) {
-      this.log.debug('persistence flush', { entities: wrote, players: dirtyPlayers.length })
-    }
   }
 
   /** Full save on shutdown. */
   shutdown(): void {
-    for (const session of this.sessions.values()) this.savePlayer(session)
-    this.flush()
+    for (const session of this.sessions.values()) session.dirty = true
+    this.flush('shutdown')
     this.log.info('world saved on shutdown', {})
   }
 
-  private savePlayer(session: PlayerSession): void {
-    this.store.players.upsert(this.playerToDto(session))
+  /** Saves one character; `leaving` also records games.player.left in the same transaction. */
+  private savePlayer(session: PlayerSession, leaving = false): void {
+    const recorder = this.integrations.events
+    const afterCommit = this.store.transaction(() => {
+      this.store.players.upsert(this.playerToDto(session))
+      if (!recorder) return []
+      const player = eventPlayer(session)
+      const done = [recorder.recordPlayersSaved([{ player, progress: sessionProgress(session) }])]
+      if (leaving) done.push(recorder.recordLeave(player))
+      return done
+    })
     session.dirty = false
+    for (const done of afterCommit) done()
+  }
+
+  /**
+   * What mods may do to the world, lent to the mod runtime only. Mod props
+   * are owned by the mod id, so prop protection keeps players' hands off.
+   */
+  private readonly modHost: ModHost = {
+    announce: (text) => this.broadcastAll({ t: 'announce', text }),
+    placeProp: ({ item, pos, yaw, owner }) => {
+      const entity = this.world.spawnProp({
+        defId: item,
+        pos: vec3(pos[0], pos[1] + terrainHeight(this.world.content.world, pos[0], pos[2]), pos[2]),
+        rot: qfromYaw(quat(), yaw),
+        motion: 'frozen',
+        owner: owner as PlayerId,
+      })
+      this.broadcastSpawn(entity)
+      return entity.id as string
+    },
+    removeEntity: (id) => {
+      const entityId = id as EntityId
+      if (!this.world.entities.get(entityId)) return false
+      this.world.despawn(entityId)
+      this.broadcastDespawn(entityId)
+      return true
+    },
+    entityExists: (id) => this.world.entities.get(id as EntityId) !== undefined,
   }
 
   private playerToDto(session: PlayerSession): PlayerDto {
@@ -2443,6 +2549,7 @@ export class GameServer {
     return {
       id: session.playerId as string,
       token: session.token,
+      ...(session.subjectId ? { subjectId: session.subjectId } : {}),
       charSlot: session.charSlot,
       name: session.name,
       pos: [pos.x, pos.y, pos.z],
@@ -2599,4 +2706,24 @@ function constraintStateWire(rec: ConstraintRecord, active: boolean): ServerMess
     ...(rec.params.length !== undefined ? { length: rec.params.length } : {}),
     active,
   }
+}
+
+/** A session as the platform event recorder sees it. */
+function eventPlayer(session: PlayerSession): EventPlayer {
+  return {
+    playerId: session.playerId as string,
+    slot: session.charSlot,
+    name: session.name,
+    subjectId: session.subjectId,
+  }
+}
+
+function progressOf(skills: SkillSet, unlocks: Iterable<string>): ProgressSnapshot {
+  const levels: Record<string, number> = {}
+  for (const skill of skills.all()) levels[skill.id] = skill.level
+  return { levels, unlocks: [...unlocks] }
+}
+
+function sessionProgress(session: PlayerSession): ProgressSnapshot {
+  return progressOf(session.skills, session.unlocks)
 }

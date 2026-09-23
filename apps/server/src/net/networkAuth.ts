@@ -8,9 +8,39 @@
 export type OpenVibeRank = 'owner' | 'admin' | 'moderator' | null
 
 export interface NetworkUser {
+  /** The Network's own account id (legacy; integer today). */
   id: string
   name: string
   rank: OpenVibeRank
+  /**
+   * Canonical subject (`usr_…`, or `gst_…` for a Network guest) from the
+   * token's `subject_id` claim; null only for tokens older than subjects.
+   */
+  subjectId: string | null
+}
+
+/** A canonical openvibe.network subject id a Games account may be keyed by. */
+const SUBJECT_ID = /^(usr|gst)_[0-9A-HJKMNP-TV-Z]{26}$/
+
+export function isCanonicalSubject(value: unknown): value is string {
+  return typeof value === 'string' && SUBJECT_ID.test(value)
+}
+
+/**
+ * Reads the `subject_id` claim of a JWT the Network has ALREADY accepted
+ * (via /api/auth/me). Never used to trust a token on its own.
+ */
+function subjectClaim(token: string): string | null {
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1] ?? '', 'base64url').toString('utf8')) as {
+      subject_id?: unknown
+    }
+    return isCanonicalSubject(claims.subject_id) ? claims.subject_id : null
+  } catch {
+    return null
+  }
 }
 
 const OWNER_USERNAME = (process.env.OWNER_USERNAME ?? 'goosely').toLowerCase()
@@ -21,6 +51,8 @@ export interface NetworkAccount {
   username?: string
   role?: string
   is_banned?: number
+  /** Canonical subject (Wave 1); mirrors the token's `subject_id` claim. */
+  subject_id?: string
   [key: string]: unknown
 }
 
@@ -59,7 +91,12 @@ export async function resolveNetworkUser(
   if (username.toLowerCase() === OWNER_USERNAME) rank = 'owner'
   else if (u.role === 'admin') rank = 'admin'
   else if (u.role === 'moderator' || u.role === 'global_mod') rank = 'moderator'
-  return { id: String(id), name: username, rank }
+  const subjectId = isCanonicalSubject(u.subject_id)
+    ? u.subject_id
+    : auth
+      ? subjectClaim(auth)
+      : null
+  return { id: String(id), name: username, rank, subjectId }
 }
 
 export function canEditMap(rank: OpenVibeRank): boolean {

@@ -1,0 +1,11 @@
+{
+  "_about": "Proposed catalog entry for contracts/catalog.json (the schema is mods/mod-manifest.v1.json next to this file; it references ../identity/subject-ref.v1.json and ../media/media-ref.v1.json).",
+  "id": "mods.mod-manifest",
+  "version": "1.0.0",
+  "owner": "contracts",
+  "schema": "mods/mod-manifest.v1.json",
+  "visibility": "public",
+  "compatibility": "backward",
+  "status": "active",
+  "adr": "ADR-013"
+}

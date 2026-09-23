@@ -1,0 +1,28 @@
+{
+  "id": "games.mod.manage",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "first-party",
+  "description": "Manage mod installs in the browser game's registry (ADR-013): install a mods/mod-manifest.v1 manifest with its games-content@1 pack, approve or revoke individual capabilities of an install, enable, disable, and revoke an install for good (its effects end on the next server tick). Every action is audited and published as a games.mod.* event. Trust tiers are metadata and never grant anything. Also accepted from an openvibe.network owner/admin session.",
+  "inputSchema": "mods.mod-manifest@1",
+  "permissions": ["games:mods:admin"],
+  "resourceConstraints": ["none"],
+  "quotaClass": "games-admin",
+  "events": [
+    "games.mod.installed",
+    "games.mod.enabled",
+    "games.mod.disabled",
+    "games.mod.grants_changed",
+    "games.mod.revoked"
+  ],
+  "implementedBy": [
+    "POST /api/v1/mods",
+    "POST /api/v1/mods/:id/enable",
+    "POST /api/v1/mods/:id/disable",
+    "POST /api/v1/mods/:id/revoke",
+    "POST /api/v1/mods/:id/grants",
+    "DELETE /api/v1/mods/:id/grants/:capability",
+    "GET /api/v1/mods/:id/audit"
+  ]
+}

@@ -3,6 +3,8 @@ import type { PersistenceStore } from '@openvibe/persistence';
 import { type ClientMessage } from '@openvibe/protocol';
 import { type Logger } from '@openvibe/shared';
 import type { ServerConfig } from '../config.js';
+import type { GameEventRecorder } from '../platform/gameEvents.js';
+import type { ModRuntime } from '../mods/runtime.js';
 import type { ServerMetrics } from '../observability/metrics.js';
 import type { GameWorld } from './gameWorld.js';
 import { type PlayerSession } from './playerSession.js';
@@ -15,12 +17,23 @@ export interface GameConnection {
     send(text: string): void;
     close(code: number, reason: string): void;
 }
+/**
+ * Platform adapters the server drives (roadmap Wave 12). Both optional: the
+ * game runs exactly as before without them.
+ */
+export interface GameIntegrations {
+    /** Durable lifecycle/progression events through the outbox. */
+    events?: GameEventRecorder;
+    /** Installed mods (content packs), reconciled every tick. */
+    mods?: ModRuntime;
+}
 export declare class GameServer {
     private readonly config;
     private readonly world;
     private readonly store;
     private readonly metrics;
     private readonly log;
+    private readonly integrations;
     private readonly sessions;
     private readonly sessionsByConn;
     private readonly sessionsByEntity;
@@ -45,7 +58,7 @@ export declare class GameServer {
     private readonly aggro;
     /** Sound events (gunshots, fights) accumulated for NPC hearing. */
     private sounds;
-    constructor(config: ServerConfig, world: GameWorld, store: PersistenceStore, metrics: ServerMetrics, log: Logger);
+    constructor(config: ServerConfig, world: GameWorld, store: PersistenceStore, metrics: ServerMetrics, log: Logger, integrations?: GameIntegrations);
     get currentTick(): number;
     /**
      * Prop protection: world props (no owner) are free; otherwise the owner
@@ -138,10 +151,20 @@ export declare class GameServer {
     step(): void;
     private stepSessionMovement;
     private replicate;
-    flush(): void;
+    /**
+     * One transaction per flush: world rows, player rows and the outbox
+     * events describing them commit together (or not at all).
+     */
+    flush(reason?: 'checkpoint' | 'shutdown'): void;
     /** Full save on shutdown. */
     shutdown(): void;
+    /** Saves one character; `leaving` also records games.player.left in the same transaction. */
     private savePlayer;
+    /**
+     * What mods may do to the world, lent to the mod runtime only. Mod props
+     * are owned by the mod id, so prop protection keeps players' hands off.
+     */
+    private readonly modHost;
     private playerToDto;
     private send;
     private sendRaw;

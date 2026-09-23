@@ -7,16 +7,25 @@
  */
 export type OpenVibeRank = 'owner' | 'admin' | 'moderator' | null;
 export interface NetworkUser {
+    /** The Network's own account id (legacy; integer today). */
     id: string;
     name: string;
     rank: OpenVibeRank;
+    /**
+     * Canonical subject (`usr_…`, or `gst_…` for a Network guest) from the
+     * token's `subject_id` claim; null only for tokens older than subjects.
+     */
+    subjectId: string | null;
 }
+export declare function isCanonicalSubject(value: unknown): value is string;
 /** The account record as openvibe.network's /api/auth/me returns it. */
 export interface NetworkAccount {
     id?: string | number;
     username?: string;
     role?: string;
     is_banned?: number;
+    /** Canonical subject (Wave 1); mirrors the token's `subject_id` claim. */
+    subject_id?: string;
     [key: string]: unknown;
 }
 /**

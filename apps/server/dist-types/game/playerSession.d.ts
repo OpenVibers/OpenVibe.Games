@@ -35,6 +35,8 @@ export interface PlayerSession {
     playerId: PlayerId;
     entityId: EntityId;
     token: string;
+    /** Canonical openvibe.network subject of the account; null for local guests. */
+    subjectId: string | null;
     /** Character slot under the account token (0..2). */
     charSlot: number;
     /** openvibe.network rank; gates edit mode + moderation. */
@@ -102,6 +104,7 @@ export interface SessionInit {
     playerId: PlayerId;
     entityId: EntityId;
     token: string;
+    subjectId?: string | null;
     charSlot?: number;
     rank?: 'owner' | 'admin' | 'moderator' | null;
     name: string;

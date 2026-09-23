@@ -17,6 +17,9 @@
     "@openvibe/physics": "workspace:*",
     "@openvibe/protocol": "workspace:*",
     "@openvibe/shared": "workspace:*",
+    "ajv": "^8.17.1",
+    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.8.0",
+    "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.2.2",
     "tsx": "^4.19.3",
     "ws": "^8.18.1"
   },

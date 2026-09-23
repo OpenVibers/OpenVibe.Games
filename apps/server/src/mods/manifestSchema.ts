@@ -1,0 +1,179 @@
+/**
+ * The mod manifest JSON Schema (mods/mod-manifest.v1) as Games validates it.
+ * The proposal for OpenVibe.Contracts is docs/contracts-proposal/mods/mod-manifest.v1.json;
+ * manifest.test.ts fails if the two ever differ. Once Contracts releases the
+ * schema, import it from openvibe-contracts instead of keeping this copy.
+ */
+export const MOD_MANIFEST_SCHEMA = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  $id: 'https://openvibe.network/contracts/mods/mod-manifest.v1.json',
+  title: 'ModManifest',
+  description:
+    "A mod as the platform knows it (ADR-013): who publishes it, which runtime runs it, which capabilities it asks for and the resources it may use. Requested capabilities are only a request: the install's approved subset is the grant, and trust tiers are install metadata that never change a grant check. The runtime-specific payload (a data pack, a script bundle) is not part of the manifest.",
+  type: 'object',
+  required: [
+    'id',
+    'name',
+    'version',
+    'publisher',
+    'target',
+    'runtime',
+    'permissions',
+    'resources',
+    'compatibility',
+  ],
+  additionalProperties: false,
+  properties: {
+    id: {
+      type: 'string',
+      pattern: '^mod_[0-9A-HJKMNP-TV-Z]{26}$',
+      description: 'Stable mod id; its principal subject is mod:<id>.',
+    },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 80,
+    },
+    version: {
+      type: 'string',
+      pattern: '^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$',
+      description: 'Semantic version of this release.',
+    },
+    description: {
+      type: 'string',
+      maxLength: 1000,
+    },
+    publisher: {
+      $ref: '../identity/subject-ref.v1.json',
+      description: 'Who publishes the mod (a user or an app subject).',
+    },
+    target: {
+      type: 'string',
+      pattern: '^[a-z][a-z0-9-]{1,39}\\.[a-z][a-z0-9-]{1,39}$',
+      description:
+        'Where the mod runs: <service>.<surface>, e.g. games.browser, games.source, live.overlay.',
+    },
+    runtime: {
+      type: 'string',
+      pattern: '^[a-z][a-z0-9-]{1,39}@[1-9][0-9]{0,3}$',
+      description:
+        'Runtime adapter and its major version, e.g. games-content@1 (declarative data pack) or source-quickjs@1.',
+    },
+    permissions: {
+      type: 'object',
+      required: ['capabilities'],
+      additionalProperties: false,
+      properties: {
+        capabilities: {
+          description:
+            'Capability ids the mod asks for (3+ segments). The target runtime binds only those it implements, and only once granted.',
+          type: 'array',
+          maxItems: 64,
+          uniqueItems: true,
+          items: {
+            type: 'string',
+            pattern: '^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){2,}$',
+          },
+        },
+        events: {
+          description: 'Event types the mod wants delivered to it.',
+          type: 'array',
+          maxItems: 64,
+          uniqueItems: true,
+          items: {
+            type: 'string',
+            pattern: '^[a-z][a-z0-9_]*(\\.[a-z0-9_]+){2,}$',
+          },
+        },
+        modules: {
+          description:
+            'User-module namespaces the mod wants to read or write (a trailing .* names a family).',
+          type: 'array',
+          maxItems: 32,
+          uniqueItems: true,
+          items: {
+            type: 'string',
+            pattern: '^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*(\\.\\*)?$',
+          },
+        },
+        mediaNamespaces: {
+          description: 'Media namespaces the mod wants to read or write.',
+          type: 'array',
+          maxItems: 32,
+          uniqueItems: true,
+          items: {
+            type: 'string',
+            pattern: '^[a-z][a-z0-9_-]*(\\.[a-z0-9_-]+)*$',
+          },
+        },
+      },
+    },
+    resources: {
+      type: 'object',
+      required: ['cpuMs', 'memoryMb', 'storageMb'],
+      additionalProperties: false,
+      description:
+        'The budget the mod asks for. Runtimes meter it; the sandbox that enforces it lives in OpenVibe.Host (Stage C).',
+      properties: {
+        cpuMs: {
+          type: 'number',
+          minimum: 0,
+          maximum: 1000,
+          description: 'CPU milliseconds per tick (game runtimes) or per request.',
+        },
+        memoryMb: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 4096,
+        },
+        storageMb: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 102400,
+        },
+        outboundHosts: {
+          description: 'Hosts the mod may reach over the network. Empty or absent = none.',
+          type: 'array',
+          maxItems: 32,
+          uniqueItems: true,
+          items: {
+            type: 'string',
+            pattern: '^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$',
+          },
+        },
+      },
+    },
+    assets: {
+      description: 'Assets the mod ships, as Media object references.',
+      type: 'array',
+      maxItems: 256,
+      items: {
+        $ref: '../media/media-ref.v1.json',
+      },
+    },
+    compatibility: {
+      type: 'object',
+      required: ['runtime'],
+      additionalProperties: false,
+      properties: {
+        runtime: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description:
+            'Semver range of the runtime this release works with, e.g. ">=1.0.0 <2.0.0".',
+        },
+        contracts: {
+          type: 'string',
+          minLength: 1,
+          maxLength: 100,
+          description: 'Semver range of openvibe-contracts releases it was built against.',
+        },
+      },
+    },
+    homepage: {
+      type: 'string',
+      pattern: '^https://[^\\s]{1,2000}$',
+    },
+  },
+} as const

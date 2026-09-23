@@ -18,6 +18,12 @@ export interface ServerConfig {
     /** Public base of the play host (Host-routed game vhost). */
     playUrl: string
   } | null
+  /**
+   * Platform integration (roadmap Wave 12): Games calls OpenVibe services with
+   * a client-credentials token of its own `games` principal. Everything here
+   * is off until OV_OAUTH_CLIENT_SECRET (the same OAuth client as SSO) is set.
+   */
+  platform: PlatformConfig
   tickRate: number
   /** Send a snapshot every N ticks. */
   snapshotEvery: number
@@ -28,6 +34,42 @@ export interface ServerConfig {
   metricsLogSeconds: number
   /** Multiplier on world-event cadences (tests shrink it). */
   eventIntervalScale: number
+}
+
+export interface PlatformConfig {
+  /** OAuth client id of the `games` principal (shared with SSO). */
+  clientId: string
+  /** Its client secret; null = no service calls at all. */
+  clientSecret: string | null
+  /** Network base for /oauth/token, identity and the JWKS (host-internal in production). */
+  networkUrl: string
+  /** OpenVibe.Events base; null = no durable events (the outbox is not even created). */
+  eventsUrl: string | null
+  /** OpenVibe.Media base; null = map assets stay local only. */
+  mediaUrl: string | null
+  /** Media namespace (tenant app id) Games writes objects into. */
+  mediaNamespace: string
+  /** At most one `games.world.saved` checkpoint event per this many minutes. */
+  worldSavedEventMinutes: number
+}
+
+function trimSlash(v: string): string {
+  return v.replace(/\/+$/, '')
+}
+
+export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
+  const secret = env.OV_OAUTH_CLIENT_SECRET ?? null
+  return {
+    clientId: env.OV_OAUTH_CLIENT_ID ?? 'games',
+    clientSecret: secret && secret.length > 0 ? secret : null,
+    networkUrl: trimSlash(
+      env.OV_NETWORK_INTERNAL_URL ?? env.OV_NETWORK_URL ?? 'https://openvibe.network',
+    ),
+    eventsUrl: env.EVENTS_URL && env.EVENTS_PUBLISH !== 'off' ? trimSlash(env.EVENTS_URL) : null,
+    mediaUrl: env.MEDIA_URL && env.MEDIA_MIRROR !== 'off' ? trimSlash(env.MEDIA_URL) : null,
+    mediaNamespace: env.MEDIA_NAMESPACE ?? 'games',
+    worldSavedEventMinutes: intEnv(env, 'WORLD_SAVED_EVENT_MINUTES', 15),
+  }
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
@@ -55,6 +97,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
           playUrl: env.PLAY_URL ?? 'https://play.openvibe.games',
         }
       : null,
+    platform: loadPlatformConfig(env),
     tickRate: 30,
     snapshotEvery: 2,
     interestRadius: intEnv(env, 'INTEREST_RADIUS', 80),

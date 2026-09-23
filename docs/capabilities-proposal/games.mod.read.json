@@ -1,0 +1,14 @@
+{
+  "id": "games.mod.read",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Read the browser game's installed mods: manifest, content pack, status, trust tier, requested and granted capabilities. Public; no token needed.",
+  "outputSchema": "mods.mod-manifest@1",
+  "permissions": ["games:mods:read"],
+  "resourceConstraints": ["none"],
+  "quotaClass": "games-read",
+  "events": [],
+  "implementedBy": ["GET /api/v1/mods", "GET /api/v1/mods/:id"]
+}
