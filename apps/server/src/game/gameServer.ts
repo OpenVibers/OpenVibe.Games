@@ -1249,6 +1249,13 @@ export class GameServer {
       subjectId = account.subjectId
       authIat = tokenIat(msg.auth)
       rank = user.rank
+      // Guest conversion (WS-B task 8): the character this browser played as a guest joins the
+      // account in its first free slot, once.
+      if (subjectId && isGuestToken(msg.token)) {
+        const g = this.store.identity.adoptGuestCharacter(msg.token, subjectId, Date.now())
+        if (g.moved > 0) this.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
+        else if (g.full) this.log.info('guest character kept: account slots full', { subject: subjectId })
+      }
     } else {
       // A guest token may never look like an account key (`usr_…`,
       // `ovn:…`): that would open someone else's characters. The client

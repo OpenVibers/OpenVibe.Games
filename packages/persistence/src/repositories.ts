@@ -70,6 +70,17 @@ export interface IdentityRepository {
   ): { moved: number; conflicts: number }
   /** The subject a legacy key was adopted into, if any. */
   subjectForLegacy(legacyKey: string): string | null
+  /**
+   * Guest conversion (roadmap WS-B task 8): the character a browser played as a guest moves into the
+   * account that signs in on it, into the first free slot (0..2). Once per guest token (remembered by
+   * a hash of it, never the token); `moved` 0 when there is nothing to move, it was already adopted,
+   * or every slot is taken (`full`).
+   */
+  adoptGuestCharacter(
+    guestToken: string,
+    subjectId: string,
+    now: number,
+  ): { moved: number; slot: number | null; full: boolean }
   /** Distinct account keys under a legacy prefix that still own characters. */
   legacyAccountKeys(prefix: string): string[]
 }

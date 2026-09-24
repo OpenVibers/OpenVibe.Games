@@ -223,7 +223,11 @@ async function main(): Promise<void> {
       if (auth) {
         const user = await resolveNetworkUser(config.networkAuthUrl, auth)
         if (!user) return []
-        account = accountForNetworkUser(store, user, Date.now()).key
+        const resolved = accountForNetworkUser(store, user, Date.now())
+        account = resolved.key
+        // Guest conversion (WS-B task 8): this browser's guest character shows up in the account's
+        // list (and moves there) the moment it signs in, before any slot is picked.
+        if (resolved.subjectId && isGuestToken(token)) store.identity.adoptGuestCharacter(token, resolved.subjectId, Date.now())
       } else if (!isGuestToken(token)) {
         // Never list an account key's characters for a guest query.
         return []

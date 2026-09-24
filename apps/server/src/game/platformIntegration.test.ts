@@ -301,6 +301,26 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     b.dispose()
   }, 60_000)
 
+  it('a guest who signs in keeps their character (guest conversion, WS-B task 8)', async () => {
+    const c = boot(platform)
+    const guest = connect(c.game)
+    const played = await guest.hello('guestconv77')
+    expect(played.welcome).toBeDefined()
+    const guestPlayer = (played.welcome as { playerId: string }).playerId
+    c.game.shutdown()
+    await c.outbox.stop()
+    c.dispose()
+    const d = boot(platform)
+    const signedIn = connect(d.game)
+    expect((await signedIn.hello('guestconv77', 'tok-ana')).welcome).toBeDefined()
+    const mine = d.store.players.listByToken(SUBJECT)
+    expect(mine.some((p) => p.id === guestPlayer)).toBe(true)
+    expect(d.store.players.listByToken('guestconv77')).toEqual([])
+    d.game.shutdown()
+    await d.outbox.stop()
+    d.dispose()
+  }, 60_000)
+
   it('a sign-out everywhere closes the signed-in session, never a guest (WS-B task 4)', async () => {
     const c = boot(platform)
     const ana = connect(c.game)

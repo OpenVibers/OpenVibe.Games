@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import type {
   MediaMirrorDto,
@@ -62,9 +63,33 @@ export function createIdentityRepository(db: Database.Database): IdentityReposit
     },
   )
 
+  const moveToSlot = db.prepare('UPDATE players SET token = ?, subject_id = ?, char_slot = ? WHERE id = ?')
+  const adoptGuest = db.transaction((guestToken: string, subjectId: string, now: number) => {
+    const key = `guest:${createHash('sha256').update(guestToken).digest('hex').slice(0, 32)}`
+    const none = { moved: 0, slot: null, full: false }
+    if (mapped.get(key)) return none
+    const rows = legacyRows.all(guestToken)
+    if (rows.length === 0) return none
+    const taken = new Set(takenSlots.all(subjectId).map((r) => r.char_slot))
+    let moved = 0
+    let slot: number | null = null
+    for (const row of rows) {
+      const free = [0, 1, 2].find((s) => !taken.has(s))
+      if (free === undefined) break
+      moveToSlot.run(subjectId, subjectId, free, row.id)
+      taken.add(free)
+      slot ??= free
+      moved++
+    }
+    if (moved === 0) return { moved: 0, slot: null, full: true }
+    recordMap.run(key, subjectId, 'guest', moved, rows.length - moved, now)
+    return { moved, slot, full: false }
+  })
+
   return {
     adoptLegacyAccount: (legacyKey, subjectId, source, now) =>
       adopt(legacyKey, subjectId, source, now),
+    adoptGuestCharacter: (guestToken, subjectId, now) => adoptGuest(guestToken, subjectId, now),
     subjectForLegacy(legacyKey) {
       return mapped.get(legacyKey)?.subject_id ?? null
     },

@@ -35,6 +35,30 @@ function player(
   }
 }
 
+describe('guest conversion (WS-B task 8)', () => {
+  it('moves the guest character into the first free slot, once, keyed by a hash of the token', () => {
+    const store = openSqliteStore(':memory:')
+    store.players.upsertMany([player('g1', 'guest00042abc', 0), player('a0', SUBJECT, 0)])
+    expect(store.identity.adoptGuestCharacter('guest00042abc', SUBJECT, 10)).toEqual({ moved: 1, slot: 1, full: false })
+    expect(store.players.listByToken(SUBJECT).map((p) => [p.id, p.charSlot]).sort()).toEqual([['a0', 0], ['g1', 1]])
+    expect(store.players.listByToken('guest00042abc')).toEqual([])
+    expect(store.identity.adoptGuestCharacter('guest00042abc', SUBJECT, 11)).toEqual({ moved: 0, slot: null, full: false })
+    const keys = (store.db.prepare('SELECT legacy_key FROM identity_legacy_map').all() as { legacy_key: string }[]).map((r) => r.legacy_key)
+    expect(keys.some((k) => k.includes('guest00042abc'))).toBe(false)
+    expect(keys.some((k) => /^guest:[0-9a-f]{32}$/.test(k))).toBe(true)
+    store.close()
+  })
+
+  it('keeps the guest character when every slot is taken, and does nothing without one', () => {
+    const store = openSqliteStore(':memory:')
+    store.players.upsertMany([player('a0', SUBJECT, 0), player('a1', SUBJECT, 1), player('a2', SUBJECT, 2), player('g1', 'guestfull01', 0)])
+    expect(store.identity.adoptGuestCharacter('guestfull01', SUBJECT, 1)).toEqual({ moved: 0, slot: null, full: true })
+    expect(store.players.listByToken('guestfull01').length).toBe(1)
+    expect(store.identity.adoptGuestCharacter('nobodyhere01', SUBJECT, 1)).toEqual({ moved: 0, slot: null, full: false })
+    store.close()
+  })
+})
+
 describe('identity repository (legacy -> canonical subject)', () => {
   it('moves every legacy character to the subject once and records the map', () => {
     const store = openSqliteStore(':memory:')
