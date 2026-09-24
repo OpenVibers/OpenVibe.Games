@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { dirname, extname, join, normalize, resolve } from 'node:path'
 import type { Logger } from '@openvibe/shared'
 import type { ServerMetrics } from '../observability/metrics.js'
+import { isDirectLoopback } from '../observability/release.js'
 import { canEditMap, fetchNetworkAccount, resolveNetworkUser } from './networkAuth.js'
 import {
   LOGIN_STATE_COOKIE,
@@ -615,6 +616,11 @@ export function createHttpServer(
       return
     }
     if (url === '/metrics') {
+      // Operational numbers are for this machine's scrapers only (Track O), never the public site.
+      if (!isDirectLoopback(req)) {
+        notFound()
+        return
+      }
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify(metrics.snapshot()))
       return
