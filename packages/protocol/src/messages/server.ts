@@ -29,7 +29,13 @@ export interface ServerWelcome {
 export interface ServerReject {
   t: 'reject'
   reason:
-    'protocol_mismatch' | 'server_full' | 'invalid_hello' | 'guest_one_character' | 'auth_failed'
+    | 'protocol_mismatch'
+    | 'server_full'
+    | 'invalid_hello'
+    | 'guest_one_character'
+    | 'auth_failed'
+    /** The person signed out everywhere (or changed their password, or was banned) on the Network. */
+    | 'signed_out'
 }
 
 /** Entities that became relevant to this client (full state). */

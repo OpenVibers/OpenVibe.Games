@@ -51,6 +51,14 @@ export interface PlatformConfig {
   mediaNamespace: string
   /** At most one `games.world.saved` checkpoint event per this many minutes. */
   worldSavedEventMinutes: number
+  /**
+   * GAMES_EVENTS_SECRET (comma-separated for rotation, 32+ characters each): signs Games' own Events
+   * subscriptions (network.user.token_valid_after → POST /internal/events). Empty = no subscription,
+   * and the route answers 503.
+   */
+  eventsSecrets: string[]
+  /** Where Events delivers (GAMES_EVENTS_ENDPOINT, else loopback on PORT). */
+  eventsEndpoint: string | null
 }
 
 function trimSlash(v: string): string {
@@ -69,6 +77,12 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     mediaUrl: env.MEDIA_URL && env.MEDIA_MIRROR !== 'off' ? trimSlash(env.MEDIA_URL) : null,
     mediaNamespace: env.MEDIA_NAMESPACE ?? 'games',
     worldSavedEventMinutes: intEnv(env, 'WORLD_SAVED_EVENT_MINUTES', 15),
+    eventsSecrets: (env.GAMES_EVENTS_SECRET ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 32),
+    eventsEndpoint:
+      env.GAMES_EVENTS_ENDPOINT ?? `http://127.0.0.1:${intEnv(env, 'PORT', 8000)}/internal/events`,
   }
 }
 

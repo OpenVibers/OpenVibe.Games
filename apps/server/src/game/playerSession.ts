@@ -47,6 +47,11 @@ export interface PlayerSession {
   token: string
   /** Canonical openvibe.network subject of the account; null for local guests. */
   subjectId: string | null
+  /**
+   * When the Network sign-in behind this session was issued (JWT iat, seconds); null for guests. A
+   * sign-out everywhere after it closes the session (network.user.token_valid_after).
+   */
+  authIat: number | null
   /** Character slot under the account token (0..2). */
   charSlot: number
   /** openvibe.network rank; gates edit mode + moderation. */
@@ -113,6 +118,7 @@ export interface SessionInit {
   entityId: EntityId
   token: string
   subjectId?: string | null
+  authIat?: number | null
   charSlot?: number
   rank?: 'owner' | 'admin' | 'moderator' | null
   name: string
@@ -138,6 +144,7 @@ export function createSession(init: SessionInit): PlayerSession {
     entityId: init.entityId,
     token: init.token,
     subjectId: init.subjectId ?? null,
+    authIat: init.authIat ?? null,
     charSlot: init.charSlot ?? 0,
     rank: init.rank ?? null,
     name: init.name,

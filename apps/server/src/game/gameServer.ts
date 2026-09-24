@@ -120,6 +120,18 @@ export interface GameIntegrations {
   mods?: ModRuntime
 }
 
+/** A JWT's iat (seconds), read from a token the Network has already accepted; null otherwise. */
+function tokenIat(jwt: string): number | null {
+  const part = jwt.split('.')[1]
+  if (!part) return null
+  try {
+    const claims = JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as { iat?: unknown }
+    return typeof claims.iat === 'number' ? claims.iat : null
+  } catch {
+    return null
+  }
+}
+
 export class GameServer {
   private readonly sessions = new Map<PlayerId, PlayerSession>()
   private readonly sessionsByConn = new Map<GameConnection, PlayerSession>()
@@ -1213,6 +1225,7 @@ export class GameServer {
     // recovery path when the token is gone.
     let token = msg.token
     let subjectId: string | null = null
+    let authIat: number | null = null
     let rank: 'owner' | 'admin' | 'moderator' | null = null
     if (msg.auth) {
       const user = await resolveNetworkUser(this.config.networkAuthUrl, msg.auth)
@@ -1234,6 +1247,7 @@ export class GameServer {
       }
       token = account.key
       subjectId = account.subjectId
+      authIat = tokenIat(msg.auth)
       rank = user.rank
     } else {
       // A guest token may never look like an account key (`usr_…`,
@@ -1298,6 +1312,7 @@ export class GameServer {
       entityId: newEntityId(),
       token,
       subjectId,
+      authIat,
       rank,
       name: msg.name,
       spawn,
@@ -2672,6 +2687,28 @@ export class GameServer {
   }
 
   /** Live map edit: every client refetches and rebuilds its terrain. */
+  /**
+   * Network moved this person's token cutoff (sign out everywhere, password changed, banned): close
+   * every session they opened with an older Network sign-in (4011 signed_out). The client's reconnect
+   * then fails its /api/auth/me check. Returns how many closed.
+   */
+  revokeSubject(subjectId: string, validAfterMs: number): number {
+    if (!subjectId || !Number.isFinite(validAfterMs)) return 0
+    let closed = 0
+    for (const session of [...this.sessions.values()]) {
+      if (session.subjectId !== subjectId) continue
+      if (session.authIat !== null && session.authIat * 1000 >= validAfterMs) continue
+      try {
+        session.send(encodeServerMessage({ t: 'reject', reason: 'signed_out' }))
+      } catch {
+        // closing anyway
+      }
+      session.closeConnection(4011, 'signed_out')
+      closed++
+    }
+    return closed
+  }
+
   broadcastMapReload(): void {
     this.broadcastAll({ t: 'map_reload' })
     this.broadcastAll({ t: 'announce', text: '🗺 The world was reshaped by the map editors…' })

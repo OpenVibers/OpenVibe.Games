@@ -357,9 +357,13 @@ async function start(): Promise<void> {
         }
       } else if (msg.reason === 'guest_one_character') {
         hud.setStatus('guests get one character — sign in with OpenVibe for 3 slots')
-      } else if (msg.reason === 'auth_failed') {
+      } else if (msg.reason === 'auth_failed' || msg.reason === 'signed_out') {
         localStorage.removeItem('ovg_sso')
-        hud.setStatus('OpenVibe sign-in expired — refresh to continue as guest or sign in again')
+        hud.setStatus(
+          msg.reason === 'signed_out'
+            ? 'You signed out of OpenVibe everywhere — refresh to continue as guest or sign in again'
+            : 'OpenVibe sign-in expired — refresh to continue as guest or sign in again',
+        )
       } else {
         hud.setStatus(`rejected: ${msg.reason} — refresh the page`)
       }

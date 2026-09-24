@@ -178,6 +178,12 @@ export declare class GameServer {
     private broadcastDespawn;
     private broadcastToKnowing;
     /** Live map edit: every client refetches and rebuilds its terrain. */
+    /**
+     * Network moved this person's token cutoff (sign out everywhere, password changed, banned): close
+     * every session they opened with an older Network sign-in (4011 signed_out). The client's reconnect
+     * then fails its /api/auth/me check. Returns how many closed.
+     */
+    revokeSubject(subjectId: string, validAfterMs: number): number;
     broadcastMapReload(): void;
     /** Exposes crafting context for the client-facing recipe availability (welcome-time). */
     workstationsNear(session: PlayerSession): ReadonlySet<string>;

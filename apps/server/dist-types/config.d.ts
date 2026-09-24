@@ -50,6 +50,14 @@ export interface PlatformConfig {
     mediaNamespace: string;
     /** At most one `games.world.saved` checkpoint event per this many minutes. */
     worldSavedEventMinutes: number;
+    /**
+     * GAMES_EVENTS_SECRET (comma-separated for rotation, 32+ characters each): signs Games' own Events
+     * subscriptions (network.user.token_valid_after → POST /internal/events). Empty = no subscription,
+     * and the route answers 503.
+     */
+    eventsSecrets: string[];
+    /** Where Events delivers (GAMES_EVENTS_ENDPOINT, else loopback on PORT). */
+    eventsEndpoint: string | null;
 }
 export declare function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig;
 export declare function loadConfig(env: NodeJS.ProcessEnv): ServerConfig;

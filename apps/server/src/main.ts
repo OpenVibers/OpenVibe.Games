@@ -34,6 +34,7 @@ import {
 } from './platform/gameEvents.js'
 import { MediaMirror } from './platform/mediaMirror.js'
 import { createPlatformClient } from './platform/serviceClient.js'
+import { createRevocationEvents, ensureRevocationSubscription } from './platform/revocationEvents.js'
 import { createStaffAuthorizer } from './platform/staffAuth.js'
 
 /**
@@ -154,6 +155,30 @@ async function main(): Promise<void> {
     mods: modRuntime,
   })
 
+  // Sign-out everywhere (network.user.token_valid_after): POST /internal/events closes the person's
+  // older game sessions; the subscription is created at boot when a secret is set (WS-B task 4).
+  const revocations = createRevocationEvents({
+    db: store.db,
+    secrets: config.platform.eventsSecrets,
+    onRevoked: (subject, validAfterMs) => game.revokeSubject(subject, validAfterMs),
+    log: platformLog,
+  })
+  if (platform && config.platform.eventsUrl && config.platform.eventsSecrets[0] && config.platform.eventsEndpoint) {
+    const subscribe = (attempt: number): void => {
+      ensureRevocationSubscription({
+        eventsUrl: config.platform.eventsUrl as string,
+        endpoint: config.platform.eventsEndpoint as string,
+        secret: config.platform.eventsSecrets[0] as string,
+        tokens: platform.tokens,
+        log: platformLog,
+      }).catch((err: unknown) => {
+        platformLog.warn('events subscription not ready (will retry)', { error: String((err as Error)?.message ?? err), attempt })
+        if (attempt < 5) setTimeout(() => subscribe(attempt + 1), 60_000 * attempt).unref()
+      })
+    }
+    subscribe(1)
+  }
+
   // GET /release.json (D43): the deployed commit and package versions, as every OpenVibe service serves it.
   const serveRelease = releaseHandler(buildRelease(process.cwd()))
 
@@ -211,6 +236,7 @@ async function main(): Promise<void> {
     config.oauth,
     {
       handle: (req, res) => {
+        if (revocations.handle(req, res)) return true
         if (readiness.handle(req, res)) return true
         if (serveRelease(req, res)) return true
         if ((req.url ?? '').split('?')[0] === '/api/v1/platform' && req.method === 'GET') {
