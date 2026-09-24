@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, expect, it } from 'vitest'
-import { buildRelease, gitCommit, isDirectLoopback, releaseHandler } from './release.js'
+import { buildRelease, gitCommit, isDirectLoopback, prometheusText, releaseHandler, wantsPrometheus } from './release.js'
 
 const SHA = 'a'.repeat(40)
 function checkout(kind: 'loose' | 'packed' | 'detached'): string {
@@ -53,5 +53,15 @@ describe('release manifest (D43)', () => {
     expect(isDirectLoopback(req('127.0.0.1', { 'x-forwarded-for': '1.2.3.4' }))).toBe(false)
     expect(isDirectLoopback(req('127.0.0.1', { 'x-real-ip': '1.2.3.4' }))).toBe(false)
     expect(isDirectLoopback(req('203.0.113.9'))).toBe(false)
+  })
+
+  it('serves the metrics snapshot as Prometheus text when a scraper asks', () => {
+    const text = prometheusText({ tick: 42, tickDurationMs: 0.5, sessions: 3, name: 'x', nested: { a: 1 }, bad: Number.NaN })
+    expect(text).toBe('# TYPE games_tick gauge\ngames_tick 42\n# TYPE games_tick_duration_ms gauge\ngames_tick_duration_ms 0.5\n# TYPE games_sessions gauge\ngames_sessions 3\n')
+    const req = (accept: string, url = '/metrics') => ({ headers: { accept }, url }) as unknown as IncomingMessage
+    expect(wantsPrometheus(req('text/plain;version=0.0.4;q=0.5,*/*;q=0.1'))).toBe(true)
+    expect(wantsPrometheus(req('application/openmetrics-text;version=1.0.0'))).toBe(true)
+    expect(wantsPrometheus(req('', '/metrics?format=prometheus'))).toBe(true)
+    expect(wantsPrometheus(req('application/json'))).toBe(false)
   })
 })

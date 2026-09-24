@@ -31,4 +31,11 @@ export declare function buildRelease(root: string, { env, now }?: {
 export declare function releaseHandler(manifest: ReleaseManifest): (req: IncomingMessage, res: ServerResponse) => boolean;
 /** A request from this machine that did not come through the proxy (nginx sets the client-IP headers). */
 export declare function isDirectLoopback(req: IncomingMessage): boolean;
+/**
+ * The metrics snapshot in Prometheus text format (Track O): every finite number becomes a gauge
+ * games_<snake_case key>; nested objects and non-numbers are skipped.
+ */
+export declare function prometheusText(snapshot: Record<string, unknown>): string;
+/** Does this scrape ask for the text format (Prometheus sends text/plain or OpenMetrics in Accept)? */
+export declare function wantsPrometheus(req: IncomingMessage): boolean;
 //# sourceMappingURL=release.d.ts.map

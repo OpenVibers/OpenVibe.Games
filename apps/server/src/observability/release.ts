@@ -103,3 +103,24 @@ export function isDirectLoopback(req: IncomingMessage): boolean {
   const h = req.headers
   return loop && !h['x-forwarded-for'] && !h['x-real-ip'] && !h['cf-connecting-ip']
 }
+
+/**
+ * The metrics snapshot in Prometheus text format (Track O): every finite number becomes a gauge
+ * games_<snake_case key>; nested objects and non-numbers are skipped.
+ */
+export function prometheusText(snapshot: Record<string, unknown>): string {
+  const lines: string[] = []
+  for (const [k, v] of Object.entries(snapshot)) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue
+    const name = `games_${k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[^A-Za-z0-9_]/g, '_').toLowerCase()}`
+    lines.push(`# TYPE ${name} gauge`, `${name} ${v}`)
+  }
+  return `${lines.join('\n')}\n`
+}
+
+/** Does this scrape ask for the text format (Prometheus sends text/plain or OpenMetrics in Accept)? */
+export function wantsPrometheus(req: IncomingMessage): boolean {
+  const accept = String(req.headers.accept ?? '')
+  const q = (req.url ?? '').split('?')[1] ?? ''
+  return /text\/plain|openmetrics/i.test(accept) || /(^|&)format=prometheus(&|$)/.test(q)
+}

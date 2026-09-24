@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { dirname, extname, join, normalize, resolve } from 'node:path'
 import type { Logger } from '@openvibe/shared'
 import type { ServerMetrics } from '../observability/metrics.js'
-import { isDirectLoopback } from '../observability/release.js'
+import { isDirectLoopback, prometheusText, wantsPrometheus } from '../observability/release.js'
 import { canEditMap, fetchNetworkAccount, resolveNetworkUser } from './networkAuth.js'
 import {
   LOGIN_STATE_COOKIE,
@@ -619,6 +619,11 @@ export function createHttpServer(
       // Operational numbers are for this machine's scrapers only (Track O), never the public site.
       if (!isDirectLoopback(req)) {
         notFound()
+        return
+      }
+      if (wantsPrometheus(req)) {
+        res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' })
+        res.end(prometheusText(metrics.snapshot() as unknown as Record<string, unknown>))
         return
       }
       res.writeHead(200, { 'content-type': 'application/json' })
