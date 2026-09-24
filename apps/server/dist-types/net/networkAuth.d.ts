@@ -1,10 +1,3 @@
-/**
- * openvibe.network SSO adapter. Access tokens are JWTs issued by the openvibe.network
- * OAuth server; we validate by calling its /api/auth/me endpoint (which
- * verifies signature + ban state) rather than trusting the JWT locally.
- * The response nests the account under `user`; rank maps the network RBAC:
- * the configured owner account, then role admin / moderator (global_mod).
- */
 export type OpenVibeRank = 'owner' | 'admin' | 'moderator' | null;
 export interface NetworkUser {
     /** The Network's own account id (legacy; integer today). */
@@ -18,6 +11,8 @@ export interface NetworkUser {
     subjectId: string | null;
 }
 export declare function isCanonicalSubject(value: unknown): value is string;
+/** The rank the staff map gives these (accepted) claims. */
+export declare function rankOf(claims: Record<string, unknown>): OpenVibeRank;
 /** The account record as openvibe.network's /api/auth/me returns it. */
 export interface NetworkAccount {
     id?: string | number;
@@ -35,5 +30,6 @@ export interface NetworkAccount {
  */
 export declare function fetchNetworkAccount(url: string | null, auth: string | undefined): Promise<NetworkAccount | null>;
 export declare function resolveNetworkUser(url: string | null, auth: string | undefined): Promise<NetworkUser | null>;
+/** The map editor and mod administration: staff.games.manage (rank owner or admin). */
 export declare function canEditMap(rank: OpenVibeRank): boolean;
 //# sourceMappingURL=networkAuth.d.ts.map

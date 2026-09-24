@@ -67,7 +67,7 @@ import {
   type PlayerId,
 } from '@openvibe/shared'
 import type { ServerConfig } from '../config.js'
-import { resolveNetworkUser } from '../net/networkAuth.js'
+import { canEditMap, resolveNetworkUser } from '../net/networkAuth.js'
 import { accountForNetworkUser, isGuestToken } from '../platform/accounts.js'
 import type { EventPlayer, GameEventRecorder, ProgressSnapshot } from '../platform/gameEvents.js'
 import type { ModHost, ModRuntime } from '../mods/runtime.js'
@@ -558,7 +558,7 @@ export class GameServer {
         // Rank-gated noclip build mode. The flag lives in the move state so
         // server sim and client prediction stay in lockstep via the normal
         // self-state replication path.
-        if (session.rank === 'owner' || session.rank === 'admin') {
+        if (canEditMap(session.rank)) {
           session.move.noclip = msg.on
           session.move.vel.x = 0
           session.move.vel.y = 0
