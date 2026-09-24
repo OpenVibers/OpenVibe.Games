@@ -202,6 +202,15 @@ mapping for one of them (`POST /internal/identity/legacy-map`), re-run the
 importer. The test "picks up rows whose subject appears later" checks that
 only that user's rows are written.
 
+Re-checked 2026-09-24 (dry run against a fresh Live snapshot, subjects from the
+Network identity service): unchanged. 616 rows import (already in
+`legacy_live_rows`), 200 rows of the same 12 users stay held (`no-subject`),
+1,408 are excluded, and the totals balance. These 12 are the standing
+import-hold. `players.subject_id` needs no backfill: the only Network-keyed
+player (`ovn:1`) moved to its subject on 2026-09-23 (`identity_legacy_map`),
+and the other 27 rows are device-token guests and deploy probes, which have
+no subject until the guest signs in.
+
 ## The archive table (`world.db`, schema 13)
 
 ```sql
