@@ -8,7 +8,7 @@
       name="description"
       content="Play Scraplandia: scrappy multiplayer survival-building in and around Scrap City, in your browser, no download. Part of the OpenVibe network."
     />
-    <!-- Shared network chrome: the user's theme before first paint, then navbar + footer. -->
+    <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
     <script src="https://openvibe.network/shared/theme-loader.js"></script>
     <script src="https://openvibe.network/shared/navbar.js" defer></script>
     <script src="https://openvibe.network/shared/footer.js" defer></script>
@@ -60,15 +60,15 @@
     </script>
     <link rel="stylesheet" href="/src/ui/styles.css" />
     <script>
-      window.__ovgChrome = { page: 'play', title: 'Scraplandia', collapsible: true }
+      window.__ovgFrame = { page: 'play', title: 'Scraplandia', collapsible: true }
     </script>
-    <script src="/chrome.js" defer></script>
+    <script src="/frame.js" defer></script>
   </head>
   <body>
     <!--
       The shared navbar mounts at the top; the game fills the stage below it.
-      Once the player is in the world (the `ovg:playing` event) the chrome
-      folds away and a small floating button brings it back — see chrome.js.
+      Once the player is in the world (the `ovg:playing` event) the Frame
+      folds away and a small floating button brings it back — see frame.js.
     -->
     <div id="navbar-mount"></div>
     <div id="stage">

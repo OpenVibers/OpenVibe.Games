@@ -23,8 +23,8 @@ input {
 
 /* ── Page frame ────────────────────────────────────────────────────
    Shared navbar on top, the game stage filling the rest, a one-line
-   footer below. Once the player is in the world the chrome folds away
-   (body.ovg-chrome-hidden, see public/chrome.js) and the stage takes the
+   footer below. Once the player is in the world the Frame folds away
+   (body.ovg-frame-hidden, see public/frame.js) and the stage takes the
    whole viewport; the engine resizes off the canvas's CSS box. */
 body {
   display: flex;
@@ -65,13 +65,13 @@ body {
   padding-bottom: 8px !important;
 }
 
-body.ovg-chrome-hidden #navbar-mount,
-body.ovg-chrome-hidden #ov-footer {
+body.ovg-frame-hidden #navbar-mount,
+body.ovg-frame-hidden #ov-footer {
   display: none;
 }
 
-/* Floating "bring the chrome back" pill (chrome.js adds it once the game starts). */
-#ovg-chrome-toggle {
+/* Floating "bring the Frame back" pill (frame.js adds it once the game starts). */
+#ovg-frame-toggle {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -91,12 +91,12 @@ body.ovg-chrome-hidden #ov-footer {
   opacity: 0.55;
   transition: opacity 0.15s;
 }
-#ovg-chrome-toggle:hover,
-#ovg-chrome-toggle:focus-visible {
+#ovg-frame-toggle:hover,
+#ovg-frame-toggle:focus-visible {
   opacity: 1;
   color: var(--text-primary, #e6e6e6);
 }
-#ovg-chrome-toggle[hidden] {
+#ovg-frame-toggle[hidden] {
   display: none;
 }
 

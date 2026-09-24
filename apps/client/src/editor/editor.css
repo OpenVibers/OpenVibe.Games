@@ -543,11 +543,11 @@ body {
   padding-top: 6px !important;
   padding-bottom: 6px !important;
 }
-body.ovg-chrome-hidden #navbar-mount,
-body.ovg-chrome-hidden #ov-footer {
+body.ovg-frame-hidden #navbar-mount,
+body.ovg-frame-hidden #ov-footer {
   display: none;
 }
-#ovg-chrome-toggle {
+#ovg-frame-toggle {
   position: absolute;
   right: 10px;
   bottom: 30px;
@@ -566,11 +566,11 @@ body.ovg-chrome-hidden #ov-footer {
   cursor: pointer;
   opacity: 0.6;
 }
-#ovg-chrome-toggle:hover {
+#ovg-frame-toggle:hover {
   opacity: 1;
   color: var(--ink, #d5dbe2);
 }
-#ovg-chrome-toggle[hidden] {
+#ovg-frame-toggle[hidden] {
   display: none;
 }
 

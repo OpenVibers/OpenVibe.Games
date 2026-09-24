@@ -78,7 +78,7 @@ beforeAll(async () => {
   writeFileSync(join(dist, 'index.html'), '<!doctype html><title>portal page</title>')
   writeFileSync(join(dist, 'play.html'), '<!doctype html><title>game page</title>')
   writeFileSync(join(dist, 'editor.html'), '<!doctype html><title>editor page</title>')
-  writeFileSync(join(dist, 'chrome.js'), 'void 0')
+  writeFileSync(join(dist, 'frame.js'), 'void 0')
   writeFileSync(join(dist, ASSET.slice(1)), 'export {}')
   writeFileSync(join(dist, 'assets', 'tex', 'wood_planks.jpg'), 'jpeg')
   const mapPath = join(dir, 'data', 'map.json')
@@ -141,7 +141,7 @@ describe('real routes on the apex', () => {
     expect(asset.status).toBe(200)
     expect(asset.headers['content-type']).toBe('text/javascript')
     expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable')
-    expect((await send('/chrome.js')).status).toBe(200)
+    expect((await send('/frame.js')).status).toBe(200)
     expect((await send('/assets/tex/wood_planks.jpg')).status).toBe(200)
   })
 

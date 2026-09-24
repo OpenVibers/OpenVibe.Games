@@ -152,8 +152,8 @@ async function start(): Promise<void> {
   }
   const slot = choice.slot
   saveName(name)
-  // The player is heading into the world: the page folds the network chrome
-  // away so the canvas gets the whole viewport (see public/chrome.js).
+  // The player is heading into the world: the page folds the OpenVibe Frame
+  // away so the canvas gets the whole viewport (see public/frame.js).
   window.dispatchEvent(new CustomEvent('ovg:playing'))
 
   const havok = await havokPromise

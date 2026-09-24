@@ -1,16 +1,16 @@
 /**
- * OpenVibe.Games — the shared network chrome (navbar + footer) on every page.
+ * OpenVibe.Games — the OpenVibe Frame (navbar + footer) on every page.
  *
  * The navbar and footer themselves come from openvibe.network/shared/*.js,
  * loaded by each page's <head>; this file only tells them who we are: the
  * site's links, where sign-in/sign-out live, and the session the game keeps
  * in the `ovg_sso` cookie / localStorage entry (set by /auth/callback).
  *
- * Pages configure it with `window.__ovgChrome = { page, title, collapsible }`
+ * Pages configure it with `window.__ovgFrame = { page, title, collapsible }`
  * before this script runs:
  *   page         'portal' | 'play' | 'editor'
  *   title        recorded to the signed-in user's network history (play only)
- *   collapsible  the chrome folds away once the game starts (the `ovg:playing`
+ *   collapsible  the Frame folds away once the game starts (the `ovg:playing`
  *                event) and a small floating button brings it back.
  *   toggleFromStart  show that button immediately (the editor), not only after
  *                `ovg:playing`.
@@ -18,7 +18,7 @@
 ;(function () {
   'use strict'
   var NETWORK = 'https://openvibe.network'
-  var cfg = window.__ovgChrome || {}
+  var cfg = window.__ovgFrame || {}
   var local = ['localhost', '127.0.0.1'].indexOf(location.hostname) !== -1
   var onPlayHost = location.hostname.indexOf('play.') === 0
   var PORTAL = local || !onPlayHost ? '/' : 'https://openvibe.games/'
@@ -96,30 +96,31 @@
       variant: cfg.page === 'portal' ? 'full' : 'compact',
       links: footerLinks,
       mount: '#ov-footer',
+      updates: 'https://openvibe.network/updates?site=games',
     })
   }
 
-  // ── Collapsible chrome for the game / editor pages ─────────────────────
+  // ── Collapsible Frame for the game / editor pages ─────────────────────
   // The canvas is sized by CSS below the navbar, so showing or hiding the
-  // chrome is a class flip plus a resize event for the engine.
+  // Frame is a class flip plus a resize event for the engine.
   function setupCollapse() {
     var stage = document.getElementById('stage')
     if (!stage) return
     var btn = document.createElement('button')
-    btn.id = 'ovg-chrome-toggle'
+    btn.id = 'ovg-frame-toggle'
     btn.type = 'button'
     btn.setAttribute('aria-label', 'Show or hide the OpenVibe navigation')
-    btn.innerHTML = '<span class="ovg-chrome-toggle-mark">☰</span> OpenVibe'
+    btn.innerHTML = '<span class="ovg-frame-toggle-mark">☰</span> OpenVibe'
     // The game page reveals it once play starts; the editor has it from the start.
     btn.hidden = !cfg.toggleFromStart
     function apply(hidden) {
-      document.body.classList.toggle('ovg-chrome-hidden', hidden)
+      document.body.classList.toggle('ovg-frame-hidden', hidden)
       btn.classList.toggle('is-hidden', hidden)
       btn.title = hidden ? 'Show the OpenVibe navigation' : 'Hide the OpenVibe navigation'
       window.dispatchEvent(new Event('resize'))
     }
     btn.addEventListener('click', function () {
-      apply(!document.body.classList.contains('ovg-chrome-hidden'))
+      apply(!document.body.classList.contains('ovg-frame-hidden'))
     })
     stage.appendChild(btn)
     window.addEventListener('ovg:playing', function () {
@@ -132,7 +133,7 @@
   function boot() {
     if (!window.OpenVibeNavbar || !window.OpenVibeFooter) {
       // The shared scripts are deferred; if the Network is unreachable the
-      // page simply runs without its chrome.
+      // page simply runs without its Frame.
       if (++tries < 60) setTimeout(boot, 100)
       return
     }
