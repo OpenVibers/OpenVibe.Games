@@ -49,21 +49,22 @@
     { label: 'Games', href: PORTAL },
     { label: 'Scraplandia', href: PLAY },
   ]
+  // The shared footer's items are { name, url } (label/href rendered empty links).
   var footerLinks = [
     {
       heading: 'Games',
       items: [
-        { label: 'All games', href: PORTAL },
-        { label: 'Play Scraplandia', href: PLAY },
-        { label: 'Map editor', href: EDITOR },
+        { name: 'All games', url: PORTAL },
+        { name: 'Play Scraplandia', url: PLAY },
+        { name: 'Map editor', url: EDITOR },
       ],
     },
     {
       heading: 'Account',
       items: [
-        { label: 'Sign in', href: '/auth/login?next=' + encodeURIComponent(here) },
-        { label: 'Sign out', href: '/auth/logout?next=' + encodeURIComponent(location.pathname) },
-        { label: 'Themes', href: NETWORK + '/themes' },
+        { name: 'Sign in', url: '/auth/login?next=' + encodeURIComponent(here) },
+        { name: 'Sign out', url: '/auth/logout?next=' + encodeURIComponent(location.pathname) },
+        { name: 'Themes', url: NETWORK + '/themes' },
       ],
     },
   ]
