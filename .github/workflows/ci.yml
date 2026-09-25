@@ -20,6 +20,8 @@ jobs:
       - name: contract check (openvibe-contracts)
         run: npx openvibe-contracts-check --service games --src src
         working-directory: apps/server
+      - name: pin drift (openvibe-* library pins)
+        run: curl -fsSL https://raw.githubusercontent.com/OpenVibers/OpenVibe.Shared/main/scripts/pin-drift.js | node - "$GITHUB_WORKSPACE"
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo (Track Q).
   security:
     uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@83c998b65424fb97e6f6de55ad9cc5981767e89c
