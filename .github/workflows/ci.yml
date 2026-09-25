@@ -4,24 +4,15 @@ on:
     branches: [main]
   pull_request:
 jobs:
+  # install, node --check, tests, contract and pin-drift checks: the shared test job (WS-Q task 1).
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4   # version from package.json "packageManager"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.22.1   # production runs Node 22 (better-sqlite3 is native: build it for this ABI)
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      - name: contract check (openvibe-contracts)
-        run: npx openvibe-contracts-check --service games --src src
-        working-directory: apps/server
-      - name: pin drift (openvibe-* library pins)
-        run: curl -fsSL https://raw.githubusercontent.com/OpenVibers/OpenVibe.Shared/main/scripts/pin-drift.js | node - "$GITHUB_WORKSPACE"
-  # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo (Track Q).
+    uses: OpenVibers/OpenVibe.Shared/.github/workflows/test.yml@66b76f868ea8228aad7811309eafef3726b036f3
+    with:
+      package-manager: pnpm           # version from package.json "packageManager"
+      install: pnpm install --frozen-lockfile
+      test: pnpm typecheck && pnpm lint && pnpm test
+      syntax-dirs: ''                 # TypeScript: typecheck covers it
+      extra: cd apps/server && npx openvibe-contracts-check --service games --src src
+  # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo.
   security:
-    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@83c998b65424fb97e6f6de55ad9cc5981767e89c
+    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@66b76f868ea8228aad7811309eafef3726b036f3
