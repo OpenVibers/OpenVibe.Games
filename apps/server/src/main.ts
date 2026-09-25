@@ -25,6 +25,7 @@ import { ModRegistry } from './mods/registry.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
 import { accountForNetworkUser, isGuestToken } from './platform/accounts.js'
+import { ProgressSummaryWriter } from './platform/progressSummary.js'
 import {
   EVENT_SOURCE,
   GameEventRecorder,
@@ -34,7 +35,10 @@ import {
 } from './platform/gameEvents.js'
 import { MediaMirror } from './platform/mediaMirror.js'
 import { createPlatformClient } from './platform/serviceClient.js'
-import { createRevocationEvents, ensureRevocationSubscription } from './platform/revocationEvents.js'
+import {
+  createRevocationEvents,
+  ensureRevocationSubscription,
+} from './platform/revocationEvents.js'
 import { createStaffAuthorizer } from './platform/staffAuth.js'
 
 /**
@@ -153,6 +157,15 @@ async function main(): Promise<void> {
   const game = new GameServer(config, world, store, metrics, log.child({ system: 'game' }), {
     ...(recorder ? { events: recorder } : {}),
     mods: modRuntime,
+    // games.progress.summary on Network (WS-B task 9): needs the games principal.
+    ...(platform
+      ? {
+          progressSummary: new ProgressSummaryWriter(
+            platform.client,
+            platformLog.child({ system: 'progress-summary' }),
+          ),
+        }
+      : {}),
   })
 
   // Sign-out everywhere (network.user.token_valid_after): POST /internal/events closes the person's
@@ -163,7 +176,12 @@ async function main(): Promise<void> {
     onRevoked: (subject, validAfterMs) => game.revokeSubject(subject, validAfterMs),
     log: platformLog,
   })
-  if (platform && config.platform.eventsUrl && config.platform.eventsSecrets[0] && config.platform.eventsEndpoint) {
+  if (
+    platform &&
+    config.platform.eventsUrl &&
+    config.platform.eventsSecrets[0] &&
+    config.platform.eventsEndpoint
+  ) {
     const subscribe = (attempt: number): void => {
       ensureRevocationSubscription({
         eventsUrl: config.platform.eventsUrl as string,
@@ -172,7 +190,10 @@ async function main(): Promise<void> {
         tokens: platform.tokens,
         log: platformLog,
       }).catch((err: unknown) => {
-        platformLog.warn('events subscription not ready (will retry)', { error: String((err as Error)?.message ?? err), attempt })
+        platformLog.warn('events subscription not ready (will retry)', {
+          error: String((err as Error)?.message ?? err),
+          attempt,
+        })
         if (attempt < 5) setTimeout(() => subscribe(attempt + 1), 60_000 * attempt).unref()
       })
     }
@@ -227,7 +248,8 @@ async function main(): Promise<void> {
         account = resolved.key
         // Guest conversion (WS-B task 8): this browser's guest character shows up in the account's
         // list (and moves there) the moment it signs in, before any slot is picked.
-        if (resolved.subjectId && isGuestToken(token)) store.identity.adoptGuestCharacter(token, resolved.subjectId, Date.now())
+        if (resolved.subjectId && isGuestToken(token))
+          store.identity.adoptGuestCharacter(token, resolved.subjectId, Date.now())
       } else if (!isGuestToken(token)) {
         // Never list an account key's characters for a guest query.
         return []

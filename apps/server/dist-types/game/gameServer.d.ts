@@ -4,6 +4,7 @@ import { type ClientMessage } from '@openvibe/protocol';
 import { type Logger } from '@openvibe/shared';
 import type { ServerConfig } from '../config.js';
 import type { GameEventRecorder } from '../platform/gameEvents.js';
+import type { ProgressSummaryWriter } from '../platform/progressSummary.js';
 import type { ModRuntime } from '../mods/runtime.js';
 import type { ServerMetrics } from '../observability/metrics.js';
 import type { GameWorld } from './gameWorld.js';
@@ -26,6 +27,8 @@ export interface GameIntegrations {
     events?: GameEventRecorder;
     /** Installed mods (content packs), reconciled every tick. */
     mods?: ModRuntime;
+    /** The person's games.progress.summary user module on Network, written when a character leaves. */
+    progressSummary?: ProgressSummaryWriter;
 }
 export declare class GameServer {
     private readonly config;

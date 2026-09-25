@@ -70,6 +70,7 @@ import type { ServerConfig } from '../config.js'
 import { canEditMap, resolveNetworkUser } from '../net/networkAuth.js'
 import { accountForNetworkUser, isGuestToken } from '../platform/accounts.js'
 import type { EventPlayer, GameEventRecorder, ProgressSnapshot } from '../platform/gameEvents.js'
+import type { ProgressSummaryWriter } from '../platform/progressSummary.js'
 import type { ModHost, ModRuntime } from '../mods/runtime.js'
 import { worldSpawn } from '@openvibe/content'
 import type { ServerMetrics } from '../observability/metrics.js'
@@ -118,6 +119,8 @@ export interface GameIntegrations {
   events?: GameEventRecorder
   /** Installed mods (content packs), reconciled every tick. */
   mods?: ModRuntime
+  /** The person's games.progress.summary user module on Network, written when a character leaves. */
+  progressSummary?: ProgressSummaryWriter
 }
 
 /** A JWT's iat (seconds), read from a token the Network has already accepted; null otherwise. */
@@ -1201,6 +1204,12 @@ export class GameServer {
     this.world.entities.remove(session.entityId)
     this.world.spatial.remove(session.entityId)
     this.savePlayer(session, true)
+    void this.integrations.progressSummary?.playerLeft(
+      session.playerId as string,
+      session.subjectId,
+      sessionProgress(session).levels,
+      this.world.content.world.id,
+    )
     this.broadcastDespawn(session.entityId)
     this.metrics.sessions = this.sessions.size
     this.log.info('player disconnected', { playerId: session.playerId, name: session.name })
@@ -1253,8 +1262,10 @@ export class GameServer {
       // account in its first free slot, once.
       if (subjectId && isGuestToken(msg.token)) {
         const g = this.store.identity.adoptGuestCharacter(msg.token, subjectId, Date.now())
-        if (g.moved > 0) this.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
-        else if (g.full) this.log.info('guest character kept: account slots full', { subject: subjectId })
+        if (g.moved > 0)
+          this.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
+        else if (g.full)
+          this.log.info('guest character kept: account slots full', { subject: subjectId })
       }
     } else {
       // A guest token may never look like an account key (`usr_…`,
@@ -1381,6 +1392,7 @@ export class GameServer {
     this.send(session, this.timeWire())
     this.sendReputation(session)
     this.metrics.sessions = this.sessions.size
+    this.integrations.progressSummary?.playerJoined(session.playerId as string)
     const recorder = this.integrations.events
     if (recorder) {
       // Baseline = what the database holds for this character (nothing for a
