@@ -211,6 +211,13 @@ player (`ovn:1`) moved to its subject on 2026-09-23 (`identity_legacy_map`),
 and the other 27 rows are device-token guests and deploy probes, which have
 no subject until the guest signs in.
 
+Re-checked 2026-09-26 (roadmap WS-M task 8): the 12 still have no linked
+account of any kind, and their stored password fields are disabled markers
+(`!`/`*`, not a hash anything can match); Live's password login is gone (SSO
+only). Nobody can reach these accounts, so the 200 rows stay a documented
+import-hold, never deleted (plan rule 12). They are imported the day the
+Network records a verified `live/user/<id>` mapping for one of them.
+
 ## The archive table (`world.db`, schema 13)
 
 ```sql
