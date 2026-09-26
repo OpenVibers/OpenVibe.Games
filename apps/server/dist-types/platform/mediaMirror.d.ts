@@ -14,6 +14,7 @@ export declare class MediaMirror {
     private readonly opts;
     private timer;
     private running;
+    private stopped;
     private readonly now;
     constructor(opts: MediaMirrorOptions);
     /** Queues one stored asset (idempotent) and wakes the worker. */
@@ -26,7 +27,8 @@ export declare class MediaMirror {
     /** Queues every content-addressed asset already on disk (a no-op for known ones). */
     backfill(): Promise<number>;
     start(): void;
-    stop(): void;
+    /** No new passes; resolves when the pass in progress (if any) has finished. */
+    stop(): Promise<void>;
     kick(): void;
     /** Mirrors every due row once. Concurrent callers share the pass. */
     runOnce(): Promise<void>;

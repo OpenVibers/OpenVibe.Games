@@ -2733,6 +2733,18 @@ export class GameServer {
     return closed
   }
 
+  /**
+   * Graceful stop (WS-P lifecycle): everyone in the world is told the server is restarting. main.ts
+   * then closes every socket with 1012 (service restart); each close saves that character and records
+   * games.player.left, as when a player leaves, and the client reconnects on its own.
+   */
+  announceRestart(): void {
+    this.broadcastAll({
+      t: 'announce',
+      text: '🔄 The server is restarting: you will reconnect in a moment…',
+    })
+  }
+
   broadcastMapReload(): void {
     this.broadcastAll({ t: 'map_reload' })
     this.broadcastAll({ t: 'announce', text: '🗺 The world was reshaped by the map editors…' })

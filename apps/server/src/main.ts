@@ -15,6 +15,14 @@ import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
 import { loadHavok } from './havokLoader.js'
 import { attachEditorWs } from './net/editorWs.js'
+import {
+  closeSockets,
+  DEADLINE_MS,
+  DRAIN_MS,
+  httpDrainer,
+  SOCKETS_MS,
+  within,
+} from './net/gracefulStop.js'
 import { createHttpServer } from './net/httpServer.js'
 import { resolveNetworkUser } from './net/networkAuth.js'
 import { attachWebSocket } from './net/wsTransport.js'
@@ -154,18 +162,14 @@ async function main(): Promise<void> {
   const pruneTimer = setInterval(() => outbox?.prune(), 6 * 3600 * 1000)
   pruneTimer.unref()
 
+  // games.progress.summary on Network (WS-B task 9): needs the games principal.
+  const progressSummary = platform
+    ? new ProgressSummaryWriter(platform.client, platformLog.child({ system: 'progress-summary' }))
+    : null
   const game = new GameServer(config, world, store, metrics, log.child({ system: 'game' }), {
     ...(recorder ? { events: recorder } : {}),
     mods: modRuntime,
-    // games.progress.summary on Network (WS-B task 9): needs the games principal.
-    ...(platform
-      ? {
-          progressSummary: new ProgressSummaryWriter(
-            platform.client,
-            platformLog.child({ system: 'progress-summary' }),
-          ),
-        }
-      : {}),
+    ...(progressSummary ? { progressSummary } : {}),
   })
 
   // Sign-out everywhere (network.user.token_valid_after): POST /internal/events closes the person's
@@ -299,6 +303,7 @@ async function main(): Promise<void> {
       onAssetStored: (asset) => mirror?.enqueue(asset),
     },
   )
+  const drainer = httpDrainer(http)
   world.reconcileMapNodes()
   world.reconcileMapProps()
   const gameWss = attachWebSocket(http, game, log.child({ system: 'ws' }))
@@ -309,7 +314,10 @@ async function main(): Promise<void> {
   )
   http.on('upgrade', (req, socket, head) => {
     const path = (req.url ?? '').split('?')[0]
-    if (path === '/ws') {
+    if (drainer.stopping()) {
+      // Stopping: no new sessions (the client retries after the restart).
+      socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nRetry-After: 5\r\n\r\n')
+    } else if (path === '/ws') {
       gameWss.handleUpgrade(req, socket, head, (ws) => gameWss.emit('connection', ws, req))
     } else if (path === '/editor-ws') {
       editors.wss.handleUpgrade(req, socket, head, (ws) => editors.wss.emit('connection', ws, req))
@@ -341,21 +349,60 @@ async function main(): Promise<void> {
 
   const metricsTimer = setInterval(() => metrics.logSummary(log), config.metricsLogSeconds * 1000)
 
-  const shutdown = (signal: string): void => {
-    log.info('shutting down', { signal })
-    running = false
-    clearInterval(metricsTimer)
-    game.shutdown()
-    mirror?.stop()
-    // Unsent events stay in the outbox table and go out after the restart.
-    void outbox?.stop()
-    store.close()
-    http.close()
-    physics.dispose()
-    process.exit(0)
+  // ── Stop (roadmap WS-P lifecycle; manifests/services/games.json → lifecycle.shutdown) ──
+  // systemd sends SIGTERM (TimeoutStopSec=30). In order: stop taking connections (HTTP and WebSocket
+  // upgrades) while requests in flight carry on; stop the simulation, the metrics and prune timers and
+  // the media mirror; tell every player, then close every game and editor socket with 1012 (each game
+  // close saves that character and records games.player.left; the clients reconnect on their own);
+  // save the world; let requests in flight finish (DRAIN_MS); let the mirror pass and the progress
+  // summaries settle; stop the event outbox and await its last send (unsent rows stay in the table
+  // for the next start); close world.db; exit 0. Everything within DEADLINE_MS, else exit 1.
+  let stopping: Promise<void> | null = null
+  const shutdown = (signal: string): Promise<void> => {
+    if (stopping) return stopping
+    stopping = (async () => {
+      const t0 = Date.now()
+      log.info('shutting down', { signal, deadlineMs: DEADLINE_MS })
+      const hard = setTimeout(() => {
+        log.error('shutdown deadline passed: exiting 1', { deadlineMs: DEADLINE_MS })
+        process.exit(1)
+      }, DEADLINE_MS)
+      hard.unref()
+      const httpDone = drainer.close(DRAIN_MS)
+      running = false
+      clearInterval(metricsTimer)
+      clearInterval(pruneTimer)
+      editors.stop()
+      const mirrorDone = mirror?.stop()
+      game.announceRestart()
+      const [players, editorPeers] = await Promise.all([
+        closeSockets(gameWss, SOCKETS_MS),
+        closeSockets(editors.wss, SOCKETS_MS),
+      ])
+      game.shutdown()
+      const cut = await httpDone
+      await within(2000, mirrorDone)
+      await within(1000, progressSummary?.settle())
+      await within(2000, outbox?.stop())
+      store.close()
+      physics.dispose()
+      log.info('stopped', {
+        ms: Date.now() - t0,
+        players: players.closed + players.terminated,
+        editors: editorPeers.closed + editorPeers.terminated,
+        terminated: players.terminated + editorPeers.terminated,
+        requestsCut: cut,
+        outbox: outbox ? 'stopped' : 'off',
+      })
+      process.exit(0)
+    })().catch((err: unknown) => {
+      log.error('shutdown failed: exiting 1', { error: String((err as Error)?.stack ?? err) })
+      process.exit(1)
+    })
+    return stopping
   }
-  process.on('SIGINT', () => shutdown('SIGINT'))
-  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT', () => void shutdown('SIGINT'))
+  process.on('SIGTERM', () => void shutdown('SIGTERM'))
 }
 
 main().catch((err: unknown) => {

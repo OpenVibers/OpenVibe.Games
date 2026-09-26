@@ -62,6 +62,7 @@ export interface MediaMirrorOptions {
 export class MediaMirror {
   private timer: NodeJS.Timeout | null = null
   private running: Promise<void> | null = null
+  private stopped = false
   private readonly now: () => number
 
   constructor(private readonly opts: MediaMirrorOptions) {
@@ -102,12 +103,16 @@ export class MediaMirror {
   }
 
   start(): void {
+    this.stopped = false
     this.schedule(0)
   }
 
-  stop(): void {
+  /** No new passes; resolves when the pass in progress (if any) has finished. */
+  stop(): Promise<void> {
     if (this.timer) clearTimeout(this.timer)
     this.timer = null
+    this.stopped = true
+    return this.running ?? Promise.resolve()
   }
 
   kick(): void {
@@ -125,6 +130,7 @@ export class MediaMirror {
   }
 
   private schedule(ms: number): void {
+    if (this.stopped) return
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => {
       this.timer = null

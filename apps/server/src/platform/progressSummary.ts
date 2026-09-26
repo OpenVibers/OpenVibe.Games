@@ -55,6 +55,7 @@ export class ProgressSummaryWriter {
   private readonly joined = new Map<string, number>()
   private readonly modules: ReturnType<typeof createModulesClient>['forSubject']
   private inflight = 0
+  private readonly writes = new Set<Promise<void>>()
 
   constructor(
     client: OpenVibeClient,
@@ -85,7 +86,7 @@ export class ProgressSummaryWriter {
       sessionSeconds: since === undefined ? 0 : (this.now() - since) / 1000,
     }
     this.inflight++
-    return this.modules
+    const write: Promise<void> = this.modules
       .update(NAMESPACE, subjectId, (prev: ProgressSummary | undefined) =>
         mergeSummary(prev, outcome),
       )
@@ -98,10 +99,18 @@ export class ProgressSummaryWriter {
       })
       .finally(() => {
         this.inflight--
+        this.writes.delete(write)
       })
+    this.writes.add(write)
+    return write
   }
 
   pending(): number {
     return this.inflight
+  }
+
+  /** Graceful stop: resolves when every write in flight has finished (or given up). */
+  settle(): Promise<void> {
+    return Promise.all([...this.writes]).then(() => undefined)
   }
 }

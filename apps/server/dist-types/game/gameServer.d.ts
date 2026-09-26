@@ -189,6 +189,12 @@ export declare class GameServer {
      * then fails its /api/auth/me check. Returns how many closed.
      */
     revokeSubject(subjectId: string, validAfterMs: number): number;
+    /**
+     * Graceful stop (WS-P lifecycle): everyone in the world is told the server is restarting. main.ts
+     * then closes every socket with 1012 (service restart); each close saves that character and records
+     * games.player.left, as when a player leaves, and the client reconnects on its own.
+     */
+    announceRestart(): void;
     broadcastMapReload(): void;
     /** Exposes crafting context for the client-facing recipe availability (welcome-time). */
     workstationsNear(session: PlayerSession): ReadonlySet<string>;

@@ -4,6 +4,8 @@ import type { Logger } from '@openvibe/shared';
 import type { EditorAuth } from './httpServer.js';
 export interface EditorHub {
     wss: WebSocketServer;
+    /** Graceful stop: the lease sweeper stops. */
+    stop(): void;
     broadcastSaved(revision: string): void;
     /** Live peer count, for tests and diagnostics. */
     peerCount(): number;

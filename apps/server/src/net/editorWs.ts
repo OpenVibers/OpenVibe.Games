@@ -44,6 +44,8 @@ const PEER_COLORS = ['#ff9d4d', '#4dc3ff', '#7dff6e', '#ff6ec7', '#ffe14d', '#b3
 
 export interface EditorHub {
   wss: WebSocketServer
+  /** Graceful stop: the lease sweeper stops. */
+  stop(): void
   broadcastSaved(revision: string): void
   /** Live peer count, for tests and diagnostics. */
   peerCount(): number
@@ -233,6 +235,10 @@ export function attachEditorWs(http: Server, auth: EditorAuth, log: Logger): Edi
 
   return {
     wss,
+    /** Graceful stop: the lease sweeper stops (main.ts closes the sockets). */
+    stop(): void {
+      clearInterval(sweeper)
+    },
     broadcastSaved(revision: string): void {
       broadcast({ t: 'mapSaved', revision })
     },
