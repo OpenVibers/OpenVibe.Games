@@ -369,12 +369,8 @@ async function start(): Promise<void> {
       }
     }
   }
-  connection.onClose = () => {
-    if (rejected) return
-    // Deploys restart the server; come back on our own instead of
-    // freezing on a dead socket. Reload = full clean resync.
-    hud.setStatus('connection lost — reconnecting automatically…')
-    hud.toast('Disconnected — reconnecting…', true)
+  // Deploys restart the server: wait until it answers /healthz, then reload (a full clean resync).
+  const reloadWhenServerIsBack = (): void => {
     const poll = setInterval(() => {
       fetch('/healthz')
         .then((r) => {
@@ -386,12 +382,21 @@ async function start(): Promise<void> {
         .catch(() => {})
     }, 2000)
   }
+  connection.onClose = () => {
+    if (rejected) return
+    // Come back on our own instead of freezing on a dead socket.
+    hud.setStatus('connection lost — reconnecting automatically…')
+    hud.toast('Disconnected — reconnecting…', true)
+    reloadWhenServerIsBack()
+  }
 
   hud.setStatus('connecting…')
   try {
     await connection.connect(gameSocketUrl(), identity.token, name, appearance, slot, sso)
   } catch {
-    hud.setStatus('could not reach server — is it running?')
+    // Refused or timed out (a page opened during a restart): wait for the server, then reload.
+    hud.setStatus('could not reach the server — retrying automatically…')
+    reloadWhenServerIsBack()
     return
   }
 

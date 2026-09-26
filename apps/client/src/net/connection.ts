@@ -7,6 +7,9 @@ import {
   type ServerMessage,
 } from '@openvibe/protocol'
 
+/** How long the first WebSocket connect may take before the page falls back to waiting for the server. */
+export const CONNECT_TIMEOUT_MS = 10_000
+
 /**
  * WebSocket connection to the dedicated server. Message handling is a
  * callback so the network layer stays independent of game/state code.
@@ -27,8 +30,14 @@ export class Connection {
     const ws = new WebSocket(url)
     this.ws = ws
     await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve()
-      ws.onerror = () => reject(new Error('connection failed'))
+      // An upgrade sent while the server restarts can wait with no answer (the proxy holds it):
+      // give up after CONNECT_TIMEOUT_MS so the page can wait for the server and reload instead.
+      const timer = setTimeout(() => {
+        try { ws.close() } catch { /* already closing */ }
+        reject(new Error('connection timed out'))
+      }, CONNECT_TIMEOUT_MS)
+      ws.onopen = () => { clearTimeout(timer); resolve() }
+      ws.onerror = () => { clearTimeout(timer); reject(new Error('connection failed')) }
     })
     ws.onmessage = (event) => {
       const msg = decodeServerMessage(String(event.data))
