@@ -26,7 +26,8 @@
     "games.mod.enabled",
     "games.mod.disabled",
     "games.mod.grants_changed",
-    "games.mod.revoked"
+    "games.mod.revoked",
+    "games.moderation.action"
   ],
   "eventsConsumed": [],
   "namespacesOwned": ["games.*"],

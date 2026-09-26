@@ -8,6 +8,9 @@
  *   games.blueprint.unlocked a persisted blueprint recipe unlock
  *   games.world.saved        the authoritative world was written (checkpoint / shutdown)
  *   games.mod.*              mod install, enable, disable, grant changes and revoke
+ *   games.moderation.action  staff took down or put back a mod someone else published
+ *                            (common.moderation-action@1, ADR-022), for Network's moderation
+ *                            audit log
  *
  * Scraplandia has no achievement system, so there is no games.achievement.*
  * event: skill levels and blueprint unlocks are the real progression
@@ -177,6 +180,32 @@ export function modEvent(
         trust_tier: mod.trustTier,
       },
       ...detail,
+    },
+  }
+}
+
+/**
+ * games.moderation.action: one staff action on someone else's content. `actor` is the staff
+ * member (a service when no person is known); the payload never carries the content itself.
+ */
+export function moderationEvent(
+  action: string,
+  target: { type: string; id: string; ownerSubject: string | null },
+  actor: SubjectRef,
+  opts: { reason?: string | null; details?: Record<string, unknown> } = {},
+): EventInput {
+  const t = { type: target.type, id: target.id.slice(0, 200), owner_subject: target.ownerSubject }
+  return {
+    event_type: 'games.moderation.action',
+    actor,
+    subject: { type: 'moderation_action', id: `${t.type}:${t.id}`.slice(0, 200) },
+    visibility: 'internal',
+    payload: {
+      action,
+      target: t,
+      actor_subject: actor.type === 'user' ? actor.id : null,
+      reason: opts.reason ? opts.reason.slice(0, 500) : null,
+      details: opts.details ?? {},
     },
   }
 }

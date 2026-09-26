@@ -11,7 +11,10 @@
  *
  * Every change is one transaction holding the registry rows, the audit rows
  * and the `games.mod.*` outbox event. The in-memory view the runtime asks on
- * its hot path (`isGranted`) is refreshed only after that commit.
+ * its hot path (`isGranted`) is refreshed only after that commit. Taking down
+ * (revoke, disable) or putting back (enable after a disable) a mod someone
+ * else published also writes `games.moderation.action` for Network's
+ * moderation audit log (ADR-022) in that transaction.
  *
  * Trust tiers are metadata: `isGranted` never looks at them.
  *
@@ -30,7 +33,13 @@ import type {
   PersistenceStore,
 } from '@openvibe/persistence'
 import type { SubjectRef } from 'openvibe-sdk/core'
-import { modEvent, NO_EVENTS, type EventSink, type ModLifecycle } from '../platform/gameEvents.js'
+import {
+  moderationEvent,
+  modEvent,
+  NO_EVENTS,
+  type EventSink,
+  type ModLifecycle,
+} from '../platform/gameEvents.js'
 import {
   capabilitiesUsedBy,
   CONTENT_RUNTIME_CAPABILITIES,
@@ -229,6 +238,10 @@ export class ModRegistry {
         revoked_grants: [...view.granted].sort(),
         ...(reason ? { reason } : {}),
       })
+      this.moderated('mod.revoked', view, actor, reason, {
+        previous: view.mod.status,
+        revoked_grants: [...view.granted].sort(),
+      })
     })
     return this.refresh(id)
   }
@@ -270,10 +283,17 @@ export class ModRegistry {
     if (view.mod.status === status) return view
     const at = this.now()
     this.store.transaction(() => {
+      // Enabling puts a mod back only when someone disabled it before (a first enable is not moderation).
+      const restoring =
+        status === 'enabled' &&
+        this.store.mods.auditLog(id, 10_000).some((a: ModAuditDto) => a.action === 'disable')
       this.store.mods.setStatus(id, status, at)
       const action = status === 'enabled' ? 'enable' : 'disable'
       this.writeAudit(id, action, null, actor, null)
       this.emit(status === 'enabled' ? 'enabled' : 'disabled', view.mod, actor, {})
+      if (status === 'disabled' || restoring) {
+        this.moderated(`mod.${status}`, view, actor, undefined, { previous: view.mod.status })
+      }
     })
     return this.refresh(id)
   }
@@ -312,6 +332,30 @@ export class ModRegistry {
       detail,
       at: this.now(),
     })
+  }
+
+  /** games.moderation.action, unless the publisher is acting on their own mod. */
+  private moderated(
+    action: string,
+    view: ModView,
+    actor: ModActor,
+    reason: string | undefined,
+    details: Record<string, unknown>,
+  ): void {
+    const publisher = view.manifest.publisher
+    const owner = publisher && publisher.type === 'user' ? publisher.id : null
+    if (owner && actor.subject.type === 'user' && actor.subject.id === owner) return
+    this.events.enqueue(
+      moderationEvent(
+        action,
+        { type: 'mod', id: view.mod.id, ownerSubject: owner },
+        actor.subject,
+        {
+          reason: reason ?? null,
+          details,
+        },
+      ),
+    )
   }
 
   private emit(

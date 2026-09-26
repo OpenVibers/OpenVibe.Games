@@ -19,7 +19,7 @@
     "@openvibe/shared": "workspace:*",
     "ajv": "^8.17.1",
     "better-sqlite3": "^11.9.1",
-    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.49.0",
+    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.53.0",
     "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.11.0",
     "tsx": "^4.19.3",
     "ws": "^8.18.1"

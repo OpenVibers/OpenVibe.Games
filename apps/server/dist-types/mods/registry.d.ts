@@ -11,7 +11,10 @@
  *
  * Every change is one transaction holding the registry rows, the audit rows
  * and the `games.mod.*` outbox event. The in-memory view the runtime asks on
- * its hot path (`isGranted`) is refreshed only after that commit.
+ * its hot path (`isGranted`) is refreshed only after that commit. Taking down
+ * (revoke, disable) or putting back (enable after a disable) a mod someone
+ * else published also writes `games.moderation.action` for Network's
+ * moderation audit log (ADR-022) in that transaction.
  *
  * Trust tiers are metadata: `isGranted` never looks at them.
  *
@@ -89,6 +92,8 @@ export declare class ModRegistry {
     private assertGrantable;
     private require;
     private writeAudit;
+    /** games.moderation.action, unless the publisher is acting on their own mod. */
+    private moderated;
     private emit;
     /** Re-reads one install after a committed change. */
     private refresh;
