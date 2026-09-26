@@ -9,7 +9,8 @@
       content="The games arm of the OpenVibe network. Play Scraplandia — scrappy multiplayer survival-building in Scrap City — in your browser, no download."
     />
     <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
-    <script src="https://openvibe.network/shared/theme-loader.js"></script>
+    <!-- Deferred: a slow or unreachable openvibe.network never holds the first paint (the inline colours above cover it). -->
+    <script src="https://openvibe.network/shared/theme-loader.js" defer></script>
     <script src="https://openvibe.network/shared/navbar.js" defer></script>
     <script src="https://openvibe.network/shared/footer.js" defer></script>
     <link rel="canonical" href="https://openvibe.games/" />
@@ -386,6 +387,24 @@
         max-width: 1200px;
         margin: 0 auto;
       }
+      /* Navigation that works without openvibe.network (roadmap WS-P task 5): shown until the shared
+         navbar mounts, which fills #navbar-mount and hides this. */
+      .ov-nav-fallback {
+        position: relative;
+        z-index: 5;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 16px;
+        padding: 12px 20px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font: 500 14px/1.4 system-ui, sans-serif;
+      }
+      .ov-nav-fallback a { color: inherit; text-decoration: none; opacity: 0.85; }
+      .ov-nav-fallback a:hover, .ov-nav-fallback a:focus-visible { opacity: 1; text-decoration: underline; }
+      .ov-nav-fallback .home { font-weight: 700; opacity: 1; }
+      .ov-nav-fallback .spacer { flex: 1; }
+      #navbar-mount:not(:empty) + .ov-nav-fallback { display: none; }
     </style>
   </head>
   <body>
@@ -393,6 +412,16 @@
     <canvas class="stars" id="stars"></canvas>
 
     <div id="navbar-mount"></div>
+    <nav class="ov-nav-fallback" aria-label="Site">
+      <a class="home" href="/">OpenVibe.Games</a>
+      <a href="https://play.openvibe.games">Play Scraplandia</a>
+      <span class="spacer"></span>
+      <a href="https://openvibe.live/">Live</a>
+      <a href="https://openvibe.tools/">Tools</a>
+      <a href="https://openvibe.community/">Community</a>
+      <a href="https://openvibe.media/">Media</a>
+      <a href="https://openvibe.network/">Network</a>
+    </nav>
 
     <header>
       <h1 class="hero-title">Open<b>Vibe.Games</b></h1>
