@@ -7,7 +7,10 @@ import { extname } from 'node:path'
  * portal and monitors read as up).
  *
  * Page requests get a small self-contained HTML page that names the path and
- * links to the host's real entry points. API paths and clients asking for
+ * links to the host's real entry points. It names the client's icon
+ * (/favicon.svg, as the client pages do): without an icon link the browser
+ * asks for /favicon.ico, which is itself a 404 and a console error (browser
+ * check, OpenVibe.Host scripts/browser-check.js). API paths and clients asking for
  * JSON get `{"error":"not_found"}` (the shape /auth/* already answers). A
  * missing asset (any extension but .html) gets plain text.
  */
@@ -55,6 +58,7 @@ export function notFoundPage(path: string, links: readonly NotFoundLink[]): stri
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Page not found · OpenVibe.Games</title>
 <style>
 :root { color-scheme: dark; }

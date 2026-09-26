@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { request, type IncomingHttpHeaders, type OutgoingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { createConsoleLogger } from '@openvibe/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ServerMetrics } from '../observability/metrics.js'
@@ -203,6 +204,8 @@ describe('unknown paths answer 404', () => {
       expect(r.body).toContain('<a href="/play">Play Scraplandia</a>')
       expect(r.body).toContain('<a href="/editor">Map editor</a>')
       expect(r.body).not.toMatch(/<script\b/)
+      // Names the client's icon, so the browser does not ask /favicon.ico (a second 404).
+      expect(r.body).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg">')
     },
   )
 
@@ -299,5 +302,12 @@ describe('404 page', () => {
     expect(page).toContain('<a href="/?a=1&amp;b=&quot;2&quot;">&lt;b&gt;</a>')
     expect(page).toContain(`/${'a'.repeat(199)}…</code>`)
     expect(page).not.toContain('a'.repeat(201))
+  })
+
+  it('names the icon the client pages use, and that file ships with the client', () => {
+    const page = notFoundPage('/nope', [])
+    expect(page).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg">')
+    const icon = fileURLToPath(new URL('../../../client/public/favicon.svg', import.meta.url))
+    expect(existsSync(icon)).toBe(true)
   })
 })
