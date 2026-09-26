@@ -208,6 +208,7 @@ async function main(): Promise<void> {
   const readiness = createReadiness({
     pingDb: () => schemaVersion.get('schema_version') !== undefined,
     metrics,
+    online: () => game.onlineCount(),
   })
 
   const http = createHttpServer(

@@ -43,6 +43,8 @@ export interface ReadinessDeps {
         readonly tick: number;
         readonly lastTickAt: number;
     };
+    /** Players connected now (a non-required `sessions` check; OpenVibe.Host's protected probe reads it). */
+    online?: () => number;
     tickStallMs?: number;
     now?: () => number;
 }

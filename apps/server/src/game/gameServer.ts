@@ -161,6 +161,11 @@ export class GameServer {
   /** Sound events (gunshots, fights) accumulated for NPC hearing. */
   private sounds: { x: number; z: number }[] = []
 
+  /** Players connected now (the readiness `sessions` check; a restart would disconnect them). */
+  onlineCount(): number {
+    return this.sessions.size
+  }
+
   constructor(
     private readonly config: ServerConfig,
     private readonly world: GameWorld,

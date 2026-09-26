@@ -45,6 +45,8 @@ export interface ReadinessDeps {
   pingDb: () => boolean
   /** The tick counter and when the last tick completed (epoch ms, 0 = never). */
   metrics: { readonly tick: number; readonly lastTickAt: number }
+  /** Players connected now (a non-required `sessions` check; OpenVibe.Host's protected probe reads it). */
+  online?: () => number
   tickStallMs?: number
   now?: () => number
 }
@@ -105,6 +107,10 @@ export function createReadiness(deps: ReadinessDeps): {
         true,
         now,
       ),
+    }
+    if (deps.online) {
+      const online = deps.online
+      checks.sessions = run(() => ({ ok: true, detail: { online: online() } }), false, now)
     }
     const names = Object.keys(checks)
     const failed = names.filter((n) => checks[n]?.required && checks[n]?.status !== 'ok')

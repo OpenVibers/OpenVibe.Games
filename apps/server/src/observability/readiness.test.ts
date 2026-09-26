@@ -54,6 +54,19 @@ describe('/api/ready', () => {
     })
   })
 
+  it('reports the players online as a non-required sessions check (for the host protected probe)', () => {
+    const stmt = store.db.prepare('SELECT value FROM meta WHERE key = ?')
+    let online = 3
+    const r = createReadiness({ pingDb: () => stmt.get('schema_version') !== undefined, metrics: { tick: 5, lastTickAt: T0 - 10 }, now: () => T0, online: () => online })
+    let body = r.check()
+    expect(body.checks.sessions).toMatchObject({ status: 'ok', required: false, detail: { online: 3 } })
+    expect(body.status).toBe('ready')
+    online = 0
+    body = r.check()
+    expect(body.checks.sessions?.detail).toEqual({ online: 0 })
+    expect(setup({ tick: 5, lastTickAt: T0 - 10 }).check().checks.sessions).toBeUndefined()
+  })
+
   it('is not ready before the first tick', () => {
     const body = setup({ tick: 0, lastTickAt: 0 }).check()
     expect(body.status).toBe('not_ready')

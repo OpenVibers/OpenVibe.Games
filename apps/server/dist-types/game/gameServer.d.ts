@@ -61,6 +61,8 @@ export declare class GameServer {
     private readonly aggro;
     /** Sound events (gunshots, fights) accumulated for NPC hearing. */
     private sounds;
+    /** Players connected now (the readiness `sessions` check; a restart would disconnect them). */
+    onlineCount(): number;
     constructor(config: ServerConfig, world: GameWorld, store: PersistenceStore, metrics: ServerMetrics, log: Logger, integrations?: GameIntegrations);
     get currentTick(): number;
     /**
