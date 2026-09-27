@@ -95,6 +95,19 @@ has ticked within the last 5 s, otherwise 503 naming the failed check (`status`
 Deployed at https://openvibe.games (nginx TLS termination → server on :8000,
 systemd unit `openvibe-games.service`; play.openvibe.games Host-routes to the same process).
 
+Deploy on the host with `sudo /opt/openvibe.games/deploy/scripts/deploy.sh`, which runs
+`ovhost deploy games` (OpenVibe.Host, strategy `pnpm-build`; roadmap WS-N task 11): a fast-forward pull as
+the checkout owner (the tracked `dist-types/` a previous build rewrote is restored first),
+`pnpm install --frozen-lockfile`, every workspace package's dependencies checked, `pnpm build`,
+better-sqlite3 loaded under the host's Node, the restart, `/api/ready`, and on failure the checkout
+restored, reinstalled and rebuilt and the server restarted again. Players online are reported and
+reconnect; `--wait-idle` holds the restart until nobody plays, `--rollback` runs `ovhost rollback games`,
+`DRY_RUN=1` prints `ovhost plan games`. Do not pull by hand first (ovhost would find nothing new; pass
+`--restart` if you did). When ovhost is missing, too old or does not deploy Games with that strategy, the
+wrapper runs `deploy/scripts/deploy-legacy.sh`: the procedure as it was run by hand
+(`sudo git -c safe.directory=/opt/openvibe.games pull`, `pnpm install --frozen-lockfile`, `pnpm build`,
+`sudo systemctl restart openvibe-games`).
+
 ## Platform integration (OpenVibe network)
 
 Games integrates with the rest of OpenVibe at its service boundary only
