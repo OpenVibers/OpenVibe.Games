@@ -13,10 +13,14 @@
  *
  * Staff = an openvibe.network owner/admin session, or a service principal
  * whose token (audience openvibe.games) carries `games.mod.manage`.
+ *
+ * With `grants` (OpenVibe.Network's mod principals, ADR-013), install, grant, revoke-grant and revoke ask
+ * Network first and apply only what it answered; enable and disable stay this runtime's own switch.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import type { Logger } from '@openvibe/shared'
+import type { ModGrantAuthority } from './networkGrants.js'
 import { ModError, type ModActor, type ModRegistry, type ModView } from './registry.js'
 
 interface ContractsHttp {
@@ -38,6 +42,8 @@ export interface ModsApi {
   registry: ModRegistry
   /** Resolves the staff actor behind a request, or null. */
   authorize(req: IncomingMessage): Promise<ModActor | null>
+  /** OpenVibe.Network's mod principals; absent without a platform client (tests, local runs). */
+  grants?: ModGrantAuthority
   log: Logger
 }
 
@@ -159,7 +165,9 @@ export function handleModsRequest(
     }
     if (method === 'DELETE' && parts.length === 3 && parts[1] === 'grants') {
       req.resume()
-      json(res, 200, publicView(api.registry.revokeGrant(id, parts[2] ?? '', actor)))
+      const cap = parts[2] ?? ''
+      if (api.grants && api.registry.get(id)?.granted.has(cap)) await api.grants.change(id, cap, 'revoke', actor.audit)
+      json(res, 200, publicView(api.registry.revokeGrant(id, cap, actor)))
       return
     }
     if (method !== 'POST') return problem(res, 405, 'request.method_not_allowed', method)
@@ -167,16 +175,14 @@ export function handleModsRequest(
     if (!body.ok) return problem(res, body.status, body.code, 'request body must be a JSON object')
     const b = body.body
     if (parts.length === 0) {
-      const view = api.registry.install(
-        {
-          manifest: b.manifest,
-          pack: b.pack,
-          approve: b.approve,
-          trustTier: b.trustTier,
-          enable: b.enable,
-        },
-        actor,
-      )
+      const request = { manifest: b.manifest, pack: b.pack, approve: b.approve, trustTier: b.trustTier, enable: b.enable }
+      if (api.grants) {
+        // Network registers mod:<id> first; what it approved is what is granted here.
+        const checked = api.registry.checkInstall(request)
+        const principal = await api.grants.register(checked.manifest, checked.approve, actor.audit)
+        request.approve = principal.status === 'active' ? principal.approved : []
+      }
+      const view = api.registry.install(request, actor)
       api.log.info('mod installed', { mod: view.mod.id, by: actor.audit, status: view.mod.status })
       json(res, 201, publicView(view))
       return
@@ -190,6 +196,7 @@ export function handleModsRequest(
     }
     if (parts.length === 2 && parts[1] === 'revoke') {
       const reason = typeof b.reason === 'string' ? b.reason.slice(0, 500) : undefined
+      if (api.grants && api.registry.get(id) && api.registry.get(id)?.mod.status !== 'revoked') await api.grants.revoke(id, actor.audit, reason)
       const view = api.registry.revoke(id, actor, reason)
       api.log.info('mod revoked', { mod: id, by: actor.audit })
       json(res, 200, publicView(view))
@@ -198,6 +205,10 @@ export function handleModsRequest(
     if (parts.length === 2 && parts[1] === 'grants') {
       if (typeof b.capability !== 'string') {
         return problem(res, 400, 'mod.invalid_request', 'capability is required')
+      }
+      if (api.grants) {
+        api.registry.checkGrant(id, b.capability)
+        await api.grants.change(id, b.capability, 'approve', actor.audit)
       }
       json(res, 200, publicView(api.registry.grant(id, b.capability, actor)))
       return

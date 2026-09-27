@@ -18,10 +18,11 @@
  *
  * Trust tiers are metadata: `isGranted` never looks at them.
  *
- * ADR-013 puts grants in OpenVibe.Network (a `mod` principal per install).
- * Until Network issues mod principals, the approved subset lives here; the
- * shape (install -> approved capability ids, revocable at once) is the same
- * so the source of truth can move without changing the runtime seam.
+ * ADR-013 puts grants in OpenVibe.Network (a `mod` principal per install,
+ * roadmap WS-M task 3): with a platform client, the mods API asks Network
+ * first (./networkGrants.ts) and applies only what Network answered, and
+ * `applyNetwork` makes this copy follow network.mod.grants_changed (a change
+ * staff made in Network). The approved subset here is the hot path's copy.
  */
 import type { ContentRegistry } from '@openvibe/content'
 import type {
@@ -58,6 +59,8 @@ export interface ModActor {
 }
 
 export const SYSTEM_ACTOR: ModActor = { audit: 'games', subject: { type: 'service', id: 'games' } }
+/** Changes that come from OpenVibe.Network's mod principal (network.mod.grants_changed). */
+export const NETWORK_ACTOR: ModActor = { audit: 'network', subject: { type: 'service', id: 'network' } }
 
 export class ModError extends Error {
   constructor(
@@ -144,7 +147,14 @@ export class ModRegistry {
     })
   }
 
-  install(req: InstallRequest, actor: ModActor): ModView {
+  /** Everything install checks before it writes: the manifest, the pack, the approved subset and the options. */
+  checkInstall(req: InstallRequest): {
+    manifest: ModManifest
+    pack: ContentPack
+    approve: string[]
+    trustTier: ModTrustTier
+    enable: boolean
+  } {
     const manifestCheck = validateManifest(req.manifest)
     if (!manifestCheck.ok) {
       throw new ModError('mod.manifest_invalid', 'manifest is invalid', 422, manifestCheck.errors)
@@ -176,7 +186,12 @@ export class ModRegistry {
     if (this.views.has(manifest.id) || this.store.mods.get(manifest.id)) {
       throw new ModError('mod.exists', `mod ${manifest.id} is already installed`, 409)
     }
+    return { manifest, pack, approve, trustTier, enable }
+  }
 
+  install(req: InstallRequest, actor: ModActor): ModView {
+    const { manifest, pack, approve, trustTier, enable } = this.checkInstall(req)
+    const requested = new Set(manifest.permissions.capabilities)
     const at = this.now()
     const mod: ModInstallDto = {
       id: manifest.id,
@@ -273,6 +288,40 @@ export class ModRegistry {
       this.emit('grants_changed', view.mod, actor, { granted: [], revoked: [capability] })
     })
     return changed ? this.refresh(id) : view
+  }
+
+  /** What grant checks before it writes (the Network call comes between). */
+  checkGrant(id: string, capability: string): void {
+    const view = this.require(id)
+    if (view.mod.status === 'revoked') {
+      throw new ModError('mod.revoked', 'a revoked install cannot be granted anything', 409)
+    }
+    this.assertGrantable(view.manifest, capability)
+  }
+
+  /**
+   * Make this copy match the install's principal in Network (network.mod.grants_changed, or a read at boot):
+   * a revoked principal revokes the install; otherwise capabilities Network does not approve are revoked here and
+   * approved ones this runtime can bind are granted. Unknown installs are ignored. Returns the view, or null.
+   */
+  applyNetwork(principal: { mod_id: string; status: string; approved: readonly string[] }, actor: ModActor = NETWORK_ACTOR): ModView | null {
+    const view = this.views.get(principal.mod_id)
+    if (!view) return null
+    if (principal.status === 'revoked') return this.revoke(view.mod.id, actor, 'revoked in OpenVibe.Network')
+    if (view.mod.status === 'revoked') return view
+    const approved = new Set(principal.approved)
+    let current = view
+    for (const cap of [...current.granted]) if (!approved.has(cap)) current = this.revokeGrant(view.mod.id, cap, actor)
+    for (const cap of approved) {
+      if (current.granted.has(cap)) continue
+      try {
+        this.assertGrantable(current.manifest, cap)
+      } catch {
+        continue
+      }
+      current = this.grant(view.mod.id, cap, actor)
+    }
+    return current
   }
 
   private setStatus(id: string, status: ModStatus, actor: ModActor): ModView {

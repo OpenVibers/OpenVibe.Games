@@ -12,8 +12,9 @@
  * The same endpoint takes network.subject.merged (roadmap WS-B task 5, ADR-029): two accounts became one, and
  * `onMerged` moves the folded-in account's characters to the survivor (store.identity.mergeSubject), once per
  * merge. network.account.export_requested and network.account.deleted (roadmap WS-B task 7, ADR-033) go to
- * `onAccountEvent` (./accountData.ts), answered once it resolved (500 when it failed, so Events retries). One
- * subscription per topic (TOPICS).
+ * `onAccountEvent` (./accountData.ts), answered once it resolved (500 when it failed, so Events retries).
+ * network.mod.grants_changed (WS-M task 3, ADR-013) goes to `onModGrants`: the install's copy of its grants follows
+ * its principal in Network. One subscription per topic (TOPICS).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
@@ -47,7 +48,8 @@ const { parseDelivery } = req('openvibe-sdk/events') as { parseDelivery: ParseDe
 
 export const TOPIC = 'network.user.token_valid_after'
 export const MERGE_TOPIC = 'network.subject.merged'
-export const TOPICS = [TOPIC, MERGE_TOPIC, 'network.account.export_requested', 'network.account.deleted'] as const
+export const MOD_GRANTS_TOPIC = 'network.mod.grants_changed'
+export const TOPICS = [TOPIC, MERGE_TOPIC, 'network.account.export_requested', 'network.account.deleted', MOD_GRANTS_TOPIC] as const
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/
 const MERGE_RE = /^mrg_[0-9A-HJKMNP-TV-Z]{26}$/
 const PATH = '/internal/events'
@@ -68,6 +70,8 @@ export function createRevocationEvents(opts: {
   onMerged?: (from: string, into: string, mergeId: string) => { moved: number; kept: number; already: boolean }
   /** Account export or deletion (ADR-033): resolves to the outcome; a rejection is answered 500 and redelivered. */
   onAccountEvent?: (event: NonNullable<NonNullable<ReturnType<ParseDelivery>>['event']>) => Promise<string>
+  /** A mod principal changed in Network: make the install's grants match (returns the outcome). */
+  onModGrants?: (payload: { mod_id: string; owner: string; status: string; approved: string[]; revision: number }) => string
   log: Logger
 }): RevocationEvents {
   const store = createRevocationStore(opts.db, { table: 'token_revocations' })
@@ -128,6 +132,18 @@ export function createRevocationEvents(opts: {
             send(res, 500, { error: 'not applied' })
           },
         )
+        return
+      }
+      if (event.event_type === MOD_GRANTS_TOPIC) {
+        const p = (event.payload ?? {}) as { mod_id?: unknown; owner?: unknown; status?: unknown; approved?: unknown; revision?: unknown }
+        let outcome: string
+        if (event.source !== 'network') outcome = 'ignored:source'
+        else if (!opts.onModGrants) outcome = 'ignored:no_handler'
+        else if (typeof p.mod_id !== 'string' || !Array.isArray(p.approved) || typeof p.status !== 'string') outcome = 'ignored:payload'
+        else if (p.owner !== 'games') outcome = 'ignored:owner'
+        else outcome = opts.onModGrants({ mod_id: p.mod_id, owner: p.owner, status: p.status, approved: p.approved.map(String), revision: Number(p.revision) || 0 })
+        if (outcome.startsWith('ignored')) stats.ignored++
+        send(res, 200, { event_id: event.event_id ?? null, outcome })
         return
       }
       if (event.event_type === MERGE_TOPIC) {

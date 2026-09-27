@@ -31,6 +31,7 @@ import { createReadiness } from './observability/readiness.js'
 import { buildRelease, releaseHandler } from './observability/release.js'
 import { sharedAssetsHandler } from './net/sharedAssets.js'
 import { ModRegistry } from './mods/registry.js'
+import { createNetworkModGrants } from './mods/networkGrants.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
 import { accountForNetworkUser, isGuestToken } from './platform/accounts.js'
@@ -140,6 +141,20 @@ async function main(): Promise<void> {
   const modRuntime = new ModRuntime(mods, store, content, log.child({ system: 'mods' }), {
     reconcileEveryTicks: config.tickRate,
   })
+  // Mod principals live in Network (ADR-013, WS-M task 3): the API asks it first; at boot every install's copy
+  // catches up with its principal (a change staff made while this server was down).
+  const modGrants = platform ? createNetworkModGrants({ networkUrl: config.platform.networkUrl, tokens: platform.tokens }) : null
+  if (modGrants) {
+    modGrants
+      .list()
+      .then((principals) => {
+        for (const p of principals) mods.applyNetwork(p)
+        const known = new Set(principals.map((p) => p.mod_id))
+        const unregistered = mods.list().filter((v) => !known.has(v.mod.id) && v.mod.status !== 'revoked').map((v) => v.mod.id)
+        if (unregistered.length) log.warn('mod installs without a Network principal', { mods: unregistered.join(',') })
+      })
+      .catch((err: unknown) => log.warn('mod principals not read at boot', { error: String((err as Error)?.message ?? err) }))
+  }
   const mirror =
     platform && config.platform.mediaUrl
       ? new MediaMirror({
@@ -199,6 +214,11 @@ async function main(): Promise<void> {
     // Account export and deletion (ADR-033): the part goes to Network; a deleted account's sessions close (each
     // close saves its character) before its characters are erased.
     ...(accountData ? { onAccountEvent: (event) => accountData.apply(event as AccountEvent) } : {}),
+    // Mod principals (ADR-013): an install's grants follow its principal in Network (a change staff made there).
+    onModGrants: (p) => {
+      const view = mods.applyNetwork(p)
+      return view ? `mod:${view.mod.status}` : 'ignored:unknown_mod'
+    },
     log: platformLog,
   })
   if (
@@ -321,6 +341,7 @@ async function main(): Promise<void> {
         return handleModsRequest(req, res, {
           registry: mods,
           authorize: authorizeStaff,
+          ...(modGrants ? { grants: modGrants } : {}),
           log: log.child({ system: 'mods-api' }),
         })
       },

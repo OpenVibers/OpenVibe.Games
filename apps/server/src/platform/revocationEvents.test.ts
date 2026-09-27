@@ -21,6 +21,7 @@ const log = createConsoleLogger({ app: 'test' }, 'error')
 const closedFor: [string, number][] = []
 const mergedCalls: [string, string, string][] = []
 const accountCalls: string[] = []
+const modGrantCalls: [string, string, string][] = []
 const events = createRevocationEvents({
   db: new Database(':memory:'),
   secrets: [SECRET],
@@ -31,6 +32,10 @@ const events = createRevocationEvents({
   onMerged: (from, into, id) => {
     mergedCalls.push([from, into, id])
     return { moved: 2, kept: 1, already: mergedCalls.length > 1 }
+  },
+  onModGrants: (p) => {
+    modGrantCalls.push([p.mod_id, p.status, p.approved.join(',')])
+    return 'mod:enabled'
   },
   onAccountEvent: async (event) => {
     accountCalls.push(String(event.event_type))
@@ -99,6 +104,16 @@ describe('revocation events', () => {
     expect(accountCalls).toEqual(['network.account.export_requested', 'network.account.export_requested'])
   })
 
+  it("network.mod.grants_changed (ADR-013) reaches onModGrants for Games' own mods only", async () => {
+    const MOD = 'mod_01J8Z3Q4R5S6T7V8W9X0Y1Z2M1'
+    const changed = (over: Record<string, unknown> = {}) =>
+      envelope({ event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2M2', event_type: 'network.mod.grants_changed', payload: { mod_id: MOD, owner: 'games', status: 'active', approved: ['games.prop.place'], revision: 2, change: { action: 'revoke', capability: 'games.world.announce' }, by: 'staff' }, ...over })
+    expect((await post(changed({ source: 'games' }))).body.outcome).toBe('ignored:source')
+    expect((await post(changed({ payload: { mod_id: MOD, owner: 'tools', status: 'active', approved: [], revision: 1 } }))).body.outcome).toBe('ignored:owner')
+    expect((await post(changed())).body.outcome).toBe('mod:enabled')
+    expect(modGrantCalls).toEqual([[MOD, 'active', 'games.prop.place']])
+  })
+
   it('refuses forged, proxied and non-POST requests', async () => {
     expect((await post(envelope(), {}, 'y'.repeat(40))).status).toBe(401)
     expect((await post(envelope(), { 'x-forwarded-for': '1.2.3.4' })).status).toBe(403)
@@ -122,6 +137,7 @@ describe('revocation events', () => {
       { topic_pattern: MERGE_TOPIC, endpoint: opts.endpoint, secret: SECRET },
       { topic_pattern: 'network.account.export_requested', endpoint: opts.endpoint, secret: SECRET },
       { topic_pattern: 'network.account.deleted', endpoint: opts.endpoint, secret: SECRET },
+      { topic_pattern: 'network.mod.grants_changed', endpoint: opts.endpoint, secret: SECRET },
     ])
   })
 })
