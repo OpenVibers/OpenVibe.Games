@@ -93,6 +93,8 @@ export interface ModView {
 
 export class ModRegistry {
   private readonly views = new Map<string, ModView>()
+  /** The Network principal revision each install's grants were last set from (an older event changes nothing). */
+  private readonly networkRevision = new Map<string, number>()
   private revision = 0
 
   constructor(
@@ -290,6 +292,11 @@ export class ModRegistry {
     return changed ? this.refresh(id) : view
   }
 
+  /** The Network revision the API just applied (install, grant, revoke), so a late older event is ignored. */
+  noteNetworkRevision(id: string, revision: number): void {
+    if (revision > (this.networkRevision.get(id) ?? 0)) this.networkRevision.set(id, revision)
+  }
+
   /** What grant checks before it writes (the Network call comes between). */
   checkGrant(id: string, capability: string): void {
     const view = this.require(id)
@@ -304,9 +311,14 @@ export class ModRegistry {
    * a revoked principal revokes the install; otherwise capabilities Network does not approve are revoked here and
    * approved ones this runtime can bind are granted. Unknown installs are ignored. Returns the view, or null.
    */
-  applyNetwork(principal: { mod_id: string; status: string; approved: readonly string[] }, actor: ModActor = NETWORK_ACTOR): ModView | null {
+  applyNetwork(principal: { mod_id: string; status: string; approved: readonly string[]; revision?: number }, actor: ModActor = NETWORK_ACTOR): ModView | null {
     const view = this.views.get(principal.mod_id)
     if (!view) return null
+    // Events can arrive after the API already applied a newer answer: an older (or equal) revision changes nothing.
+    if (principal.revision !== undefined) {
+      if (principal.revision <= (this.networkRevision.get(view.mod.id) ?? 0)) return view
+      this.networkRevision.set(view.mod.id, principal.revision)
+    }
     if (principal.status === 'revoked') return this.revoke(view.mod.id, actor, 'revoked in OpenVibe.Network')
     if (view.mod.status === 'revoked') return view
     const approved = new Set(principal.approved)

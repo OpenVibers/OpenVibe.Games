@@ -95,6 +95,16 @@ describe('mod principals in Network', () => {
     expect((await fetch(`${base}/${MOD_ID}/grants/${CAP_ANNOUNCE}`, { method: 'DELETE' })).status).toBe(200)
     expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(false)
     expect(net.calls.slice(1)).toEqual([`approve:${CAP_ANNOUNCE}`, `revoke:${CAP_ANNOUNCE}`])
+    // Network's events arrive after the API applied its answers: an older revision changes nothing.
+    expect((await post(`/${MOD_ID}/grants`, { capability: CAP_ANNOUNCE })).status).toBe(200)
+    registry.applyNetwork({ mod_id: MOD_ID, status: 'active', approved: [CAP_PLACE_PROP], revision: 1 })
+    registry.applyNetwork({ mod_id: MOD_ID, status: 'active', approved: [CAP_PLACE_PROP], revision: 3 })
+    expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(true)
+    expect(registry.auditLog(MOD_ID).some((a) => a.actor === 'network')).toBe(false)
+    // A newer one (a staff change in Network) applies.
+    registry.applyNetwork({ mod_id: MOD_ID, status: 'active', approved: [CAP_PLACE_PROP], revision: 5 })
+    expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(false)
+    expect((await fetch(`${base}/${MOD_ID}/grants/${CAP_ANNOUNCE}`, { method: 'DELETE' })).status).toBe(200)
 
     // Network unreachable: 503, and nothing changes here.
     net.state.down = true

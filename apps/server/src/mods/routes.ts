@@ -166,7 +166,10 @@ export function handleModsRequest(
     if (method === 'DELETE' && parts.length === 3 && parts[1] === 'grants') {
       req.resume()
       const cap = parts[2] ?? ''
-      if (api.grants && api.registry.get(id)?.granted.has(cap)) await api.grants.change(id, cap, 'revoke', actor.audit)
+      if (api.grants && api.registry.get(id)?.granted.has(cap)) {
+        const principal = await api.grants.change(id, cap, 'revoke', actor.audit)
+        api.registry.noteNetworkRevision(id, principal.revision)
+      }
       json(res, 200, publicView(api.registry.revokeGrant(id, cap, actor)))
       return
     }
@@ -176,13 +179,16 @@ export function handleModsRequest(
     const b = body.body
     if (parts.length === 0) {
       const request = { manifest: b.manifest, pack: b.pack, approve: b.approve, trustTier: b.trustTier, enable: b.enable }
+      let revision = 0
       if (api.grants) {
         // Network registers mod:<id> first; what it approved is what is granted here.
         const checked = api.registry.checkInstall(request)
         const principal = await api.grants.register(checked.manifest, checked.approve, actor.audit)
         request.approve = principal.status === 'active' ? principal.approved : []
+        revision = principal.revision
       }
       const view = api.registry.install(request, actor)
+      if (revision) api.registry.noteNetworkRevision(view.mod.id, revision)
       api.log.info('mod installed', { mod: view.mod.id, by: actor.audit, status: view.mod.status })
       json(res, 201, publicView(view))
       return
@@ -196,7 +202,9 @@ export function handleModsRequest(
     }
     if (parts.length === 2 && parts[1] === 'revoke') {
       const reason = typeof b.reason === 'string' ? b.reason.slice(0, 500) : undefined
-      if (api.grants && api.registry.get(id) && api.registry.get(id)?.mod.status !== 'revoked') await api.grants.revoke(id, actor.audit, reason)
+      if (api.grants && api.registry.get(id) && api.registry.get(id)?.mod.status !== 'revoked') {
+        api.registry.noteNetworkRevision(id, (await api.grants.revoke(id, actor.audit, reason)).revision)
+      }
       const view = api.registry.revoke(id, actor, reason)
       api.log.info('mod revoked', { mod: id, by: actor.audit })
       json(res, 200, publicView(view))
@@ -208,7 +216,8 @@ export function handleModsRequest(
       }
       if (api.grants) {
         api.registry.checkGrant(id, b.capability)
-        await api.grants.change(id, b.capability, 'approve', actor.audit)
+        const principal = await api.grants.change(id, b.capability, 'approve', actor.audit)
+        api.registry.noteNetworkRevision(id, principal.revision)
       }
       json(res, 200, publicView(api.registry.grant(id, b.capability, actor)))
       return
