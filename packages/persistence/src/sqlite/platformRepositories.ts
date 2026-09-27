@@ -86,9 +86,40 @@ export function createIdentityRepository(db: Database.Database): IdentityReposit
     return { moved, slot, full: false }
   })
 
+  // Account merge (ADR-029): the folded-in subject's characters join the survivor, once per merge.
+  const mergeAccount = db.transaction((from: string, into: string, mergeId: string, now: number) => {
+    const key = `merge:${mergeId}`
+    if (mapped.get(key)) return { moved: 0, kept: 0, already: true }
+    const taken = new Set(takenSlots.all(into).map((r) => r.char_slot))
+    const rows = legacyRows.all(from)
+    let moved = 0
+    // First every character whose own slot is free there, then the rest into what is left.
+    const clashing = rows.filter((row) => {
+      if (taken.has(row.char_slot)) return true
+      moveToSlot.run(into, into, row.char_slot, row.id)
+      taken.add(row.char_slot)
+      moved++
+      return false
+    })
+    let kept = 0
+    for (const row of clashing) {
+      const slot = [0, 1, 2].find((s) => !taken.has(s))
+      if (slot === undefined) {
+        kept++
+        continue
+      }
+      moveToSlot.run(into, into, slot, row.id)
+      taken.add(slot)
+      moved++
+    }
+    recordMap.run(key, into, 'merge', moved, kept, now)
+    return { moved, kept, already: false }
+  })
+
   return {
     adoptLegacyAccount: (legacyKey, subjectId, source, now) =>
       adopt(legacyKey, subjectId, source, now),
+    mergeSubject: (from, into, mergeId, now) => mergeAccount(from, into, mergeId, now),
     adoptGuestCharacter: (guestToken, subjectId, now) => adoptGuest(guestToken, subjectId, now),
     subjectForLegacy(legacyKey) {
       return mapped.get(legacyKey)?.subject_id ?? null

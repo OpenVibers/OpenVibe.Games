@@ -179,6 +179,8 @@ async function main(): Promise<void> {
     db: store.db,
     secrets: config.platform.eventsSecrets,
     onRevoked: (subject, validAfterMs) => game.revokeSubject(subject, validAfterMs),
+    // Account merge (ADR-029): the folded-in account's characters join the survivor's free slots.
+    onMerged: (from, into, mergeId) => store.identity.mergeSubject(from, into, mergeId, Date.now()),
     log: platformLog,
   })
   if (

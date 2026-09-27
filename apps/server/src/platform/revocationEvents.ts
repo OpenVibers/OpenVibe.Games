@@ -8,6 +8,10 @@
  * store (only ever forward; anything not from Network is ignored), then `onRevoked` closes the game
  * sessions they opened with an older sign-in. New sign-ins already fail: Games checks every token with
  * the Network's /api/auth/me, which applies the same cutoff.
+ *
+ * The same endpoint takes network.subject.merged (roadmap WS-B task 5, ADR-029): two accounts became one, and
+ * `onMerged` moves the folded-in account's characters to the survivor (store.identity.mergeSubject), once per
+ * merge. One subscription per topic (TOPICS).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
@@ -25,7 +29,14 @@ type ParseDelivery = (
   headers: IncomingMessage['headers'],
   secret: string,
   opts: { requireV2: boolean },
-) => { event?: { event_id?: string; event_type?: string; payload?: { subject?: { id?: string }; valid_after?: string } } } | null
+) => {
+  event?: {
+    event_id?: string
+    event_type?: string
+    source?: string
+    payload?: { subject?: { id?: string }; valid_after?: string; merge_id?: string; from?: string; into?: string }
+  }
+} | null
 
 const { createRevocationStore } = req('openvibe-sdk/auth') as {
   createRevocationStore(db: unknown, opts?: { table?: string }): RevocationStore
@@ -33,6 +44,10 @@ const { createRevocationStore } = req('openvibe-sdk/auth') as {
 const { parseDelivery } = req('openvibe-sdk/events') as { parseDelivery: ParseDelivery }
 
 export const TOPIC = 'network.user.token_valid_after'
+export const MERGE_TOPIC = 'network.subject.merged'
+export const TOPICS = [TOPIC, MERGE_TOPIC] as const
+const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/
+const MERGE_RE = /^mrg_[0-9A-HJKMNP-TV-Z]{26}$/
 const PATH = '/internal/events'
 const MAX_BODY = 256 * 1024
 
@@ -47,6 +62,8 @@ export function createRevocationEvents(opts: {
   db: unknown
   secrets: string[]
   onRevoked: (subjectId: string, validAfterMs: number) => number
+  /** An account merge: move `from`'s characters to `into` (returns what moved; `already` when applied before). */
+  onMerged?: (from: string, into: string, mergeId: string) => { moved: number; kept: number; already: boolean }
   log: Logger
 }): RevocationEvents {
   const store = createRevocationStore(opts.db, { table: 'token_revocations' })
@@ -91,6 +108,21 @@ export function createRevocationEvents(opts: {
       }
       stats.received++
       const event = delivery.event
+      if (event.event_type === MERGE_TOPIC) {
+        const p = event.payload ?? {}
+        let outcome = 'merged'
+        if (event.source !== 'network') outcome = 'ignored:source'
+        else if (!opts.onMerged) outcome = 'ignored:no_handler'
+        else if (!MERGE_RE.test(String(p.merge_id ?? '')) || !SUBJECT_RE.test(String(p.from ?? '')) || !SUBJECT_RE.test(String(p.into ?? '')) || p.from === p.into) outcome = 'ignored:payload'
+        else {
+          const r = opts.onMerged(String(p.from), String(p.into), String(p.merge_id))
+          outcome = r.already ? 'unchanged' : 'merged'
+          if (!r.already) opts.log.info('account merged: characters moved', { moved: r.moved, kept: r.kept })
+        }
+        if (outcome.startsWith('ignored')) stats.ignored++
+        send(res, 200, { event_id: event.event_id ?? null, outcome })
+        return
+      }
       const outcome = store.apply(event)
       let closed = 0
       if (outcome === 'revoked') {
@@ -109,7 +141,7 @@ export function createRevocationEvents(opts: {
 }
 
 /**
- * Create Games' subscription to TOPIC at Events if it is missing (idempotent: an existing one, even
+ * Create Games' subscriptions to TOPICS at Events where missing (idempotent: an existing one, even
  * disabled by an operator, is left as it is). Needs the grant games events.subscription.manage.
  */
 export async function ensureRevocationSubscription(opts: {
@@ -126,15 +158,18 @@ export async function ensureRevocationSubscription(opts: {
   const list = await f(`${opts.eventsUrl}/api/v1/subscriptions`, { headers })
   if (!list.ok) throw new Error(`Events answered ${list.status} listing subscriptions`)
   const body = (await list.json()) as { subscriptions?: { id: string; topic_pattern: string; endpoint: string }[] }
-  const found = (body.subscriptions ?? []).find((s) => s.topic_pattern === TOPIC && s.endpoint === opts.endpoint)
-  if (found) return 'exists'
-  const r = await f(`${opts.eventsUrl}/api/v1/subscriptions`, {
-    method: 'POST',
-    headers: { ...headers, 'content-type': 'application/json' },
-    body: JSON.stringify({ topic_pattern: TOPIC, endpoint: opts.endpoint, secret: opts.secret }),
-  })
-  if (r.status === 409) return 'exists'
-  if (!r.ok) throw new Error(`Events answered ${r.status} creating the ${TOPIC} subscription`)
-  opts.log.info('events subscription created', { topic: TOPIC, endpoint: opts.endpoint })
-  return 'created'
+  let created = 0
+  for (const topic of TOPICS) {
+    if ((body.subscriptions ?? []).some((s) => s.topic_pattern === topic && s.endpoint === opts.endpoint)) continue
+    const r = await f(`${opts.eventsUrl}/api/v1/subscriptions`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ topic_pattern: topic, endpoint: opts.endpoint, secret: opts.secret }),
+    })
+    if (r.status === 409) continue
+    if (!r.ok) throw new Error(`Events answered ${r.status} creating the ${topic} subscription`)
+    opts.log.info('events subscription created', { topic, endpoint: opts.endpoint })
+    created++
+  }
+  return created ? 'created' : 'exists'
 }

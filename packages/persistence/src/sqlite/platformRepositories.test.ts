@@ -59,6 +59,21 @@ describe('guest conversion (WS-B task 8)', () => {
   })
 })
 
+describe('account merge (ADR-029)', () => {
+  const FROM = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2F8'
+  it('moves the folded-in characters into free slots, keeps what does not fit, once per merge', () => {
+    const store = openSqliteStore(':memory:')
+    // The survivor has slot 0; the folded-in account has slots 0, 1 and 2.
+    store.players.upsertMany([player('s0', SUBJECT, 0), player('f0', FROM, 0), player('f1', FROM, 1), player('f2', FROM, 2)])
+    expect(store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 5)).toEqual({ moved: 2, kept: 1, already: false })
+    expect(store.players.listByToken(SUBJECT).map((p) => [p.id, p.charSlot]).sort()).toEqual([['f1', 1], ['f2', 2], ['s0', 0]])
+    expect(store.players.listByToken(FROM).map((p) => p.id)).toEqual(['f0'])
+    expect(store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 6)).toEqual({ moved: 0, kept: 0, already: true })
+    expect(store.players.listByToken(FROM).length).toBe(1)
+    store.close()
+  })
+})
+
 describe('identity repository (legacy -> canonical subject)', () => {
   it('moves every legacy character to the subject once and records the map', () => {
     const store = openSqliteStore(':memory:')

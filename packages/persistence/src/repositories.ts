@@ -81,6 +81,18 @@ export interface IdentityRepository {
     subjectId: string,
     now: number,
   ): { moved: number; slot: number | null; full: boolean }
+  /**
+   * Account merge (roadmap WS-B task 5, ADR-029; network.subject.merged): the folded-in subject's characters
+   * move to the survivor, each into its own slot when free there, else the first free one (0..2). A character
+   * with no free slot stays under the folded-in subject (kept, never deleted). Once per merge id; `already`
+   * when that merge was applied before.
+   */
+  mergeSubject(
+    fromSubject: string,
+    intoSubject: string,
+    mergeId: string,
+    now: number,
+  ): { moved: number; kept: number; already: boolean }
   /** Distinct account keys under a legacy prefix that still own characters. */
   legacyAccountKeys(prefix: string): string[]
 }
