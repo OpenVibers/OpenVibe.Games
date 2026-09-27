@@ -29,6 +29,7 @@ import { attachWebSocket } from './net/wsTransport.js'
 import { ServerMetrics } from './observability/metrics.js'
 import { createReadiness } from './observability/readiness.js'
 import { buildRelease, releaseHandler } from './observability/release.js'
+import { sharedAssetsHandler } from './net/sharedAssets.js'
 import { ModRegistry } from './mods/registry.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
@@ -206,6 +207,8 @@ async function main(): Promise<void> {
 
   // GET /release.json (D43): the deployed commit and package versions, as every OpenVibe service serves it.
   const serveRelease = releaseHandler(buildRelease(process.cwd()))
+  // GET /shared/*: this server's own pinned OpenVibe Frame files (D42), not openvibe.network's.
+  const serveShared = sharedAssetsHandler()
 
   // GET /api/ready: world.db answers and the simulation ticks (/healthz stays liveness only).
   const schemaVersion = store.db.prepare('SELECT value FROM meta WHERE key = ?')
@@ -270,6 +273,7 @@ async function main(): Promise<void> {
         if (revocations.handle(req, res)) return true
         if (readiness.handle(req, res)) return true
         if (serveRelease(req, res)) return true
+        if (serveShared(req, res)) return true
         if ((req.url ?? '').split('?')[0] === '/api/v1/platform' && req.method === 'GET') {
           // Operational status of the platform adapters; never secrets.
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })

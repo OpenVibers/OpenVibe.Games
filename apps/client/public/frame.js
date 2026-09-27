@@ -1,8 +1,8 @@
 /**
  * OpenVibe.Games — the OpenVibe Frame (navbar + footer) on every page.
  *
- * The navbar and footer themselves come from openvibe.network/shared/*.js,
- * loaded by each page's <head>; this file only tells them who we are: the
+ * The navbar and footer themselves come from this site's own pinned copy at
+ * /shared/*.js (served by the game server, D42), loaded by each page's <head>; this file only tells them who we are: the
  * site's links, where sign-in/sign-out live, and the session the game keeps
  * in the `ovg_sso` cookie / localStorage entry (set by /auth/callback).
  *
