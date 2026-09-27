@@ -95,6 +95,21 @@ export interface IdentityRepository {
   ): { moved: number; kept: number; already: boolean }
   /** Distinct account keys under a legacy prefix that still own characters. */
   legacyAccountKeys(prefix: string): string[]
+  /**
+   * What Games keeps about a subject, for their data export (roadmap WS-B task 7, ADR-033): their characters (without
+   * the sign-in token), the world structures those characters own, and the rows imported from Live's old game.
+   */
+  exportSubject(subject: string): {
+    characters: Record<string, unknown>[]
+    structures: Record<string, unknown>[]
+    legacyLiveRows: Record<string, unknown>[]
+  }
+  /**
+   * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their
+   * characters, imported Live rows and identity-map rows go; the structures their characters built stay in the
+   * world without an owner. Returns counts.
+   */
+  eraseSubjects(subjects: string[]): { characters: number; structures_unowned: number; legacy_rows: number; identity_rows: number }
 }
 
 /** Installed mods, their approved capabilities, placements and audit log. */

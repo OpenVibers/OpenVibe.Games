@@ -116,7 +116,56 @@ export function createIdentityRepository(db: Database.Database): IdentityReposit
     return { moved, kept, already: false }
   })
 
+  // Account export and deletion (ADR-033). A character row keyed by the subject (token) or carrying it (subject_id).
+  const inList = (n: number): string => `(${Array.from({ length: n }, () => '?').join(',')})`
+  const hasTable = (name: string): boolean =>
+    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
+  const parsed = (row: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(row)) {
+      if (k === 'token') continue
+      if (typeof v === 'string' && (v.startsWith('{') || v.startsWith('['))) {
+        try {
+          out[k] = JSON.parse(v)
+          continue
+        } catch {
+          // kept as text
+        }
+      }
+      out[k] = v
+    }
+    return out
+  }
+  const exportSubject = (subject: string) => {
+    const characters = db
+      .prepare('SELECT * FROM players WHERE token = ? OR subject_id = ? ORDER BY char_slot')
+      .all(subject, subject) as Record<string, unknown>[]
+    const ids = characters.map((c) => String(c.id))
+    const structures = ids.length
+      ? (db.prepare(`SELECT * FROM world_entities WHERE owner_id IN ${inList(ids.length)}`).all(...ids) as Record<string, unknown>[])
+      : []
+    const legacyLiveRows = hasTable('legacy_live_rows')
+      ? (db.prepare('SELECT source_table, source_key, payload, imported_at FROM legacy_live_rows WHERE subject_id = ?').all(subject) as Record<string, unknown>[])
+      : []
+    return { characters: characters.map(parsed), structures: structures.map(parsed), legacyLiveRows: legacyLiveRows.map(parsed) }
+  }
+  const eraseSubjects = db.transaction((subjects: string[]) => {
+    const out = { characters: 0, structures_unowned: 0, legacy_rows: 0, identity_rows: 0 }
+    if (!subjects.length) return out
+    const q = inList(subjects.length)
+    const ids = (db.prepare(`SELECT id FROM players WHERE token IN ${q} OR subject_id IN ${q}`).all(...subjects, ...subjects) as { id: string }[]).map((r) => r.id)
+    if (ids.length) {
+      out.structures_unowned = db.prepare(`UPDATE world_entities SET owner_id = NULL WHERE owner_id IN ${inList(ids.length)}`).run(...ids).changes
+      out.characters = db.prepare(`DELETE FROM players WHERE id IN ${inList(ids.length)}`).run(...ids).changes
+    }
+    if (hasTable('legacy_live_rows')) out.legacy_rows = db.prepare(`DELETE FROM legacy_live_rows WHERE subject_id IN ${q}`).run(...subjects).changes
+    out.identity_rows = db.prepare(`DELETE FROM identity_legacy_map WHERE subject_id IN ${q}`).run(...subjects).changes
+    return out
+  })
+
   return {
+    exportSubject,
+    eraseSubjects: (subjects) => eraseSubjects(subjects),
     adoptLegacyAccount: (legacyKey, subjectId, source, now) =>
       adopt(legacyKey, subjectId, source, now),
     mergeSubject: (from, into, mergeId, now) => mergeAccount(from, into, mergeId, now),

@@ -11,7 +11,9 @@
  *
  * The same endpoint takes network.subject.merged (roadmap WS-B task 5, ADR-029): two accounts became one, and
  * `onMerged` moves the folded-in account's characters to the survivor (store.identity.mergeSubject), once per
- * merge. One subscription per topic (TOPICS).
+ * merge. network.account.export_requested and network.account.deleted (roadmap WS-B task 7, ADR-033) go to
+ * `onAccountEvent` (./accountData.ts), answered once it resolved (500 when it failed, so Events retries). One
+ * subscription per topic (TOPICS).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
@@ -34,7 +36,7 @@ type ParseDelivery = (
     event_id?: string
     event_type?: string
     source?: string
-    payload?: { subject?: { id?: string }; valid_after?: string; merge_id?: string; from?: string; into?: string }
+    payload?: { subject?: { id?: string } | string; valid_after?: string; merge_id?: string; from?: string; into?: string; export_id?: string; deletion_id?: string; aliases?: unknown }
   }
 } | null
 
@@ -45,7 +47,7 @@ const { parseDelivery } = req('openvibe-sdk/events') as { parseDelivery: ParseDe
 
 export const TOPIC = 'network.user.token_valid_after'
 export const MERGE_TOPIC = 'network.subject.merged'
-export const TOPICS = [TOPIC, MERGE_TOPIC] as const
+export const TOPICS = [TOPIC, MERGE_TOPIC, 'network.account.export_requested', 'network.account.deleted'] as const
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/
 const MERGE_RE = /^mrg_[0-9A-HJKMNP-TV-Z]{26}$/
 const PATH = '/internal/events'
@@ -64,6 +66,8 @@ export function createRevocationEvents(opts: {
   onRevoked: (subjectId: string, validAfterMs: number) => number
   /** An account merge: move `from`'s characters to `into` (returns what moved; `already` when applied before). */
   onMerged?: (from: string, into: string, mergeId: string) => { moved: number; kept: number; already: boolean }
+  /** Account export or deletion (ADR-033): resolves to the outcome; a rejection is answered 500 and redelivered. */
+  onAccountEvent?: (event: NonNullable<NonNullable<ReturnType<ParseDelivery>>['event']>) => Promise<string>
   log: Logger
 }): RevocationEvents {
   const store = createRevocationStore(opts.db, { table: 'token_revocations' })
@@ -108,6 +112,24 @@ export function createRevocationEvents(opts: {
       }
       stats.received++
       const event = delivery.event
+      if (event.event_type === 'network.account.export_requested' || event.event_type === 'network.account.deleted') {
+        if (!opts.onAccountEvent) {
+          stats.ignored++
+          send(res, 200, { event_id: event.event_id ?? null, outcome: 'ignored:no_handler' })
+          return
+        }
+        opts.onAccountEvent(event).then(
+          (outcome) => {
+            if (outcome.startsWith('ignored')) stats.ignored++
+            send(res, 200, { event_id: event.event_id ?? null, outcome })
+          },
+          (err: unknown) => {
+            opts.log.warn('account event failed (Events retries)', { type: event.event_type, error: String((err as Error)?.message ?? err) })
+            send(res, 500, { error: 'not applied' })
+          },
+        )
+        return
+      }
       if (event.event_type === MERGE_TOPIC) {
         const p = event.payload ?? {}
         let outcome = 'merged'
@@ -127,7 +149,8 @@ export function createRevocationEvents(opts: {
       let closed = 0
       if (outcome === 'revoked') {
         stats.revoked++
-        const subject = event.payload?.subject?.id ?? ''
+        const sub = event.payload?.subject
+        const subject = (typeof sub === 'object' && sub ? sub.id : undefined) ?? ''
         closed = opts.onRevoked(subject, Date.parse(event.payload?.valid_after ?? ''))
         stats.closed += closed
         if (closed) opts.log.info('signed out everywhere: sessions closed', { closed })

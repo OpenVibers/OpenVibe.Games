@@ -42,6 +42,7 @@ import {
   outboxSink,
   type EventSink,
 } from './platform/gameEvents.js'
+import { createAccountData, networkSender, type AccountEvent } from './platform/accountData.js'
 import { MediaMirror } from './platform/mediaMirror.js'
 import { createPlatformClient } from './platform/serviceClient.js'
 import {
@@ -173,6 +174,20 @@ async function main(): Promise<void> {
     ...(progressSummary ? { progressSummary } : {}),
   })
 
+  const accountData = platform
+    ? createAccountData({
+        db: store.db,
+        identity: store.identity,
+        send: networkSender({ networkUrl: config.platform.networkUrl, tokens: platform.tokens }),
+        closeSessions: async (subjects) => {
+          let closed = 0
+          for (const s of subjects) closed += game.revokeSubject(s, Number.MAX_SAFE_INTEGER)
+          if (closed) await new Promise((r) => setTimeout(r, 2000))
+        },
+        log: platformLog.child({ system: 'account-data' }),
+      })
+    : null
+
   // Sign-out everywhere (network.user.token_valid_after): POST /internal/events closes the person's
   // older game sessions; the subscription is created at boot when a secret is set (WS-B task 4).
   const revocations = createRevocationEvents({
@@ -181,6 +196,9 @@ async function main(): Promise<void> {
     onRevoked: (subject, validAfterMs) => game.revokeSubject(subject, validAfterMs),
     // Account merge (ADR-029): the folded-in account's characters join the survivor's free slots.
     onMerged: (from, into, mergeId) => store.identity.mergeSubject(from, into, mergeId, Date.now()),
+    // Account export and deletion (ADR-033): the part goes to Network; a deleted account's sessions close (each
+    // close saves its character) before its characters are erased.
+    ...(accountData ? { onAccountEvent: (event) => accountData.apply(event as AccountEvent) } : {}),
     log: platformLog,
   })
   if (

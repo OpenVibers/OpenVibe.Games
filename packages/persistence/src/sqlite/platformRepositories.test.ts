@@ -74,6 +74,30 @@ describe('account merge (ADR-029)', () => {
   })
 })
 
+describe('account export and deletion (ADR-033)', () => {
+  const ALIAS = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2F8'
+  it('exports the subject\'s characters without the token, then erases them and the alias\'s; structures stay unowned', () => {
+    const store = openSqliteStore(':memory:')
+    store.players.upsertMany([player('d0', SUBJECT, 0), player('d1', ALIAS, 0), player('o0', OTHER, 0)])
+    const entity = store.db.prepare("INSERT INTO world_entities (id, kind, def_id, owner_id, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, motion, state, updated_at) VALUES (?, 'structure', 'hut', ?, 0, 0, 0, 0, 0, 0, 1, 'static', '{}', 1)")
+    entity.run('e1', 'd0')
+    entity.run('e2', 'o0')
+    store.db.prepare("INSERT INTO identity_legacy_map (legacy_key, subject_id, source, adopted_at) VALUES ('ovn:9', ?, 'network', 1)").run(SUBJECT)
+    const out = store.identity.exportSubject(SUBJECT)
+    expect(out.characters.map((c) => c.id)).toEqual(['d0'])
+    expect(out.characters[0]).not.toHaveProperty('token')
+    expect(out.characters[0]?.skills).toEqual({ woodcutting: 10 })
+    expect(out.structures.map((e) => e.id)).toEqual(['e1'])
+    expect(store.identity.eraseSubjects([SUBJECT, ALIAS])).toEqual({ characters: 2, structures_unowned: 1, legacy_rows: 0, identity_rows: 1 })
+    expect(store.players.listByToken(SUBJECT)).toEqual([])
+    expect(store.players.listByToken(ALIAS)).toEqual([])
+    expect(store.players.listByToken(OTHER).map((p) => p.id)).toEqual(['o0'])
+    expect(store.db.prepare('SELECT id, owner_id FROM world_entities ORDER BY id').all()).toEqual([{ id: 'e1', owner_id: null }, { id: 'e2', owner_id: 'o0' }])
+    expect(store.identity.eraseSubjects([SUBJECT])).toEqual({ characters: 0, structures_unowned: 0, legacy_rows: 0, identity_rows: 0 })
+    store.close()
+  })
+})
+
 describe('identity repository (legacy -> canonical subject)', () => {
   it('moves every legacy character to the subject once and records the map', () => {
     const store = openSqliteStore(':memory:')

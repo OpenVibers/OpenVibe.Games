@@ -20,6 +20,7 @@ const SUBJECT = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2A3'
 const log = createConsoleLogger({ app: 'test' }, 'error')
 const closedFor: [string, number][] = []
 const mergedCalls: [string, string, string][] = []
+const accountCalls: string[] = []
 const events = createRevocationEvents({
   db: new Database(':memory:'),
   secrets: [SECRET],
@@ -30,6 +31,11 @@ const events = createRevocationEvents({
   onMerged: (from, into, id) => {
     mergedCalls.push([from, into, id])
     return { moved: 2, kept: 1, already: mergedCalls.length > 1 }
+  },
+  onAccountEvent: async (event) => {
+    accountCalls.push(String(event.event_type))
+    if (event.payload?.export_id === 'exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Z9') throw new Error('Network down')
+    return 'exported'
   },
   log,
 })
@@ -85,6 +91,14 @@ describe('revocation events', () => {
     expect((await post(merged())).body.outcome).toBe('unchanged')
   })
 
+  it('account export and deletion (ADR-033) go to onAccountEvent, answered once it resolved (500 when it failed)', async () => {
+    const exp = (id: string) =>
+      envelope({ event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2E7', event_type: 'network.account.export_requested', payload: { export_id: id, subject: SUBJECT } })
+    expect(await post(exp('exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Y8'))).toMatchObject({ status: 200, body: { outcome: 'exported' } })
+    expect((await post(exp('exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Z9'))).status).toBe(500)
+    expect(accountCalls).toEqual(['network.account.export_requested', 'network.account.export_requested'])
+  })
+
   it('refuses forged, proxied and non-POST requests', async () => {
     expect((await post(envelope(), {}, 'y'.repeat(40))).status).toBe(401)
     expect((await post(envelope(), { 'x-forwarded-for': '1.2.3.4' })).status).toBe(403)
@@ -106,6 +120,8 @@ describe('revocation events', () => {
     expect(subs).toEqual([
       { topic_pattern: TOPIC, endpoint: opts.endpoint, secret: SECRET },
       { topic_pattern: MERGE_TOPIC, endpoint: opts.endpoint, secret: SECRET },
+      { topic_pattern: 'network.account.export_requested', endpoint: opts.endpoint, secret: SECRET },
+      { topic_pattern: 'network.account.deleted', endpoint: opts.endpoint, secret: SECRET },
     ])
   })
 })
