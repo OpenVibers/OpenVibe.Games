@@ -1,5 +1,8 @@
 # Scraplandia
 
+## Purpose
+
+OpenVibe.Games: Scraplandia, served at https://openvibe.games and https://play.openvibe.games.
 A persistent multiplayer physics sandbox for the browser: Source-style movement,
 physgun-driven building from crafted physical objects, gathering, crafting, and
 extraction risk — running against an authoritative dedicated server.
@@ -7,6 +10,28 @@ extraction risk — running against an authoritative dedicated server.
 **Stack:** TypeScript everywhere · Babylon.js (WebGPU with WebGL fallback) ·
 Havok physics (Babylon Physics V2, headless on the server via NullEngine) ·
 WebSocket protocol · SQLite persistence · pnpm monorepo.
+
+## Owns
+
+- the game: the authoritative simulation, the world, characters, inventories, skills, blueprints and
+  props, in `world.db` (SQLite, forward-only migrations; `SCHEMA_VERSION` 13)
+- the map editor and its assets, the mod registry (`games-content@1` packs, grants, audit) and the
+  `games.*` events
+- the game WebSocket protocol and the portal, `/play` and `/editor` pages
+
+## Does not own
+
+- identity (OpenVibe.Network: players are keyed by Network subjects), file storage beyond the local
+  copy (OpenVibe.Media mirrors map-editor assets), events delivery (OpenVibe.Events)
+- mod grants' authority (Network keeps them, `mods.grant.manage`) and executable mods (they wait for
+  OpenVibe.Host Stage C)
+
+## Depends on
+
+- OpenVibe.Network (SSO, JWKS, client-credentials tokens, identity resolve, the `games.progress.summary`
+  user module, mod grants), OpenVibe.Events (outbox relay, subscriptions), OpenVibe.Media (asset mirror)
+- `openvibe-contracts` v0.71.0, `openvibe-sdk` v0.12.0 and `openvibe-shared` v1.23.0 (pinned by release
+  tarball in `apps/server/package.json`), Babylon.js, Havok, better-sqlite3
 
 ## Repository layout
 
@@ -92,8 +117,10 @@ has ticked within the last 5 s, otherwise 503 naming the failed check (`status`
 `ready`/`not_ready`, `checks.db`, `checks.tick`); nginx keeps it off the public vhosts. Environment: `PORT`, `HOST`, `DB_PATH`, `STATIC_DIR`,
 `MAX_PLAYERS`, `LOG_LEVEL` (platform variables below).
 
-Deployed at https://openvibe.games (nginx TLS termination → server on :8000,
-systemd unit `openvibe-games.service`; play.openvibe.games Host-routes to the same process).
+Deployed at https://openvibe.games (nginx TLS termination → server on 127.0.0.1:8000,
+systemd unit `openvibe-games.service` from [deploy/openvibe-games.service](deploy/openvibe-games.service),
+env file `/etc/openvibe/games.env`, database `/opt/openvibe.games/data/world.db`;
+play.openvibe.games Host-routes to the same process).
 
 Deploy on the host with `sudo /opt/openvibe.games/deploy/scripts/deploy.sh`, which runs
 `ovhost deploy games` (OpenVibe.Host, strategy `pnpm-build`; roadmap WS-N task 11): a fast-forward pull as
@@ -107,6 +134,10 @@ reconnect; `--wait-idle` holds the restart until nobody plays, `--rollback` runs
 wrapper runs `deploy/scripts/deploy-legacy.sh`: the procedure as it was run by hand
 (`sudo git -c safe.directory=/opt/openvibe.games pull`, `pnpm install --frozen-lockfile`, `pnpm build`,
 `sudo systemctl restart openvibe-games`).
+
+Rollback: `sudo deploy/scripts/deploy.sh --rollback` (`ovhost rollback games`), which rebuilds the previous
+commit. One blocker: a build refuses a `world.db` whose `meta.schema_version` is newer than its own, so going
+back past a schema bump fails at boot.
 
 ## Platform integration (OpenVibe network)
 
@@ -139,8 +170,8 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   files to upload: blueprints are per-player recipe unlocks.
 - **Mods** (ADR-013 in OpenVibe.Contracts). Manifests follow
   `mods/mod-manifest.v1` (published in OpenVibe.Contracts v0.14.0; Games
-  validates with its own copy in `apps/server/src/mods/manifestSchema.ts`,
-  because it pins openvibe-contracts v0.8.0). The only runtime today is `games-content@1`:
+  validates with its own copy in `apps/server/src/mods/manifestSchema.ts`;
+  it pins openvibe-contracts v0.71.0). The only runtime today is `games-content@1`:
   declarative data packs checked against `@openvibe/content` (announcements;
   inert, mod-owned props). Each install stores the approved subset of its
   requested capabilities; every runtime binding checks it at call time, a
@@ -161,8 +192,9 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   been imported yet. The decisions, the importer
   (`apps/server/scripts/importLiveLegacy.ts`, dry run by default) and the
   host commands are in [docs/legacy-import.md](docs/legacy-import.md).
-- **Shared chrome.** The portal, `/play` and `/editor` load the network
-  navbar and footer from `https://openvibe.network/shared/`.
+- **Shared chrome.** The portal, `/play` and `/editor` load the OpenVibe Frame
+  (navbar, footer, theme loader) from this server's own pinned copy at `/shared/`
+  (`apps/server/src/net/sharedAssets.ts`), so they keep their frame while Network is down.
 - **Persistence proof.** `apps/server/src/game/platformIntegration.test.ts`
   boots the real server twice on one database and checks characters, world
   props, the world clock and the mod registry survive the restart;
@@ -180,7 +212,34 @@ Platform environment (all optional; unset = off):
 | `MEDIA_NAMESPACE`           | Media tenant for the copies (default `games`)                                         |
 | `WORLD_SAVED_EVENT_MINUTES` | Checkpoint event interval (default 15)                                                |
 
+## Capabilities
+
+Implemented here (the service manifest's `capabilities`): `games.mod.manage` and `games.mod.read` (the
+mods API, for a principal token or an owner/admin session), and `games.world.announce` and
+`games.prop.place`, the capabilities a mod install may be granted and every runtime binding checks at
+call time.
+
 Grants the `games` principal needs in OpenVibe.Network:
-`events.event.publish` (openvibe.events), `media.object.upload`
+`events.event.publish` and `events.subscription.manage` (openvibe.events: the outbox, and the account,
+revocation and mod-grant subscriptions), `media.object.upload`
 (openvibe.media, namespace `games`), `identity.subject.resolve`
-(openvibe.network).
+(openvibe.network), `network.modules.write` on `games.progress.summary`, and `mods.grant.manage`
+(Network's mod grants, roadmap WS-M task 3).
+
+## Tests
+
+`pnpm test` runs every vitest file (unit tests of the packages and the server, including
+`apps/server/src/game/platformIntegration.test.ts`, which boots the real server twice on one database);
+`pnpm typecheck` and `pnpm lint` keep strict TypeScript and no `any`;
+`tsx apps/server/scripts/sliceTest.ts` drives protocol clients against a real server across a restart.
+
+## Security
+
+Reporting a vulnerability: [SECURITY.md](SECURITY.md). The server is authoritative: inbound protocol
+messages are validated (zod), the WebSocket has per-socket flood control, and HTTP writes that cross a
+capability boundary (editor saves and uploads, the mods API) have per-actor limits (openvibe-sdk/limits).
+Players are keyed by Network subjects; guest tokens that look like account keys are refused. Mods are
+declarative only, each install keeps only its approved capabilities, and executable mods are refused.
+nginx keeps `/api/ready` off the public vhosts and `/metrics` answers direct loopback callers only. `OV_OAUTH_CLIENT_SECRET`, `GAMES_EVENTS_SECRET` (signed
+Events deliveries) and `EDITOR_KEY` live in `/etc/openvibe/games.env`, by name only; there are no shared keys
+between services.
