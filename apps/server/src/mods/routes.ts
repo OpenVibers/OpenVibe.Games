@@ -20,6 +20,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import type { Logger } from '@openvibe/shared'
+import type { GamesActorLimits } from '../net/actorLimits.js'
 import type { ModGrantAuthority } from './networkGrants.js'
 import { ModError, type ModActor, type ModRegistry, type ModView } from './registry.js'
 
@@ -44,6 +45,8 @@ export interface ModsApi {
   authorize(req: IncomingMessage): Promise<ModActor | null>
   /** OpenVibe.Network's mod principals; absent without a platform client (tests, local runs). */
   grants?: ModGrantAuthority
+  /** Per-actor limits on writes (../net/actorLimits.ts). */
+  limits?: GamesActorLimits
   log: Logger
 }
 
@@ -156,6 +159,10 @@ export function handleModsRequest(
       problem(res, 403, 'capability.denied', 'games.mod.manage required')
       return
     }
+    if (method !== 'GET' && api.limits && !(await api.limits.modWrite(req, res, actor.audit))) {
+      req.resume()
+      return
+    }
     const id = parts[0] ?? ''
     if (method === 'GET' && parts.length === 2 && parts[1] === 'audit') {
       const limit = Number(url.searchParams.get('limit') ?? 100)
@@ -178,7 +185,13 @@ export function handleModsRequest(
     if (!body.ok) return problem(res, body.status, body.code, 'request body must be a JSON object')
     const b = body.body
     if (parts.length === 0) {
-      const request = { manifest: b.manifest, pack: b.pack, approve: b.approve, trustTier: b.trustTier, enable: b.enable }
+      const request = {
+        manifest: b.manifest,
+        pack: b.pack,
+        approve: b.approve,
+        trustTier: b.trustTier,
+        enable: b.enable,
+      }
       let revision = 0
       if (api.grants) {
         // Network registers mod:<id> first; what it approved is what is granted here.
@@ -203,7 +216,10 @@ export function handleModsRequest(
     if (parts.length === 2 && parts[1] === 'revoke') {
       const reason = typeof b.reason === 'string' ? b.reason.slice(0, 500) : undefined
       if (api.grants && api.registry.get(id) && api.registry.get(id)?.mod.status !== 'revoked') {
-        api.registry.noteNetworkRevision(id, (await api.grants.revoke(id, actor.audit, reason)).revision)
+        api.registry.noteNetworkRevision(
+          id,
+          (await api.grants.revoke(id, actor.audit, reason)).revision,
+        )
       }
       const view = api.registry.revoke(id, actor, reason)
       api.log.info('mod revoked', { mod: id, by: actor.audit })

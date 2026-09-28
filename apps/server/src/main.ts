@@ -32,6 +32,7 @@ import { buildRelease, releaseHandler } from './observability/release.js'
 import { sharedAssetsHandler } from './net/sharedAssets.js'
 import { ModRegistry } from './mods/registry.js'
 import { createNetworkModGrants } from './mods/networkGrants.js'
+import { createGamesActorLimits } from './net/actorLimits.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
 import { accountForNetworkUser, isGuestToken } from './platform/accounts.js'
@@ -143,17 +144,27 @@ async function main(): Promise<void> {
   })
   // Mod principals live in Network (ADR-013, WS-M task 3): the API asks it first; at boot every install's copy
   // catches up with its principal (a change staff made while this server was down).
-  const modGrants = platform ? createNetworkModGrants({ networkUrl: config.platform.networkUrl, tokens: platform.tokens }) : null
+  const modGrants = platform
+    ? createNetworkModGrants({ networkUrl: config.platform.networkUrl, tokens: platform.tokens })
+    : null
   if (modGrants) {
     modGrants
       .list()
       .then((principals) => {
         for (const p of principals) mods.applyNetwork(p)
         const known = new Set(principals.map((p) => p.mod_id))
-        const unregistered = mods.list().filter((v) => !known.has(v.mod.id) && v.mod.status !== 'revoked').map((v) => v.mod.id)
-        if (unregistered.length) log.warn('mod installs without a Network principal', { mods: unregistered.join(',') })
+        const unregistered = mods
+          .list()
+          .filter((v) => !known.has(v.mod.id) && v.mod.status !== 'revoked')
+          .map((v) => v.mod.id)
+        if (unregistered.length)
+          log.warn('mod installs without a Network principal', { mods: unregistered.join(',') })
       })
-      .catch((err: unknown) => log.warn('mod principals not read at boot', { error: String((err as Error)?.message ?? err) }))
+      .catch((err: unknown) =>
+        log.warn('mod principals not read at boot', {
+          error: String((err as Error)?.message ?? err),
+        }),
+      )
   }
   const mirror =
     platform && config.platform.mediaUrl
@@ -258,6 +269,10 @@ async function main(): Promise<void> {
     online: () => game.onlineCount(),
   })
 
+  // Per-actor limits on editor saves, uploads and the mods API (roadmap WS-R task 4).
+  const actorLimits = createGamesActorLimits({
+    onLimited: (name, actor) => log.warn('rate limited', { limit: name, actor }),
+  })
   const http = createHttpServer(
     config.staticDir,
     metrics,
@@ -342,10 +357,12 @@ async function main(): Promise<void> {
           registry: mods,
           authorize: authorizeStaff,
           ...(modGrants ? { grants: modGrants } : {}),
+          limits: actorLimits,
           log: log.child({ system: 'mods-api' }),
         })
       },
       onAssetStored: (asset) => mirror?.enqueue(asset),
+      limits: actorLimits,
     },
   )
   const drainer = httpDrainer(http)

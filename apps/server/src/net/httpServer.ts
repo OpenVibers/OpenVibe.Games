@@ -26,6 +26,7 @@ import {
 } from './sso.js'
 import { MAX_MAP_BYTES, loadMap, saveMap } from './mapStore.js'
 import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore.js'
+import type { GamesActorLimits } from './actorLimits.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
 import type { MapFileV2 } from '@openvibe/content'
 
@@ -112,6 +113,8 @@ export interface HttpPlatformHooks {
   handle?: (req: IncomingMessage, res: ServerResponse) => boolean
   /** A map asset was stored (or found already stored) locally. */
   onAssetStored?: (asset: { hash: string; url: string; bytes: number; mime: string }) => void
+  /** Per-actor limits on editor saves and uploads (./actorLimits.ts); absent in tests that do not need them. */
+  limits?: GamesActorLimits
 }
 
 /** The token endpoint's answer, for both the code and the jwt-bearer grant. */
@@ -177,11 +180,16 @@ export function createHttpServer(
     }
     if (url === '/api/map' && req.method === 'POST' && mapPath && editorAuth) {
       const token = (req.headers['x-editor-key'] as string | undefined) ?? undefined
-      void editorAuthorized(editorAuth, token).then((ok) => {
+      void editorAuthorized(editorAuth, token).then(async (ok) => {
         if (!ok) {
           log.warn('editor save rejected', {})
           res.writeHead(403, { 'content-type': 'application/json' })
           res.end('{"error":"forbidden"}')
+          return
+        }
+        const limits = platform?.limits
+        if (limits && !(await limits.mapSave(req, res, limits.editorActor(token ?? '')))) {
+          req.resume()
           return
         }
         const chunks: Buffer[] = []
@@ -251,10 +259,15 @@ export function createHttpServer(
       editorAuth
     ) {
       const token = (req.headers['x-editor-key'] as string | undefined) ?? undefined
-      void editorAuthorized(editorAuth, token).then((authed) => {
+      void editorAuthorized(editorAuth, token).then(async (authed) => {
         if (!authed) {
           res.writeHead(403, { 'content-type': 'application/json' })
           res.end('{"error":"forbidden"}')
+          return
+        }
+        const limits = platform?.limits
+        if (limits && !(await limits.asset(req, res, limits.editorActor(token ?? '')))) {
+          req.resume()
           return
         }
         const chunks: Buffer[] = []
