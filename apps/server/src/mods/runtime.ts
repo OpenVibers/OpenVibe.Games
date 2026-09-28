@@ -99,7 +99,10 @@ export class ModRuntime {
   /** Reconciles in a row over the CPU budget, per mod. */
   private readonly cpuStrikes = new Map<string, number>()
   /** Host effects per mod in the current minute, and minutes in a row that were throttled. */
-  private readonly effects = new Map<string, { windowStart: number; count: number; throttled: boolean; floodWindows: number }>()
+  private readonly effects = new Map<
+    string,
+    { windowStart: number; count: number; throttled: boolean; floodWindows: number }
+  >()
   private readonly now: () => number
 
   constructor(
@@ -248,7 +251,8 @@ export class ModRuntime {
     const nowMs = this.now()
     let e = this.effects.get(id)
     if (!e || nowMs - e.windowStart >= 60_000) {
-      const floodWindows = e && e.throttled && nowMs - e.windowStart < 120_000 ? e.floodWindows + 1 : 0
+      const floodWindows =
+        e && e.throttled && nowMs - e.windowStart < 120_000 ? e.floodWindows + 1 : 0
       e = { windowStart: nowMs, count: 0, throttled: false, floodWindows }
       this.effects.set(id, e)
       if (floodWindows >= FLOOD_WINDOWS) {
@@ -267,7 +271,11 @@ export class ModRuntime {
   }
 
   /** Disables the offending mod only; the others keep running. */
-  private enforce(id: string, reason: 'cpu' | 'event_flood', detail: Record<string, unknown>): void {
+  private enforce(
+    id: string,
+    reason: 'cpu' | 'event_flood',
+    detail: Record<string, unknown>,
+  ): void {
     if (!this.registry.isActive(id)) return
     this.registry.audit(id, 'budget_enforced', null, { reason, ...detail })
     this.registry.disable(id, SYSTEM_ACTOR)
@@ -306,7 +314,11 @@ export class ModRuntime {
     const strikes = (this.cpuStrikes.get(view.mod.id) ?? 0) + 1
     this.cpuStrikes.set(view.mod.id, strikes)
     if (strikes >= CPU_STRIKES) {
-      this.enforce(view.mod.id, 'cpu', { cpu_ms: Math.round(ms * 1000) / 1000, budget_ms: budget, reconciles: strikes })
+      this.enforce(view.mod.id, 'cpu', {
+        cpu_ms: Math.round(ms * 1000) / 1000,
+        budget_ms: budget,
+        reconciles: strikes,
+      })
       return
     }
     const nowMs = this.now()

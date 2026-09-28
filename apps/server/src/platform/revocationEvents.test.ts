@@ -3,7 +3,12 @@ import type { AddressInfo } from 'node:net'
 import { createRequire } from 'node:module'
 import { createConsoleLogger } from '@openvibe/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { createRevocationEvents, ensureRevocationSubscription, MERGE_TOPIC, TOPIC } from './revocationEvents.js'
+import {
+  createRevocationEvents,
+  ensureRevocationSubscription,
+  MERGE_TOPIC,
+  TOPIC,
+} from './revocationEvents.js'
 
 /**
  * POST /internal/events for network.user.token_valid_after: signature v2 only, loopback only, the
@@ -39,7 +44,8 @@ const events = createRevocationEvents({
   },
   onAccountEvent: async (event) => {
     accountCalls.push(String(event.event_type))
-    if (event.payload?.export_id === 'exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Z9') throw new Error('Network down')
+    if (event.payload?.export_id === 'exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Z9')
+      throw new Error('Network down')
     return 'exported'
   },
   log,
@@ -65,18 +71,33 @@ const envelope = (over: Record<string, unknown> = {}) => ({
   event_type: TOPIC,
   version: 1,
   source: 'network',
-  payload: { subject: { type: 'user', id: SUBJECT }, valid_after: new Date(at).toISOString(), reason: 'signed_out_everywhere' },
+  payload: {
+    subject: { type: 'user', id: SUBJECT },
+    valid_after: new Date(at).toISOString(),
+    reason: 'signed_out_everywhere',
+  },
   ...over,
 })
 const post = async (event: unknown, headers: Record<string, string> = {}, secret = SECRET) => {
   const body = JSON.stringify({ event, seq: 1 })
-  const r = await fetch(url, { method: 'POST', body, headers: { 'content-type': 'application/json', ...signDeliveryHeaders(body, secret), ...headers } })
+  const r = await fetch(url, {
+    method: 'POST',
+    body,
+    headers: {
+      'content-type': 'application/json',
+      ...signDeliveryHeaders(body, secret),
+      ...headers,
+    },
+  })
   return { status: r.status, body: (await r.json()) as { outcome?: string; closed?: number } }
 }
 
 describe('revocation events', () => {
   it('applies a signed delivery once and closes the sessions', async () => {
-    expect(await post(envelope())).toMatchObject({ status: 200, body: { outcome: 'revoked', closed: 2 } })
+    expect(await post(envelope())).toMatchObject({
+      status: 200,
+      body: { outcome: 'revoked', closed: 2 },
+    })
     expect(closedFor).toEqual([[SUBJECT, at]])
     expect(events.store.isRevoked({ subject_id: SUBJECT, iat: at / 1000 - 1 })).toBe(true)
     expect((await post(envelope())).body.outcome).toBe('unchanged')
@@ -87,9 +108,23 @@ describe('revocation events', () => {
   it('an account merge (ADR-029) moves characters through onMerged; foreign or malformed ones are ignored', async () => {
     const FROM = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2B4'
     const merged = (over: Record<string, unknown> = {}) =>
-      envelope({ event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2C5', event_type: MERGE_TOPIC, payload: { merge_id: 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2D6', from: FROM, into: SUBJECT, merged_at: new Date(at).toISOString(), initiated_by: 'person' }, ...over })
+      envelope({
+        event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2C5',
+        event_type: MERGE_TOPIC,
+        payload: {
+          merge_id: 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2D6',
+          from: FROM,
+          into: SUBJECT,
+          merged_at: new Date(at).toISOString(),
+          initiated_by: 'person',
+        },
+        ...over,
+      })
     expect((await post(merged({ source: 'live' }))).body.outcome).toBe('ignored:source')
-    expect((await post(merged({ payload: { merge_id: 'nope', from: FROM, into: SUBJECT } }))).body.outcome).toBe('ignored:payload')
+    expect(
+      (await post(merged({ payload: { merge_id: 'nope', from: FROM, into: SUBJECT } }))).body
+        .outcome,
+    ).toBe('ignored:payload')
     expect(mergedCalls).toEqual([])
     expect((await post(merged())).body.outcome).toBe('merged')
     expect(mergedCalls).toEqual([[FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2D6']])
@@ -98,18 +133,49 @@ describe('revocation events', () => {
 
   it('account export and deletion (ADR-033) go to onAccountEvent, answered once it resolved (500 when it failed)', async () => {
     const exp = (id: string) =>
-      envelope({ event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2E7', event_type: 'network.account.export_requested', payload: { export_id: id, subject: SUBJECT } })
-    expect(await post(exp('exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Y8'))).toMatchObject({ status: 200, body: { outcome: 'exported' } })
+      envelope({
+        event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2E7',
+        event_type: 'network.account.export_requested',
+        payload: { export_id: id, subject: SUBJECT },
+      })
+    expect(await post(exp('exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Y8'))).toMatchObject({
+      status: 200,
+      body: { outcome: 'exported' },
+    })
     expect((await post(exp('exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2Z9'))).status).toBe(500)
-    expect(accountCalls).toEqual(['network.account.export_requested', 'network.account.export_requested'])
+    expect(accountCalls).toEqual([
+      'network.account.export_requested',
+      'network.account.export_requested',
+    ])
   })
 
   it("network.mod.grants_changed (ADR-013) reaches onModGrants for Games' own mods only", async () => {
     const MOD = 'mod_01J8Z3Q4R5S6T7V8W9X0Y1Z2M1'
     const changed = (over: Record<string, unknown> = {}) =>
-      envelope({ event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2M2', event_type: 'network.mod.grants_changed', payload: { mod_id: MOD, owner: 'games', status: 'active', approved: ['games.prop.place'], revision: 2, change: { action: 'revoke', capability: 'games.world.announce' }, by: 'staff' }, ...over })
+      envelope({
+        event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2M2',
+        event_type: 'network.mod.grants_changed',
+        payload: {
+          mod_id: MOD,
+          owner: 'games',
+          status: 'active',
+          approved: ['games.prop.place'],
+          revision: 2,
+          change: { action: 'revoke', capability: 'games.world.announce' },
+          by: 'staff',
+        },
+        ...over,
+      })
     expect((await post(changed({ source: 'games' }))).body.outcome).toBe('ignored:source')
-    expect((await post(changed({ payload: { mod_id: MOD, owner: 'tools', status: 'active', approved: [], revision: 1 } }))).body.outcome).toBe('ignored:owner')
+    expect(
+      (
+        await post(
+          changed({
+            payload: { mod_id: MOD, owner: 'tools', status: 'active', approved: [], revision: 1 },
+          }),
+        )
+      ).body.outcome,
+    ).toBe('ignored:owner')
     expect((await post(changed())).body.outcome).toBe('mod:enabled')
     expect(modGrantCalls).toEqual([[MOD, 'active', 'games.prop.place']])
   })
@@ -129,13 +195,24 @@ describe('revocation events', () => {
       }
       return Response.json({ subscriptions: subs.map((s, i) => ({ id: `sub_${i + 1}`, ...s })) })
     }) as unknown as typeof fetch
-    const opts = { eventsUrl: 'http://events.test', endpoint: 'http://127.0.0.1:8000/internal/events', secret: SECRET, tokens: { getToken: async () => 'tok' }, fetchImpl: fake, log }
+    const opts = {
+      eventsUrl: 'http://events.test',
+      endpoint: 'http://127.0.0.1:8000/internal/events',
+      secret: SECRET,
+      tokens: { getToken: async () => 'tok' },
+      fetchImpl: fake,
+      log,
+    }
     expect(await ensureRevocationSubscription(opts)).toBe('created')
     expect(await ensureRevocationSubscription(opts)).toBe('exists')
     expect(subs).toEqual([
       { topic_pattern: TOPIC, endpoint: opts.endpoint, secret: SECRET },
       { topic_pattern: MERGE_TOPIC, endpoint: opts.endpoint, secret: SECRET },
-      { topic_pattern: 'network.account.export_requested', endpoint: opts.endpoint, secret: SECRET },
+      {
+        topic_pattern: 'network.account.export_requested',
+        endpoint: opts.endpoint,
+        secret: SECRET,
+      },
       { topic_pattern: 'network.account.deleted', endpoint: opts.endpoint, secret: SECRET },
       { topic_pattern: 'network.mod.grants_changed', endpoint: opts.endpoint, secret: SECRET },
     ])

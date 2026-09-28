@@ -4,7 +4,13 @@ import { createConsoleLogger } from '@openvibe/shared'
 import { describe, expect, it } from 'vitest'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP, placeableByMod, validateContentPack } from './contentPack.js'
 import { ModRegistry, type ModActor } from './registry.js'
-import { CPU_STRIKES, FLOOD_WINDOWS, ModRuntime, ModThrottledError, type ModHost } from './runtime.js'
+import {
+  CPU_STRIKES,
+  FLOOD_WINDOWS,
+  ModRuntime,
+  ModThrottledError,
+  type ModHost,
+} from './runtime.js'
 import { sampleManifest } from './testFixtures.js'
 
 /**
@@ -17,7 +23,10 @@ import { sampleManifest } from './testFixtures.js'
  *   forged ownership   every prop a mod places is owned by that mod, whatever the pack says; an unknown or
  *                      another runtime's principal changes nothing here
  */
-const STAFF: ModActor = { audit: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0', subject: { type: 'user', id: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0' } }
+const STAFF: ModActor = {
+  audit: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0',
+  subject: { type: 'user', id: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0' },
+}
 const content = createContent()
 const log = createConsoleLogger({ app: 'test' }, 'error')
 const A = 'mod_01JABCDEFGHJKMNPQRSTVWXYZA'
@@ -51,13 +60,29 @@ function setup(effectsPerMinute = 60) {
   const clock = { now: () => now, advance: (ms: number) => (now += ms) }
   const store = openSqliteStore(':memory:')
   const registry = new ModRegistry(store, content, undefined, clock.now)
-  const runtime = new ModRuntime(registry, store, content, log, { reconcileEveryTicks: 1, now: clock.now, effectsPerMinute })
+  const runtime = new ModRuntime(registry, store, content, log, {
+    reconcileEveryTicks: 1,
+    now: clock.now,
+    effectsPerMinute,
+  })
   const install = (id: string, pack: unknown, approve: string[], cpuMs = 50) =>
-    registry.install({ manifest: sampleManifest({ id, resources: { cpuMs, memoryMb: 0, storageMb: 0 } }), pack, approve, enable: true }, STAFF)
+    registry.install(
+      {
+        manifest: sampleManifest({ id, resources: { cpuMs, memoryMb: 0, storageMb: 0 } }),
+        pack,
+        approve,
+        enable: true,
+      },
+      STAFF,
+    )
   return { store, registry, runtime, clock, install }
 }
 
-const prop = (key: string, pos: [number, number, number] = [10, 0, 10]) => ({ key, item: 'workbench', pos })
+const prop = (key: string, pos: [number, number, number] = [10, 0, 10]) => ({
+  key,
+  item: 'workbench',
+  pos,
+})
 
 describe('mod security', () => {
   it('namespace escape: a mod reaches only its own placements, through frozen bindings', () => {
@@ -76,12 +101,18 @@ describe('mod security', () => {
     expect(apiA.removeProp('bench')).toBe(true)
     expect([...w.entities.values()].map((e) => e.owner)).toEqual([B])
     expect(apiA.removeProp('bench')).toBe(false)
-    expect(registry.auditLog(B).some((a) => a.action === 'use' && JSON.stringify(a.detail ?? {}).includes('removed'))).toBe(false)
+    expect(
+      registry
+        .auditLog(B)
+        .some((a) => a.action === 'use' && JSON.stringify(a.detail ?? {}).includes('removed')),
+    ).toBe(false)
     // Only inert items: anything with health, storage, a shop, a machine or a vehicle part is refused, at install
     // and at the binding.
     const loot = content.allItems().find((i) => placeableByMod(content, i.id) !== null)
     expect(loot).toBeDefined()
-    expect(validateContentPack({ props: [{ key: 'x', item: loot!.id, pos: [0, 0, 0] }] }, content).ok).toBe(false)
+    expect(
+      validateContentPack({ props: [{ key: 'x', item: loot!.id, pos: [0, 0, 0] }] }, content).ok,
+    ).toBe(false)
     expect(() => apiA.placeProp('x', loot!.id, [0, 0, 0])).toThrow(/not allowed/)
   })
 
@@ -117,7 +148,13 @@ describe('mod security', () => {
       }
     }
     expect(registry.get(A)?.mod.status).toBe('disabled')
-    expect(registry.auditLog(A).some((a) => a.action === 'budget_enforced' && JSON.stringify(a.detail).includes('event_flood'))).toBe(true)
+    expect(
+      registry
+        .auditLog(A)
+        .some(
+          (a) => a.action === 'budget_enforced' && JSON.stringify(a.detail).includes('event_flood'),
+        ),
+    ).toBe(true)
     expect(registry.get(B)?.mod.status).toBe('enabled')
     expect(() => apiA.announce('after')).toThrow()
   })
@@ -141,20 +178,35 @@ describe('mod security', () => {
     expect([...slow.entities.values()].filter((e) => e.owner === A)).toEqual([])
   })
 
-  it('forged ownership: props are the mod\'s whatever the pack says; unknown or foreign principals change nothing', () => {
+  it("forged ownership: props are the mod's whatever the pack says; unknown or foreign principals change nothing", () => {
     const { registry, runtime, install } = setup()
     const w = world()
-    expect(validateContentPack({ props: [{ ...prop('x'), owner: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0' }] }, content).ok).toBe(false)
+    expect(
+      validateContentPack(
+        { props: [{ ...prop('x'), owner: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0' }] },
+        content,
+      ).ok,
+    ).toBe(false)
     install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP])
     runtime.tick(1, w.host)
     expect([...w.entities.values()]).toEqual([{ item: 'workbench', owner: A }])
     // A principal Games does not have, or that another runtime owns, is not applied here.
-    expect(registry.applyNetwork({ mod_id: B, status: 'active', approved: [CAP_PLACE_PROP, CAP_ANNOUNCE] })).toBeNull()
+    expect(
+      registry.applyNetwork({
+        mod_id: B,
+        status: 'active',
+        approved: [CAP_PLACE_PROP, CAP_ANNOUNCE],
+      }),
+    ).toBeNull()
     expect(registry.get(B)).toBeNull()
     // A grant the manifest never requested cannot be applied, even from Network.
     const manifestA = sampleManifest({ id: A, permissions: { capabilities: [CAP_PLACE_PROP] } })
     expect(manifestA.permissions.capabilities).not.toContain('games.world.teleport')
-    registry.applyNetwork({ mod_id: A, status: 'active', approved: [CAP_PLACE_PROP, 'games.world.teleport'] })
+    registry.applyNetwork({
+      mod_id: A,
+      status: 'active',
+      approved: [CAP_PLACE_PROP, 'games.world.teleport'],
+    })
     expect([...(registry.get(A)?.granted ?? [])]).toEqual([CAP_PLACE_PROP])
   })
 })

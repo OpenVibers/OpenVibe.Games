@@ -37,7 +37,16 @@ type ParseDelivery = (
     event_id?: string
     event_type?: string
     source?: string
-    payload?: { subject?: { id?: string } | string; valid_after?: string; merge_id?: string; from?: string; into?: string; export_id?: string; deletion_id?: string; aliases?: unknown }
+    payload?: {
+      subject?: { id?: string } | string
+      valid_after?: string
+      merge_id?: string
+      from?: string
+      into?: string
+      export_id?: string
+      deletion_id?: string
+      aliases?: unknown
+    }
   }
 } | null
 
@@ -49,7 +58,13 @@ const { parseDelivery } = req('openvibe-sdk/events') as { parseDelivery: ParseDe
 export const TOPIC = 'network.user.token_valid_after'
 export const MERGE_TOPIC = 'network.subject.merged'
 export const MOD_GRANTS_TOPIC = 'network.mod.grants_changed'
-export const TOPICS = [TOPIC, MERGE_TOPIC, 'network.account.export_requested', 'network.account.deleted', MOD_GRANTS_TOPIC] as const
+export const TOPICS = [
+  TOPIC,
+  MERGE_TOPIC,
+  'network.account.export_requested',
+  'network.account.deleted',
+  MOD_GRANTS_TOPIC,
+] as const
 const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/
 const MERGE_RE = /^mrg_[0-9A-HJKMNP-TV-Z]{26}$/
 const PATH = '/internal/events'
@@ -67,11 +82,23 @@ export function createRevocationEvents(opts: {
   secrets: string[]
   onRevoked: (subjectId: string, validAfterMs: number) => number
   /** An account merge: move `from`'s characters to `into` (returns what moved; `already` when applied before). */
-  onMerged?: (from: string, into: string, mergeId: string) => { moved: number; kept: number; already: boolean }
+  onMerged?: (
+    from: string,
+    into: string,
+    mergeId: string,
+  ) => { moved: number; kept: number; already: boolean }
   /** Account export or deletion (ADR-033): resolves to the outcome; a rejection is answered 500 and redelivered. */
-  onAccountEvent?: (event: NonNullable<NonNullable<ReturnType<ParseDelivery>>['event']>) => Promise<string>
+  onAccountEvent?: (
+    event: NonNullable<NonNullable<ReturnType<ParseDelivery>>['event']>,
+  ) => Promise<string>
   /** A mod principal changed in Network: make the install's grants match (returns the outcome). */
-  onModGrants?: (payload: { mod_id: string; owner: string; status: string; approved: string[]; revision: number }) => string
+  onModGrants?: (payload: {
+    mod_id: string
+    owner: string
+    status: string
+    approved: string[]
+    revision: number
+  }) => string
   log: Logger
 }): RevocationEvents {
   const store = createRevocationStore(opts.db, { table: 'token_revocations' })
@@ -87,7 +114,11 @@ export function createRevocationEvents(opts: {
       send(res, 405, { error: 'POST only' })
       return true
     }
-    if (req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.headers['cf-connecting-ip']) {
+    if (
+      req.headers['x-forwarded-for'] ||
+      req.headers['x-real-ip'] ||
+      req.headers['cf-connecting-ip']
+    ) {
       send(res, 403, { error: 'internal route' })
       return true
     }
@@ -116,7 +147,10 @@ export function createRevocationEvents(opts: {
       }
       stats.received++
       const event = delivery.event
-      if (event.event_type === 'network.account.export_requested' || event.event_type === 'network.account.deleted') {
+      if (
+        event.event_type === 'network.account.export_requested' ||
+        event.event_type === 'network.account.deleted'
+      ) {
         if (!opts.onAccountEvent) {
           stats.ignored++
           send(res, 200, { event_id: event.event_id ?? null, outcome: 'ignored:no_handler' })
@@ -128,20 +162,41 @@ export function createRevocationEvents(opts: {
             send(res, 200, { event_id: event.event_id ?? null, outcome })
           },
           (err: unknown) => {
-            opts.log.warn('account event failed (Events retries)', { type: event.event_type, error: String((err as Error)?.message ?? err) })
+            opts.log.warn('account event failed (Events retries)', {
+              type: event.event_type,
+              error: String((err as Error)?.message ?? err),
+            })
             send(res, 500, { error: 'not applied' })
           },
         )
         return
       }
       if (event.event_type === MOD_GRANTS_TOPIC) {
-        const p = (event.payload ?? {}) as { mod_id?: unknown; owner?: unknown; status?: unknown; approved?: unknown; revision?: unknown }
+        const p = (event.payload ?? {}) as {
+          mod_id?: unknown
+          owner?: unknown
+          status?: unknown
+          approved?: unknown
+          revision?: unknown
+        }
         let outcome: string
         if (event.source !== 'network') outcome = 'ignored:source'
         else if (!opts.onModGrants) outcome = 'ignored:no_handler'
-        else if (typeof p.mod_id !== 'string' || !Array.isArray(p.approved) || typeof p.status !== 'string') outcome = 'ignored:payload'
+        else if (
+          typeof p.mod_id !== 'string' ||
+          !Array.isArray(p.approved) ||
+          typeof p.status !== 'string'
+        )
+          outcome = 'ignored:payload'
         else if (p.owner !== 'games') outcome = 'ignored:owner'
-        else outcome = opts.onModGrants({ mod_id: p.mod_id, owner: p.owner, status: p.status, approved: p.approved.map(String), revision: Number(p.revision) || 0 })
+        else
+          outcome = opts.onModGrants({
+            mod_id: p.mod_id,
+            owner: p.owner,
+            status: p.status,
+            approved: p.approved.map(String),
+            revision: Number(p.revision) || 0,
+          })
         if (outcome.startsWith('ignored')) stats.ignored++
         send(res, 200, { event_id: event.event_id ?? null, outcome })
         return
@@ -151,11 +206,18 @@ export function createRevocationEvents(opts: {
         let outcome = 'merged'
         if (event.source !== 'network') outcome = 'ignored:source'
         else if (!opts.onMerged) outcome = 'ignored:no_handler'
-        else if (!MERGE_RE.test(String(p.merge_id ?? '')) || !SUBJECT_RE.test(String(p.from ?? '')) || !SUBJECT_RE.test(String(p.into ?? '')) || p.from === p.into) outcome = 'ignored:payload'
+        else if (
+          !MERGE_RE.test(String(p.merge_id ?? '')) ||
+          !SUBJECT_RE.test(String(p.from ?? '')) ||
+          !SUBJECT_RE.test(String(p.into ?? '')) ||
+          p.from === p.into
+        )
+          outcome = 'ignored:payload'
         else {
           const r = opts.onMerged(String(p.from), String(p.into), String(p.merge_id))
           outcome = r.already ? 'unchanged' : 'merged'
-          if (!r.already) opts.log.info('account merged: characters moved', { moved: r.moved, kept: r.kept })
+          if (!r.already)
+            opts.log.info('account merged: characters moved', { moved: r.moved, kept: r.kept })
         }
         if (outcome.startsWith('ignored')) stats.ignored++
         send(res, 200, { event_id: event.event_id ?? null, outcome })
@@ -192,14 +254,24 @@ export async function ensureRevocationSubscription(opts: {
   log: Logger
 }): Promise<'exists' | 'created'> {
   const f = opts.fetchImpl ?? fetch
-  const token = await opts.tokens.getToken({ audience: 'openvibe.events', scope: 'events.subscription.manage' })
+  const token = await opts.tokens.getToken({
+    audience: 'openvibe.events',
+    scope: 'events.subscription.manage',
+  })
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' }
   const list = await f(`${opts.eventsUrl}/api/v1/subscriptions`, { headers })
   if (!list.ok) throw new Error(`Events answered ${list.status} listing subscriptions`)
-  const body = (await list.json()) as { subscriptions?: { id: string; topic_pattern: string; endpoint: string }[] }
+  const body = (await list.json()) as {
+    subscriptions?: { id: string; topic_pattern: string; endpoint: string }[]
+  }
   let created = 0
   for (const topic of TOPICS) {
-    if ((body.subscriptions ?? []).some((s) => s.topic_pattern === topic && s.endpoint === opts.endpoint)) continue
+    if (
+      (body.subscriptions ?? []).some(
+        (s) => s.topic_pattern === topic && s.endpoint === opts.endpoint,
+      )
+    )
+      continue
     const r = await f(`${opts.eventsUrl}/api/v1/subscriptions`, {
       method: 'POST',
       headers: { ...headers, 'content-type': 'application/json' },

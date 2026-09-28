@@ -49,7 +49,8 @@ async function token(): Promise<string> {
     }),
   })
   const body = (await res.json()) as { access_token?: string; error?: string }
-  if (!res.ok || !body.access_token) throw new Error(`no games.mod.manage token: ${res.status} ${body.error ?? ''}`)
+  if (!res.ok || !body.access_token)
+    throw new Error(`no games.mod.manage token: ${res.status} ${body.error ?? ''}`)
   return body.access_token
 }
 
@@ -61,7 +62,10 @@ async function main(): Promise<void> {
       headers: { authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
-    return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> }
+    return {
+      status: res.status,
+      body: (await res.json().catch(() => ({}))) as Record<string, unknown>,
+    }
   }
   const id = `mod_${ulid()}`
   const failures: string[] = []
@@ -73,7 +77,8 @@ async function main(): Promise<void> {
     id,
     name: 'Lifecycle proof',
     version: '1.0.0',
-    description: 'WS-M task 6: install, grant, use, revoke. One inert prop far from spawn; retracted at the end.',
+    description:
+      'WS-M task 6: install, grant, use, revoke. One inert prop far from spawn; retracted at the end.',
     // A publisher is a user or an app; the proof publishes as a synthetic app of its own.
     publisher: { type: 'app', id: `app_${ulid()}` },
     target: 'games.browser',
@@ -85,11 +90,24 @@ async function main(): Promise<void> {
   const pack = { props: [{ key: 'proof-bench', item: 'workbench', pos: [3900, 0, 3900] }] }
 
   let r = await api('POST', '', { manifest, pack, approve: [], enable: true })
-  step('install', r.status === 201 && Array.isArray(r.body.granted) && (r.body.granted as unknown[]).length === 0, `${r.status} ${id} granted=${JSON.stringify(r.body.granted)}`)
+  step(
+    'install',
+    r.status === 201 && Array.isArray(r.body.granted) && (r.body.granted as unknown[]).length === 0,
+    `${r.status} ${id} granted=${JSON.stringify(r.body.granted)}`,
+  )
   r = await api('POST', `/${id}/grants`, { capability: CAP })
-  step('grant', r.status === 200 && JSON.stringify(r.body.granted) === JSON.stringify([CAP]), `${r.status} granted=${JSON.stringify(r.body.granted)}`)
+  step(
+    'grant',
+    r.status === 200 && JSON.stringify(r.body.granted) === JSON.stringify([CAP]),
+    `${r.status} granted=${JSON.stringify(r.body.granted)}`,
+  )
 
-  const audit = async () => ((await api('GET', `/${id}/audit?limit=100`)).body.audit ?? []) as { action: string; capability: string | null; actor: string }[]
+  const audit = async () =>
+    ((await api('GET', `/${id}/audit?limit=100`)).body.audit ?? []) as {
+      action: string
+      capability: string | null
+      actor: string
+    }[]
   let used = false
   for (let i = 0; i < 30 && !used; i++) {
     await new Promise((res) => setTimeout(res, 1000))
@@ -98,7 +116,11 @@ async function main(): Promise<void> {
   step('use', used, used ? 'the runtime placed the prop' : 'no use within 30 s')
 
   r = await api('POST', `/${id}/revoke`, { reason: 'WS-M task 6 lifecycle proof: done' })
-  step('revoke', r.status === 200 && r.body.status === 'revoked', `${r.status} status=${String(r.body.status)}`)
+  step(
+    'revoke',
+    r.status === 200 && r.body.status === 'revoked',
+    `${r.status} status=${String(r.body.status)}`,
+  )
   let retracted = false
   for (let i = 0; i < 30 && !retracted; i++) {
     await new Promise((res) => setTimeout(res, 1000))

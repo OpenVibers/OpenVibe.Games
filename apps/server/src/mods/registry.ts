@@ -60,7 +60,10 @@ export interface ModActor {
 
 export const SYSTEM_ACTOR: ModActor = { audit: 'games', subject: { type: 'service', id: 'games' } }
 /** Changes that come from OpenVibe.Network's mod principal (network.mod.grants_changed). */
-export const NETWORK_ACTOR: ModActor = { audit: 'network', subject: { type: 'service', id: 'network' } }
+export const NETWORK_ACTOR: ModActor = {
+  audit: 'network',
+  subject: { type: 'service', id: 'network' },
+}
 
 export class ModError extends Error {
   constructor(
@@ -311,7 +314,10 @@ export class ModRegistry {
    * a revoked principal revokes the install; otherwise capabilities Network does not approve are revoked here and
    * approved ones this runtime can bind are granted. Unknown installs are ignored. Returns the view, or null.
    */
-  applyNetwork(principal: { mod_id: string; status: string; approved: readonly string[]; revision?: number }, actor: ModActor = NETWORK_ACTOR): ModView | null {
+  applyNetwork(
+    principal: { mod_id: string; status: string; approved: readonly string[]; revision?: number },
+    actor: ModActor = NETWORK_ACTOR,
+  ): ModView | null {
     const view = this.views.get(principal.mod_id)
     if (!view) return null
     // Events can arrive after the API already applied a newer answer: an older (or equal) revision changes nothing.
@@ -319,11 +325,13 @@ export class ModRegistry {
       if (principal.revision <= (this.networkRevision.get(view.mod.id) ?? 0)) return view
       this.networkRevision.set(view.mod.id, principal.revision)
     }
-    if (principal.status === 'revoked') return this.revoke(view.mod.id, actor, 'revoked in OpenVibe.Network')
+    if (principal.status === 'revoked')
+      return this.revoke(view.mod.id, actor, 'revoked in OpenVibe.Network')
     if (view.mod.status === 'revoked') return view
     const approved = new Set(principal.approved)
     let current = view
-    for (const cap of [...current.granted]) if (!approved.has(cap)) current = this.revokeGrant(view.mod.id, cap, actor)
+    for (const cap of [...current.granted])
+      if (!approved.has(cap)) current = this.revokeGrant(view.mod.id, cap, actor)
     for (const cap of approved) {
       if (current.granted.has(cap)) continue
       try {
