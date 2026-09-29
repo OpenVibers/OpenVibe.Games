@@ -302,6 +302,7 @@ export const ClientMessageSchema = z.union([
 ])
 
 export type ClientHello = z.infer<typeof ClientHelloSchema>
+export type ClientEditMode = z.infer<typeof ClientEditModeSchema>
 export type ClientInput = z.infer<typeof ClientInputSchema>
 export type ClientUse = z.infer<typeof ClientUseSchema>
 export type ClientAttack = z.infer<typeof ClientAttackSchema>
