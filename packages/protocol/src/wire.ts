@@ -16,16 +16,6 @@ export type WireVec3 = [number, number, number]
 /** [x, y, z, w] unit quaternion. */
 export type WireQuat = [number, number, number, number]
 
-/** Input button bitfield. */
-export const Buttons = {
-  Jump: 1 << 0,
-  Crouch: 1 << 1,
-  Sprint: 1 << 2,
-  Use: 1 << 3,
-  Attack: 1 << 4,
-  Prone: 1 << 5,
-} as const
-
 /** How a wire entity should be represented client-side. */
 export type WireEntityKind = 'player' | 'prop' | 'resource' | 'npc'
 

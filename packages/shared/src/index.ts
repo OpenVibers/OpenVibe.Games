@@ -1,4 +1,5 @@
 export * from './ids.js'
+export * from './intents.js'
 export * from './math/vec3.js'
 export * from './math/quat.js'
 export * from './math/scalar.js'

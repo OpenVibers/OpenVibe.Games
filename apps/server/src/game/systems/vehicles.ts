@@ -2,6 +2,7 @@ import type { GameEntity } from '@openvibe/gameplay'
 import { qfromYaw, qrotateVec, v3dist, vec3 } from '@openvibe/shared'
 import type { PlayerSession } from '../playerSession.js'
 import type { ServerContext } from './context.js'
+import { applyLookInput } from './movement.js'
 import type { System } from './system.js'
 
 const _bodyPosScratch = vec3()
@@ -105,9 +106,8 @@ export class VehicleSystem implements System {
       input = session.inputQueue.shift()!
       session.lastInput = input
       session.lastProcessedSeq = input.seq
-      session.yaw = input.yaw
-      session.pitch = input.pitch
-      session.buttons = input.buttons
+      applyLookInput(session, input)
+      session.buttons = input.intents
     }
     const nowMs = Date.now()
     // Fuel: burn items from the trunk while driving.

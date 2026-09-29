@@ -4,10 +4,11 @@ import {
   hullHeightFor,
   stepMovement,
   type CollisionQueries,
+  type MoveInput,
 } from '@openvibe/gameplay'
 import { CollisionLayer, type BodyId } from '@openvibe/physics'
 import type { ClientEditMode, ClientInput } from '@openvibe/protocol'
-import { qfromYaw, vec3 } from '@openvibe/shared'
+import { clamp, dequantiseAngle, qfromYaw, vec3, wrapAngle } from '@openvibe/shared'
 import { canEditMap } from '../../net/networkAuth.js'
 import type { PlayerSession } from '../playerSession.js'
 import type { ServerContext } from './context.js'
@@ -16,8 +17,29 @@ import type { HandlerMap, System } from './system.js'
 export const MOVE = DEFAULT_MOVEMENT
 /** Bounded input queue: the cap stops a client from buying simulation speed with backlog. */
 export const MAX_INPUT_QUEUE = 6
-
 const _bodyPosScratch = vec3()
+
+/**
+ * Apply a client's absolute, quantised view angles (ADR-0007 decision 3). Look is the client's: the
+ * server takes the angles as sent, like client prediction does, so the two integrate identical
+ * values. Yaw stays wrapped to one turn and pitch is clamped to ±90°; the wire schema already bounds
+ * both.
+ */
+export function applyLookInput(session: PlayerSession, input: ClientInput): void {
+  session.yaw = wrapAngle(dequantiseAngle(input.yawQ))
+  session.pitch = clamp(dequantiseAngle(input.pitchQ), -Math.PI / 2, Math.PI / 2)
+}
+
+/** A client command as the movement sim's input, reading the session's applied view. */
+function toMoveInput(session: PlayerSession, input: ClientInput): MoveInput {
+  return {
+    moveX: input.moveX,
+    moveZ: input.moveZ,
+    yaw: session.yaw,
+    pitch: session.pitch,
+    buttons: input.intents,
+  }
+}
 
 /**
  * Authoritative movement: queued input commands become positions, the kinematic capsule follows,
@@ -90,10 +112,9 @@ export class MovementSystem implements System {
       session.lastInput = input
       session.starvedTicks = 0
       session.lastProcessedSeq = input.seq
-      session.yaw = input.yaw
-      session.pitch = input.pitch
-      session.buttons = input.buttons
-      stepMovement(session.move, input, MOVE, this.moveQueries, dt)
+      applyLookInput(session, input)
+      session.buttons = input.intents
+      stepMovement(session.move, toMoveInput(session, input), MOVE, this.moveQueries, dt)
       simulated++
     }
     if (simulated === 0 && session.lastInput) {
@@ -105,7 +126,7 @@ export class MovementSystem implements System {
       // longer than 3 ticks made the server flap stances endlessly.
       const input =
         session.starvedTicks <= 3 ? session.lastInput : { ...session.lastInput, moveX: 0, moveZ: 0 }
-      stepMovement(session.move, input, MOVE, this.moveQueries, dt)
+      stepMovement(session.move, toMoveInput(session, input), MOVE, this.moveQueries, dt)
     }
     let bodyId = ctx.sessions.bodyOf(session.playerId)
     if (bodyId !== undefined && session.bodyStance !== session.move.stance) {

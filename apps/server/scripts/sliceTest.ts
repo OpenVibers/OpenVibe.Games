@@ -28,6 +28,7 @@ import {
   type WireSkill,
 } from '@openvibe/protocol'
 import { encodeHeights } from '@openvibe/content'
+import { quantiseAngle } from '@openvibe/shared'
 
 const PORT = 18123
 const URL = `ws://127.0.0.1:${PORT}/ws`
@@ -331,8 +332,16 @@ class TestClient {
     })
   }
 
-  input(moveX: number, moveZ: number, yaw: number, buttons = 0, pitch = 0): void {
-    this.send({ t: 'input', seq: ++this.seq, moveX, moveZ, yaw, pitch, buttons })
+  input(moveX: number, moveZ: number, yaw: number, intents = 0, pitch = 0): void {
+    this.send({
+      t: 'input',
+      seq: ++this.seq,
+      moveX,
+      moveZ,
+      yawQ: quantiseAngle(yaw),
+      pitchQ: quantiseAngle(pitch),
+      intents,
+    })
   }
 
   /** Sends a use and waits for its result. */
@@ -1225,6 +1234,16 @@ async function main(): Promise<void> {
     const generatorEnt = [...a.entities.values()].find((e) => e.def === 'scrap_generator')
     assert(sawmillEnt && generatorEnt, 'authored production yard replicated')
     assert(a.count('wood_log') >= 2, `has logs to process (${a.count('wood_log')})`)
+    // The cart just driven can settle across the straight line to the sawmill: first walk down the
+    // side the rider got off on, past the cart's tail, then on to the sawmill.
+    const cart = [...a.entities.values()].find((e) => e.def === 'cart_chassis')
+    if (cart && a.me) {
+      const side = a.me.pos[0] >= cart.pos[0] ? 1 : -1
+      await walkPath(a, [
+        [cart.pos[0] + side * 3.5, a.me.pos[2]],
+        [cart.pos[0] + side * 3.5, cart.pos[2] - 4],
+      ])
+    }
     await walkTo(a, sawmillEnt.pos[0] - 1.5, sawmillEnt.pos[2] - 1.5)
     await settle(a)
     // Load a log into the sawmill input.
@@ -1635,9 +1654,14 @@ async function main(): Promise<void> {
       }
     }
     assert(lootProp, 'thug death scattered loot')
+    // The scattered prop is dynamic and may land beyond hand reach (4 m from the eye): let it settle,
+    // then walk up to where it is now before picking it up.
     await sleep(700)
+    const loot = a.entities.get(lootProp.id) ?? lootProp
+    await walkTo(a, loot.pos[0], loot.pos[2])
+    await settle(a)
     const grab = await a.use(lootProp.id)
-    assert(grab.ok, 'loot recovered')
+    assert(grab.ok, `loot recovered (${grab.error ?? 'ok'})`)
     await pollUntil(() => a.count('scrap_metal') > scrapBefore)
     assert(a.count('scrap_metal') > scrapBefore, 'loot in inventory')
     // Walk back toward the north gate for the remaining phases.

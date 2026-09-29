@@ -2,7 +2,6 @@ import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera.js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import {
-  Buttons,
   DEFAULT_MOVEMENT,
   createMoveState,
   eyeOffsetFor,
@@ -13,9 +12,12 @@ import {
 } from '@openvibe/gameplay'
 import { CollisionLayer, type PhysicsWorld } from '@openvibe/physics'
 import type { ClientInput, ServerSnapshot } from '@openvibe/protocol'
+import { clamp, dequantiseAngle, quantiseAngle } from '@openvibe/shared'
 import type { Connection } from '../net/connection.js'
-import type { InputTracker } from '../input/inputTracker.js'
+import type { InputSource } from '../input/inputSource.js'
 import type { ClientState } from '../state/clientState.js'
+
+const HALF_PI = Math.PI / 2
 
 /**
  * Client-side prediction of the local player.
@@ -53,7 +55,7 @@ export class LocalPlayer {
   constructor(
     scene: Scene,
     private readonly physics: PhysicsWorld,
-    private readonly input: InputTracker,
+    private readonly input: InputSource,
     private readonly connection: Connection,
     private readonly state: ClientState,
     spawn: { x: number; y: number; z: number },
@@ -88,22 +90,16 @@ export class LocalPlayer {
 
   /** One fixed simulation tick: capture, send, predict. */
   fixedUpdate(): void {
-    const buttons =
-      (this.input.keyDown('Space') ? Buttons.Jump : 0) |
-      (this.input.keyDown('ShiftLeft') ? Buttons.Sprint : 0) |
-      (this.input.keyDown('ControlLeft') || this.input.keyDown('KeyC') ? Buttons.Crouch : 0) |
-      (this.input.keyDown('KeyZ') ? Buttons.Prone : 0)
-    const moveX = (this.input.keyDown('KeyD') ? 1 : 0) - (this.input.keyDown('KeyA') ? 1 : 0)
-    const moveZ = (this.input.keyDown('KeyW') ? 1 : 0) - (this.input.keyDown('KeyS') ? 1 : 0)
+    const sample = this.input.sample()
 
     const cmd: ClientInput = {
       t: 'input',
       seq: ++this.seq,
-      moveX,
-      moveZ,
-      yaw: this.input.yaw,
-      pitch: this.input.pitch,
-      buttons,
+      moveX: sample.moveX,
+      moveZ: sample.moveZ,
+      yawQ: quantiseAngle(sample.yaw),
+      pitchQ: quantiseAngle(clamp(sample.pitch, -HALF_PI, HALF_PI)),
+      intents: sample.intents,
     }
     this.connection.send(cmd)
     this.pending.push(cmd)
@@ -125,12 +121,14 @@ export class LocalPlayer {
   }
 
   private applyInput(cmd: ClientInput): void {
+    // Prediction integrates exactly what the server will: the dequantised
+    // angles, not the raw device values.
     const input: MoveInput = {
       moveX: cmd.moveX,
       moveZ: cmd.moveZ,
-      yaw: cmd.yaw,
-      pitch: cmd.pitch,
-      buttons: cmd.buttons,
+      yaw: dequantiseAngle(cmd.yawQ),
+      pitch: dequantiseAngle(cmd.pitchQ),
+      buttons: cmd.intents,
     }
     stepMovement(this.move, input, MOVE, this.queries, 1 / this.state.tickRate)
   }

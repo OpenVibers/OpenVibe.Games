@@ -1,9 +1,13 @@
-/** Input button bitfield — mirrors @openvibe/protocol Buttons; gameplay stays protocol-free. */
-export const Buttons = {
-  Jump: 1 << 0,
-  Crouch: 1 << 1,
-  Sprint: 1 << 2,
-  Use: 1 << 3,
-  Attack: 1 << 4,
-  Prone: 1 << 5,
-} as const
+/**
+ * Input intent bitfield. The single definition lives in @openvibe/shared
+ * (protocol + gameplay + M2 touch); `Buttons` stays the movement layer's
+ * alias so the simulation keeps reading button bits.
+ */
+export {
+  Intents,
+  Intents as Buttons,
+  INTENTS_VERSION,
+  intentMask,
+  hasIntent,
+  type IntentName,
+} from '@openvibe/shared'

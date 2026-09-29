@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ANGLE_Q_MAX, ANGLE_Q_MIN, PITCH_Q_MAX, intentMask } from '@openvibe/shared'
 import { AppearanceSchema } from '../appearance.js'
 
 /**
@@ -33,9 +34,20 @@ export const ClientInputSchema = z.object({
   seq: z.number().int().nonnegative(),
   moveX: z.number().min(-1).max(1),
   moveZ: z.number().min(-1).max(1),
-  yaw: z.number().finite(),
-  pitch: z.number().finite(),
-  buttons: z.number().int().nonnegative(),
+  /** Absolute view yaw, quantised to int16 (1/65536 of a turn). */
+  yawQ: z.number().int().min(ANGLE_Q_MIN).max(ANGLE_Q_MAX),
+  /** Absolute view pitch, quantised to int16; ±90° is the clamp. */
+  pitchQ: z.number().int().min(-PITCH_Q_MAX).max(PITCH_Q_MAX),
+  /**
+   * Named action bits (see @openvibe/shared Intents). A bit outside
+   * intentMask is refused — the client may only express known actions.
+   */
+  intents: z
+    .number()
+    .int()
+    .min(0)
+    .max(0x7fffffff)
+    .refine((n) => (n & ~intentMask) === 0, { message: 'unknown intent bit' }),
 })
 
 /** Interact with a world entity (gather a resource, open a container...). */

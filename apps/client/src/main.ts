@@ -21,6 +21,7 @@ import { WATER_LEVEL } from '@openvibe/content'
 import { InteractionController } from './game/interactionController.js'
 import { LocalPlayer } from './game/localPlayer.js'
 import { InputTracker } from './input/inputTracker.js'
+import { KeyboardInputSource } from './input/inputSource.js'
 import { Connection, gameSocketUrl, getIdentity, saveName } from './net/connection.js'
 import { BeamRenderer, type BeamState } from './render/beams.js'
 import { EntityView } from './render/entityView.js'
@@ -171,7 +172,7 @@ async function start(): Promise<void> {
   const hud = new Hud(uiRoot, state, content, connection, icons, weaponSettings)
 
   const world = content.world
-  const player = new LocalPlayer(scene, physics, input, connection, state, {
+  const player = new LocalPlayer(scene, physics, new KeyboardInputSource(input), connection, state, {
     x: world.spawnPoint[0],
     y: world.spawnPoint[1],
     z: world.spawnPoint[2],
