@@ -113,8 +113,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
     const key = editorKey()
     // Persist only a hand-typed override token — never the SSO session,
     // which lives in ovg_sso and is resolved fresh on every request.
-    const manual =
-      (document.getElementById('key') as HTMLInputElement | null)?.value.trim() ?? ''
+    const manual = (document.getElementById('key') as HTMLInputElement | null)?.value.trim() ?? ''
     localStorage.setItem('openvibe.editorkey', manual)
     setMessage('saving…')
     await uploadDirtyMasks()
@@ -262,8 +261,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
         setMessage('⛔ that file is not JSON')
         return
       }
-      // v1 migrates, v2 validates; either way the issues are reported BEFORE
-      // anything local is replaced.
+      // The document is validated BEFORE anything local is replaced.
       const parsed = parseMapFile(raw)
       if (!parsed.ok) {
         setMessage(`⛔ import rejected: ${parsed.issues.slice(0, 3).join('; ')}`)
@@ -272,9 +270,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
       if (isDirty() && !confirm('Replace your unsaved work with the imported map?')) return
       opts.onAdopt(parsed.map)
       nonHistoryDirt = true
-      setMessage(
-        parsed.migrated ? '📥 imported (migrated from v1)' : '📥 imported — Save to publish',
-      )
+      setMessage('📥 imported — Save to publish')
       notify()
     },
     conflict: () => ({ open: conflictOpen, summary: conflictSummary }),

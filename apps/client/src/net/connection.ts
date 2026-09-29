@@ -33,11 +33,21 @@ export class Connection {
       // An upgrade sent while the server restarts can wait with no answer (the proxy holds it):
       // give up after CONNECT_TIMEOUT_MS so the page can wait for the server and reload instead.
       const timer = setTimeout(() => {
-        try { ws.close() } catch { /* already closing */ }
+        try {
+          ws.close()
+        } catch {
+          /* already closing */
+        }
         reject(new Error('connection timed out'))
       }, CONNECT_TIMEOUT_MS)
-      ws.onopen = () => { clearTimeout(timer); resolve() }
-      ws.onerror = () => { clearTimeout(timer); reject(new Error('connection failed')) }
+      ws.onopen = () => {
+        clearTimeout(timer)
+        resolve()
+      }
+      ws.onerror = () => {
+        clearTimeout(timer)
+        reject(new Error('connection failed'))
+      }
     })
     ws.onmessage = (event) => {
       const msg = decodeServerMessage(String(event.data))
@@ -68,21 +78,20 @@ export class Connection {
 
 /** Persistent anonymous identity (interim auth — see ADR-0004). */
 /**
- * Guest identity token: localStorage primary, a long-lived cookie as
- * backup (survives localStorage wipes), and the server additionally maps
- * the token to the client IP — three chances to keep a guest's scrapper.
+ * Guest identity token: localStorage primary, a long-lived cookie as backup
+ * (survives localStorage wipes).
  */
 export function getIdentity(): { token: string; name: string | null } {
   const cookieTok = document.cookie
     .split('; ')
-    .find((c) => c.startsWith('hq_token='))
-    ?.slice('hq_token='.length)
+    .find((c) => c.startsWith('openvibe.token='))
+    ?.slice('openvibe.token='.length)
   let token = localStorage.getItem('openvibe.token') ?? cookieTok ?? null
   if (!token || !/^[a-z0-9]{8,64}$/i.test(token)) {
     token = crypto.randomUUID().replaceAll('-', '').slice(0, 32)
   }
   localStorage.setItem('openvibe.token', token)
-  document.cookie = `hq_token=${token}; Path=/; Max-Age=${400 * 86400}; SameSite=Lax`
+  document.cookie = `openvibe.token=${token}; Path=/; Max-Age=${400 * 86400}; SameSite=Lax`
   return { token, name: localStorage.getItem('openvibe.name') }
 }
 

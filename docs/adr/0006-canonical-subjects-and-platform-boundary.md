@@ -1,6 +1,7 @@
 # ADR-0006: Canonical Network subjects, and the platform boundary
 
-**Status:** accepted · **Date:** 2026-09-22 · partly supersedes ADR-0004
+**Status:** accepted, identity adoption superseded by ADR-0007 (the `ovn:` adoption, `migrateIdentity.ts` and
+`identity_legacy_map` described in 1. are deleted) · **Date:** 2026-09-22 · partly supersedes ADR-0004
 
 ## Decision
 

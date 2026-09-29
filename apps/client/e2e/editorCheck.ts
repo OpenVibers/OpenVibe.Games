@@ -960,39 +960,25 @@ await withMap(
 )
 
 // ════════════════════════════════════════════════════════════════════════
-section('N. v1 migration smoke — old maps still load')
+section('N. A v1 map is not a map — the editor opens empty')
 {
-  const v1flat = new Float32Array((SUB + 1) * (SUB + 1)).fill(1.5)
-  const v1b64 = Buffer.from(
-    new Uint8Array(v1flat.buffer, v1flat.byteOffset, v1flat.byteLength),
-  ).toString('base64')
   await withMap(
     PORT + 2,
     {
       v: 1,
       halfExtent: HALF,
       sub: SUB,
-      heights: v1b64,
+      heights: '',
       statics: [
         { shape: { type: 'box', size: [4, 4, 4] }, pos: [6, 2, 0], yaw: 0, color: '#c04040' },
       ],
     },
     async (pg) => {
+      // Map v2 is the only format (ADR-0007): nothing converts an old document.
       const ids = await probeOf(pg, (p) => p.terrainIds())
-      // The old privileged heightfield is now ONE ordinary terrain object.
-      ok('the v1 main heightfield became an ordinary terrain', ids.includes('terrain-v1-main'), ids)
-      ok('exactly one terrain came across', ids.length === 1, ids)
+      ok('no terrain was made from the v1 document', ids.length === 0, ids)
       const counts = await probeOf(pg, (p) => p.objectCounts())
-      ok('the v1 static came across', counts['statics'] === 1, counts)
-      // Nothing treats the migrated terrain as special: it selects like any
-      // other object, under its real id.
-      await probeOf(pg, (p) => p.setToolByName('select'))
-      await probeOf(pg, (p) => p.selectByIds(['terrain-v1-main']))
-      ok(
-        'it selects under its real id, with no "main" special case',
-        (await probeOf(pg, (p) => p.selectionIds())).includes('terrain-v1-main'),
-        await probeOf(pg, (p) => p.selectionIds()),
-      )
+      ok('no static came across', counts['statics'] === 0, counts)
     },
   )
 }

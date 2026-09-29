@@ -3,8 +3,7 @@
  * (headless Havok, real SQLite file, protocol-level connections), across a
  * restart:
  *
- *  - a signed-in player is keyed by the canonical subject, and a character
- *    from before subjects (`ovn:<id>`) is adopted with the same player id;
+ *  - a signed-in player is keyed by the canonical subject;
  *  - a guest presenting an account key as its token is refused;
  *  - a mod's props enter the world through the runtime seam, a denied
  *    capability never takes effect, and a revoked mod's props are gone on
@@ -58,7 +57,6 @@ const dbPath = join(dir, 'world.db')
 const config = loadConfig({
   DB_PATH: dbPath,
   MAP_PATH: join(dir, 'map.json'),
-  GUEST_IP_BINDING: 'off',
   OV_NETWORK_AUTH_URL: 'http://network.test/api/auth/me',
 })
 let havok: unknown
@@ -130,7 +128,6 @@ function connect(game: GameServer) {
   const inbox: ServerMessage[] = []
   let closed: { code: number; reason: string } | null = null
   const conn: GameConnection = {
-    ip: '127.0.0.1',
     send: (text) => inbox.push(JSON.parse(text) as ServerMessage),
     close: (code, reason) => {
       closed = { code, reason }
@@ -167,51 +164,28 @@ describe('Games on platform identity, events and mods (real server, restart)', (
       },
     },
   })
-  let legacyPlayerId = ''
+  let signedInPlayerId = ''
   let timeBefore = ''
 
   it('runs identity, mods and events against the live world', async () => {
-    // A character from before canonical subjects, keyed by the Network user id.
-    {
-      const seed = openSqliteStore(dbPath)
-      seed.players.upsert({
-        id: 'pl_legacy_57',
-        token: 'ovn:57',
-        name: 'Ana',
-        pos: [3, 2, 3],
-        yaw: 0,
-        inventory: { size: 24, hotbar: 6, slots: [] },
-        skills: { mining: 40 },
-        friends: [],
-        appearance: null,
-        charSlot: 0,
-        armor: null,
-        reputation: {},
-        unlocks: [],
-        activeJob: null,
-        stats: null,
-        updatedAt: 1,
-      })
-      seed.close()
-      legacyPlayerId = 'pl_legacy_57'
-    }
     const a = boot(platform)
 
     // A guest cannot claim an account key as its token.
     const intruder = connect(a.game)
-    const refused = await intruder.hello('ovn:57')
+    const refused = await intruder.hello(SUBJECT)
     expect(refused.welcome).toBeUndefined()
     expect(refused.closed).toEqual({ code: 4007, reason: 'invalid_guest_token' })
 
-    // The signed-in player lands on the adopted legacy character.
+    // The signed-in player is keyed by the canonical subject.
     const ana = connect(a.game)
     const joined = await ana.hello('abcdefgh12', 'tok-ana')
-    expect(joined.welcome).toMatchObject({ t: 'welcome', playerId: legacyPlayerId })
-    expect(a.store.players.findById(legacyPlayerId)).toMatchObject({
+    expect(joined.welcome).toBeDefined()
+    signedInPlayerId = (joined.welcome as { playerId: string }).playerId
+    a.game.flush()
+    expect(a.store.players.findById(signedInPlayerId)).toMatchObject({
       token: SUBJECT,
       subjectId: SUBJECT,
     })
-    expect(a.store.identity.subjectForLegacy('ovn:57')).toBe(SUBJECT)
 
     // Mod A: props granted, announcements requested but denied.
     a.registry.install(
@@ -292,9 +266,8 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     // The account comes back to the same character, by subject.
     const ana = connect(b.game)
     const again = await ana.hello('zyxwvut98', 'tok-ana')
-    expect(again.welcome).toMatchObject({ playerId: legacyPlayerId })
-    expect(b.store.players.listByToken(SUBJECT).map((p) => p.id)).toEqual([legacyPlayerId])
-    expect(b.store.players.listByToken('ovn:57')).toEqual([])
+    expect(again.welcome).toMatchObject({ playerId: signedInPlayerId })
+    expect(b.store.players.listByToken(SUBJECT).map((p) => p.id)).toEqual([signedInPlayerId])
     b.game.onDisconnect(ana.conn)
     b.game.shutdown()
     await b.outbox.stop()

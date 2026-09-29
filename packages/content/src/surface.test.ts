@@ -6,7 +6,6 @@ import {
   emptySurface,
   freeChannel,
   layerForTexture,
-  migrateLegacyMix,
   removeLayer,
   validateSurface,
   type SurfacePaint,
@@ -131,24 +130,6 @@ describe('base texture survives painting', () => {
     surface.paint = allocateLayer(surface.paint, 'custom:moss_b', makeId)!.paint
     expect(surface.base.tex).toBe('custom:sand')
     expect(surface.paint.layers.map((l) => l.tex)).toEqual(['custom:brick_a', 'custom:moss_b'])
-  })
-})
-
-describe('legacy migration', () => {
-  it('maps the old grass/rock/mud splat onto channels r/g/b', () => {
-    const paint = migrateLegacyMix('data:image/png;base64,AAA', makeId)!
-    expect(paint.mask).toBe('data:image/png;base64,AAA')
-    expect(paint.layers.map((l) => [l.tex, l.channel])).toEqual([
-      ['leafy_grass', 'r'],
-      ['gray_rocks', 'g'],
-      ['brown_mud_dry', 'b'],
-    ])
-    // The alpha channel stays free for a newly painted texture.
-    expect(freeChannel(paint)).toBe('a')
-  })
-
-  it('an unpainted legacy surface migrates to no paint at all', () => {
-    expect(migrateLegacyMix(undefined, makeId)).toBeUndefined()
   })
 })
 

@@ -137,8 +137,8 @@ describe('sqlite store', () => {
     expect(player?.skills).toEqual({})
     expect(player?.friends).toEqual([])
     expect(player?.appearance).toBeNull()
-    // constraints table exists and works post-migration (incl. the v8
-    // params column)
+    // constraints table exists and works post-migration (incl. the params
+    // column added by a later step)
     store.constraints.upsertMany([
       { id: 'c1', type: 'weld', entityA: 'x', entityB: 'y', params: null, updatedAt: 1 },
       {
@@ -153,14 +153,8 @@ describe('sqlite store', () => {
     const loaded = store.constraints.loadAll()
     expect(loaded).toHaveLength(2)
     expect(loaded.find((c) => c.id === 'c2')?.params).toEqual({ length: 2 })
-    expect(store.meta.get('schema_version')).toBe('13')
-    // v13 legacy archive table exists.
-    expect(
-      store.db
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='legacy_live_rows'")
-        .get(),
-    ).toBeTruthy()
-    // v9 armor column round-trips.
+    expect(store.meta.get('schema_version')).toBe('11')
+    // The armor column round-trips.
     store.players.upsert({
       ...store.players.findByToken('tok_11111111')!,
       armor: { defId: 'padded_jacket', count: 1, meta: { dur: 5 } },

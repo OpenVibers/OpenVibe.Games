@@ -77,7 +77,6 @@ function startServer(): Promise<void> {
         ...process.env,
         PORT: String(PORT),
         DB_PATH: dbPath,
-        GUEST_IP_BINDING: 'off',
         EVENT_INTERVAL_SCALE: '0.05',
         MAP_PATH: mapPath,
       },

@@ -128,15 +128,6 @@ describe('real routes on the apex', () => {
     expect(r.body).toContain(marker)
   })
 
-  it.each([
-    ['/game', '/play'],
-    ['/canvas', '/'],
-  ])('%s (the old OpenVibe.Live URL) redirects to %s', async (path, location) => {
-    const r = await send(path)
-    expect(r.status).toBe(301)
-    expect(r.headers.location).toBe(location)
-  })
-
   it('serves hashed build assets as immutable, and public files', async () => {
     const asset = await send(ASSET)
     expect(asset.status).toBe(200)
@@ -258,14 +249,11 @@ describe('play.openvibe.games', () => {
     expect(r.body).toContain('game page')
   })
 
-  it.each(['/play', '/play/', '/play.html', '/game', '/canvas'])(
-    '%s redirects to /',
-    async (path) => {
-      const r = await send(path, { host: PLAY })
-      expect(r.status).toBe(301)
-      expect(r.headers.location).toBe('/')
-    },
-  )
+  it.each(['/play', '/play/', '/play.html'])('%s redirects to /', async (path) => {
+    const r = await send(path, { host: PLAY })
+    expect(r.status).toBe(301)
+    expect(r.headers.location).toBe('/')
+  })
 
   it('serves the editor, assets, map and health like the apex', async () => {
     expect((await send('/editor', { host: PLAY })).body).toContain('editor page')

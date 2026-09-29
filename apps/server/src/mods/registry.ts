@@ -53,7 +53,7 @@ export const TRUST_TIERS: readonly ModTrustTier[] = ['unreviewed', 'reviewed', '
 
 /** Who performed a registry change: an audit string and an event actor. */
 export interface ModActor {
-  /** `usr_…`, `ovn:<id>` for a pre-subject staff token, or `svc:<client>`. */
+  /** `usr_…`, a Network user id, or `svc:<client>`. */
   audit: string
   subject: SubjectRef
 }

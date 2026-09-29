@@ -14,7 +14,7 @@ WebSocket protocol · SQLite persistence · pnpm monorepo.
 ## Owns
 
 - the game: the authoritative simulation, the world, characters, inventories, skills, blueprints and
-  props, in `world.db` (SQLite, forward-only migrations; `SCHEMA_VERSION` 13)
+  props, in `world.db` (SQLite, forward-only migrations; `SCHEMA_VERSION` 11)
 - the map editor and its assets, the mod registry (`games-content@1` packs, grants, audit) and the
   `games.*` events
 - the game WebSocket protocol and the portal, `/play` and `/editor` pages
@@ -109,8 +109,7 @@ STATIC_DIR=apps/client/dist PORT=8000 DB_PATH=data/world.db pnpm --filter @openv
 
 The server serves the built client, `/healthz` (liveness), `/api/ready`, `/metrics`, and the game
 WebSocket on one port. Pages are `/` (portal), `/play` and `/editor`; on play.openvibe.games `/` is
-the game and `/play` redirects there. `/game` and `/canvas` (the URLs from when the game lived on
-OpenVibe.Live) redirect to `/play` and `/`. Any other path that is neither a file of the build nor a route
+the game and `/play` redirects there. Any other path that is neither a file of the build nor a route
 answers 404 (an HTML page with links to those pages; `{"error":"not_found"}` under `/api`; plain text
 for a missing asset), never the portal with a 200. `/api/ready` is 200 only while `world.db` answers a query and the simulation
 has ticked within the last 5 s, otherwise 503 naming the failed check (`status`
@@ -124,8 +123,7 @@ play.openvibe.games Host-routes to the same process).
 
 Deploy on the host with `sudo /opt/openvibe.games/deploy/scripts/deploy.sh`, which runs
 `ovhost deploy games` (OpenVibe.Host, strategy `pnpm-build`; roadmap WS-N task 11): a fast-forward pull as
-the checkout owner (the tracked `dist-types/` a previous build rewrote is restored first),
-`pnpm install --frozen-lockfile`, every workspace package's dependencies checked, `pnpm build`,
+the checkout owner, `pnpm install --frozen-lockfile`, every workspace package's dependencies checked, `pnpm build`,
 better-sqlite3 loaded under the host's Node, the restart, `/api/ready`, and on failure the checkout
 restored, reinstalled and rebuilt and the server restarted again. Players online are reported and
 reconnect; `--wait-idle` holds the restart until nobody plays, `--rollback` runs `ovhost rollback games`,
@@ -146,10 +144,9 @@ Games integrates with the rest of OpenVibe at its service boundary only
 do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects-and-platform-boundary.md).
 
 - **Identity.** Signed-in players are keyed by their canonical
-  openvibe.network subject (`usr_…`/`gst_…`, the token's `subject_id`).
-  Characters created under the old `ovn:<network id>` key are adopted on the
-  next sign-in, or in bulk with `apps/server/scripts/migrateIdentity.ts`
-  (`--dry-run` first). Guest tokens that look like account keys (`ovn:…`, `usr_…`) are refused.
+  openvibe.network subject (`usr_…`/`gst_…`, the token's `subject_id`); a
+  token without one cannot name an account. Guest tokens that look like
+  account keys (`usr_…`) are refused.
 - **Service principal.** Calls to Events, Media and Network identity carry a
   client-credentials token of the `games` OAuth client (same client id and
   secret as SSO), one per audience. There are no shared keys. The SSO calls
@@ -188,10 +185,6 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
 - **In production (2026-09-23, release `f11e21c`):** events and the Media
   mirror are on. `games.world.saved` events reach OpenVibe.Events; no mod is
   installed, no grant exists and no asset has been mirrored to Media yet.
-  Player progress and canvas rows from Live's old HoboQuest tables have not
-  been imported yet. The decisions, the importer
-  (`apps/server/scripts/importLiveLegacy.ts`, dry run by default) and the
-  host commands are in [docs/legacy-import.md](docs/legacy-import.md).
 - **Shared chrome.** The portal, `/play` and `/editor` load the OpenVibe Frame
   (navbar, footer, theme loader) from this server's own pinned copy at `/shared/`
   (`apps/server/src/net/sharedAssets.ts`), so they keep their frame while Network is down.

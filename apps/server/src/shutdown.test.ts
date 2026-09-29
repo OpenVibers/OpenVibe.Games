@@ -74,7 +74,6 @@ describe('SIGTERM', () => {
         DB_PATH: join(dir, 'world.db'),
         MAP_PATH: join(dir, 'map.json'),
         STATIC_DIR: '',
-        GUEST_IP_BINDING: 'off',
         // The platform side on, pointed at nothing: the outbox exists and has to be stopped.
         OV_OAUTH_CLIENT_SECRET: 'test-secret-not-real',
         OV_NETWORK_INTERNAL_URL: 'http://127.0.0.1:9',

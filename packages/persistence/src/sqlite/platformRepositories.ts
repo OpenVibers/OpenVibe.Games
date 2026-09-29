@@ -12,63 +12,38 @@ import type {
 import type { IdentityRepository, MediaMirrorRepository, ModRepository } from '../repositories.js'
 
 /**
- * SQLite repositories for the platform-integration tables (schema 12+): the
- * legacy identity map, the mod registry and the Media mirror queue. The game
- * simulation never touches these; apps/server's platform adapters do.
+ * SQLite repositories for the platform-integration tables: the adoption
+ * ledger, the mod registry and the Media mirror queue. The game simulation
+ * never touches these; apps/server's platform adapters do.
  */
 
 export function createIdentityRepository(db: Database.Database): IdentityRepository {
   const takenSlots = db.prepare<[string], { char_slot: number }>(
     'SELECT char_slot FROM players WHERE token = ?',
   )
-  const legacyRows = db.prepare<[string], { id: string; char_slot: number }>(
+  const rowsByToken = db.prepare<[string], { id: string; char_slot: number }>(
     'SELECT id, char_slot FROM players WHERE token = ? ORDER BY char_slot',
   )
-  const moveRow = db.prepare('UPDATE players SET token = ?, subject_id = ? WHERE id = ?')
-  const recordMap = db.prepare(`
-    INSERT INTO identity_legacy_map (legacy_key, subject_id, source, moved, conflicts, adopted_at)
+  const moveToSlot = db.prepare(
+    'UPDATE players SET token = ?, subject_id = ?, char_slot = ? WHERE id = ?',
+  )
+  const recordAdoption = db.prepare(`
+    INSERT INTO identity_adoptions (adoption_key, subject_id, source, moved, conflicts, adopted_at)
     VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(legacy_key) DO UPDATE SET
-      moved = identity_legacy_map.moved + excluded.moved,
+    ON CONFLICT(adoption_key) DO UPDATE SET
+      moved = identity_adoptions.moved + excluded.moved,
       conflicts = excluded.conflicts
   `)
-  const mapped = db.prepare<[string], { subject_id: string }>(
-    'SELECT subject_id FROM identity_legacy_map WHERE legacy_key = ?',
+  const adopted = db.prepare<[string], { subject_id: string }>(
+    'SELECT subject_id FROM identity_adoptions WHERE adoption_key = ?',
   )
 
-  const adopt = db.transaction(
-    (legacyKey: string, subjectId: string, source: string, now: number) => {
-      const existing = mapped.get(legacyKey)
-      if (existing && existing.subject_id !== subjectId) {
-        // A legacy key belongs to exactly one subject; a different answer
-        // later is a data problem to look at, never a silent re-home.
-        throw new Error(
-          `legacy key ${legacyKey} is already mapped to ${existing.subject_id}, not ${subjectId}`,
-        )
-      }
-      const taken = new Set(takenSlots.all(subjectId).map((r) => r.char_slot))
-      let moved = 0
-      let conflicts = 0
-      for (const row of legacyRows.all(legacyKey)) {
-        if (taken.has(row.char_slot)) {
-          conflicts++
-          continue
-        }
-        moveRow.run(subjectId, subjectId, row.id)
-        taken.add(row.char_slot)
-        moved++
-      }
-      recordMap.run(legacyKey, subjectId, source, moved, conflicts, now)
-      return { moved, conflicts }
-    },
-  )
-
-  const moveToSlot = db.prepare('UPDATE players SET token = ?, subject_id = ?, char_slot = ? WHERE id = ?')
   const adoptGuest = db.transaction((guestToken: string, subjectId: string, now: number) => {
+    // Once per guest token, remembered by a hash of it, never the token.
     const key = `guest:${createHash('sha256').update(guestToken).digest('hex').slice(0, 32)}`
     const none = { moved: 0, slot: null, full: false }
-    if (mapped.get(key)) return none
-    const rows = legacyRows.all(guestToken)
+    if (adopted.get(key)) return none
+    const rows = rowsByToken.all(guestToken)
     if (rows.length === 0) return none
     const taken = new Set(takenSlots.all(subjectId).map((r) => r.char_slot))
     let moved = 0
@@ -82,44 +57,44 @@ export function createIdentityRepository(db: Database.Database): IdentityReposit
       moved++
     }
     if (moved === 0) return { moved: 0, slot: null, full: true }
-    recordMap.run(key, subjectId, 'guest', moved, rows.length - moved, now)
+    recordAdoption.run(key, subjectId, 'guest', moved, rows.length - moved, now)
     return { moved, slot, full: false }
   })
 
   // Account merge (ADR-029): the folded-in subject's characters join the survivor, once per merge.
-  const mergeAccount = db.transaction((from: string, into: string, mergeId: string, now: number) => {
-    const key = `merge:${mergeId}`
-    if (mapped.get(key)) return { moved: 0, kept: 0, already: true }
-    const taken = new Set(takenSlots.all(into).map((r) => r.char_slot))
-    const rows = legacyRows.all(from)
-    let moved = 0
-    // First every character whose own slot is free there, then the rest into what is left.
-    const clashing = rows.filter((row) => {
-      if (taken.has(row.char_slot)) return true
-      moveToSlot.run(into, into, row.char_slot, row.id)
-      taken.add(row.char_slot)
-      moved++
-      return false
-    })
-    let kept = 0
-    for (const row of clashing) {
-      const slot = [0, 1, 2].find((s) => !taken.has(s))
-      if (slot === undefined) {
-        kept++
-        continue
+  const mergeAccount = db.transaction(
+    (from: string, into: string, mergeId: string, now: number) => {
+      const key = `merge:${mergeId}`
+      if (adopted.get(key)) return { moved: 0, kept: 0, already: true }
+      const taken = new Set(takenSlots.all(into).map((r) => r.char_slot))
+      const rows = rowsByToken.all(from)
+      let moved = 0
+      // First every character whose own slot is free there, then the rest into what is left.
+      const clashing = rows.filter((row) => {
+        if (taken.has(row.char_slot)) return true
+        moveToSlot.run(into, into, row.char_slot, row.id)
+        taken.add(row.char_slot)
+        moved++
+        return false
+      })
+      let kept = 0
+      for (const row of clashing) {
+        const slot = [0, 1, 2].find((s) => !taken.has(s))
+        if (slot === undefined) {
+          kept++
+          continue
+        }
+        moveToSlot.run(into, into, slot, row.id)
+        taken.add(slot)
+        moved++
       }
-      moveToSlot.run(into, into, slot, row.id)
-      taken.add(slot)
-      moved++
-    }
-    recordMap.run(key, into, 'merge', moved, kept, now)
-    return { moved, kept, already: false }
-  })
+      recordAdoption.run(key, into, 'merge', moved, kept, now)
+      return { moved, kept, already: false }
+    },
+  )
 
   // Account export and deletion (ADR-033). A character row keyed by the subject (token) or carrying it (subject_id).
   const inList = (n: number): string => `(${Array.from({ length: n }, () => '?').join(',')})`
-  const hasTable = (name: string): boolean =>
-    !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name)
   const parsed = (row: Record<string, unknown>): Record<string, unknown> => {
     const out: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(row)) {
@@ -142,46 +117,42 @@ export function createIdentityRepository(db: Database.Database): IdentityReposit
       .all(subject, subject) as Record<string, unknown>[]
     const ids = characters.map((c) => String(c.id))
     const structures = ids.length
-      ? (db.prepare(`SELECT * FROM world_entities WHERE owner_id IN ${inList(ids.length)}`).all(...ids) as Record<string, unknown>[])
+      ? (db
+          .prepare(`SELECT * FROM world_entities WHERE owner_id IN ${inList(ids.length)}`)
+          .all(...ids) as Record<string, unknown>[])
       : []
-    const legacyLiveRows = hasTable('legacy_live_rows')
-      ? (db.prepare('SELECT source_table, source_key, payload, imported_at FROM legacy_live_rows WHERE subject_id = ?').all(subject) as Record<string, unknown>[])
-      : []
-    return { characters: characters.map(parsed), structures: structures.map(parsed), legacyLiveRows: legacyLiveRows.map(parsed) }
+    return { characters: characters.map(parsed), structures: structures.map(parsed) }
   }
   const eraseSubjects = db.transaction((subjects: string[]) => {
-    const out = { characters: 0, structures_unowned: 0, legacy_rows: 0, identity_rows: 0 }
+    const out = { characters: 0, structures_unowned: 0, identity_rows: 0 }
     if (!subjects.length) return out
     const q = inList(subjects.length)
-    const ids = (db.prepare(`SELECT id FROM players WHERE token IN ${q} OR subject_id IN ${q}`).all(...subjects, ...subjects) as { id: string }[]).map((r) => r.id)
+    const ids = (
+      db
+        .prepare(`SELECT id FROM players WHERE token IN ${q} OR subject_id IN ${q}`)
+        .all(...subjects, ...subjects) as { id: string }[]
+    ).map((r) => r.id)
     if (ids.length) {
-      out.structures_unowned = db.prepare(`UPDATE world_entities SET owner_id = NULL WHERE owner_id IN ${inList(ids.length)}`).run(...ids).changes
-      out.characters = db.prepare(`DELETE FROM players WHERE id IN ${inList(ids.length)}`).run(...ids).changes
+      out.structures_unowned = db
+        .prepare(
+          `UPDATE world_entities SET owner_id = NULL WHERE owner_id IN ${inList(ids.length)}`,
+        )
+        .run(...ids).changes
+      out.characters = db
+        .prepare(`DELETE FROM players WHERE id IN ${inList(ids.length)}`)
+        .run(...ids).changes
     }
-    if (hasTable('legacy_live_rows')) out.legacy_rows = db.prepare(`DELETE FROM legacy_live_rows WHERE subject_id IN ${q}`).run(...subjects).changes
-    out.identity_rows = db.prepare(`DELETE FROM identity_legacy_map WHERE subject_id IN ${q}`).run(...subjects).changes
+    out.identity_rows = db
+      .prepare(`DELETE FROM identity_adoptions WHERE subject_id IN ${q}`)
+      .run(...subjects).changes
     return out
   })
 
   return {
     exportSubject,
     eraseSubjects: (subjects) => eraseSubjects(subjects),
-    adoptLegacyAccount: (legacyKey, subjectId, source, now) =>
-      adopt(legacyKey, subjectId, source, now),
     mergeSubject: (from, into, mergeId, now) => mergeAccount(from, into, mergeId, now),
     adoptGuestCharacter: (guestToken, subjectId, now) => adoptGuest(guestToken, subjectId, now),
-    subjectForLegacy(legacyKey) {
-      return mapped.get(legacyKey)?.subject_id ?? null
-    },
-    legacyAccountKeys(prefix) {
-      // substr, not LIKE: `_` and `%` in a prefix must not act as wildcards.
-      const rows = db
-        .prepare(
-          'SELECT DISTINCT token FROM players WHERE substr(token, 1, length(@p)) = @p ORDER BY token',
-        )
-        .all({ p: prefix }) as { token: string }[]
-      return rows.map((r) => r.token)
-    },
   }
 }
 

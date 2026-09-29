@@ -65,8 +65,7 @@ async function start(): Promise<void> {
   let liveMap: MapFileV2 = emptyMapV2()
   let mapLightsBoot: MapLight[] | undefined
   try {
-    // /map.json is native v2. parseMapFile still accepts a legacy v1 file
-    // and migrates it, so old artifacts keep working — one direction only.
+    // /map.json is the v2 document, parsed and validated on the way in.
     const parsed = parseMapFile(await (await fetch('/map.json')).json())
     if (parsed.ok) {
       registerMapAssets({
@@ -332,9 +331,9 @@ async function start(): Promise<void> {
         // A stale cached bundle is talking to a newer server. A reload
         // revalidates the page and pulls the new client. Guard against a
         // reload loop if something still pins the old version.
-        const last = Number(localStorage.getItem('hq_reload_ts') ?? '0')
+        const last = Number(localStorage.getItem('openvibe.reload_ts') ?? '0')
         if (Date.now() - last > 60_000) {
-          localStorage.setItem('hq_reload_ts', String(Date.now()))
+          localStorage.setItem('openvibe.reload_ts', String(Date.now()))
           hud.setStatus('game updated — loading the new version…')
           hud.toast('Game updated! Reloading…', false)
           setTimeout(() => location.reload(), 1200)
@@ -347,9 +346,9 @@ async function start(): Promise<void> {
         localStorage.removeItem('ovg_sso')
         document.cookie = 'ovg_sso=; Path=/; Max-Age=0'
         localStorage.removeItem('openvibe.appearance')
-        const last = Number(localStorage.getItem('hq_reload_ts') ?? '0')
+        const last = Number(localStorage.getItem('openvibe.reload_ts') ?? '0')
         if (Date.now() - last > 60_000) {
-          localStorage.setItem('hq_reload_ts', String(Date.now()))
+          localStorage.setItem('openvibe.reload_ts', String(Date.now()))
           hud.setStatus('session data was out of date — reloading…')
           setTimeout(() => location.reload(), 1200)
         } else {

@@ -140,8 +140,6 @@ export interface TerrainPatchData {
   tex?: string
   /** Tint color (hex). */
   color?: string
-  /** Legacy painted splat (R grass / G rock / B mud); migrated to `surface`. */
-  mix?: string
   /** Base style + paint layers — the v2 surface model. */
   surface?: SurfaceMaterialData
   /** Whole-surface UV transform from the face-edit tool. */

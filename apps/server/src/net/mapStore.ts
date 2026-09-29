@@ -7,7 +7,7 @@
  * live world, and two admins saving at once silently clobbered each other —
  * "revisions" were a string of array lengths compared on the client.
  *
- * Now every save is: authenticate → size-limit → parse → migrate → validate →
+ * Now every save is: authenticate → size-limit → parse → validate →
  * revision check → canonicalise → atomic write → apply live → broadcast.
  */
 import { createHash } from 'node:crypto'
@@ -45,9 +45,9 @@ function record(map: MapFileV2): MapRecord {
 }
 
 /**
- * Load the artifact, migrating v1 on the way in. A missing or unreadable file
- * yields an empty v2 map rather than throwing — a fresh server should boot to
- * a blank world, not fail.
+ * Load the artifact. A missing, unreadable or invalid file yields an empty v2
+ * map rather than throwing — a fresh server should boot to a blank world, not
+ * fail.
  */
 export async function loadMap(mapPath: string): Promise<MapRecord> {
   if (!existsSync(mapPath)) return record(emptyMapV2())

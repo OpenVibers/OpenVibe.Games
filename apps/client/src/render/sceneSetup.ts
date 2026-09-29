@@ -29,7 +29,6 @@ import {
   type WorldShape,
   type StaticBody,
   effectiveShape,
-  migrateLegacyMix,
   type SurfaceMaterialData,
   type StaticObjectV2,
 } from '@openvibe/content'
@@ -189,7 +188,6 @@ function childAtIndexPath(root: { getChildren?: () => unknown[] }, path: string)
 }
 
 /** Extra terrain patches (mountains, cave shells) from the edited map. */
-let legacyLayer = 0
 export function buildTerrainPatches(
   scene: Scene,
   content: ContentRegistry,
@@ -215,20 +213,8 @@ export function buildTerrainPatches(
     // applies mesh scaling in the same S→R→T order, so the two agree.
     if (patch.scale) mesh.scaling.set(patch.scale[0], patch.scale[1], patch.scale[2])
     // v2 surfaces (base + paint layers) render with the SAME material class
-    // the editor uses, so what was painted is what players see. Legacy `mix`
-    // maps onto the same shader via migrateLegacyMix.
-    const surface: SurfaceMaterialData | null = patch.surface
-      ? patch.surface
-      : patch.mix
-        ? {
-            base: {
-              ...(patch.tex && patch.tex !== 'none' ? { tex: patch.tex } : {}),
-              ...(patch.color ? { color: patch.color } : {}),
-              ...(patch.uv ? { uv: patch.uv } : {}),
-            },
-            paint: migrateLegacyMix(patch.mix, () => `pl-${patch.id}-${legacyLayer++}`)!,
-          }
-        : null
+    // the editor uses, so what was painted is what players see.
+    const surface: SurfaceMaterialData | null = patch.surface ?? null
     if (surface) {
       const layered = new LayeredSurfaceMaterial(scene, `psurf:${patch.id}`, surface, {
         baseTiling: Math.max(2, patch.halfExtent / 2),

@@ -1,13 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { encodeHeights, type MapFile } from './mapFile.js'
 import {
-  MAIN_TERRAIN_MIGRATED_ID,
   SPAWN_OBJECT_ID,
   compileMapFileV2,
   blankHeights,
   canonicalizeMapFile,
   emptyMapV2,
-  migrateV1ToV2,
   parseMapFile,
   validateMapFile,
   type MapFileV2,
@@ -15,20 +12,6 @@ import {
 } from './mapFileV2.js'
 
 const SUB = 8
-const heightsOf = (fill: number): string => {
-  const a = new Float32Array((SUB + 1) * (SUB + 1))
-  a.fill(fill)
-  return encodeHeights(a)
-}
-
-const v1Map = (over: Partial<MapFile> = {}): MapFile => ({
-  v: 1,
-  halfExtent: 100,
-  sub: SUB,
-  heights: heightsOf(0),
-  statics: [],
-  ...over,
-})
 
 describe('empty map', () => {
   it('a brand-new map has no terrain and no geometry at all', () => {
@@ -42,117 +25,16 @@ describe('empty map', () => {
   })
 })
 
-describe('v1 → v2 migration', () => {
-  it('turns the privileged main heightfield into ONE ordinary terrain', () => {
-    const out = migrateV1ToV2(v1Map({ heights: heightsOf(3) }))
-    expect(out.v).toBe(2)
-    expect(out.terrains).toHaveLength(1)
-    const t = out.terrains[0]!
-    expect(t.id).toBe(MAIN_TERRAIN_MIGRATED_ID)
-    expect(t.pos).toEqual([0, 0, 0])
-    expect(t.halfExtent).toBe(100)
-    // Nothing about it is special any more.
-    expect(t).not.toHaveProperty('main')
-  })
-
-  it('is deterministic — the same v1 map yields the same ids twice', () => {
-    const src = v1Map({
-      statics: [
-        { shape: { type: 'box', size: [1, 1, 1] }, pos: [0, 0, 0], yaw: 0, color: '#ffffff' },
-      ],
-    })
-    expect(canonicalizeMapFile(migrateV1ToV2(src))).toBe(canonicalizeMapFile(migrateV1ToV2(src)))
-  })
-
-  it('drops a main terrain that was "deleted" by sinking it below the waterline', () => {
-    // v1 faked deletion with heights.fill(-6) and an invisible collider.
-    const out = migrateV1ToV2(v1Map({ heights: heightsOf(-6) }))
-    expect(out.terrains).toHaveLength(0)
-  })
-
-  it('maps the legacy splat onto paint layers with channels preserved', () => {
-    const out = migrateV1ToV2(v1Map({ mix: 'data:image/png;base64,AAA' }))
-    const paint = out.terrains[0]!.surface!.paint!
-    expect(paint.mask).toBe('data:image/png;base64,AAA')
-    expect(paint.layers.map((l) => [l.tex, l.channel])).toEqual([
-      ['leafy_grass', 'r'],
-      ['gray_rocks', 'g'],
-      ['brown_mud_dry', 'b'],
-    ])
-  })
-
-  it('migrates v1 patches, keeping ids, transforms and surfaces', () => {
-    const out = migrateV1ToV2(
-      v1Map({
-        terrains: [
-          {
-            id: 'patch-7',
-            origin: [10, 2, -4],
-            halfExtent: 16,
-            sub: SUB,
-            heights: heightsOf(1),
-            rot: [0, 0.5, 0],
-            scale: [2, 1, 2],
-            tex: 'red_brick',
-            color: '#aabbcc',
-          },
-        ],
-      }),
-    )
-    const t = out.terrains.find((x) => x.id === 'patch-7')!
-    expect(t.pos).toEqual([10, 2, -4])
-    expect(t.rot).toEqual([0, 0.5, 0])
-    expect(t.scale).toEqual([2, 1, 2])
-    expect(t.surface!.base).toEqual({ tex: 'red_brick', color: '#aabbcc' })
-  })
-
-  it("treats the 'none' texture sentinel as a plain-colour base", () => {
-    const out = migrateV1ToV2(
-      v1Map({
-        terrains: [
-          {
-            id: 'p1',
-            origin: [0, 0, 0],
-            halfExtent: 8,
-            sub: SUB,
-            heights: heightsOf(0),
-            tex: 'none',
-          },
-        ],
-      }),
-    )
-    expect(out.terrains.find((t) => t.id === 'p1')!.surface!.base.tex).toBeUndefined()
-  })
-
-  it('gives ids to v1 objects that never had one', () => {
-    const out = migrateV1ToV2(
-      v1Map({
-        statics: [
-          { shape: { type: 'box', size: [1, 1, 1] }, pos: [0, 0, 0], yaw: 0, color: '#ffffff' },
-        ],
-        nodes: [{ node: 'oak_tree', pos: [1, 0, 1] }],
-      }),
-    )
-    expect(out.statics[0]!.id).toBe('s-v1-0')
-    expect(out.nodes[0]!.id).toBe('n-v1-0')
-  })
-})
-
 describe('parseMapFile', () => {
   it('accepts a v2 map unchanged', () => {
-    const m = emptyMapV2()
-    const r = parseMapFile(m)
-    expect(r.ok && r.migrated).toBe(false)
+    const r = parseMapFile(emptyMapV2())
     expect(r.ok).toBe(true)
   })
 
-  it('accepts a v1 map and reports that it migrated', () => {
-    const r = parseMapFile(v1Map())
-    expect(r.ok).toBe(true)
-    if (r.ok) expect(r.migrated).toBe(true)
-  })
-
-  it('rejects unknown versions and non-objects', () => {
+  it('rejects a v1 map and unknown versions and non-objects', () => {
+    expect(parseMapFile({ v: 1, halfExtent: 100, sub: SUB, heights: '', statics: [] }).ok).toBe(
+      false,
+    )
     expect(parseMapFile({ v: 99 }).ok).toBe(false)
     expect(parseMapFile(null).ok).toBe(false)
     expect(parseMapFile('nope').ok).toBe(false)
@@ -315,32 +197,6 @@ describe('paint layer tint survives the canonical wire', () => {
       )
       expect(r.ok, `expected "${bad}" to be rejected`).toBe(false)
     }
-  })
-
-  it('carries the tint through a v1 migration parse too', () => {
-    const v1 = v1Map({
-      terrains: [
-        {
-          id: 'p1',
-          origin: [0, 0, 0],
-          halfExtent: 8,
-          sub: SUB,
-          heights: blankHeights(SUB),
-          surface: {
-            base: { tex: 'red_brick' },
-            paint: {
-              mask: 'data:x',
-              layers: [{ id: 'l1', tex: 'none', color: '#123456', channel: 'a' }],
-            },
-          },
-        },
-      ],
-    } as Partial<MapFile>)
-    const r = parseMapFile(v1)
-    expect(r.ok).toBe(true)
-    if (!r.ok) return
-    const t = r.map.terrains.find((x) => x.id === 'p1')!
-    expect(t.surface!.paint!.layers[0]!.color).toBe('#123456')
   })
 })
 

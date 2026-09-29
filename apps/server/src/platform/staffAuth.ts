@@ -12,7 +12,6 @@ import { createRequire } from 'node:module'
 import { verifyUserToken, type UserTokenClaims } from 'openvibe-sdk/auth'
 import type { ModActor } from '../mods/registry.js'
 import { canEditMap, resolveNetworkUser } from '../net/networkAuth.js'
-import { legacyNetworkKey } from './accounts.js'
 
 export const CAP_MOD_MANAGE = 'games.mod.manage'
 export const GAMES_AUDIENCE = 'openvibe.games'
@@ -95,7 +94,12 @@ export function createStaffAuthorizer(
       if (user.subjectId?.startsWith('usr_')) {
         return { audit: user.subjectId, subject: { type: 'user', id: user.subjectId } }
       }
-      return { audit: legacyNetworkKey(user.id), subject: { type: 'service', id: 'games' } }
+      // A staff session with no canonical user subject (a Network guest, or a
+      // token older than subjects) acts as the games service.
+      return {
+        audit: user.subjectId ?? `network-user:${user.id}`,
+        subject: { type: 'service', id: 'games' },
+      }
     }
     if (opts.editorKey && sameSecret(token, opts.editorKey)) {
       return { audit: 'editor-key', subject: { type: 'service', id: 'games' } }

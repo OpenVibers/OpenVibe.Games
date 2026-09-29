@@ -8,8 +8,7 @@
  * a test of its own or it quietly becomes permanent.
  *
  * This audit fails while any legacy construct is still ACTIVE runtime code.
- * Migration code, migration tests and documentation are explicitly allowed:
- * one-way v1 → v2 compatibility is the intended end state.
+ * A mention in prose is not active code, so comments do not trip it.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, relative } from 'node:path'
@@ -20,10 +19,6 @@ const SCAN_ROOTS = ['apps/client/src', 'apps/server/src', 'packages/content/src'
 
 /** Files that legitimately mention legacy constructs. */
 const ALLOWED = [
-  // One-way v1 → v2 compatibility lives here by design.
-  'packages/content/src/mapFile.ts',
-  'packages/content/src/mapFileV2.ts',
-  'packages/content/src/mapFileV2.test.ts',
   // The audit itself names everything it forbids.
   'apps/client/src/editor/architectureAudit.audit.ts',
 ]

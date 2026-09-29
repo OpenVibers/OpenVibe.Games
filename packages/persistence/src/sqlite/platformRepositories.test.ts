@@ -39,11 +39,31 @@ describe('guest conversion (WS-B task 8)', () => {
   it('moves the guest character into the first free slot, once, keyed by a hash of the token', () => {
     const store = openSqliteStore(':memory:')
     store.players.upsertMany([player('g1', 'guest00042abc', 0), player('a0', SUBJECT, 0)])
-    expect(store.identity.adoptGuestCharacter('guest00042abc', SUBJECT, 10)).toEqual({ moved: 1, slot: 1, full: false })
-    expect(store.players.listByToken(SUBJECT).map((p) => [p.id, p.charSlot]).sort()).toEqual([['a0', 0], ['g1', 1]])
+    expect(store.identity.adoptGuestCharacter('guest00042abc', SUBJECT, 10)).toEqual({
+      moved: 1,
+      slot: 1,
+      full: false,
+    })
+    expect(
+      store.players
+        .listByToken(SUBJECT)
+        .map((p) => [p.id, p.charSlot])
+        .sort(),
+    ).toEqual([
+      ['a0', 0],
+      ['g1', 1],
+    ])
     expect(store.players.listByToken('guest00042abc')).toEqual([])
-    expect(store.identity.adoptGuestCharacter('guest00042abc', SUBJECT, 11)).toEqual({ moved: 0, slot: null, full: false })
-    const keys = (store.db.prepare('SELECT legacy_key FROM identity_legacy_map').all() as { legacy_key: string }[]).map((r) => r.legacy_key)
+    expect(store.identity.adoptGuestCharacter('guest00042abc', SUBJECT, 11)).toEqual({
+      moved: 0,
+      slot: null,
+      full: false,
+    })
+    const keys = (
+      store.db.prepare('SELECT adoption_key FROM identity_adoptions').all() as {
+        adoption_key: string
+      }[]
+    ).map((r) => r.adoption_key)
     expect(keys.some((k) => k.includes('guest00042abc'))).toBe(false)
     expect(keys.some((k) => /^guest:[0-9a-f]{32}$/.test(k))).toBe(true)
     store.close()
@@ -51,10 +71,23 @@ describe('guest conversion (WS-B task 8)', () => {
 
   it('keeps the guest character when every slot is taken, and does nothing without one', () => {
     const store = openSqliteStore(':memory:')
-    store.players.upsertMany([player('a0', SUBJECT, 0), player('a1', SUBJECT, 1), player('a2', SUBJECT, 2), player('g1', 'guestfull01', 0)])
-    expect(store.identity.adoptGuestCharacter('guestfull01', SUBJECT, 1)).toEqual({ moved: 0, slot: null, full: true })
+    store.players.upsertMany([
+      player('a0', SUBJECT, 0),
+      player('a1', SUBJECT, 1),
+      player('a2', SUBJECT, 2),
+      player('g1', 'guestfull01', 0),
+    ])
+    expect(store.identity.adoptGuestCharacter('guestfull01', SUBJECT, 1)).toEqual({
+      moved: 0,
+      slot: null,
+      full: true,
+    })
     expect(store.players.listByToken('guestfull01').length).toBe(1)
-    expect(store.identity.adoptGuestCharacter('nobodyhere01', SUBJECT, 1)).toEqual({ moved: 0, slot: null, full: false })
+    expect(store.identity.adoptGuestCharacter('nobodyhere01', SUBJECT, 1)).toEqual({
+      moved: 0,
+      slot: null,
+      full: false,
+    })
     store.close()
   })
 })
@@ -64,11 +97,29 @@ describe('account merge (ADR-029)', () => {
   it('moves the folded-in characters into free slots, keeps what does not fit, once per merge', () => {
     const store = openSqliteStore(':memory:')
     // The survivor has slot 0; the folded-in account has slots 0, 1 and 2.
-    store.players.upsertMany([player('s0', SUBJECT, 0), player('f0', FROM, 0), player('f1', FROM, 1), player('f2', FROM, 2)])
-    expect(store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 5)).toEqual({ moved: 2, kept: 1, already: false })
-    expect(store.players.listByToken(SUBJECT).map((p) => [p.id, p.charSlot]).sort()).toEqual([['f1', 1], ['f2', 2], ['s0', 0]])
+    store.players.upsertMany([
+      player('s0', SUBJECT, 0),
+      player('f0', FROM, 0),
+      player('f1', FROM, 1),
+      player('f2', FROM, 2),
+    ])
+    expect(store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 5)).toEqual(
+      { moved: 2, kept: 1, already: false },
+    )
+    expect(
+      store.players
+        .listByToken(SUBJECT)
+        .map((p) => [p.id, p.charSlot])
+        .sort(),
+    ).toEqual([
+      ['f1', 1],
+      ['f2', 2],
+      ['s0', 0],
+    ])
     expect(store.players.listByToken(FROM).map((p) => p.id)).toEqual(['f0'])
-    expect(store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 6)).toEqual({ moved: 0, kept: 0, already: true })
+    expect(store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 6)).toEqual(
+      { moved: 0, kept: 0, already: true },
+    )
     expect(store.players.listByToken(FROM).length).toBe(1)
     store.close()
   })
@@ -76,87 +127,50 @@ describe('account merge (ADR-029)', () => {
 
 describe('account export and deletion (ADR-033)', () => {
   const ALIAS = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2F8'
-  it('exports the subject\'s characters without the token, then erases them and the alias\'s; structures stay unowned', () => {
+  it("exports the subject's characters without the token, then erases them and the alias's; structures stay unowned", () => {
     const store = openSqliteStore(':memory:')
-    store.players.upsertMany([player('d0', SUBJECT, 0), player('d1', ALIAS, 0), player('o0', OTHER, 0)])
-    const entity = store.db.prepare("INSERT INTO world_entities (id, kind, def_id, owner_id, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, motion, state, updated_at) VALUES (?, 'structure', 'hut', ?, 0, 0, 0, 0, 0, 0, 1, 'static', '{}', 1)")
+    store.players.upsertMany([
+      player('d0', SUBJECT, 0),
+      player('d1', ALIAS, 0),
+      player('o0', OTHER, 0),
+    ])
+    const entity = store.db.prepare(
+      "INSERT INTO world_entities (id, kind, def_id, owner_id, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, motion, state, updated_at) VALUES (?, 'structure', 'hut', ?, 0, 0, 0, 0, 0, 0, 1, 'static', '{}', 1)",
+    )
     entity.run('e1', 'd0')
     entity.run('e2', 'o0')
-    store.db.prepare("INSERT INTO identity_legacy_map (legacy_key, subject_id, source, adopted_at) VALUES ('ovn:9', ?, 'network', 1)").run(SUBJECT)
+    store.db
+      .prepare(
+        "INSERT INTO identity_adoptions (adoption_key, subject_id, source, adopted_at) VALUES ('merge:mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', ?, 'merge', 1)",
+      )
+      .run(SUBJECT)
     const out = store.identity.exportSubject(SUBJECT)
     expect(out.characters.map((c) => c.id)).toEqual(['d0'])
     expect(out.characters[0]).not.toHaveProperty('token')
     expect(out.characters[0]?.skills).toEqual({ woodcutting: 10 })
     expect(out.structures.map((e) => e.id)).toEqual(['e1'])
-    expect(store.identity.eraseSubjects([SUBJECT, ALIAS])).toEqual({ characters: 2, structures_unowned: 1, legacy_rows: 0, identity_rows: 1 })
+    expect(store.identity.eraseSubjects([SUBJECT, ALIAS])).toEqual({
+      characters: 2,
+      structures_unowned: 1,
+      identity_rows: 1,
+    })
     expect(store.players.listByToken(SUBJECT)).toEqual([])
     expect(store.players.listByToken(ALIAS)).toEqual([])
     expect(store.players.listByToken(OTHER).map((p) => p.id)).toEqual(['o0'])
-    expect(store.db.prepare('SELECT id, owner_id FROM world_entities ORDER BY id').all()).toEqual([{ id: 'e1', owner_id: null }, { id: 'e2', owner_id: 'o0' }])
-    expect(store.identity.eraseSubjects([SUBJECT])).toEqual({ characters: 0, structures_unowned: 0, legacy_rows: 0, identity_rows: 0 })
+    expect(store.db.prepare('SELECT id, owner_id FROM world_entities ORDER BY id').all()).toEqual([
+      { id: 'e1', owner_id: null },
+      { id: 'e2', owner_id: 'o0' },
+    ])
+    expect(store.identity.eraseSubjects([SUBJECT])).toEqual({
+      characters: 0,
+      structures_unowned: 0,
+      identity_rows: 0,
+    })
     store.close()
   })
 })
 
-describe('identity repository (legacy -> canonical subject)', () => {
-  it('moves every legacy character to the subject once and records the map', () => {
-    const store = openSqliteStore(':memory:')
-    store.players.upsertMany([player('p1', 'ovn:57', 0), player('p2', 'ovn:57', 1)])
-
-    expect(store.identity.legacyAccountKeys('ovn:')).toEqual(['ovn:57'])
-    expect(store.identity.adoptLegacyAccount('ovn:57', SUBJECT, 'network', 100)).toEqual({
-      moved: 2,
-      conflicts: 0,
-    })
-    const chars = store.players.listByToken(SUBJECT)
-    expect(chars.map((c) => [c.id, c.charSlot, c.subjectId])).toEqual([
-      ['p1', 0, SUBJECT],
-      ['p2', 1, SUBJECT],
-    ])
-    expect(store.players.listByToken('ovn:57')).toEqual([])
-    expect(store.identity.subjectForLegacy('ovn:57')).toBe(SUBJECT)
-    expect(store.identity.legacyAccountKeys('ovn:')).toEqual([])
-
-    // Idempotent: nothing left to move, the map is unchanged.
-    expect(store.identity.adoptLegacyAccount('ovn:57', SUBJECT, 'network', 200)).toEqual({
-      moved: 0,
-      conflicts: 0,
-    })
-    expect(store.players.listByToken(SUBJECT)).toHaveLength(2)
-    store.close()
-  })
-
-  it('never overwrites a slot the subject already uses', () => {
-    const store = openSqliteStore(':memory:')
-    store.players.upsertMany([
-      player('new0', SUBJECT, 0, { subjectId: SUBJECT }),
-      player('old0', 'ovn:9', 0),
-      player('old2', 'ovn:9', 2),
-    ])
-    expect(store.identity.adoptLegacyAccount('ovn:9', SUBJECT, 'network', 1)).toEqual({
-      moved: 1,
-      conflicts: 1,
-    })
-    expect(store.players.findByTokenSlot(SUBJECT, 0)?.id).toBe('new0')
-    expect(store.players.findByTokenSlot(SUBJECT, 2)?.id).toBe('old2')
-    // The conflicting character stays reachable under its legacy key.
-    expect(store.players.findByTokenSlot('ovn:9', 0)?.id).toBe('old0')
-    store.close()
-  })
-
-  it('refuses to re-home a legacy key to a different subject', () => {
-    const store = openSqliteStore(':memory:')
-    store.players.upsert(player('p1', 'ovn:1', 0))
-    store.identity.adoptLegacyAccount('ovn:1', SUBJECT, 'network', 1)
-    store.players.upsert(player('p9', 'ovn:1', 1))
-    expect(() => store.identity.adoptLegacyAccount('ovn:1', OTHER, 'network', 2)).toThrow(
-      /already mapped/,
-    )
-    // Nothing moved by the refused call.
-    expect(store.players.findById('p9')?.token).toBe('ovn:1')
-    store.close()
-  })
-
+describe('player subject_id', () => {
   it('keeps subject_id through ordinary saves that do not carry it', () => {
     const store = openSqliteStore(':memory:')
     store.players.upsert(player('p1', SUBJECT, 0, { subjectId: SUBJECT }))

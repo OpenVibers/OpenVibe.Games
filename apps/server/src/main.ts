@@ -35,7 +35,7 @@ import { createNetworkModGrants } from './mods/networkGrants.js'
 import { createGamesActorLimits } from './net/actorLimits.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
-import { accountForNetworkUser, isGuestToken } from './platform/accounts.js'
+import { isGuestToken } from './platform/accounts.js'
 import { ProgressSummaryWriter } from './platform/progressSummary.js'
 import {
   EVENT_SOURCE,
@@ -73,8 +73,8 @@ async function main(): Promise<void> {
   // same file over /map.json).
   if (existsSync(config.mapPath)) {
     try {
-      // v1 artifacts still load — parseMapFile migrates them — but the
-      // RUNTIME representation is always v2 compiled straight through.
+      // The document is v2; the RUNTIME representation is v2 compiled straight
+      // through.
       const parsed = parseMapFile(JSON.parse(readFileSync(config.mapPath, 'utf8')))
       if (parsed.ok) {
         // The map's statics live in the override, NOT merged into
@@ -85,7 +85,6 @@ async function main(): Promise<void> {
         log.info('edited map loaded', {
           statics: parsed.map.statics.length,
           terrains: parsed.map.terrains.length,
-          migrated: parsed.migrated,
         })
       } else {
         log.warn('edited map invalid — ignoring', { issues: parsed.issues.slice(0, 5).join('; ') })
@@ -306,13 +305,12 @@ async function main(): Promise<void> {
       let account = token
       if (auth) {
         const user = await resolveNetworkUser(config.networkAuthUrl, auth)
-        if (!user) return []
-        const resolved = accountForNetworkUser(store, user, Date.now())
-        account = resolved.key
+        if (!user?.subjectId) return []
+        account = user.subjectId
         // Guest conversion (WS-B task 8): this browser's guest character shows up in the account's
         // list (and moves there) the moment it signs in, before any slot is picked.
-        if (resolved.subjectId && isGuestToken(token))
-          store.identity.adoptGuestCharacter(token, resolved.subjectId, Date.now())
+        if (isGuestToken(token))
+          store.identity.adoptGuestCharacter(token, user.subjectId, Date.now())
       } else if (!isGuestToken(token)) {
         // Never list an account key's characters for a guest query.
         return []

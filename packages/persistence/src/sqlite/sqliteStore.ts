@@ -5,7 +5,6 @@ import type {
   ConstraintRepository,
   MetaRepository,
   PersistenceStore,
-  GuestRepository,
   PlayerRepository,
   WorldEntityRepository,
 } from '../repositories.js'
@@ -33,7 +32,7 @@ export interface SqlitePersistenceStore extends PersistenceStore {
  * a database is upgraded step by step inside a transaction per step.
  */
 
-const SCHEMA_VERSION = 13
+const SCHEMA_VERSION = 11
 
 const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS world_entities (
@@ -75,10 +74,6 @@ CREATE TABLE IF NOT EXISTS constraints (
   params TEXT,
   updated_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS guest_ips (
-  ip TEXT PRIMARY KEY,
-  token TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -86,14 +81,15 @@ CREATE TABLE IF NOT EXISTS meta (
 `
 
 /**
- * Platform integration tables (schema 12): canonical identity, the mod
- * registry and the Media mirror queue. Shared by the fresh-database path and
- * the 11 -> 12 migration so both end up identical.
+ * Platform integration tables: canonical subject accounts, the adoption
+ * ledger, the mod registry and the Media mirror queue. Shared by the
+ * fresh-database path and the migration that adds them so both end up
+ * identical.
  */
 const PLATFORM_SCHEMA = `
 CREATE INDEX IF NOT EXISTS idx_players_subject ON players (subject_id);
-CREATE TABLE IF NOT EXISTS identity_legacy_map (
-  legacy_key TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS identity_adoptions (
+  adoption_key TEXT PRIMARY KEY,
   subject_id TEXT NOT NULL,
   source TEXT NOT NULL,
   moved INTEGER NOT NULL DEFAULT 0,
@@ -156,26 +152,6 @@ CREATE TABLE IF NOT EXISTS media_mirrors (
 CREATE INDEX IF NOT EXISTS idx_media_mirrors_due ON media_mirrors (status, next_attempt_at);
 `
 
-/**
- * Rows imported from OpenVibe.Live's retired HoboQuest game (schema 13),
- * written only by apps/server/scripts/importLiveLegacy.ts. Scraplandia has no
- * equivalent for them, so each source row is kept verbatim (canonical JSON)
- * under its owner's Network subject; `(source_table, source_key)` is the
- * source row's primary key, which makes the import idempotent.
- */
-const LEGACY_SCHEMA = `
-CREATE TABLE IF NOT EXISTS legacy_live_rows (
-  source_table TEXT NOT NULL,
-  source_key TEXT NOT NULL,
-  live_user_id INTEGER NOT NULL,
-  subject_id TEXT NOT NULL,
-  payload TEXT NOT NULL,
-  imported_at INTEGER NOT NULL,
-  PRIMARY KEY (source_table, source_key)
-);
-CREATE INDEX IF NOT EXISTS idx_legacy_live_rows_subject ON legacy_live_rows (subject_id);
-`
-
 /** Migration from version N applies index N-1. Each runs in a transaction. */
 const MIGRATIONS: Record<number, (db: Database.Database) => void> = {
   1: (db) => {
@@ -225,42 +201,30 @@ const MIGRATIONS: Record<number, (db: Database.Database) => void> = {
     `)
   },
   6: (db) => {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS guest_ips (
-        ip TEXT PRIMARY KEY,
-        token TEXT NOT NULL
-      );
-    `)
-  },
-  7: (db) => {
     // Sandbox constraint set: type-specific parameters (anchors, axes,
     // lengths, limits, motor). Existing weld rows carry NULL params.
     db.exec('ALTER TABLE constraints ADD COLUMN params TEXT;')
   },
-  8: (db) => {
+  7: (db) => {
     // Worn armor (one slot; durability rides in the stack meta).
     db.exec('ALTER TABLE players ADD COLUMN armor TEXT;')
   },
-  9: (db) => {
+  8: (db) => {
     // Faction reputation scores.
     db.exec("ALTER TABLE players ADD COLUMN reputation TEXT NOT NULL DEFAULT '{}';")
   },
-  10: (db) => {
+  9: (db) => {
     // Blueprint unlocks + active contract.
     db.exec(`
       ALTER TABLE players ADD COLUMN unlocks TEXT NOT NULL DEFAULT '[]';
       ALTER TABLE players ADD COLUMN active_job TEXT;
     `)
   },
-  11: (db) => {
+  10: (db) => {
     // Platform integration: canonical subject per account (ADR-0006), the
-    // legacy identity map, the mod registry and the Media mirror queue.
+    // adoption ledger, the mod registry and the Media mirror queue.
     db.exec('ALTER TABLE players ADD COLUMN subject_id TEXT;')
     db.exec(PLATFORM_SCHEMA)
-  },
-  12: (db) => {
-    // Archive of OpenVibe.Live's HoboQuest rows (docs/legacy-import.md).
-    db.exec(LEGACY_SCHEMA)
   },
 }
 
@@ -324,7 +288,6 @@ export function openSqliteStore(path: string): SqlitePersistenceStore {
     // Fresh database: create the full current schema.
     db.exec(BASE_SCHEMA)
     db.exec(PLATFORM_SCHEMA)
-    db.exec(LEGACY_SCHEMA)
     db.prepare('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)').run(
       'schema_version',
       String(SCHEMA_VERSION),
@@ -548,32 +511,10 @@ export function openSqliteStore(path: string): SqlitePersistenceStore {
     },
   }
 
-  const guests: GuestRepository = {
-    // Guest identity: the browser token is primary; the IP is the recovery
-    // path. A token that already owns a character keeps it (and re-binds its
-    // IP after a network change); a FRESH token from a known IP inherits
-    // that IP's existing scrapper (cleared cookies / new browser at home).
-    resolve(ip: string, token: string): string {
-      const hasCharacter = db.prepare('SELECT 1 FROM players WHERE token = ? LIMIT 1').get(token)
-      if (hasCharacter) {
-        db.prepare(
-          'INSERT INTO guest_ips (ip, token) VALUES (?, ?) ON CONFLICT(ip) DO UPDATE SET token = excluded.token',
-        ).run(ip, token)
-        return token
-      }
-      const mapped = db.prepare('SELECT token FROM guest_ips WHERE ip = ?').get(ip) as
-        { token: string } | undefined
-      if (mapped) return mapped.token
-      db.prepare('INSERT OR REPLACE INTO guest_ips (ip, token) VALUES (?, ?)').run(ip, token)
-      return token
-    },
-  }
-
   return {
     db,
     worldEntities,
     players,
-    guests,
     constraints,
     meta,
     identity: createIdentityRepository(db),

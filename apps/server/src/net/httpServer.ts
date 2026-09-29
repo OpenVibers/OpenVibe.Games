@@ -167,7 +167,7 @@ export function createHttpServer(
     if (platform?.handle?.(req, res)) return
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
-      // wire format: there is no v1 projection any more.
+      // wire format.
       void loadMap(mapPath).then((rec) => {
         res.writeHead(200, {
           'content-type': 'application/json',
@@ -246,18 +246,11 @@ export function createHttpServer(
       })
       return
     }
-    // ── Custom texture assets: uploaded once, served to every player. ──
+    // ── Map assets: uploaded once, served to every player. ──
     // Big source files (4k photo textures) live on disk next to the map
     // artifact instead of being base64-embedded into map.json.
-    // Generic content-addressed asset upload (textures, paint masks, models).
-    // `/api/texture` is the same handler under its old name so older editor
-    // builds keep working; there is ONE store behind both.
-    if (
-      (url === '/api/map-assets' || url === '/api/texture') &&
-      req.method === 'POST' &&
-      mapPath &&
-      editorAuth
-    ) {
+    // Generic content-addressed upload (textures, paint masks, models).
+    if (url === '/api/map-assets' && req.method === 'POST' && mapPath && editorAuth) {
       const token = (req.headers['x-editor-key'] as string | undefined) ?? undefined
       void editorAuthorized(editorAuth, token).then(async (authed) => {
         if (!authed) {
@@ -670,14 +663,6 @@ export function createHttpServer(
     }
     if (url === '/play/' || url === '/editor/') {
       res.writeHead(301, { location: url.slice(0, -1) })
-      res.end()
-      return
-    }
-    // The game's URLs from when it lived on OpenVibe.Live, which still links
-    // and 301s to them: the game is /play now, and the pixel canvas is gone
-    // (its nearest page is the portal).
-    if (url === '/game' || url === '/canvas') {
-      res.writeHead(301, { location: url === '/game' && !playHost ? '/play' : '/' })
       res.end()
       return
     }

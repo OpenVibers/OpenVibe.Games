@@ -7,8 +7,6 @@ export interface ServerConfig {
   mapPath: string
   editorKey: string | null
   networkAuthUrl: string | null
-  /** Bind fresh guest tokens to client IPs (off in tests: peers share an IP). */
-  guestIpBinding: boolean
   /** openvibe.network OAuth client (SSO); null until the secret is configured. */
   oauth: {
     clientId: string
@@ -101,7 +99,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
       (env.OV_OAUTH_CLIENT_SECRET
         ? `${env.OV_NETWORK_URL ?? 'https://openvibe.network'}/api/auth/me`
         : null),
-    guestIpBinding: env.GUEST_IP_BINDING !== 'off',
     oauth: env.OV_OAUTH_CLIENT_SECRET
       ? {
           clientId: env.OV_OAUTH_CLIENT_ID ?? 'games',

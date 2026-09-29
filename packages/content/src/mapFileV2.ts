@@ -21,20 +21,9 @@ import {
   type FaceStyle,
   type ZoneDef,
 } from './schema/world.js'
-import {
-  decodeHeights,
-  encodeHeights,
-  type MapFile,
-  type MapLight,
-  type MapTextureEntry,
-} from './mapFile.js'
+import { decodeHeights, encodeHeights, type MapLight } from './mapFile.js'
 import type { MapOverride, TerrainPatchData } from './terrain.js'
-import {
-  MAX_PAINT_LAYERS,
-  PAINT_CHANNELS,
-  migrateLegacyMix,
-  type SurfaceMaterialData,
-} from './surface.js'
+import { MAX_PAINT_LAYERS, PAINT_CHANNELS, type SurfaceMaterialData } from './surface.js'
 
 const vec3 = z.tuple([z.number(), z.number(), z.number()])
 const finiteVec3 = vec3.refine((v) => v.every(Number.isFinite), 'must be finite')
@@ -275,95 +264,18 @@ export function normalizeMapIds(raw: unknown): unknown {
   return out
 }
 
-/** Deterministic ids so a v1 map migrates to the SAME v2 ids every time. */
-const legacyId = (kind: string, index: number): string => `${kind}-v1-${index}`
-export const MAIN_TERRAIN_MIGRATED_ID = 'terrain-v1-main'
+export type ParsedMap = { ok: true; map: MapFileV2 } | { ok: false; issues: string[] }
 
-/**
- * v1 → v2. The privileged top-level heightfield becomes ONE ordinary terrain
- * object with a deterministic id; the old splat becomes paint layers with the
- * channel weights preserved, so an old map looks the same after migration.
- *
- * A v1 main terrain that was "deleted" by sinking every height below the
- * waterline is dropped rather than carried over as an invisible collider.
- */
-export function migrateV1ToV2(v1: MapFile): MapFileV2 {
-  const out = emptyMapV2()
-  let layerSeq = 0
-  const mkLayerId = (): string => `pl-v1-${layerSeq++}`
-
-  const mainHeights = decodeHeights(v1.heights)
-  const mainIsGone = mainHeights.every((h) => h <= -4.5)
-  if (!mainIsGone) {
-    out.terrains.push({
-      id: MAIN_TERRAIN_MIGRATED_ID,
-      name: 'Ground',
-      pos: [0, 0, 0],
-      halfExtent: v1.halfExtent,
-      sub: v1.sub,
-      heights: v1.heights,
-      surface: {
-        base: {},
-        ...(v1.mix ? { paint: migrateLegacyMix(v1.mix, mkLayerId)! } : {}),
-      },
-    })
-  }
-
-  ;(v1.terrains ?? []).forEach((t, i) => {
-    const base = {
-      ...(t.tex && t.tex !== 'none' ? { tex: t.tex } : {}),
-      ...(t.color ? { color: t.color } : {}),
-      ...(t.uv ? { uv: t.uv } : {}),
-    }
-    out.terrains.push({
-      id: t.id || legacyId('terrain', i),
-      pos: t.origin,
-      ...(t.rot ? { rot: t.rot } : {}),
-      ...(t.scale ? { scale: t.scale } : {}),
-      halfExtent: t.halfExtent,
-      sub: t.sub,
-      heights: t.heights,
-      surface: t.surface ?? {
-        base,
-        ...(t.mix ? { paint: migrateLegacyMix(t.mix, mkLayerId)! } : {}),
-      },
-    })
-  })
-
-  out.statics = (v1.statics ?? []).map((b, i) => ({ ...b, id: b.id ?? legacyId('s', i) }))
-  out.nodes = (v1.nodes ?? []).map((n, i) => ({ ...n, id: n.id ?? legacyId('n', i) }))
-  out.props = (v1.props ?? []).map((p, i) => ({ ...p, id: p.id ?? legacyId('pr', i) }))
-  out.lights = (v1.lights ?? []) as unknown as MapFileV2['lights']
-  out.models = v1.models ?? []
-  out.textures = (v1.textures ?? []) as MapTextureEntry[]
-  if (v1.spawn) out.spawn = v1.spawn
-  if (v1.spawnYaw !== undefined) out.spawnYaw = v1.spawnYaw
-  return out
-}
-
-export type ParsedMap =
-  { ok: true; map: MapFileV2; migrated: boolean } | { ok: false; issues: string[] }
-
-/** Parse any accepted map version into v2, or report why it was rejected. */
+/** Parse a v2 map document, or report why it was rejected. */
 export function parseMapFile(raw: unknown): ParsedMap {
   if (raw === null || typeof raw !== 'object') return { ok: false, issues: ['not an object'] }
   const version = (raw as { v?: unknown }).v
-  if (version === 2) {
-    const r = MapFileV2Schema.safeParse(normalizeMapIds(raw))
-    if (!r.success) return { ok: false, issues: r.error.issues.map(describeIssue) }
-    const extra = validateMapFile(r.data)
-    if (extra.length > 0) return { ok: false, issues: extra }
-    return { ok: true, map: r.data, migrated: false }
-  }
-  if (version === 1) {
-    const migrated = migrateV1ToV2(raw as MapFile)
-    const r = MapFileV2Schema.safeParse(normalizeMapIds(migrated))
-    if (!r.success) return { ok: false, issues: r.error.issues.map(describeIssue) }
-    const extra = validateMapFile(r.data)
-    if (extra.length > 0) return { ok: false, issues: extra }
-    return { ok: true, map: r.data, migrated: true }
-  }
-  return { ok: false, issues: [`unsupported map version ${String(version)}`] }
+  if (version !== 2) return { ok: false, issues: [`unsupported map version ${String(version)}`] }
+  const r = MapFileV2Schema.safeParse(normalizeMapIds(raw))
+  if (!r.success) return { ok: false, issues: r.error.issues.map(describeIssue) }
+  const extra = validateMapFile(r.data)
+  if (extra.length > 0) return { ok: false, issues: extra }
+  return { ok: true, map: r.data }
 }
 
 const describeIssue = (i: z.ZodIssue): string => `${i.path.join('.') || '(root)'}: ${i.message}`

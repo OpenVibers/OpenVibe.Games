@@ -24,7 +24,6 @@ import {
   buildPatchGrid,
   decodeHeights,
   encodeHeights,
-  migrateLegacyMix,
   type ContentRegistry,
   type MapLightV2,
   type MapNodeV2,
@@ -580,15 +579,13 @@ export class TerrainView implements EditorView {
 
   /** The document surface, defaulted so a plain terrain still paints. */
   surfaceData(): SurfaceMaterialData {
-    const t = this.terrain as TerrainObjectV2 & { tex?: string; color?: string; mix?: string }
+    const t = this.terrain as TerrainObjectV2 & { tex?: string; color?: string }
     if (t.surface) return t.surface as SurfaceMaterialData
-    let seq = 0
     return {
       base: {
         ...(t.tex && t.tex !== 'none' ? { tex: t.tex } : {}),
         ...(t.color ? { color: t.color } : {}),
       },
-      ...(t.mix ? { paint: migrateLegacyMix(t.mix, () => `pl-${this.id}-${seq++}`)! } : {}),
     }
   }
 

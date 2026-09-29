@@ -68,7 +68,7 @@ import {
 } from '@openvibe/shared'
 import type { ServerConfig } from '../config.js'
 import { canEditMap, resolveNetworkUser } from '../net/networkAuth.js'
-import { accountForNetworkUser, isGuestToken } from '../platform/accounts.js'
+import { isGuestToken } from '../platform/accounts.js'
 import type { EventPlayer, GameEventRecorder, ProgressSnapshot } from '../platform/gameEvents.js'
 import type { ProgressSummaryWriter } from '../platform/progressSummary.js'
 import type { ModHost, ModRuntime } from '../mods/runtime.js'
@@ -101,8 +101,6 @@ import { EventManager } from './eventManager.js'
 
 /** A network connection as the game sees it — transport-agnostic. */
 export interface GameConnection {
-  /** Real client IP (Cloudflare-aware) — guest identity hangs off this. */
-  ip: string
   send(text: string): void
   close(code: number, reason: string): void
 }
@@ -1233,39 +1231,29 @@ export class GameServer {
     }
 
     const slot = msg.slot ?? 0
-    // Account resolution. openvibe.network sign-in keys the account on the SSO
-    // identity (3 slots, follows you across devices). Guests get ONE
-    // character bound to their connection: browser token first, IP as the
-    // recovery path when the token is gone.
+    // Account resolution. openvibe.network sign-in keys the account on the
+    // canonical subject (3 slots, follows you across devices). Guests get ONE
+    // character bound to their connection's browser token.
     let token = msg.token
     let subjectId: string | null = null
     let authIat: number | null = null
     let rank: 'owner' | 'admin' | 'moderator' | null = null
     if (msg.auth) {
       const user = await resolveNetworkUser(this.config.networkAuthUrl, msg.auth)
-      if (!user) {
+      // A signed-in account is keyed by its canonical subject (ADR-0006); a
+      // token that carries none cannot name an account.
+      if (!user || !user.subjectId) {
         conn.send(encodeServerMessage({ t: 'reject', reason: 'auth_failed' }))
         conn.close(4009, 'auth_failed')
         return
       }
-      // Canonical subject key (ADR-0006); pre-subject characters are adopted
-      // from their legacy `ovn:<id>` key on the way in.
-      const account = accountForNetworkUser(this.store, user, Date.now(), (conflict) =>
-        this.log.warn('legacy identity conflict', conflict),
-      )
-      if (account.adopted > 0) {
-        this.log.info('legacy characters adopted', {
-          subject: account.subjectId ?? '',
-          moved: account.adopted,
-        })
-      }
-      token = account.key
-      subjectId = account.subjectId
+      token = user.subjectId
+      subjectId = user.subjectId
       authIat = tokenIat(msg.auth)
       rank = user.rank
       // Guest conversion (WS-B task 8): the character this browser played as a guest joins the
       // account in its first free slot, once.
-      if (subjectId && isGuestToken(msg.token)) {
+      if (isGuestToken(msg.token)) {
         const g = this.store.identity.adoptGuestCharacter(msg.token, subjectId, Date.now())
         if (g.moved > 0)
           this.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
@@ -1273,9 +1261,9 @@ export class GameServer {
           this.log.info('guest character kept: account slots full', { subject: subjectId })
       }
     } else {
-      // A guest token may never look like an account key (`usr_…`,
-      // `ovn:…`): that would open someone else's characters. The client
-      // mints plain alphanumerics; anything key-shaped is refused.
+      // A guest token may never look like an account key (`usr_…`): that
+      // would open someone else's characters. The client mints plain
+      // alphanumerics; anything key-shaped is refused.
       if (!isGuestToken(msg.token)) {
         conn.send(encodeServerMessage({ t: 'reject', reason: 'invalid_hello' }))
         conn.close(4007, 'invalid_guest_token')
@@ -1285,9 +1273,6 @@ export class GameServer {
         conn.send(encodeServerMessage({ t: 'reject', reason: 'guest_one_character' }))
         conn.close(4010, 'guest_one_character')
         return
-      }
-      if (this.config.guestIpBinding && conn.ip !== 'unknown') {
-        token = this.store.guests.resolve(conn.ip, msg.token)
       }
     }
     const existing = this.store.players.findByTokenSlot(token, slot)

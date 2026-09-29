@@ -110,9 +110,9 @@ export async function bootEditor(): Promise<void> {
   env.attachCamera(camera)
 
   // ── Document ────────────────────────────────────────────────────────
-  // /map.json is native v2; parseMapFile migrates a legacy v1 artifact on
-  // the way in, so the editor only ever holds v2 — and a missing or invalid
-  // map is emptyMapV2(), never a fabricated starter heightfield.
+  // /map.json is the v2 document, so the editor only ever holds v2 — and a
+  // missing or invalid map is emptyMapV2(), never a fabricated starter
+  // heightfield.
   const bootResp = await fetch('/map.json')
   const bootRevision = bootResp.headers.get('etag')?.replace(/"/g, '') ?? ''
   const bootParsed = parseMapFile(await bootResp.json().catch(() => null))

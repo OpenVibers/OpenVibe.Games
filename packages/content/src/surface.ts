@@ -135,26 +135,6 @@ export function removeLayer(paint: SurfacePaint, layerId: string): PaintChannel 
   return gone?.channel ?? null
 }
 
-/**
- * Migrate a legacy three-way splat (R grass / G rock / B mud) into v2 paint
- * layers. The channel assignment is preserved exactly, so an old map's
- * painted ground renders identically after migration.
- */
-export function migrateLegacyMix(
-  mix: string | undefined,
-  makeId: () => string,
-): SurfacePaint | undefined {
-  if (!mix) return undefined
-  return {
-    mask: mix,
-    layers: [
-      { id: makeId(), tex: 'leafy_grass', channel: 'r' },
-      { id: makeId(), tex: 'gray_rocks', channel: 'g' },
-      { id: makeId(), tex: 'brown_mud_dry', channel: 'b' },
-    ],
-  }
-}
-
 /** Validation for the Issues panel and the save pipeline. */
 export function validateSurface(
   s: SurfaceMaterialData,

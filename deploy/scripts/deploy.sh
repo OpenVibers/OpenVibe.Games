@@ -9,9 +9,9 @@
 #   DRY_RUN=1 /opt/openvibe.games/deploy/scripts/deploy.sh          ovhost plan games
 #
 # ovhost does the production procedure (pull, pnpm install --frozen-lockfile, pnpm build, restart
-# openvibe-games) with git as the checkout owner instead of sudo git; the tracked dist-types/ a previous build
-# rewrote restored from git before the pull; every workspace package's dependencies checked and better-sqlite3
-# loaded under this Node before the restart; /api/ready polled; on failure the checkout restored, reinstalled
+# openvibe-games) with git as the checkout owner instead of sudo git; every workspace package's
+# dependencies checked and better-sqlite3 loaded under this Node before the restart; /api/ready polled;
+# on failure the checkout restored, reinstalled
 # and rebuilt (the build writes the served client) and the unit restarted again (exit 3). Players online are
 # reported and reconnect (drain policy report); --wait-idle holds the restart until nobody plays. Do not pull
 # by hand first: ovhost would find nothing new (pass --restart if you did).

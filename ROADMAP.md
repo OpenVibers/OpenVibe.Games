@@ -5,8 +5,6 @@ incomplete, **next** = current development target, **future** = not started.
 A system is never "done" because a schema exists — it must have at least one
 real playable vertical implementation.
 
-See `docs/GAMEPLAY_DEVELOPMENT_STATUS.md` for the detailed per-system audit.
-
 ## Phase 0 — Vertical slice ✅ done
 
 Proved every major system cooperates end-to-end (verified by
@@ -30,7 +28,7 @@ vitals with eating/drinking, food items + burn-barrel cooking, fall damage,
 death/respawn; melee PvP with weapon capability, knockback, zone gating;
 container props (storage box) with trusted access; hinged doors; planter
 farming prototype (berry seeds, timestamp growth); merchant trades (bottle
-caps); supply-drop crates (hardcoded event v1); day/night clock; guest IP
+caps); supply-drop crates (hardcoded event v1); day/night clock; guest
 identity + openvibe.network SSO ranks; map editor as a mature authoring subsystem
 with live world reconciliation.
 
@@ -153,15 +151,11 @@ with live world reconciliation.
 
 ## Platform integration (network roadmap Wave 12) — partial
 
-- done: canonical Network subjects as account keys + legacy adoption;
-  `games` service principal; durable events via outbox; Media copies of
-  map-editor assets; mod manifest validation, registry (install / grant /
-  enable / disable / revoke, audit) and the capability-checked runtime seam
-  for declarative `games-content@1` packs
-- migration gate: Live's legacy HoboQuest/canvas tables are decided and
-  reconciled ([docs/legacy-import.md](docs/legacy-import.md)): per-player
-  HoboQuest rows are archived under subjects, and the canvas and expired
-  rows are excluded. Dry run on production copies done; apply pending review
+- done: canonical Network subjects as account keys; `games` service
+  principal; durable events via outbox; Media copies of map-editor assets;
+  mod manifest validation, registry (install / grant / enable / disable /
+  revoke, audit) and the capability-checked runtime seam for declarative
+  `games-content@1` packs
 - waiting on the platform: mod principals and grants in OpenVibe.Network;
   sandboxed executable mods (OpenVibe.Host Stage C); `games.progress.summary`
   user-module writes are granted but not implemented

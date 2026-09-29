@@ -1,16 +1,8 @@
 /**
  * Content-addressed store for map assets (textures, paint masks, models).
  *
- * What it replaces: `POST /api/texture` named uploads
- * `tex-<timestamp>-<random>.<ext>`, took the extension from a query
- * parameter, and wrote them with `writeFileSync` on the request thread.
- * So the same texture uploaded twice cost twice the disk and produced two
- * unrelated URLs that no map could ever be shown to share; a client could
- * claim `ext=png` for arbitrary bytes; and a slow disk blocked the event loop
- * for every other player on the server.
- *
- * Here the NAME IS THE CONTENT: sha256 of the actual bytes, with the
- * extension decided by sniffing those bytes rather than believing the client.
+ * The NAME IS THE CONTENT: sha256 of the actual bytes, with the extension
+ * decided by sniffing those bytes rather than believing the client.
  * Identical uploads collapse to one file and one URL for free, which is what
  * makes "save the map again without touching the paint mask" cost nothing.
  * Files are immutable, so they can be served with a permanent cache header.

@@ -95,12 +95,9 @@ transform, inventory JSON), `meta` (schema version, world-seeded flag).
 Dirty tracking batches writes; flush on interval, on settle, and on shutdown.
 Each flush is one transaction, together with the outbox events describing
 it. First boot seeds from the world definition; afterwards the DB is the
-world's source of truth. Platform tables (schema 12): `identity_legacy_map`,
-`mods`, `mod_grants`, `mod_placements`, `mod_audit`, `media_mirrors`, and the
-SDK's `event_outbox`. Schema 13 adds `legacy_live_rows`: OpenVibe.Live's
-HoboQuest rows, archived verbatim under Network subjects by
-`scripts/importLiveLegacy.ts` ([docs/legacy-import.md](docs/legacy-import.md)).
-The simulation never reads it.
+world's source of truth. Platform tables: `identity_adoptions`, `mods`,
+`mod_grants`, `mod_placements`, `mod_audit`, `media_mirrors`, and the SDK's
+`event_outbox`. The simulation never reads them.
 
 ## Platform boundary
 

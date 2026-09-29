@@ -25,20 +25,14 @@ describe('loadMap', () => {
     expect(r.map.terrains).toEqual([])
   })
 
-  it('migrates a v1 artifact on the way in', async () => {
+  it('ignores an invalid artifact rather than throwing', async () => {
     writeFileSync(
       mapPath,
-      JSON.stringify({
-        v: 1,
-        halfExtent: 100,
-        sub: 8,
-        heights: blankHeights(8),
-        statics: [],
-      }),
+      JSON.stringify({ v: 1, halfExtent: 100, sub: 8, heights: '', statics: [] }),
     )
     const r = await loadMap(mapPath)
     expect(r.map.v).toBe(2)
-    expect(r.map.terrains).toHaveLength(1)
+    expect(r.map.terrains).toEqual([])
   })
 
   it('falls back to an empty map rather than throwing on garbage', async () => {
@@ -129,21 +123,10 @@ describe('save pipeline', () => {
     expect((await saveMap(mapPath, huge, await loadMap(mapPath), undefined)).status).toBe(413)
   })
 
-  it('accepts and migrates a v1 payload', async () => {
-    const v1 = {
-      v: 1,
-      halfExtent: 100,
-      sub: 8,
-      heights: blankHeights(8),
-      statics: [],
-      mix: 'data:image/png;base64,AAA',
-    }
+  it('rejects a v1 payload as an invalid map', async () => {
+    const v1 = { v: 1, halfExtent: 100, sub: 8, heights: '', statics: [] }
     const r = await saveMap(mapPath, JSON.stringify(v1), await loadMap(mapPath), undefined)
-    expect(r.status).toBe(200)
-    // It is persisted as v2, with the splat migrated to paint layers.
-    const onDisk = JSON.parse(readFileSync(mapPath, 'utf8'))
-    expect(onDisk.v).toBe(2)
-    expect(onDisk.terrains[0].surface.paint.layers).toHaveLength(3)
+    expect(r.status).toBe(422)
   })
 
   it('creates the artifact on a first save even when the map is unchanged', async () => {
