@@ -1,5 +1,3 @@
-import HavokPhysics from '@babylonjs/havok'
-import havokWasmUrl from '@babylonjs/havok/lib/esm/HavokPhysics.wasm?url'
 import {
   createContent,
   setMapOverride,
@@ -11,7 +9,7 @@ import {
   type MapTextureEntry,
 } from '@openvibe/content'
 import { MapLightLayer, mapDiff, staticWork, terrainWork } from './render/mapRuntimeLayers.js'
-import { createHavokWorldForScene } from '@openvibe/physics/havok'
+import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { FixedTimestep } from '@openvibe/shared'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Appearance } from '@openvibe/protocol'
@@ -90,8 +88,9 @@ async function start(): Promise<void> {
   const mapLights = new MapLightLayer(scene)
   mapLights.reconcile(mapLightsBoot ?? [])
 
-  // Havok loads while the player customizes their character.
-  const havokPromise = HavokPhysics({ locateFile: () => havokWasmUrl })
+  // Rapier loads while the player customizes their character (dynamic import,
+  // so physics is never part of the initial JavaScript).
+  const rapierPromise = loadRapier()
 
   const environment = new Environment(scene, engine)
 
@@ -156,8 +155,8 @@ async function start(): Promise<void> {
   // away so the canvas gets the whole viewport (see public/frame.js).
   window.dispatchEvent(new CustomEvent('ovg:playing'))
 
-  const havok = await havokPromise
-  const physics = createHavokWorldForScene(scene, havok)
+  const rapier = await rapierPromise
+  const physics = createRapierWorld(rapier)
   const { buildStaticPhysics, rebuildTerrainPhysics } = await import('./game/staticPhysics.js')
   buildStaticPhysics(physics, content)
 

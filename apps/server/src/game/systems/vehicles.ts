@@ -12,6 +12,15 @@ const _vehicleForce = vec3()
 const _vehicleAng = vec3()
 const _vehicleVel = vec3()
 
+/**
+ * Vertical clearance between a riding player's replicated perch and their
+ * collision hull. Rapier resolves an animated hull that overlaps a dynamic
+ * chassis into a depenetration impulse, so a hull left at the perch pushes the
+ * cart into the ground and pins it. The standing capsule half-height is 0.75 m
+ * (STANCE_HULL 1.8 minus the 0.3 shorter body hull), which clears the vehicle.
+ */
+const RIDER_HULL_LIFT = 0.75
+
 export class VehicleSystem implements System {
   readonly name = 'vehicles'
 
@@ -174,8 +183,13 @@ export class VehicleSystem implements System {
     session.fallVy = 0
     const body = this.ctx.sessions.bodyOf(session.playerId)
     if (body !== undefined) {
+      // Rapier resolves an animated body that overlaps a dynamic body into a
+      // depenetration impulse, so a rider's hull left inside the chassis pushes
+      // the cart into the ground and brakes it. Perch the rider's hull clear of
+      // the vehicle instead; the replicated/rendered perch above
+      // (session.move.pos) is unchanged, so nothing visible moves.
       _bodyPosScratch.x = session.move.pos.x
-      _bodyPosScratch.y = session.move.pos.y + 0.15
+      _bodyPosScratch.y = session.move.pos.y + RIDER_HULL_LIFT
       _bodyPosScratch.z = session.move.pos.z
       this.ctx.world.physics.setTransform(body, _bodyPosScratch)
     }

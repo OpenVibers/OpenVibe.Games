@@ -10,7 +10,7 @@ real playable vertical implementation.
 Proved every major system cooperates end-to-end (verified by
 `apps/server/scripts/sliceTest.ts` on every change): authoritative server,
 Babylon client (WebGPU/WebGL), Source-style predicted movement, interest-
-managed replication, Havok props with sleep-aware snapshotting, gathering,
+managed replication, physics props with sleep-aware snapshotting, gathering,
 inventory, data-driven crafting, physgun building, persistence across
 restart, zone rules, logs//metrics//healthz.
 

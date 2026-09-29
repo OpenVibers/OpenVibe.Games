@@ -2,10 +2,10 @@ import type { Quat, Vec3 } from '@openvibe/shared'
 
 /**
  * Engine-agnostic physics facade. Gameplay and server code depend on these
- * types only; the Havok/Babylon implementation lives behind `@openvibe/physics/havok`
- * and no Havok or Babylon type ever crosses this boundary. That keeps
- * simulation testable without wasm and leaves room to swap/isolate the
- * engine (e.g. worker-side physics) later.
+ * types only; the Rapier implementation lives behind `@openvibe/physics/rapier`
+ * and no Rapier type ever crosses this boundary. That keeps simulation
+ * testable without wasm and leaves room to swap/isolate the engine (e.g.
+ * worker-side physics) later.
  */
 
 /** Opaque handle to a body inside a PhysicsWorld instance. Not persistent — never serialize it. */

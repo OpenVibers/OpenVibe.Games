@@ -1,6 +1,12 @@
 # ADR-0003: Server physics = Havok wasm via Babylon NullEngine adapter
 
-**Status:** accepted · **Date:** 2026-08-09
+**Status:** superseded by ADR-0007 · **Date:** 2026-08-09
+
+> Superseded 2026-09-29: ADR-0007 decision 2 replaces Havok and the Babylon
+> NullEngine host with Rapier on both sides, so `packages/physics/src/havok` and
+> the NullEngine scene are gone. The rule this ADR established — one physics
+> implementation behind `PhysicsWorld`, manual stepping, no engine types across
+> the boundary — is kept; only the engine changed.
 
 ## Decision
 

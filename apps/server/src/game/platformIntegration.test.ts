@@ -1,6 +1,6 @@
 /**
  * The Wave 12 platform boundary exercised on the real authoritative server
- * (headless Havok, real PostgreSQL schema through in-memory PGlite,
+ * (headless Rapier, real PostgreSQL schema through in-memory PGlite,
  * protocol-level connections), across a restart:
  *
  *  - a signed-in player is keyed by the canonical subject;
@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { createContent } from '@openvibe/content'
 import { openPgStore, type PgPersistenceStore } from '@openvibe/persistence'
 import { openTestDb } from '@openvibe/persistence/testing'
-import { createHeadlessHavokWorld } from '@openvibe/physics/havok'
+import { createRapierWorld, loadRapier, type RapierModule } from '@openvibe/physics/rapier'
 import {
   PROTOCOL_VERSION,
   defaultAppearance,
@@ -32,7 +32,6 @@ import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/
 import { createMockPlatform } from 'openvibe-sdk/testing'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
-import { loadHavok } from '../havokLoader.js'
 import { hashGuestKey } from '../net/guestIdentity.js'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP } from '../mods/contentPack.js'
 import { ModRegistry, type ModActor } from '../mods/registry.js'
@@ -55,12 +54,12 @@ const config = loadConfig({
   MAP_PATH: join(dir, 'map.json'),
   OV_NETWORK_AUTH_URL: 'http://network.test/api/auth/me',
 })
-let havok: unknown
+let rapier: RapierModule
 /** One in-memory PGlite database for the whole file; the restart tests share its state. */
 let db: Db
 
 beforeAll(async () => {
-  havok = await loadHavok()
+  rapier = await loadRapier()
   db = await openTestDb()
   // openvibe.network's /api/auth/me for the one signed-in test account.
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
@@ -85,7 +84,7 @@ interface Boot {
 
 async function boot(platform: ReturnType<typeof createMockPlatform>): Promise<Boot> {
   const content = createContent()
-  const physics = createHeadlessHavokWorld(havok)
+  const physics = createRapierWorld(rapier)
   // The store rides on the shared database; close() is never called (the instance is shared).
   const store = openPgStore(db, { placeId: config.placeId })
   await store.ensurePlace()

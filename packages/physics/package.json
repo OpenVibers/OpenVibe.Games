@@ -5,15 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./havok": "./src/havok/index.ts",
+    "./rapier": "./src/rapier/index.ts",
     "./mock": "./src/mock.ts"
   },
   "scripts": {
     "build": "tsc --build"
   },
   "dependencies": {
-    "@babylonjs/core": "^9.20.0",
-    "@babylonjs/havok": "^1.3.10",
+    "@dimforge/rapier3d-deterministic-compat": "0.21.0",
     "@openvibe/shared": "workspace:*"
   }
 }

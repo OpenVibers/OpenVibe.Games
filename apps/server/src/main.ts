@@ -5,13 +5,12 @@ import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/
 import { createValkey } from 'openvibe-sdk/valkey'
 import { compileMapFileV2, createContent, parseMapFile, setMapOverride } from '@openvibe/content'
 import { openPgStore } from '@openvibe/persistence'
-import { createHeadlessHavokWorld } from '@openvibe/physics/havok'
+import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { createConsoleLogger } from '@openvibe/shared'
 import { loadConfig } from './config.js'
 import { openDb } from './db.js'
 import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
-import { loadHavok } from './havokLoader.js'
 import { attachEditorWs } from './net/editorWs.js'
 import {
   closeSockets,
@@ -99,8 +98,7 @@ async function main(): Promise<void> {
     world: content.world.id,
   })
 
-  const havok = await loadHavok()
-  const physics = createHeadlessHavokWorld(havok)
+  const physics = createRapierWorld(await loadRapier())
 
   // PostgreSQL (or embedded PGlite in development), migrated before anything writes.
   const db = await openDb(config.db, log)

@@ -6,7 +6,7 @@
    every gameplay-relevant decision (movement, inventory, crafting, placement,
    physgun, damage, economy) is validated or simulated server-side. No client
    field is ever trusted.
-2. **Domain logic is engine-free.** `@openvibe/gameplay` has no Babylon, Havok,
+2. **Domain logic is engine-free.** `@openvibe/gameplay` has no Babylon, Rapier,
    DOM, or network imports; it runs identically in vitest, on the server, and
    inside client prediction. Engines live behind adapters.
 3. **Data-driven content.** Items, recipes, and worlds are declarative
@@ -24,7 +24,7 @@
 ```
           shared
          /  |   \
-  protocol content physics ──(havok adapter: @babylonjs/core + havok wasm)
+  protocol content physics ──(rapier adapter: deterministic Rapier wasm)
          \  |  /
         gameplay
             |
@@ -34,10 +34,13 @@
    (authoritative)    (Babylon render + prediction + HUD)
 ```
 
-Only `apps/*` and `packages/physics`'s adapter know Babylon exists. Only
-`apps/server` and `packages/persistence` know PostgreSQL (openvibe-sdk/db) exists. `packages/*`
-never import browser-only APIs (the physics adapter's NullEngine path is
-Node-safe; the client hands it a rendered scene instead).
+Only `apps/client` knows Babylon exists: ADR-0007 decision 2 removed the engine
+from the authoritative server, and an architecture audit
+(`apps/server/src/architectureAudit.audit.ts`) fails if `apps/server` imports
+`@babylonjs/*`. Only `apps/server` and `packages/persistence` know PostgreSQL
+(openvibe-sdk/db) exists. `packages/*` never import browser-only APIs: the
+physics adapter is Rapier, which runs identically in Node and the browser with no
+scene or engine, so there is no Node-only path to keep separate.
 
 ## Simulation model
 
@@ -46,18 +49,19 @@ Node-safe; the client hands it a rendered scene instead).
 - **Movement** is a kinematic Source/Quake controller (`gameplay/movement`):
   explicit velocity + capsule sweeps + clip-plane sliding + step-up, with
   friction / ground-accelerate / air-accelerate (air-strafing works). The
-  player is _not_ a dynamic rigid body; a kinematic Havok capsule mirrors the
+  player is _not_ a dynamic rigid body; a kinematic Rapier capsule mirrors the
   player so props collide with them. The controller consumes a
-  `CollisionQueries` interface — the Havok adapter provides it on both sides,
-  the tests provide analytic worlds.
+  `CollisionQueries` interface — the Rapier adapter provides it on both sides
+  (one implementation, no scene), the tests provide analytic worlds.
 - **Client prediction:** every input command (seq-stamped) is sent and applied
   locally; snapshots carry the last processed seq; the client rewinds to the
   authoritative state and replays unacked inputs. Remote entities render from
   ~130 ms interpolation buffers.
-- **Physics:** Havok via Babylon Physics V2 behind `PhysicsWorld`
-  (`@openvibe/physics`). Stepping is always manual (`executeStep`) from the fixed
-  loop — never coupled to render frames. Collision layers: Static / Prop /
-  Player, filtered at the shape level for rays and sweeps.
+- **Physics:** Rapier (`@dimforge/rapier3d-deterministic-compat`, one pinned
+  build on both sides) behind `PhysicsWorld` (`@openvibe/physics`). Stepping is
+  always manual (`world.step(dt)` from the fixed loop) — never coupled to render
+  frames. Collision layers: Static / Prop / Player, filtered at the shape level
+  for rays and sweeps.
 
 ## Networking
 

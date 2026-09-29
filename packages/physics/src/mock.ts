@@ -649,14 +649,21 @@ function rayPlane(
 
 /**
  * Sweeps a vertical capsule (centre segment of half-length `half`, radius
- * `radius`) against an AABB. The Minkowski sum of a vertical capsule and an
- * AABB is not an AABB, so this inflates the box by `radius` in x/z and by
- * `half + radius` in y: conservative at the corners, exact on every face. For
- * an axis-aligned world — all the mock models — that is the whole story.
+ * `radius`) against an AABB, as a real convex sweep (ADR-0007 M1 decision 9).
  *
- * Havok reports the contact point on the *surface*, not at the capsule centre
- * (measured: a sweep onto ground at y = 0 returns y = 0 exactly), so the point
- * is walked back onto the inflated face along −normal.
+ * The capsule touches the box when the distance between the centre SEGMENT and
+ * the box equals `radius`. Because an axis-aligned box is a product of intervals,
+ * that squared distance separates per axis: the horizontal gap from the segment's
+ * axis to the box's x/z rectangle, plus the vertical gap between the capsule's
+ * segment interval and the box's y interval. As a function of the sweep parameter
+ * it is convex, so the first contact is the first root of `distance² = radius²`:
+ * a fixed-iteration ternary search for the minimum, then a bisection back to the
+ * crossing. Both are deterministic to the bit, which a padded-AABB approximation
+ * was not — it rounded the box's edges and corners by up to `radius·(√2−1)`.
+ *
+ * A sweep that *starts* already overlapping the box (distance < radius) has no
+ * first contact to report and returns null, exactly as the analytic-plane path
+ * below does; reporting one would block every upward sweep out of a resting hull.
  */
 function sweepCapsuleAabb(
   from: Vec3,
@@ -666,63 +673,68 @@ function sweepCapsuleAabb(
   center: Vec3,
   boxHalf: Vec3,
 ): SweepHit | null {
-  const lo = [
-    center.x - boxHalf.x - radius,
-    center.y - boxHalf.y - half - radius,
-    center.z - boxHalf.z - radius,
-  ]
-  const hi = [
-    center.x + boxHalf.x + radius,
-    center.y + boxHalf.y + half + radius,
-    center.z + boxHalf.z + radius,
-  ]
-  const o = [from.x, from.y, from.z]
-  const dd = [d.x, d.y, d.z]
-  let tMin = -Infinity
-  let tMax = Infinity
-  let axis = 0
-  let sign = -1
-  for (let a = 0; a < 3; a++) {
-    if (Math.abs(dd[a]!) < 1e-12) {
-      if (o[a]! < lo[a]! || o[a]! > hi[a]!) return null
-      continue
-    }
-    const inv = 1 / dd[a]!
-    let t1 = (lo[a]! - o[a]!) * inv
-    let t2 = (hi[a]! - o[a]!) * inv
-    let s = -1
-    if (t1 > t2) {
-      const tmp = t1
-      t1 = t2
-      t2 = tmp
-      s = 1
-    }
-    if (t1 > tMin) {
-      tMin = t1
-      axis = a
-      sign = s
-    }
-    if (t2 < tMax) tMax = t2
-    if (tMin > tMax) return null
+  const ax = center.x - boxHalf.x
+  const bx = center.x + boxHalf.x
+  const ay = center.y - boxHalf.y
+  const by = center.y + boxHalf.y
+  const az = center.z - boxHalf.z
+  const bz = center.z + boxHalf.z
+
+  /** Squared distance between the swept segment and the box at parameter t. */
+  const distanceSq = (t: number): number => {
+    const x = from.x + d.x * t
+    const y = from.y + d.y * t
+    const z = from.z + d.z * t
+    const dx = x < ax ? ax - x : x > bx ? x - bx : 0
+    const dz = z < az ? az - z : z > bz ? z - bz : 0
+    const top = y + half
+    const bot = y - half
+    const dy = top < ay ? ay - top : bot > by ? bot - by : 0
+    return dx * dx + dy * dy + dz * dz
   }
-  // Already overlapping at t = 0: the capsule starts inside, which is not a
-  // contact the caller can act on.
-  if (tMin <= 0 || tMin > 1) return null
-  const normal = vec3(0, 0, 0)
-  if (axis === 0) normal.x = sign
-  else if (axis === 1) normal.y = sign
-  else normal.z = sign
-  // Walk the centre back onto the true surface: distance is the capsule's
-  // support along the normal, `radius` on the sides and `half + radius` on
-  // the caps.
-  const support = axis === 1 ? half + radius : radius
-  const centre = vec3(from.x + d.x * tMin, from.y + d.y * tMin, from.z + d.z * tMin)
-  const point = vec3(
-    centre.x - normal.x * support,
-    centre.y - normal.y * support,
-    centre.z - normal.z * support,
-  )
-  return { fraction: tMin, normal, point }
+
+  const r2 = radius * radius
+  if (distanceSq(0) < r2) return null
+
+  // Minimum over the segment, by ternary search (convex, so this is exact to the
+  // iteration count; the count is fixed so the result is reproducible).
+  let lo = 0
+  let hi = 1
+  for (let i = 0; i < 80; i++) {
+    const m1 = lo + (hi - lo) / 3
+    const m2 = hi - (hi - lo) / 3
+    if (distanceSq(m1) < distanceSq(m2)) hi = m2
+    else lo = m1
+  }
+  const tMin = (lo + hi) / 2
+  if (distanceSq(tMin) > r2) return null
+
+  // First crossing: bisect [0, tMin] keeping the distance above `radius` on the
+  // left and at or below it on the right.
+  let left = 0
+  let right = tMin
+  for (let i = 0; i < 60; i++) {
+    const mid = (left + right) / 2
+    if (distanceSq(mid) > r2) left = mid
+    else right = mid
+  }
+  const t = right
+
+  const x = from.x + d.x * t
+  const y = from.y + d.y * t
+  const z = from.z + d.z * t
+  // Closest point on the segment: its vertical position within the capsule's own
+  // interval that is nearest the box.
+  const segY = y + half < ay ? y + half : y - half > by ? y - half : Math.min(Math.max(y, ay), by)
+  const px = Math.min(Math.max(x, ax), bx)
+  const py = Math.min(Math.max(segY, ay), by)
+  const pz = Math.min(Math.max(z, az), bz)
+  const nx = x - px
+  const ny = segY - py
+  const nz = z - pz
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz)
+  const normal = len > 1e-12 ? vec3(nx / len, ny / len, nz / len) : vec3(0, 1, 0)
+  return { fraction: t, normal, point: vec3(px, py, pz) }
 }
 
 /**

@@ -1,9 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
 import { quat, vec3, type Quat, type Vec3 } from '@openvibe/shared'
 import { beforeAll, describe, expect, it } from 'vitest'
-import HavokPhysics from '@babylonjs/havok'
-import { createHeadlessHavokWorld } from './havok/index.js'
 import {
   MOCK_GRAVITY,
   MOCK_SETTLE_ANGULAR,
@@ -11,62 +8,46 @@ import {
   MOCK_TICK,
   createMockPhysicsWorld,
 } from './mock.js'
+import { createRapierWorld, loadRapier, type RapierModule } from './rapier/index.js'
 import { CollisionLayer, type BodyDesc, type PhysicsWorld } from './types.js'
 
 /**
  * Seam conformance.
  *
  * Every case runs against whatever PhysicsWorld factory is handed to
- * `conformance()`, so a second engine (ADR-0007 decision 2 names Rapier) can be
- * held to exactly the behaviour Havok has today. Nothing in this file may reach
- * around the seam: no Babylon, no Havok, no assumption about internals beyond
- * what `PhysicsWorld` promises.
+ * `conformance()`. The real engine is Rapier (ADR-0007 decision 2); the mock is
+ * the wasm-free oracle. Nothing in this file may reach around the seam: no
+ * engine type, no assumption about internals beyond what `PhysicsWorld`
+ * promises.
  *
- * ── Constants, read off havokWorld.ts rather than the brief ──────────────
- * - gravity (0, -16.5, 0)                  havokWorld.ts:588
- * - material friction 0.75 / static 0.85 / restitution 0.05   :123
- * - linear damping 0.05, angular 0.6       :131-132
- * - default mass 10 kg                      :128
- * - settle thresholds 0.05 m/s, 0.15 rad/s :72-73 (squared compare, angular `<=`)
+ * ── Constants the adapters are built from ────────────────────────────────
+ * - gravity (0, -16.5, 0)                  rapierWorld.ts RAPIER_GRAVITY
+ * - material friction 0.75, restitution 0.05  rapierWorld.ts
+ * - linear damping 0.05, angular 0.6          rapierWorld.ts
+ * - default mass 10 kg                        rapierWorld.ts
+ * - settle thresholds 0.05 m/s, 0.15 rad/s    (squared compare, angular `<=`)
  *
  * ── Behaviour asserted here that is NOT in the seam doc comment ──────────
- * These are properties of today's Havok adapter, documented so the Rapier port
- * reproduces them rather than trips over them:
+ * The Rapier adapter sets these explicitly and this suite holds it to them:
  *
- * 1. **`step(dt)` does not honour its argument.** `HavokWorld.step` calls
- *    `plugin.executeStep(dt, bodies)`, and the Havok plugin resolves the world
- *    step time as `this._useDeltaForWorldStep ? delta : this._fixedTimeStep`
- *    with `_useDeltaForWorldStep` false by default — so every step() advances a
- *    fixed 1/60 s of simulation regardless of the dt passed in. Measured: 30
- *    step(1/30) and 30 step(1/15) both yield v.y = -8.14 m/s, while 60
- *    step(1/60) yields -16.09. The seam comment says "advances by a fixed dt",
- *    which is the *intent*; the caller-side 30 Hz tick is what the game relies
- *    on and it is unaffected, but a Rapier adapter that actually honours dt
- *    would be ~2× faster per tick at 30 Hz and would change every simulation
- *    constant tuned against Havok. Listed for Opus.
+ * 1. **`step(dt)` honours its argument.** Rapier's integration parameters take
+ *    the dt directly, so 30 steps of 1/30 and 60 steps of 1/60 are the same
+ *    simulated second (the mock agrees; Havok did not, which is why the adapter
+ *    exposes `stepSeconds` and the gravity cases convert through it).
  * 2. **Waking or settling a body at the exact threshold.** The code compares
- *    `len² > threshold²` for linear (so a body moving at exactly 0.05 m/s is
- *    reported *unsettled* by Havok's float storage, though the comparison says
- *    settled) and `<=` for angular. The mock implements the comparison as
- *    written; this suite therefore probes just under and just over each
- *    threshold and does not pin the exact-boundary behaviour.
- * 3. **Raycast filtering is by the body's own `layer`.** `plugin.raycast` is
- *    called with `membership: 0xffffffff, collideWith: collidesWith`
- *    (havokWorld.ts:415-418), but the shape filter is a membership/collide
- *    pair, so a body is hit when `rayMask & body.layer` and `body.layer &
- *    body.collidesWith` — the body's `collidesWith` must include its own layer
- *    for the pair to pass. Measured: layer Player / collidesWith Static is hit
- *    by mask 4 but not by mask 1, while layer Static / collidesWith Prop is hit
- *    by mask 1, 2, 3 and 7. The mock filters on `rayMask & body.layer` only,
- *    which is a superset — see "what the mock does not model".
+ *    `len² > threshold²` for linear and `<=` for angular; this suite probes just
+ *    under and just over each threshold and does not pin exact-boundary float
+ *    behaviour.
+ * 3. **Raycast filtering is by the target's own `layer`.** The query's
+ *    membership is all-on and the filter is the caller's mask, so a body is hit
+ *    exactly when `rayMask & body.layer`. The mock filters the same way.
  * 4. **A welded body resists velocity changes for a few steps.** `setLinearVelocity`
  *    on one half of a weld writes the velocity, but the joint's relative-pose
  *    preservation pulls the pair back over the next couple of steps. Asserted
  *    here as "the pair stays together", not as free sliding.
- * 5. **`isSettled`, `wake` and `applyForce` ignore non-dynamic bodies**
- *    (havokWorld.ts:225, :233, :406), and `removeBody` / `removeConstraint` on
- *    an unknown id are silent no-ops (:142, :399) while every other body
- *    accessor throws `unknown physics body <id>` (:482).
+ * 5. **`isSettled`, `wake` and `applyForce` ignore non-dynamic bodies**, and
+ *    `removeBody` / `removeConstraint` on an unknown id are silent no-ops while
+ *    every other body accessor throws `unknown physics body <id>`.
  */
 
 const DT = 1 / 30
@@ -90,20 +71,17 @@ interface Adapter {
   stepSeconds: number
 }
 
-/** HavokWorld over a NullEngine scene — the exact headless server code path. */
-let havok: unknown
+/** RapierWorld over the deterministic wasm build — the exact headless server code path. */
+let rapier: RapierModule
 beforeAll(async () => {
-  const require = createRequire(import.meta.url)
-  const wasmPath = require.resolve('@babylonjs/havok/lib/esm/HavokPhysics.wasm')
-  havok = await HavokPhysics({ wasmBinary: (await readFile(wasmPath)).buffer as ArrayBuffer })
+  rapier = await loadRapier()
 }, 60_000)
 
-const havokAdapter: Adapter = {
-  name: 'HavokWorld',
-  create: () => createHeadlessHavokWorld(havok),
-  // Measured (header note 1): the plugin ignores the dt passed to step() and
-  // advances its own fixed 1/60 s.
-  stepSeconds: 1 / 60,
+const rapierAdapter: Adapter = {
+  name: 'RapierWorld',
+  create: () => createRapierWorld(rapier),
+  // Rapier honours the dt passed to step(); 30 Hz is the tick the game runs at.
+  stepSeconds: DT,
 }
 
 /**
@@ -775,7 +753,10 @@ function conformance(a: Adapter): void {
         stepFor(w, 60)
         w.getTransform(a, pa, rot())
         w.getTransform(b, pb, rot())
-        expect(pb.y - pa.y).toBeCloseTo(0.5, 1)
+        // "Stays rigid" is the claim worth pinning: the weld keeps the pair's
+        // separation at the creation-time offset. (A Rapier fixed joint also
+        // allows the island to rotate, so the offset need not stay vertical.)
+        expect(Math.hypot(pb.x - pa.x, pb.y - pa.y, pb.z - pa.z)).toBeCloseTo(0.5, 1)
         expect(pb.z - pa.z).toBeCloseTo(0, 1)
         close()
       },
@@ -784,20 +765,10 @@ function conformance(a: Adapter): void {
     it('removing a weld frees the follower', () => {
       // What "freed" means at the seam: once the joint is gone the two bodies
       // are independent, so a velocity change on the follower moves the
-      // follower and leaves the driver exactly where it was.
-      //
-      // It deliberately does NOT assert that the follower then rests at some
-      // particular height. On a stacked pair resting on the ground that is
-      // engine behaviour and the two engines disagree: the mock has no
-      // body-body contacts, so the follower drops straight through back to the
-      // floor (0.25) inside this window, while Havok's solver keeps it on the
-      // driver and carries it to 1.609. Both are "no longer welded", which is
-      // the property that belongs to the seam; a per-engine landing height is
-      // pinned separately in each engine branch. Measured: with the pair
-      // grounded and the follower kicked to +6 m/s after removal, Havok leaves
-      // the driver at 0.250 and the follower at 1.609 after 30 steps; the mock
-      // leaves the driver at 0.250 and the follower at 0.250, having already
-      // arced up and landed back on the floor.
+      // follower and leaves the driver exactly where it was. The follower is
+      // kicked HORIZONTALLY so the claim does not depend on either engine's
+      // contact solver: under a weld it could not move without dragging the
+      // driver, and the mock's missing body-body contacts cannot mask it.
       const w = open()
       w.addBody(groundDesc())
       const a = w.addBody(dynamicBoxDesc(vec3(0, 0.25, 0), 0.5, 10))
@@ -808,17 +779,17 @@ function conformance(a: Adapter): void {
       const pa = pos()
       w.getTransform(a, pa, rot())
       expect(pa.y).toBeCloseTo(0.25, 2)
-      w.setLinearVelocity(b, vec3(0, 6, 0))
+      w.setLinearVelocity(b, vec3(0, 0, 6))
       stepFor(w, 30)
       const pa2 = pos()
       const pb = pos()
       w.getTransform(a, pa2, rot())
       w.getTransform(b, pb, rot())
-      // The driver did not move at all, and the follower has left the pose the
-      // weld held it in (0.75) — up on Havok, down through the missing contact
-      // on the mock. A still-welded follower could not do either.
+      // The driver did not move, and the follower slid away — a still-welded
+      // follower could not do either.
       expect(pa2.y).toBeCloseTo(0.25, 2)
-      expect(Math.abs(pb.y - 0.75)).toBeGreaterThan(0.1)
+      expect(pa2.z).toBeCloseTo(0, 2)
+      expect(Math.abs(pb.z)).toBeGreaterThan(0.1)
       close()
     })
 
@@ -1364,11 +1335,10 @@ function conformance(a: Adapter): void {
         expect(dead).toEqual([])
       })
     } else {
-      it('a freed follower stays on the driver on Havok’s solver', () => {
-        // The Havok half of "removing a weld frees the follower": the contact
-        // solver keeps the upper box stacked on the lower one, so after the same
-        // 30-step window the shared case finds it up at ~1.6 rather than back
-        // down on the floor. Measured: 1.609.
+      it('a freed follower lands back on the driver via the contact solver', () => {
+        // Rapier, like Havok, has a contact solver: after the follower is kicked
+        // vertically off a freed weld it lands back on top of the lower box
+        // (measured ~0.75), rather than falling through as the mock does.
         const w = open()
         w.addBody(groundDesc())
         const a = w.addBody(dynamicBoxDesc(vec3(0, 0.25, 0), 0.5, 10))
@@ -1377,16 +1347,17 @@ function conformance(a: Adapter): void {
         stepFor(w, 60)
         w.removeConstraint(weld)
         w.setLinearVelocity(b, vec3(0, 6, 0))
+        // 30 steps at 30 Hz is one second: the follower arcs up ~1 m and lands.
         stepFor(w, 30)
         const pb = pos()
         w.getTransform(b, pb, rot())
-        expect(pb.y).toBeGreaterThan(0.75)
-        expect(pb.y).toBeLessThan(2)
+        expect(pb.y).toBeGreaterThan(0.5)
+        expect(pb.y).toBeLessThan(1.2)
         close()
       })
 
       it.skipIf(maybe('step advances'))(
-        'step advances a fixed 1/60 s regardless of the dt passed (Havok plugin)',
+        'step advances exactly the dt it is given',
         () => {
           const probe = (dt: number, ticks: number) => {
             const w = open()
@@ -1397,15 +1368,16 @@ function conformance(a: Adapter): void {
             close()
             return v.y
           }
-          // 30 steps at 30 Hz and 30 steps at 15 Hz are the same amount of
-          // simulated time, because the plugin uses its own fixed step time.
-          expect(probe(1 / 30, 30)).toBeCloseTo(probe(1 / 15, 30), 3)
-          // An extra second of simulation is very nearly twice the velocity.
-          expect(probe(1 / 60, 120) / probe(1 / 60, 60)).toBeGreaterThan(1.9)
-          expect(probe(1 / 60, 120) / probe(1 / 60, 60)).toBeLessThan(2.1)
+          // Rapier honours the dt it is given: 30 steps of 1/30 s and 60 steps
+          // of 1/60 s are the same simulated second (the damping is applied per
+          // step, so they agree to within a few mm/s, not bit-exactly).
+          expect(probe(1 / 30, 30)).toBeCloseTo(probe(1 / 60, 60), 1)
+          // An extra simulated second is very nearly twice the velocity.
+          expect(probe(1 / 30, 60) / probe(1 / 30, 30)).toBeGreaterThan(1.9)
+          expect(probe(1 / 30, 60) / probe(1 / 30, 30)).toBeLessThan(2.1)
           // One simulated second of this gravity: about -16.5 m/s.
-          expect(probe(1 / 30, 60)).toBeLessThan(-15)
-          expect(probe(1 / 30, 60)).toBeGreaterThan(-17)
+          expect(probe(1 / 30, 30)).toBeLessThan(-15)
+          expect(probe(1 / 30, 30)).toBeGreaterThan(-17)
         },
       )
 
@@ -1532,5 +1504,5 @@ function conformance(a: Adapter): void {
   })
 }
 
-conformance(havokAdapter)
+conformance(rapierAdapter)
 conformance(mockAdapter)

@@ -91,9 +91,9 @@ export class MapTerrainLayer {
   private addBody(patch: TerrainPatchData): BodyId {
     const grid = buildPatchGrid(patch.halfExtent, patch.sub, patch.heights)
     const rot = patch.rot ? qfromEuler(quat(), patch.rot[0], patch.rot[1], patch.rot[2]) : quat()
-    // Scale the VERTICES rather than the body: Babylon/Havok apply
-    // scale→rotate→translate, matching the client mesh's `scaling`, so the
-    // two cannot disagree about where the ground is.
+    // Scale the VERTICES rather than the body: Rapier has no body scale, so
+    // baking it into the local vertices is the only way to match the client
+    // mesh's `scaling`, and the two cannot disagree about where the ground is.
     const positions = scalePatchPositions(grid.positions, patch.scale)
     return this.physics.addBody({
       shape: { type: 'trimesh', positions, indices: grid.indices },

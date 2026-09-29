@@ -1747,9 +1747,12 @@ async function main(): Promise<void> {
       while (Date.now() - start < 45_000) {
         const me = a.me
         if (me && Math.hypot(me.pos[0] - 0, me.pos[2] - 4) < 6 && secured()) break // both frames in
-        // Nudge back toward the beacon in case physics drift pushed us out.
+        // Nudge back toward the beacon in case physics drift pushed us out, but only while we are not already home
+        // (after the recall the site is behind us), and only as a best effort: the recall is the server's and lands
+        // wherever we stand, so a nudge that runs out of time must not end the run.
+        const home = me && Math.hypot(me.pos[0] - 0, me.pos[2] - 4) < 6
         const dist = me ? Math.hypot(me.pos[0] - site[0], me.pos[2] - site[1]) : 99
-        if (me && dist > 3) await walkTo(a, site[0], site[1], 6000)
+        if (me && !home && dist > 3) await walkTo(a, site[0], site[1], 6000).catch(() => undefined)
         await sleep(500)
       }
     }

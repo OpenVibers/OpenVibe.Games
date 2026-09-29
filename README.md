@@ -8,7 +8,8 @@ physgun-driven building from crafted physical objects, gathering, crafting, and
 extraction risk — running against an authoritative dedicated server.
 
 **Stack:** TypeScript everywhere · Babylon.js (WebGPU with WebGL fallback) ·
-Havok physics (Babylon Physics V2, headless on the server via NullEngine) ·
+Rapier physics (`@dimforge/rapier3d-deterministic-compat`, one pinned build
+headless on the server and in client prediction) ·
 WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm monorepo.
 
 ## Owns
@@ -32,7 +33,7 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 - OpenVibe.Network (SSO, JWKS, client-credentials tokens, identity resolve, the `games.progress.summary`
   user module, mod grants), OpenVibe.Events (outbox relay, subscriptions), OpenVibe.Media (asset mirror)
 - `openvibe-contracts` v0.77.0, `openvibe-sdk` v0.22.0 and `openvibe-shared` v1.30.1 (pinned by release
-  tarball in `apps/server/package.json`), Babylon.js, Havok, PostgreSQL (`pg`, or embedded PGlite in
+  tarball in `apps/server/package.json`), Babylon.js, Rapier, PostgreSQL (`pg`, or embedded PGlite in
   development), Valkey (`iovalkey`, optional)
 
 ## Repository layout
@@ -46,7 +47,7 @@ packages/
   protocol/      Versioned wire messages + codec (zod-validated inbound)
   content/       Data-driven item/recipe/world definitions + validation registry
   gameplay/      Pure domain logic: inventory, crafting, movement sim, zones, entities
-  physics/       PhysicsWorld abstraction + Havok adapter (@openvibe/physics/havok)
+  physics/       PhysicsWorld abstraction + Rapier adapter (@openvibe/physics/rapier)
   persistence/   DTOs, repository interfaces, PostgreSQL implementation, migrations
 docs/adr/        Architecture decision records
 ```

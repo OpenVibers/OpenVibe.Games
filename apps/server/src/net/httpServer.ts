@@ -30,6 +30,7 @@ import type { GamesActorLimits } from './actorLimits.js'
 import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
 import { discoveryHandler, homeJsonLdTags } from './discovery.js'
+import { legalHandler } from './legalPages.js'
 
 /** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
  *  per request (a new build changes the mtime and rebuilds it once). */
@@ -181,6 +182,8 @@ export function createHttpServer(
     { href: '/editor', label: 'Map editor' },
     { href: portalHome, label: 'OpenVibe.Games home' },
   ]
+  // The site's own /terms, /privacy and /dmca (openvibe-shared/legal), built once for the process.
+  const serveLegal = legalHandler()
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = (req.url ?? '/').split('?')[0] ?? '/'
     // Host-based routing: play.openvibe.games serves the game at its root
@@ -215,6 +218,9 @@ export function createHttpServer(
     if (platform?.handle?.(req, res)) return
     // Crawl artifacts (plan T11): /robots.txt, /sitemap.xml and /llms.txt, built by openvibe-shared/seo.
     if (discoveryHandler(req, res)) return
+    // The site's own legal pages (plan T11 decision 6): /terms, /privacy, /dmca. Before the SPA and the
+    // static fallback so they never resolve to a file or the landing page.
+    if (serveLegal(req, res)) return
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
       // wire format.

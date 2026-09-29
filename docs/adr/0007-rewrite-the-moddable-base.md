@@ -60,6 +60,47 @@ no mobile path, and pins that lag the platform.
 12. **Pin drift is a defect.** Contracts and SDK pins move to current; CI fails when the installed contracts package
     rejects a manifest Games accepts, or the other way round.
 
+## M1 physics decisions (2026-09-29)
+
+Answers to the open questions in the M1 survey (`brief-games-m1-next.out.md`), decided after the state-hash
+harness (M1 step 2) had measured the mock against a real engine. Decisions 8–9 were taken because the
+cross-engine tolerance test forked on a discrete branch, not on floating-point noise.
+
+1. **Determinism means two things, tested separately.** Same runtime (Node against Node, the same inputs):
+   the movement state hash is bit-identical every tick; the test fails on any difference. Across runtimes
+   (server Node against a browser): positions agree within 1 mm and velocities within 1 cm/s per tick, and
+   the client reconciles (snaps to the server) past 5 cm. The movement kernel stays plain JavaScript (f64);
+   no shared f32 math kernel in M1. The tolerance is written here as a tolerance, never called bit-identity.
+2. **Rapier builds.** One pinned version of the deterministic build on both sides: the `-compat` package on
+   the server (Node, inlined WASM, no loader), the non-compat package in the browser with the `.wasm` as a
+   separate, cached, compressed asset. Physics loads with a dynamic import while the WebSocket ticket is
+   fetched, so it is not initial JavaScript and the M6 budget (2.5 MB initial JS) is untouched. A test
+   asserts both packages resolve to the same version.
+3. **Look input stays absolute.** Each input carries yaw and pitch as absolute angles quantized to int16
+   (1/65536 of a turn). Deltas add replay complexity for no M1 gain; revisit only if replay telemetry needs
+   them.
+4. **Actions are a bitfield of named flags.** The names and bits live in `packages/shared` as a frozen,
+   versioned list; adding a flag bumps the protocol version. Compact at 30 Hz, and M2's touch controls map
+   onto the same names.
+5. **No Rapier snapshots in M1.** Movement state lives in `PlayerMoveState`, not in the engine; prop and
+   island rollback are deferred past M1, so the snapshot API is not used and nothing is built for it.
+6. **Joints: functional equivalence in M1.** Welds hold rigid, ropes respect their length, springs return to
+   rest, each with a test; exact visual equivalence with Havok is refined in M2.
+7. **The intent enum lives in `packages/shared`**, the single source for protocol, gameplay and M2 touch;
+   `packages/gameplay/src/movement/buttons.ts` re-exports it.
+8. **`tryStepMove` gets a hysteresis band.** A contact within ±2 mm of the step threshold keeps the previous
+   tick's branch, so a millimetre of contact ambiguity between engines cannot flip step-up or auto-bhop.
+9. **The mock resolves a rounded capsule against a box edge** (a real convex sweep, not a padded AABB), with
+   the conformance suite's landing heights re-measured.
+
+## M1 step 4 finding: Rapier shape casts lose precision on very large colliders
+
+Measured while building the Rapier adapter (M1 steps 4–7). A diagonal `castShape` of the player capsule
+against a 400 m-long static box reports contact ~14 mm before the true face, while the same cast against a
+20 m box is exact to the f32 epsilon. The returned `time_of_impact` is inconsistent with the returned
+contact witnesses in that case. Consequences: determinism scene geometry is kept to sane extents, and the
+cross-engine tolerance is a per-tick bound, not bit-identity (decision 1).
+
 ## Deleted
 
 The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegacy.ts`, `legacy_live_rows`,
