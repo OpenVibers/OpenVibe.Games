@@ -12,5 +12,8 @@
   "dependencies": {
     "@openvibe/content": "workspace:*",
     "@openvibe/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@openvibe/physics": "workspace:*"
   }
 }

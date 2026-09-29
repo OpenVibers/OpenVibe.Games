@@ -156,6 +156,10 @@ importers:
       '@openvibe/shared':
         specifier: workspace:*
         version: link:../shared
+    devDependencies:
+      '@openvibe/physics':
+        specifier: workspace:*
+        version: link:../physics
 
   packages/persistence:
     dependencies:

@@ -1711,12 +1711,18 @@ async function main(): Promise<void> {
     }
     assert(site, 'extraction event announced with a location')
     await walkTo(a, site[0], site[1], 60_000)
-    // Hold the circle until the recall (25s hold + slack).
+    // Hold the circle until the recall (25s hold + slack). The recall arrives as
+    // three separate frames — an announce, the position update and the
+    // inventory — in no guaranteed order, so the loop must not stop on the
+    // player snapshot alone: the inventory frame carrying meta.secured is what
+    // the assertion below reads, and it routinely lands after the snapshot.
     {
       const start = Date.now()
+      const secured = (): boolean =>
+        a.inventory?.slots.find((s) => s.stack.def === 'salvage_core')?.stack.meta?.secured === 1
       while (Date.now() - start < 45_000) {
         const me = a.me
-        if (me && Math.hypot(me.pos[0] - 0, me.pos[2] - 4) < 6) break // recalled to spawn
+        if (me && Math.hypot(me.pos[0] - 0, me.pos[2] - 4) < 6 && secured()) break // both frames in
         // Nudge back toward the beacon in case physics drift pushed us out.
         const dist = me ? Math.hypot(me.pos[0] - site[0], me.pos[2] - site[1]) : 99
         if (me && dist > 3) await walkTo(a, site[0], site[1], 6000)

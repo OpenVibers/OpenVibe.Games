@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { vec3, type Vec3 } from '@openvibe/shared'
+import {
+  createMockPhysicsWorld,
+  mockCollisionQueries,
+  type MockPhysicsWorld,
+} from '@openvibe/physics/mock'
 import { Buttons } from './buttons.js'
-import type { CollisionQueries, SweepHit } from './collision.js'
+import type { CollisionQueries } from './collision.js'
 import { DEFAULT_MOVEMENT } from './params.js'
 import {
   Stance,
@@ -16,33 +21,27 @@ const P = DEFAULT_MOVEMENT
 const DT = 1 / 30
 
 /**
- * Analytic test world: infinite ground plane at y=0 and an optional wall
- * plane at x = wallX (normal -X). Capsule contact analytically resolved.
+ * The movement tests walk on the physics package's own mock world rather than
+ * a hand-rolled analytic stub, so the sweep geometry under test is the one
+ * `mockCollisionQueries` binds with the server's mask (apps/server/src/game/
+ * systems/movement.ts:58-68). Analytic surfaces stand in for level geometry:
+ * `addGroundPlane` is the floor, `addCast` a wall or a ceiling.
  */
-function makeWorld(wallX?: number): CollisionQueries {
-  return {
-    sweepCapsule(from: Vec3, to: Vec3, radius: number, height: number): SweepHit | null {
-      const half = height / 2
-      const hits: SweepHit[] = []
-      const fromBottom = from.y - half
-      const toBottom = to.y - half
-      if (fromBottom >= 0 && toBottom < 0) {
-        const fraction = fromBottom / (fromBottom - toBottom)
-        hits.push({ fraction, normal: vec3(0, 1, 0), point: vec3(from.x, 0, from.z) })
-      }
-      if (wallX !== undefined) {
-        const limit = wallX - radius
-        if (from.x <= limit && to.x > limit) {
-          const fraction = (limit - from.x) / (to.x - from.x)
-          hits.push({ fraction, normal: vec3(-1, 0, 0), point: vec3(wallX, from.y, from.z) })
-        }
-      }
-      if (hits.length === 0) return null
-      hits.sort((a, b) => a.fraction - b.fraction)
-      return hits[0] ?? null
-    },
-  }
+/** Worlds created by `makeWorld`, disposed after each case. */
+const live: MockPhysicsWorld[] = []
+
+function makeWorld(opts?: { wallX?: number; ceilingY?: number }): CollisionQueries {
+  const world = createMockPhysicsWorld()
+  world.addGroundPlane(0)
+  if (opts?.wallX !== undefined) world.addCast({ normal: vec3(1, 0, 0), offset: opts.wallX })
+  if (opts?.ceilingY !== undefined) world.addCast({ normal: vec3(0, 1, 0), offset: opts.ceilingY })
+  live.push(world)
+  return mockCollisionQueries(world)
 }
+
+afterEach(() => {
+  while (live.length > 0) live.pop()?.dispose()
+})
 
 function idle(): MoveInput {
   return { moveX: 0, moveZ: 0, yaw: 0, pitch: 0, buttons: 0 }
@@ -52,8 +51,13 @@ function forward(buttons = 0): MoveInput {
   return { moveX: 0, moveZ: 1, yaw: 0, pitch: 0, buttons }
 }
 
+/**
+ * Spawn a hair above the floor: the mock's ground plane rejects a sweep that
+ * starts in exact contact (t = 0, like Havok's), so a spawn at exactly
+ * capsuleHeight/2 has no ground to find until gravity pulls it down a tick.
+ */
 function spawnGrounded() {
-  return createMoveState(vec3(0, P.capsuleHeight / 2, 0))
+  return createMoveState(vec3(0, P.capsuleHeight / 2 + 0.01, 0))
 }
 
 function horizSpeed(v: Vec3): number {
@@ -135,7 +139,7 @@ describe('stepMovement', () => {
 
   it('slides along walls instead of stopping', () => {
     const s = spawnGrounded()
-    const world = makeWorld(2)
+    const world = makeWorld({ wallX: 2 })
     // Move diagonally (+X into wall, +Z along it)
     const input: MoveInput = { moveX: 1, moveZ: 1, yaw: 0, pitch: 0, buttons: 0 }
     for (let i = 0; i < 120; i++) stepMovement(s, input, P, world, DT)
@@ -146,7 +150,7 @@ describe('stepMovement', () => {
   it('is deterministic for identical input streams', () => {
     const run = () => {
       const s = spawnGrounded()
-      const world = makeWorld(3)
+      const world = makeWorld({ wallX: 3 })
       for (let i = 0; i < 200; i++) {
         const input: MoveInput = {
           moveX: Math.sin(i * 0.1),
@@ -217,21 +221,9 @@ describe('stances', () => {
   })
 
   it('standing up is blocked by a ceiling', () => {
-    // World with a ceiling at y=1.4: crouch fits (hull 1.2), standing does not.
-    const ceiling = 1.4
-    const world: ReturnType<typeof makeWorld> = {
-      sweepCapsule(from, to, radius, height) {
-        const base = makeWorld().sweepCapsule(from, to, radius, height)
-        const fromTop = from.y + height / 2
-        const toTop = to.y + height / 2
-        if (fromTop <= ceiling && toTop > ceiling) {
-          const fraction = (ceiling - fromTop) / (toTop - fromTop)
-          const hit = { fraction, normal: vec3(0, -1, 0), point: vec3(from.x, ceiling, from.z) }
-          if (!base || fraction < base.fraction) return hit
-        }
-        return base
-      },
-    }
+    // Upward-facing analytic plane at y=1.4: crouch fits (hull 1.2), standing
+    // does not, so the up-sweep inside updateStance must hit it.
+    const world = makeWorld({ ceilingY: 1.4 })
     const s = spawnGrounded()
     stepMovement(s, { ...idle(), buttons: Buttons.Crouch }, P, world, DT)
     for (let i = 0; i < 30; i++)
@@ -274,7 +266,7 @@ describe('noclip', () => {
   it('passes through walls', () => {
     const state = createMoveState(vec3(0, 1, 0))
     state.noclip = true
-    const world = makeWorld(2) // wall at x=2
+    const world = makeWorld({ wallX: 2 }) // wall at x=2
     for (let i = 0; i < 90; i++)
       stepMovement(state, { moveX: 1, moveZ: 0, yaw: 0, pitch: 0, buttons: 0 }, P, world, DT)
     expect(state.pos.x).toBeGreaterThan(3)

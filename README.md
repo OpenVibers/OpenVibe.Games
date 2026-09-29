@@ -100,7 +100,6 @@ freeze. Props are protected: only you and players you trust can move them.
 | `pnpm format`                           | Prettier write                                                                                               |
 | `pnpm build`                            | Production build of all packages + client bundle                                                             |
 | `tsx apps/server/scripts/sliceTest.ts`  | End-to-end vertical-slice test (boots a real server, drives protocol clients, restarts, asserts persistence) |
-| `tsx packages/physics/scripts/smoke.ts` | Headless Havok smoke test                                                                                    |
 
 ## Production
 
