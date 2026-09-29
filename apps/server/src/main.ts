@@ -187,6 +187,7 @@ async function main(): Promise<void> {
   const authorizeStaff = createStaffAuthorizer({
     networkAuthUrl: config.networkAuthUrl,
     networkUrl: config.platform.networkUrl,
+    log: platformLog.child({ system: 'staff-auth' }),
   })
   const pruneTimer = setInterval(() => void outbox?.prune(), 6 * 3600 * 1000)
   pruneTimer.unref()
