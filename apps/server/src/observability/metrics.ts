@@ -18,7 +18,12 @@ export class ServerMetrics {
   bytesOut = 0
   messagesOut = 0
   snapshotBytes = 0
+  /** Write-behind flusher: jobs queued or running, rows written, duration and failure counters. */
   dbDirtyQueue = 0
+  persistRowsWritten = 0
+  persistFlushMs = 0
+  persistFlushFailures = 0
+  persistCoalesced = 0
   /** Live constraints and the multi-prop structures they form. */
   constraints = 0
   constraintIslands = 0
@@ -59,6 +64,10 @@ export class ServerMetrics {
       messagesOut: this.messagesOut,
       snapshotBytes: this.snapshotBytes,
       dbDirtyQueue: this.dbDirtyQueue,
+      persistRowsWritten: this.persistRowsWritten,
+      persistFlushMs: round2(this.persistFlushMs),
+      persistFlushFailures: this.persistFlushFailures,
+      persistCoalesced: this.persistCoalesced,
       constraints: this.constraints,
       constraintIslands: this.constraintIslands,
       activeRegions: this.activeRegions,

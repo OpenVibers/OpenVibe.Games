@@ -3,17 +3,22 @@
   "stage": "stable",
   "code": true,
   "product": "Scraplandia",
-  "runtime": "node 22, TypeScript (tsx), pnpm workspace; Babylon.js + Havok; better-sqlite3",
+  "runtime": "node 22, TypeScript (tsx), pnpm workspace; Babylon.js + Havok; PostgreSQL 18 via openvibe-sdk/db (pg, or embedded PGlite in development); Valkey optional",
   "port": 8000,
   "domain": "openvibe.games, play.openvibe.games",
-  "contracts": "openvibe-contracts v0.71.0 (apps/server/package.json)",
-  "capabilities": ["games.mod.manage", "games.mod.read", "games.world.announce", "games.prop.place"],
+  "contracts": "openvibe-contracts v0.71.0, openvibe-sdk v0.22.0, openvibe-shared v1.30.1 (apps/server/package.json)",
+  "capabilities": [
+    "games.mod.manage",
+    "games.mod.read",
+    "games.world.announce",
+    "games.prop.place"
+  ],
   "deployed": true,
   "deployment": "Public at https://openvibe.games and https://play.openvibe.games: deployed with `sudo ovhost deploy games` (OpenVibe.Host strategy pnpm-build since the 2026-09-27 cutover; deploy/scripts/deploy.sh is the wrapper), unit openvibe-games on 127.0.0.1:8000, env /etc/openvibe/games.env, principal games.",
   "features": [
     "authoritative multiplayer physics sandbox (Havok on the server)",
     "Source-style movement, physgun building, gathering, crafting, skills",
-    "persistent world, characters and props in SQLite",
+    "persistent world, characters and props in PostgreSQL (write-behind flusher; the tick never awaits I/O)",
     "map editor with assets mirrored to OpenVibe.Media",
     "declarative mods (games-content@1) with per-install grants and audit",
     "players keyed by Network subjects",
@@ -22,5 +27,5 @@
     "the OpenVibe Frame from its own pinned copy",
     "per-actor limits on capability-boundary writes (openvibe-sdk/limits)"
   ],
-  "updated": "2026-09-28"
+  "updated": "2026-09-29"
 }

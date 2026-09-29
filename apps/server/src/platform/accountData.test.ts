@@ -1,4 +1,4 @@
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import { openTestStore } from '@openvibe/persistence/testing'
 import { createConsoleLogger } from '@openvibe/shared'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
@@ -46,8 +46,8 @@ const ev = (type: string, payload: Record<string, unknown>, source = 'network'):
 
 describe('account export and deletion (ADR-033)', () => {
   it('exports, then closes sessions, erases and confirms once', async () => {
-    const store = openSqliteStore(':memory:')
-    store.players.upsertMany([char('d0', DANA), char('d1', OLD), char('o0', OTTO)])
+    const store = await openTestStore()
+    await store.players.upsertMany([char('d0', DANA), char('d1', OLD), char('o0', OTTO)])
     const sent: {
       path: string
       body: {
@@ -103,8 +103,10 @@ describe('account export and deletion (ADR-033)', () => {
     failNext = true
     await expect(data.apply(del)).rejects.toThrow(/confirmation refused: 503/)
     expect(closed).toEqual([[DANA, OLD]])
-    expect(store.players.listByToken(DANA).length + store.players.listByToken(OLD).length).toBe(0)
-    expect(store.players.listByToken(OTTO).map((p) => p.id)).toEqual(['o0'])
+    const dana = await store.players.listByToken(DANA)
+    const old = await store.players.listByToken(OLD)
+    expect(dana.length + old.length).toBe(0)
+    expect((await store.players.listByToken(OTTO)).map((p) => p.id)).toEqual(['o0'])
     expect(await data.apply(del)).toBe('confirmed')
     expect(closed.length).toBe(1)
     const conf = sent[1]!
@@ -116,6 +118,6 @@ describe('account export and deletion (ADR-033)', () => {
     expect(conf.body.retained).toEqual({ structures_unowned: 0 })
     expect(await data.apply(del)).toBe('unchanged')
     expect(sent.length).toBe(2)
-    store.close()
+    await store.close()
   })
 })

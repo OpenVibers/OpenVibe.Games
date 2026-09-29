@@ -28,14 +28,14 @@
          \  |  /
         gameplay
             |
-       persistence (DTOs; sqlite impl behind repository interfaces)
+       persistence (DTOs; PostgreSQL impl behind repository interfaces; migrations)
             |
    apps/server        apps/client
    (authoritative)    (Babylon render + prediction + HUD)
 ```
 
 Only `apps/*` and `packages/physics`'s adapter know Babylon exists. Only
-`apps/server` and `packages/persistence` know SQLite exists. `packages/*`
+`apps/server` and `packages/persistence` know PostgreSQL (openvibe-sdk/db) exists. `packages/*`
 never import browser-only APIs (the physics adapter's NullEngine path is
 Node-safe; the client hands it a rendered scene instead).
 
@@ -85,19 +85,27 @@ Node-safe; the client hands it a rendered scene instead).
 4. Sync awake prop transforms into entity records; settle/wake transitions
 5. Crafting queues (tick-based completion, output-space aware)
 6. Replication (every 2nd tick): interest diff + snapshot per session
-7. Periodic batched persistence flush (dirty entities + dirty players)
+7. Periodic write-behind checkpoint (a dirty snapshot handed to the flusher; the tick never awaits I/O)
 
 ## Persistence
 
-SQLite (WAL) behind `PersistenceStore` repositories: `world_entities`
-(props/resources with motion + kind-specific state JSON), `players` (token,
-transform, inventory JSON), `meta` (schema version, world-seeded flag).
-Dirty tracking batches writes; flush on interval, on settle, and on shutdown.
-Each flush is one transaction, together with the outbox events describing
-it. First boot seeds from the world definition; afterwards the DB is the
-world's source of truth. Platform tables: `identity_adoptions`, `mods`,
-`mod_grants`, `mod_placements`, `mod_audit`, `media_mirrors`, and the SDK's
-`event_outbox`. The simulation never reads them.
+PostgreSQL 18 through openvibe-sdk/db, behind `PersistenceStore` repositories (the SDK's async handle
+and `sql` fragments; migrations in `packages/persistence/migrations/0001_initial.sql` applied at boot
+by the SDK migrator as the owner role). The schema: `places`, `world_meta`, `world_entities`
+(props/resources/NPCs with motion + kind-specific state JSON), `world_constraints`, `characters`
+(inventory, skills, friends, reputation, unlocks, stats, armor, active job), `mods`, `mod_grants`,
+`mod_placements`, `mod_audit`, `media_mirrors`, `identity_adoptions`, `account_data_events`, and the
+SDK's `event_outbox` and `token_revocations`. JSON columns are jsonb and round-trip as objects; a
+local guest account is keyed by `guest:` + sha256(their token), never the raw token.
+
+**The tick never awaits I/O.** It takes a copy-on-write snapshot of the dirty rows
+(`world.takeDirty()`, `npcs.takeDirty()`, dirty sessions, env/markets) and the write-behind flusher
+(`apps/server/src/game/flusher.ts`) persists it in one transaction, one flush in flight per instance.
+A checkpoint while one is running is coalesced (the dirty flags stay set), a failed transaction
+restores the snapshot's dirtiness and is retried, and shutdown drains the queue before the database
+closes. Batch writes are multi-row `INSERT … ON CONFLICT` in chunks of at most 500 rows. First boot
+seeds from the world definition; afterwards the database is the world's source of truth. The
+simulation never reads the platform tables.
 
 ## Platform boundary
 

@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createContent } from '@openvibe/content'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import { openTestStore } from '@openvibe/persistence/testing'
 import { createConsoleLogger } from '@openvibe/shared'
 import { verifyUserToken } from 'openvibe-sdk/auth'
 import { createMockPlatform } from 'openvibe-sdk/testing'
@@ -25,7 +25,8 @@ afterEach(() => {
 })
 
 async function start(authorize: (req: IncomingMessage) => Promise<ModActor | null>) {
-  const registry = new ModRegistry(openSqliteStore(':memory:'), createContent())
+  const registry = new ModRegistry(await openTestStore(), createContent())
+  await registry.load()
   server = createServer((req, res) => {
     if (!handleModsRequest(req, res, { registry, authorize, log })) {
       res.writeHead(404)

@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createContent } from '@openvibe/content'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import type { PgPersistenceStore } from '@openvibe/persistence'
+import { openTestStore } from '@openvibe/persistence/testing'
 import { createConsoleLogger } from '@openvibe/shared'
 import { afterEach, describe, expect, it } from 'vitest'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP } from './contentPack.js'
@@ -87,7 +88,8 @@ function fakeNetwork(allow: string[]) {
 }
 
 async function start(grants: ModGrantAuthority) {
-  const registry = new ModRegistry(openSqliteStore(':memory:'), createContent())
+  const registry = new ModRegistry(await openTestStore(), createContent())
+  await registry.load()
   server = createServer((req, res) => {
     if (!handleModsRequest(req, res, { registry, authorize: async () => STAFF, grants, log })) {
       res.writeHead(404)
@@ -133,22 +135,22 @@ describe('mod principals in Network', () => {
     expect(net.calls.slice(1)).toEqual([`approve:${CAP_ANNOUNCE}`, `revoke:${CAP_ANNOUNCE}`])
     // Network's events arrive after the API applied its answers: an older revision changes nothing.
     expect((await post(`/${MOD_ID}/grants`, { capability: CAP_ANNOUNCE })).status).toBe(200)
-    registry.applyNetwork({
+    await registry.applyNetwork({
       mod_id: MOD_ID,
       status: 'active',
       approved: [CAP_PLACE_PROP],
       revision: 1,
     })
-    registry.applyNetwork({
+    await registry.applyNetwork({
       mod_id: MOD_ID,
       status: 'active',
       approved: [CAP_PLACE_PROP],
       revision: 3,
     })
     expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(true)
-    expect(registry.auditLog(MOD_ID).some((a) => a.actor === 'network')).toBe(false)
+    expect((await registry.auditLog(MOD_ID)).some((a) => a.actor === 'network')).toBe(false)
     // A newer one (a staff change in Network) applies.
-    registry.applyNetwork({
+    await registry.applyNetwork({
       mod_id: MOD_ID,
       status: 'active',
       approved: [CAP_PLACE_PROP],
@@ -180,28 +182,63 @@ describe('mod principals in Network', () => {
     expect(registry.get(MOD_ID)).toBeNull()
   })
 
-  it("applyNetwork makes an install's copy follow its principal", () => {
-    const registry = new ModRegistry(openSqliteStore(':memory:'), createContent())
-    registry.install({ manifest, pack, approve: [CAP_PLACE_PROP], enable: true }, STAFF)
+  it("applyNetwork makes an install's copy follow its principal", async () => {
+    const registry = new ModRegistry(await openTestStore(), createContent())
+    await registry.install({ manifest, pack, approve: [CAP_PLACE_PROP], enable: true }, STAFF)
     expect(
-      registry.applyNetwork({
+      await registry.applyNetwork({
         mod_id: 'mod_01JZZZZZZZZZZZZZZZZZZZZZZZ',
         status: 'active',
         approved: [],
       }),
     ).toBeNull()
-    registry.applyNetwork({ mod_id: MOD_ID, status: 'active', approved: [CAP_ANNOUNCE] })
+    await registry.applyNetwork({ mod_id: MOD_ID, status: 'active', approved: [CAP_ANNOUNCE] })
     expect([...(registry.get(MOD_ID)?.granted ?? [])]).toEqual([CAP_ANNOUNCE])
-    registry.applyNetwork({
+    await registry.applyNetwork({
       mod_id: MOD_ID,
       status: 'active',
       approved: [CAP_ANNOUNCE, 'games.not.bindable'],
     })
     expect([...(registry.get(MOD_ID)?.granted ?? [])]).toEqual([CAP_ANNOUNCE])
-    expect(registry.auditLog(MOD_ID).some((a) => a.actor === 'network')).toBe(true)
-    registry.applyNetwork({ mod_id: MOD_ID, status: 'revoked', approved: [] })
+    expect((await registry.auditLog(MOD_ID)).some((a) => a.actor === 'network')).toBe(true)
+    await registry.applyNetwork({ mod_id: MOD_ID, status: 'revoked', approved: [] })
     expect(registry.get(MOD_ID)?.mod.status).toBe('revoked')
     expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(false)
+  })
+
+  it('does not advance the revision when its writes fail: the same revision applies on redelivery', async () => {
+    const store = await openTestStore()
+    let fail = true
+    const wrapped = {
+      ...store,
+      mods: {
+        ...store.mods,
+        upsertGrant: async (grant: Parameters<typeof store.mods.upsertGrant>[0]) => {
+          if (fail) throw new Error('db down')
+          await store.mods.upsertGrant(grant)
+        },
+      },
+    } as PgPersistenceStore
+    const registry = new ModRegistry(wrapped, createContent())
+    await registry.install({ manifest, pack, approve: [], enable: true }, STAFF)
+    // The write fails: the revision must not be remembered, or Events' redelivery would be dropped as stale.
+    await expect(
+      registry.applyNetwork({
+        mod_id: MOD_ID,
+        status: 'active',
+        approved: [CAP_ANNOUNCE],
+        revision: 7,
+      }),
+    ).rejects.toThrow('db down')
+    expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(false)
+    fail = false
+    await registry.applyNetwork({
+      mod_id: MOD_ID,
+      status: 'active',
+      approved: [CAP_ANNOUNCE],
+      revision: 7,
+    })
+    expect(registry.isGranted(MOD_ID, CAP_ANNOUNCE)).toBe(true)
   })
 
   it('the client sends the principal token and maps Network answers', async () => {

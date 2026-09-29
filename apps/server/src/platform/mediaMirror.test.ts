@@ -2,8 +2,11 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import type { PersistenceStore } from '@openvibe/persistence'
+import { openTestStore } from '@openvibe/persistence/testing'
+import type { Logger } from '@openvibe/shared'
 import { createConsoleLogger } from '@openvibe/shared'
+import type { OpenVibeClient } from 'openvibe-sdk/core'
 import { describe, expect, it } from 'vitest'
 import { loadPlatformConfig } from '../config.js'
 import { MediaMirror } from './mediaMirror.js'
@@ -94,14 +97,14 @@ function fakePlatform(opts: { failPuts?: number; completeStatus?: number } = {})
   return { fetchImpl, objects, calls }
 }
 
-function setup(platform: ReturnType<typeof fakePlatform>) {
+async function setup(platform: ReturnType<typeof fakePlatform>) {
   const dir = mkdtempSync(join(tmpdir(), 'openvibe-mirror-'))
   const assetsDir = join(dir, 'map-assets')
   mkdirSync(assetsDir)
   const hash = `sha256-${createHash('sha256').update(PNG).digest('hex')}`
   const fileName = `${hash}.png`
   writeFileSync(join(assetsDir, fileName), PNG)
-  const store = openSqliteStore(':memory:')
+  const store = await openTestStore()
   let now = 1_000
   const pc = createPlatformClient(
     {
@@ -129,14 +132,30 @@ function setup(platform: ReturnType<typeof fakePlatform>) {
   }
 }
 
+/**
+ * MediaMirror.enqueue is fire-and-forget (void); poll until the queue row it writes has landed so a
+ * following runOnce is deterministic.
+ */
+async function queued(
+  store: Awaited<ReturnType<typeof openTestStore>>,
+  hash: string,
+): Promise<void> {
+  for (let i = 0; i < 500; i++) {
+    if (await store.mediaMirrors.get(hash)) return
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+  throw new Error(`asset ${hash} was not queued`)
+}
+
 describe('map assets → Media objects (games service token)', () => {
   it('mirrors a stored asset with init, content and a hash-verified complete', async () => {
     const platform = fakePlatform()
-    const { store, mirror, hash, asset } = setup(platform)
+    const { store, mirror, hash, asset } = await setup(platform)
     mirror.enqueue(asset)
+    await queued(store, hash)
     mirror.stop()
     await mirror.runOnce()
-    const row = store.mediaMirrors.get(hash)!
+    const row = (await store.mediaMirrors.get(hash))!
     expect(row).toMatchObject({ status: 'mirrored', attempts: 1 })
     expect(row.mediaId).toMatch(/^med_/)
     expect(row.publicUrl).toBe(`https://openvibe.media/o/${row.mediaId}`)
@@ -151,27 +170,28 @@ describe('map assets → Media objects (games service token)', () => {
 
   it('backfills assets already on disk', async () => {
     const platform = fakePlatform()
-    const { store, mirror, hash } = setup(platform)
+    const { store, mirror, hash } = await setup(platform)
     expect(await mirror.backfill()).toBe(1)
     expect(await mirror.backfill()).toBe(0)
     await mirror.runOnce()
-    expect(store.mediaMirrors.get(hash)?.status).toBe('mirrored')
+    expect((await store.mediaMirrors.get(hash))?.status).toBe('mirrored')
   })
 
   it('resumes the same object after a failure instead of creating another', async () => {
     const platform = fakePlatform({ failPuts: 1 })
-    const { store, mirror, hash, asset, advance } = setup(platform)
+    const { store, mirror, hash, asset, advance } = await setup(platform)
     mirror.enqueue(asset)
+    await queued(store, hash)
     mirror.stop()
     await mirror.runOnce()
-    const failed = store.mediaMirrors.get(hash)!
+    const failed = (await store.mediaMirrors.get(hash))!
     expect(failed).toMatchObject({ status: 'pending', attempts: 1 })
     expect(failed.lastError).toMatch(/503|unavailable/)
     await mirror.runOnce() // not due yet
-    expect(store.mediaMirrors.get(hash)?.attempts).toBe(1)
+    expect((await store.mediaMirrors.get(hash))?.attempts).toBe(1)
     advance(60_000)
     await mirror.runOnce()
-    expect(store.mediaMirrors.get(hash)).toMatchObject({
+    expect(await store.mediaMirrors.get(hash)).toMatchObject({
       status: 'mirrored',
       mediaId: failed.mediaId,
     })
@@ -180,10 +200,64 @@ describe('map assets → Media objects (games service token)', () => {
 
   it('gives up on refusals retrying cannot fix', async () => {
     const platform = fakePlatform({ completeStatus: 422 })
-    const { store, mirror, hash, asset } = setup(platform)
+    const { store, mirror, hash, asset } = await setup(platform)
     mirror.enqueue(asset)
+    await queued(store, hash)
     mirror.stop()
     await mirror.runOnce()
-    expect(store.mediaMirrors.get(hash)?.status).toBe('failed')
+    expect((await store.mediaMirrors.get(hash))?.status).toBe('failed')
+  })
+
+  it('a scheduled pass whose failure write rejects is logged, not an unhandled rejection', async () => {
+    // A store whose only due row cannot be read locally, and whose markFailed write then rejects:
+    // pass() rejects (fail() awaits markFailed too).
+    const row = {
+      assetHash: `sha256-${'a'.repeat(64)}`,
+      fileName: `sha256-${'a'.repeat(64)}.png`,
+      mime: 'image/png',
+      attempts: 0,
+    }
+    const store = {
+      mediaMirrors: {
+        due: async () => [row],
+        markFailed: async () => {
+          throw new Error('persistence down')
+        },
+      },
+    } as unknown as PersistenceStore
+    const warnings: string[] = []
+    const quiet = {
+      debug: () => {},
+      info: () => {},
+      warn: (message: string) => warnings.push(message),
+      error: () => {},
+    } as unknown as Logger
+    const mirror = new MediaMirror({
+      client: {} as OpenVibeClient,
+      store,
+      namespace: 'games',
+      assetsDir: mkdtempSync(join(tmpdir(), 'openvibe-mirror-fail-')),
+      log: quiet,
+      intervalMs: 60_000,
+    })
+    // Direct callers still see the rejection: runOnce's contract is unchanged.
+    await expect(mirror.runOnce()).rejects.toThrow('persistence down')
+
+    // The scheduled path must swallow it (a warning), or the process sees an unhandled rejection.
+    const unhandled: unknown[] = []
+    const onUnhandled = (err: unknown) => unhandled.push(err)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      mirror.kick()
+      for (let i = 0; i < 200 && !warnings.includes('media mirror pass failed'); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+      await mirror.stop()
+    }
+    expect(warnings).toContain('media mirror pass failed')
+    expect(unhandled).toEqual([])
   })
 })

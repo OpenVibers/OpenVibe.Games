@@ -32,7 +32,6 @@ import { encodeHeights } from '@openvibe/content'
 const PORT = 18123
 const URL = `ws://127.0.0.1:${PORT}/ws`
 const dir = mkdtempSync(join(tmpdir(), 'openvibe-slice-'))
-const dbPath = join(dir, 'world.db')
 
 let server: ChildProcess | null = null
 
@@ -41,33 +40,45 @@ function startServer(): Promise<void> {
   // map with the resource nodes its gameplay phases depend on.
   const FIX_SUB = 32
   const flat = new Float32Array((FIX_SUB + 1) * (FIX_SUB + 1))
+  // A v2 document (map v1 was deleted): one authored flat terrain patch plus the
+  // resource nodes and props the gameplay phases depend on. Every document object
+  // carries a stable id.
   const fixtureMap = {
-    v: 1,
-    halfExtent: 64,
-    sub: FIX_SUB,
-    heights: encodeHeights(flat),
+    v: 2,
+    terrains: [
+      {
+        id: 'ground',
+        name: 'slice ground',
+        pos: [0, 0, 0],
+        halfExtent: 64,
+        sub: FIX_SUB,
+        heights: encodeHeights(flat),
+      },
+    ],
     statics: [],
     nodes: [
-      { node: 'oak_tree', pos: [24, 0, 24] },
-      { node: 'branch_pile', pos: [-24, 0, 2] },
-      { node: 'loose_stones', pos: [-24, 0, -2] },
-      { node: 'scrap_pile', pos: [-28, 0, 4] },
-      { node: 'berry_bush', pos: [22, 0, 18] },
+      { id: 'n-oak', node: 'oak_tree', pos: [24, 0, 24] },
+      { id: 'n-branch', node: 'branch_pile', pos: [-24, 0, 2] },
+      { id: 'n-stones', node: 'loose_stones', pos: [-24, 0, -2] },
+      { id: 'n-scrap', node: 'scrap_pile', pos: [-28, 0, 4] },
+      { id: 'n-berry', node: 'berry_bush', pos: [22, 0, 18] },
     ],
     props: [
-      { item: 'merchant_stall', pos: [12, 0.6, 12.8], yaw: 3.14 },
+      { id: 'pr-stall', item: 'merchant_stall', pos: [12, 0.6, 12.8], yaw: 3.14 },
       // Stage 4: an authored production yard outside the north gate.
-      { item: 'sawmill', pos: [8, 0.7, 31], yaw: 0 },
-      { item: 'cart_chassis', pos: [-6, 0.8, 30], yaw: 0 },
-      { item: 'cart_wheel', pos: [-7.6, 0.6, 30], yaw: 0 },
-      { item: 'cart_wheel', pos: [-4.4, 0.6, 30], yaw: 0 },
-      { item: 'scrap_generator', pos: [10, 0.7, 31], yaw: 0 },
-      { item: 'wooden_crate', pos: [2, 1.0, 25], yaw: 0.3 },
-      { item: 'wooden_crate', pos: [2.2, 1.8, 25.1], yaw: 0.9 },
-      { item: 'wooden_crate', pos: [-2, 1.0, 27], yaw: 0.1 },
-      { item: 'metal_barrel', pos: [-1, 1.0, 24], yaw: 0 },
-      { item: 'metal_barrel', pos: [-4, 1.0, 29], yaw: 0 },
+      { id: 'pr-sawmill', item: 'sawmill', pos: [8, 0.7, 31], yaw: 0 },
+      { id: 'pr-chassis', item: 'cart_chassis', pos: [-6, 0.8, 30], yaw: 0 },
+      { id: 'pr-wheel-a', item: 'cart_wheel', pos: [-7.6, 0.6, 30], yaw: 0 },
+      { id: 'pr-wheel-b', item: 'cart_wheel', pos: [-4.4, 0.6, 30], yaw: 0 },
+      { id: 'pr-generator', item: 'scrap_generator', pos: [10, 0.7, 31], yaw: 0 },
+      { id: 'pr-crate-a', item: 'wooden_crate', pos: [2, 1.0, 25], yaw: 0.3 },
+      { id: 'pr-crate-b', item: 'wooden_crate', pos: [2.2, 1.8, 25.1], yaw: 0.9 },
+      { id: 'pr-crate-c', item: 'wooden_crate', pos: [-2, 1.0, 27], yaw: 0.1 },
+      { id: 'pr-barrel-a', item: 'metal_barrel', pos: [-1, 1.0, 24], yaw: 0 },
+      { id: 'pr-barrel-b', item: 'metal_barrel', pos: [-4, 1.0, 29], yaw: 0 },
     ],
+    lights: [],
+    zones: [],
   }
   const mapPath = join(tmpdir(), `hq-slice-map-${Date.now()}.json`)
   writeFileSync(mapPath, JSON.stringify(fixtureMap))
@@ -75,8 +86,13 @@ function startServer(): Promise<void> {
     server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
       env: {
         ...process.env,
+        // Embedded PGlite under this temp dir (no DATABASE_URL in development); the restart test
+        // reuses the same directory, so the world survives the restart.
+        NODE_ENV: 'test',
         PORT: String(PORT),
-        DB_PATH: dbPath,
+        DATABASE_DIR: dir,
+        DATABASE_URL: '',
+        DATABASE_DIRECT_URL: '',
         EVENT_INTERVAL_SCALE: '0.05',
         MAP_PATH: mapPath,
       },

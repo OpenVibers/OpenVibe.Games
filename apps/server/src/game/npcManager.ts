@@ -51,6 +51,8 @@ export class NpcManager {
   private readonly states = new Map<string, NpcState>()
   /** Materialized subset: instance id -> physics body. */
   private readonly bodies = new Map<string, BodyId>()
+  /** Instances whose persisted abstract state changed since the last flush. */
+  private readonly dirtyIds = new Set<string>()
   private readonly navigation: NavigationService = new StraightLineNavigation()
   private behaviorPhase = 0
 
@@ -62,9 +64,10 @@ export class NpcManager {
   ) {}
 
   /** Boot: restore persisted NPCs, then seed content spawns not yet known. */
-  seedOrRestore(store: PersistenceStore): void {
-    const rows = store.worldEntities.loadAll().filter((r) => r.kind === 'npc')
+  async seedOrRestore(store: PersistenceStore): Promise<void> {
+    const rows = (await store.worldEntities.loadAll()).filter((r) => r.kind === 'npc')
     for (const row of rows) {
+      this.dirtyIds.add(row.id)
       const arch = this.world.content.npc(row.defId)
       if (!arch) continue
       const s = row.state ?? {}
@@ -108,6 +111,7 @@ export class NpcManager {
         lastAttackMs: 0,
         respawnAt: 0,
       })
+      this.dirtyIds.add(id)
     }
     this.log.info('npcs ready', { count: this.states.size })
   }
@@ -130,6 +134,7 @@ export class NpcManager {
     const arch = npc ? this.world.content.npc(npc.archetype) : undefined
     if (!npc || !arch || npc.respawnAt > 0) return null
     npc.health -= amount
+    this.dirtyIds.add(npc.id)
     if (npc.health > 0) return 'hurt'
     npc.respawnAt = nowMs + arch.respawnSeconds * 1000
     npc.health = 0
@@ -151,6 +156,7 @@ export class NpcManager {
           npc.x = npc.homeX
           npc.z = npc.homeZ
           npc.state = 'idle'
+          this.dirtyIds.add(npc.id)
         }
         const wantFull = npc.respawnAt === 0 && this.regions.isActive(npc.x, npc.z)
         if (wantFull && !materialized) this.materialize(npc)
@@ -230,6 +236,7 @@ export class NpcManager {
           npc.x += (dx / dist) * step
           npc.z += (dz / dist) * step
           npc.yaw = Math.atan2(dx, dz)
+          this.dirtyIds.add(npc.id)
         }
       }
       // Sync entity + body + spatial from the authoritative state.
@@ -299,10 +306,16 @@ export class NpcManager {
     return hit === null
   }
 
-  /** Persistence: NPCs write their ABSTRACT state (never bodies/entities). */
-  flush(store: PersistenceStore, now: number): void {
+  /**
+   * Copy-on-write snapshot of the NPCs whose abstract state changed, clearing the dirty set. Taken
+   * synchronously on the tick; only changed NPC rows are written, not the whole population.
+   */
+  takeDirty(now: number): WorldEntityDto[] {
+    if (this.dirtyIds.size === 0) return []
     const dtos: WorldEntityDto[] = []
-    for (const npc of this.states.values()) {
+    for (const id of this.dirtyIds) {
+      const npc = this.states.get(id)
+      if (!npc) continue
       dtos.push({
         id: npc.id,
         kind: 'npc',
@@ -320,6 +333,12 @@ export class NpcManager {
         updatedAt: now,
       })
     }
-    if (dtos.length > 0) store.worldEntities.upsertMany(dtos)
+    this.dirtyIds.clear()
+    return dtos
+  }
+
+  /** A failed flush: mark these NPCs dirty again (only if they still exist). */
+  restoreDirty(ids: readonly string[]): void {
+    for (const id of ids) if (this.states.has(id)) this.dirtyIds.add(id)
   }
 }

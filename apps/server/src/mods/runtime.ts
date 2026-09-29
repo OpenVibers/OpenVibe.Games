@@ -28,7 +28,6 @@
  * on that very tick.
  */
 import type { ContentRegistry } from '@openvibe/content'
-import type { PersistenceStore } from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP, placeableByMod } from './contentPack.js'
 import { SYSTEM_ACTOR, type ModRegistry, type ModView } from './registry.js'
@@ -98,6 +97,8 @@ export class ModRuntime {
   private readonly budgetNotedAt = new Map<string, number>()
   /** Reconciles in a row over the CPU budget, per mod. */
   private readonly cpuStrikes = new Map<string, number>()
+  /** Mods whose disable write is in flight (an over-budget mod is enforced once, not every tick). */
+  private readonly enforcing = new Set<string>()
   /** Host effects per mod in the current minute, and minutes in a row that were throttled. */
   private readonly effects = new Map<
     string,
@@ -107,7 +108,6 @@ export class ModRuntime {
 
   constructor(
     private readonly registry: ModRegistry,
-    private readonly store: PersistenceStore,
     private readonly content: ContentRegistry,
     private readonly log: Logger,
     private readonly opts: ModRuntimeOptions,
@@ -143,21 +143,21 @@ export class ModRuntime {
         if (!pos.every((v) => Number.isFinite(v)) || !Number.isFinite(yaw)) {
           throw new Error('position must be finite')
         }
-        const existing = this.store.mods.placements(modId).find((p) => p.key === key)
+        const existing = this.registry.placements(modId).find((p) => p.key === key)
         if (existing?.entityId && host.entityExists(existing.entityId)) {
           host.removeEntity(existing.entityId)
         }
         const entityId = host.placeProp({ item, pos: [pos[0], pos[1], pos[2]], yaw, owner: modId })
-        this.store.mods.setPlacement({ modId, key, entityId, at: this.now() })
+        this.registry.place(modId, key, entityId)
         this.registry.audit(modId, 'use', CAP_PLACE_PROP, { key, item, entity: entityId })
         return entityId
       },
       removeProp: (key) => {
         check(CAP_PLACE_PROP)
-        const existing = this.store.mods.placements(modId).find((p) => p.key === key)
+        const existing = this.registry.placements(modId).find((p) => p.key === key)
         if (!existing) return false
         if (existing.entityId) host.removeEntity(existing.entityId)
-        this.store.mods.deletePlacement(modId, key)
+        this.registry.unplace(modId, key)
         this.registry.audit(modId, 'use', CAP_PLACE_PROP, { key, removed: true })
         return true
       },
@@ -198,7 +198,7 @@ export class ModRuntime {
       this.retractProps(id, host)
       if (props.length > 0) this.noteDenied(id, CAP_PLACE_PROP)
     } else {
-      const placed = new Map(this.store.mods.placements(id).map((p) => [p.key, p]))
+      const placed = new Map(this.registry.placements(id).map((p) => [p.key, p]))
       const wanted = new Set(props.map((p) => p.key))
       for (const prop of props) {
         const p = placed.get(prop.key)
@@ -276,22 +276,36 @@ export class ModRuntime {
     reason: 'cpu' | 'event_flood',
     detail: Record<string, unknown>,
   ): void {
-    if (!this.registry.isActive(id)) return
+    if (!this.registry.isActive(id) || this.enforcing.has(id)) return
     this.registry.audit(id, 'budget_enforced', null, { reason, ...detail })
-    this.registry.disable(id, SYSTEM_ACTOR)
-    this.cpuStrikes.delete(id)
-    this.effects.delete(id)
-    this.log.warn('mod disabled: over its budget', { mod: id, reason })
+    // The registry write is async; the tick never awaits it. Strikes and the effects window are cleared
+    // only once the disable committed: if the write fails the mod keeps them, so the next reconcile
+    // enforces again instead of leaving an over-budget mod running with a clean slate.
+    this.enforcing.add(id)
+    void this.registry
+      .disable(id, SYSTEM_ACTOR)
+      .then(() => {
+        this.cpuStrikes.delete(id)
+        this.effects.delete(id)
+        this.log.warn('mod disabled: over its budget', { mod: id, reason })
+      })
+      .catch((err: unknown) => {
+        this.log.warn('mod disable failed', {
+          mod: id,
+          error: String((err as Error)?.message ?? err),
+        })
+      })
+      .finally(() => this.enforcing.delete(id))
   }
 
   /** Despawns everything the mod placed. */
   private retractProps(id: string, host: ModHost): void {
-    const placements = this.store.mods.placements(id)
+    const placements = [...this.registry.placements(id)]
     if (placements.length === 0) return
     let removed = 0
     for (const p of placements) {
       if (p.entityId && host.removeEntity(p.entityId)) removed++
-      this.store.mods.deletePlacement(id, p.key)
+      this.registry.unplace(id, p.key)
     }
     this.registry.audit(id, 'retract', CAP_PLACE_PROP, { placements: placements.length, removed })
     this.log.info('mod props retracted', { mod: id, removed })

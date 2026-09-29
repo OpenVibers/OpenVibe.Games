@@ -1,17 +1,17 @@
 /**
  * Account export and deletion → Games (roadmap WS-B task 7, ADR-033; Contracts 0.71.0). Both arrive at POST
  * /internal/events (./revocationEvents.ts) and are applied once per export or deletion (account_data_events, kept by
- * this adapter beside the outbox); the delivery is answered after Network took the part or the confirmation, so a
- * failure is redelivered without erasing twice.
+ * this adapter beside the outbox; the table is in the persistence migration); the delivery is answered after Network
+ * took the part or the confirmation, so a failure is redelivered without erasing twice.
  *
  *   network.account.export_requested  Games' part (POST /internal/account-exports/:id/parts, service token):
- *                                     characters.json (without the sign-in token) and structures.json.
+ *                                     characters.json (without the account key) and structures.json.
  *   network.account.deleted           the person's game sessions are closed first (each close saves its character),
  *                                     then store.identity.eraseSubjects removes their characters and adoption rows;
  *                                     their structures stay in the world without an owner. Games then confirms
  *                                     with counts.
  */
-import type Database from 'better-sqlite3'
+import { sql, type Db } from 'openvibe-sdk/db'
 import type { Logger } from '@openvibe/shared'
 import type { IdentityRepository } from '@openvibe/persistence'
 
@@ -33,31 +33,25 @@ export type Send = (path: string, body: unknown) => Promise<{ ok: boolean; statu
 
 interface Record_ {
   id: string
-  outcome: string | null
+  outcome: unknown
   sent_at: string | null
   applied_at: string
 }
 
 export function createAccountData(opts: {
-  db: Database.Database
+  db: Db
   identity: IdentityRepository
   send: Send
   /** Close the subjects' game sessions and resolve once their characters were saved (so the erasure comes after). */
   closeSessions: (subjects: string[]) => Promise<void>
   log: Logger
 }): { apply(event: AccountEvent): Promise<string> } {
-  opts.db.exec(`CREATE TABLE IF NOT EXISTS account_data_events (
-    id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    outcome TEXT,
-    sent_at TEXT,
-    applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-  )`)
-  const get = opts.db.prepare<[string], Record_>(
-    'SELECT id, outcome, sent_at, applied_at FROM account_data_events WHERE id = ?',
-  )
-  const markSent = opts.db.prepare('UPDATE account_data_events SET sent_at = ? WHERE id = ?')
+  const get = (id: string): Promise<Record_ | null> =>
+    opts.db.maybe<Record_>(
+      sql`SELECT id, outcome, sent_at, applied_at FROM account_data_events WHERE id = ${id}`,
+    )
+  const markSent = (id: string): Promise<number> =>
+    opts.db.exec(sql`UPDATE account_data_events SET sent_at = now() WHERE id = ${id}`)
 
   async function apply(event: AccountEvent): Promise<string> {
     if (!event || !ACCOUNT_TOPICS.includes(event.event_type as (typeof ACCOUNT_TOPICS)[number]))
@@ -69,8 +63,8 @@ export function createAccountData(opts: {
     if (event.event_type === 'network.account.export_requested') {
       const id = String(p.export_id ?? '')
       if (!EXPORT_RE.test(id)) return 'ignored:payload'
-      if (get.get(id)?.sent_at) return 'unchanged'
-      const data = opts.identity.exportSubject(subject)
+      if ((await get(id))?.sent_at) return 'unchanged'
+      const data = await opts.identity.exportSubject(subject)
       const files = [
         { name: 'characters.json', content: data.characters },
         ...(data.structures.length ? [{ name: 'structures.json', content: data.structures }] : []),
@@ -82,22 +76,17 @@ export function createAccountData(opts: {
           ? 'closed'
           : null
       if (!outcome) throw new Error(`export part refused: ${res.status}`)
-      opts.db
-        .prepare(
-          'INSERT OR REPLACE INTO account_data_events (id, kind, subject, outcome, sent_at) VALUES (?, ?, ?, ?, ?)',
-        )
-        .run(
-          id,
-          'export',
-          subject,
-          JSON.stringify({ result: outcome, characters: data.characters.length }),
-          new Date().toISOString(),
-        )
+      await opts.db.exec(sql`
+        INSERT INTO account_data_events (id, kind, subject, outcome, sent_at)
+        VALUES (${id}, 'export', ${subject}, ${sql.json({ result: outcome, characters: data.characters.length })}, now())
+        ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, subject = excluded.subject,
+          outcome = excluded.outcome, sent_at = excluded.sent_at
+      `)
       return outcome
     }
     const id = String(p.deletion_id ?? '')
     if (!DELETION_RE.test(id)) return 'ignored:payload'
-    let rec = get.get(id)
+    let rec = await get(id)
     let result = 'confirmed'
     if (!rec) {
       const aliases = Array.isArray(p.aliases)
@@ -105,16 +94,19 @@ export function createAccountData(opts: {
         : []
       const subjects = [subject, ...aliases]
       await opts.closeSessions(subjects)
-      const erased = opts.identity.eraseSubjects(subjects)
-      opts.db
-        .prepare('INSERT INTO account_data_events (id, kind, subject, outcome) VALUES (?, ?, ?, ?)')
-        .run(id, 'deletion', subject, JSON.stringify({ erased }))
+      const erased = await opts.identity.eraseSubjects(subjects)
+      await opts.db.exec(sql`
+        INSERT INTO account_data_events (id, kind, subject, outcome)
+        VALUES (${id}, 'deletion', ${subject}, ${sql.json({ erased })})
+        ON CONFLICT (id) DO NOTHING
+      `)
       opts.log.info('account deleted: game data erased', { ...erased })
-      rec = get.get(id) as Record_
+      rec = await get(id)
       result = 'erased'
     }
+    if (!rec) throw new Error('deletion record disappeared')
     if (rec.sent_at) return 'unchanged'
-    const o = JSON.parse(rec.outcome ?? '{}') as { erased?: Record<string, number> }
+    const o = (rec.outcome ?? {}) as { erased?: Record<string, number> }
     const erased = Object.fromEntries(
       Object.entries(o.erased ?? {}).filter(([k]) => k !== 'structures_unowned'),
     )
@@ -126,7 +118,7 @@ export function createAccountData(opts: {
       retained,
     })
     if (!res.ok && res.status !== 404) throw new Error(`confirmation refused: ${res.status}`)
-    markSent.run(new Date().toISOString(), id)
+    await markSent(id)
     return result
   }
 

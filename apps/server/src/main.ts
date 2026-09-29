@@ -1,16 +1,13 @@
-import { mkdirSync, existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import {
-  createEventsClient,
-  createOutbox,
-  type Outbox,
-  type SqliteDatabase,
-} from 'openvibe-sdk/events'
+import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/events'
+import { createValkey } from 'openvibe-sdk/valkey'
 import { compileMapFileV2, createContent, parseMapFile, setMapOverride } from '@openvibe/content'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import { openPgStore } from '@openvibe/persistence'
 import { createHeadlessHavokWorld } from '@openvibe/physics/havok'
 import { createConsoleLogger } from '@openvibe/shared'
 import { loadConfig } from './config.js'
+import { openDb } from './db.js'
 import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
 import { loadHavok } from './havokLoader.js'
@@ -55,7 +52,7 @@ import { createStaffAuthorizer } from './platform/staffAuth.js'
 
 /**
  * Dedicated authoritative server entry point.
- * Boot order: config -> content validation (fail fast) -> physics ->
+ * Boot order: config -> content validation (fail fast) -> physics -> database + migrations ->
  * persistence -> world restore -> network -> fixed-tick loop.
  */
 async function main(): Promise<void> {
@@ -64,7 +61,7 @@ async function main(): Promise<void> {
     process.env.LOG_LEVEL === 'debug' ? 'debug' : 'info',
   )
   const config = loadConfig(process.env)
-  log.info('starting', { port: config.port, db: config.dbPath })
+  log.info('starting', { port: config.port, place: config.placeId })
 
   // Content validates at construction — invalid definitions kill the boot.
   const content = createContent()
@@ -102,24 +99,26 @@ async function main(): Promise<void> {
   const havok = await loadHavok()
   const physics = createHeadlessHavokWorld(havok)
 
-  mkdirSync(dirname(config.dbPath), { recursive: true })
-  const store = openSqliteStore(config.dbPath)
+  // PostgreSQL (or embedded PGlite in development), migrated before anything writes.
+  const db = await openDb(config.db, log)
+  const store = openPgStore(db, { placeId: config.placeId })
+  await store.ensurePlace()
 
   const metrics = new ServerMetrics()
   const world = new GameWorld(content, physics, log.child({ system: 'world' }))
-  world.seedOrRestore(store)
+  await world.seedOrRestore(store)
 
   // ── Platform integration (roadmap Wave 12) ─────────────────────────
   // Every service call carries the `games` principal's client-credentials
   // token; with no client secret configured none of this talks to anything.
   const platform = createPlatformClient(config.platform)
   const platformLog = log.child({ system: 'platform' })
-  let outbox: Outbox | null = null
+  const valkey = createValkey({ url: config.db.valkeyUrl ?? '', prefix: config.db.valkeyPrefix })
+  let outbox: PgOutbox | null = null
   let sink: EventSink = NO_EVENTS
   if (platform && config.platform.eventsUrl) {
     let lastError: string | null = null
-    // better-sqlite3's Transaction<F> is a callable F; the SDK types it as plain F.
-    outbox = createOutbox(store.db as unknown as SqliteDatabase, {
+    outbox = createPgOutbox(db, {
       events: createEventsClient(platform.client, { source: EVENT_SOURCE }),
       intervalMs: 2000,
       onError: (err) => {
@@ -129,16 +128,19 @@ async function main(): Promise<void> {
         lastError = message
       },
     })
-    outbox.ensureSchema()
-    sink = outboxSink(outbox)
+    sink = outboxSink(outbox, db)
     outbox.start()
-    platformLog.info('events on', { url: config.platform.eventsUrl, pending: outbox.pending() })
+    platformLog.info('events on', {
+      url: config.platform.eventsUrl,
+      pending: await outbox.pending(),
+    })
   }
   const recorder = sink.enabled
     ? new GameEventRecorder(sink, content.world.id, config.platform.worldSavedEventMinutes * 60_000)
     : undefined
-  const mods = new ModRegistry(store, content, sink)
-  const modRuntime = new ModRuntime(mods, store, content, log.child({ system: 'mods' }), {
+  const mods = new ModRegistry(store, content, sink, Date.now, log.child({ system: 'mods' }))
+  await mods.load()
+  const modRuntime = new ModRuntime(mods, content, log.child({ system: 'mods' }), {
     reconcileEveryTicks: config.tickRate,
   })
   // Mod principals live in Network (ADR-013, WS-M task 3): the API asks it first; at boot every install's copy
@@ -147,23 +149,21 @@ async function main(): Promise<void> {
     ? createNetworkModGrants({ networkUrl: config.platform.networkUrl, tokens: platform.tokens })
     : null
   if (modGrants) {
-    modGrants
-      .list()
-      .then((principals) => {
-        for (const p of principals) mods.applyNetwork(p)
-        const known = new Set(principals.map((p) => p.mod_id))
-        const unregistered = mods
-          .list()
-          .filter((v) => !known.has(v.mod.id) && v.mod.status !== 'revoked')
-          .map((v) => v.mod.id)
-        if (unregistered.length)
-          log.warn('mod installs without a Network principal', { mods: unregistered.join(',') })
+    try {
+      const principals = await modGrants.list()
+      for (const p of principals) await mods.applyNetwork(p)
+      const known = new Set(principals.map((p) => p.mod_id))
+      const unregistered = mods
+        .list()
+        .filter((v) => !known.has(v.mod.id) && v.mod.status !== 'revoked')
+        .map((v) => v.mod.id)
+      if (unregistered.length)
+        log.warn('mod installs without a Network principal', { mods: unregistered.join(',') })
+    } catch (err) {
+      log.warn('mod principals not read at boot', {
+        error: String((err as Error)?.message ?? err),
       })
-      .catch((err: unknown) =>
-        log.warn('mod principals not read at boot', {
-          error: String((err as Error)?.message ?? err),
-        }),
-      )
+    }
   }
   const mirror =
     platform && config.platform.mediaUrl
@@ -186,7 +186,7 @@ async function main(): Promise<void> {
     networkUrl: config.platform.networkUrl,
     editorKey: config.editorKey,
   })
-  const pruneTimer = setInterval(() => outbox?.prune(), 6 * 3600 * 1000)
+  const pruneTimer = setInterval(() => void outbox?.prune(), 6 * 3600 * 1000)
   pruneTimer.unref()
 
   // games.progress.summary on Network (WS-B task 9): needs the games principal.
@@ -198,16 +198,22 @@ async function main(): Promise<void> {
     mods: modRuntime,
     ...(progressSummary ? { progressSummary } : {}),
   })
+  // Async boot: env, markets and the NPC population load before the tick loop starts.
+  await game.load()
 
   const accountData = platform
     ? createAccountData({
-        db: store.db,
+        db,
         identity: store.identity,
         send: networkSender({ networkUrl: config.platform.networkUrl, tokens: platform.tokens }),
         closeSessions: async (subjects) => {
           let closed = 0
           for (const s of subjects) closed += game.revokeSubject(s, Number.MAX_SAFE_INTEGER)
-          if (closed) await new Promise((r) => setTimeout(r, 2000))
+          // Let the closing sockets' character saves land before the rows are erased.
+          if (closed) {
+            await new Promise((r) => setTimeout(r, 2000))
+            await game.drain()
+          }
         },
         log: platformLog.child({ system: 'account-data' }),
       })
@@ -216,7 +222,7 @@ async function main(): Promise<void> {
   // Sign-out everywhere (network.user.token_valid_after): POST /internal/events closes the person's
   // older game sessions; the subscription is created at boot when a secret is set (WS-B task 4).
   const revocations = createRevocationEvents({
-    db: store.db,
+    db,
     secrets: config.platform.eventsSecrets,
     onRevoked: (subject, validAfterMs) => game.revokeSubject(subject, validAfterMs),
     // Account merge (ADR-029): the folded-in account's characters join the survivor's free slots.
@@ -225,12 +231,13 @@ async function main(): Promise<void> {
     // close saves its character) before its characters are erased.
     ...(accountData ? { onAccountEvent: (event) => accountData.apply(event as AccountEvent) } : {}),
     // Mod principals (ADR-013): an install's grants follow its principal in Network (a change staff made there).
-    onModGrants: (p) => {
-      const view = mods.applyNetwork(p)
+    onModGrants: async (p) => {
+      const view = await mods.applyNetwork(p)
       return view ? `mod:${view.mod.status}` : 'ignored:unknown_mod'
     },
     log: platformLog,
   })
+  await revocations.store.load()
   if (
     platform &&
     config.platform.eventsUrl &&
@@ -260,17 +267,18 @@ async function main(): Promise<void> {
   // GET /shared/*: this server's own pinned OpenVibe Frame files (D42), not openvibe.network's.
   const serveShared = sharedAssetsHandler()
 
-  // GET /api/ready: world.db answers and the simulation ticks (/healthz stays liveness only).
-  const schemaVersion = store.db.prepare('SELECT value FROM meta WHERE key = ?')
+  // GET /api/ready: the database answers (db.ready()) and the simulation ticks (/healthz stays liveness only).
   const readiness = createReadiness({
-    pingDb: () => schemaVersion.get('schema_version') !== undefined,
+    pingDb: () => db.ready(),
     metrics,
     online: () => game.onlineCount(),
   })
 
-  // Per-actor limits on editor saves, uploads and the mods API (roadmap WS-R task 4).
+  // Per-actor limits on editor saves, uploads and the mods API (roadmap WS-R task 4). With VALKEY_URL the
+  // counters are shared across instances; otherwise they live in this process.
   const actorLimits = createGamesActorLimits({
     onLimited: (name, actor) => log.warn('rate limited', { limit: name, actor }),
+    valkey,
   })
   const http = createHttpServer(
     config.staticDir,
@@ -310,13 +318,12 @@ async function main(): Promise<void> {
         // Guest conversion (WS-B task 8): this browser's guest character shows up in the account's
         // list (and moves there) the moment it signs in, before any slot is picked.
         if (isGuestToken(token))
-          store.identity.adoptGuestCharacter(token, user.subjectId, Date.now())
+          await store.identity.adoptGuestCharacter(token, user.subjectId, Date.now())
       } else if (!isGuestToken(token)) {
         // Never list an account key's characters for a guest query.
         return []
       }
-      return store.players
-        .listByToken(account)
+      return (await store.players.listByToken(account))
         .slice(0, 3)
         .map((p) => ({ slot: p.charSlot, name: p.name, appearance: p.appearance }))
     },
@@ -328,27 +335,52 @@ async function main(): Promise<void> {
         if (serveRelease(req, res)) return true
         if (serveShared(req, res)) return true
         if ((req.url ?? '').split('?')[0] === '/api/v1/platform' && req.method === 'GET') {
-          // Operational status of the platform adapters; never secrets.
-          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-          res.end(
-            JSON.stringify({
-              principal: platform ? platform.clientId : null,
-              events: outbox
-                ? { enabled: true, pending: outbox.pending(), rejected: outbox.rejected() }
-                : { enabled: false },
-              media: mirror
-                ? {
-                    enabled: true,
-                    namespace: config.platform.mediaNamespace,
-                    ...store.mediaMirrors.counts(),
-                  }
-                : { enabled: false },
-              mods: {
-                installed: mods.list().length,
-                active: mods.list().filter((m) => mods.isActive(m.mod.id)).length,
-              },
-            }),
-          )
+          // Operational status of the platform adapters; never secrets. The DB reads are async; the
+          // response is written when they resolve. A database error answers 503 rather than leaving the
+          // request hanging or rejecting unhandled.
+          void (async () => {
+            const mediaCounts = mirror ? await store.mediaMirrors.counts() : null
+            res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+            res.end(
+              JSON.stringify({
+                principal: platform ? platform.clientId : null,
+                events: outbox
+                  ? {
+                      enabled: true,
+                      pending: await outbox.pending(),
+                      rejected: await outbox.rejected(),
+                    }
+                  : { enabled: false },
+                media: mediaCounts
+                  ? {
+                      enabled: true,
+                      namespace: config.platform.mediaNamespace,
+                      ...mediaCounts,
+                    }
+                  : { enabled: false },
+                mods: {
+                  installed: mods.list().length,
+                  active: mods.list().filter((m) => mods.isActive(m.mod.id)).length,
+                },
+              }),
+            )
+          })().catch((err: unknown) => {
+            log.warn('platform status failed', {
+              error: String((err as Error | undefined)?.message ?? err),
+            })
+            if (res.writableEnded) return
+            res.writeHead(503, {
+              'content-type': 'application/problem+json; charset=utf-8',
+              'cache-control': 'no-store',
+            })
+            res.end(
+              JSON.stringify({
+                title: 'service_unavailable',
+                status: 503,
+                detail: 'platform status unavailable',
+              }),
+            )
+          })
           return true
         }
         return handleModsRequest(req, res, {
@@ -413,10 +445,11 @@ async function main(): Promise<void> {
   // systemd sends SIGTERM (TimeoutStopSec=30). In order: stop taking connections (HTTP and WebSocket
   // upgrades) while requests in flight carry on; stop the simulation, the metrics and prune timers and
   // the media mirror; tell every player, then close every game and editor socket with 1012 (each game
-  // close saves that character and records games.player.left; the clients reconnect on their own);
-  // save the world; let requests in flight finish (DRAIN_MS); let the mirror pass and the progress
-  // summaries settle; stop the event outbox and await its last send (unsent rows stay in the table
-  // for the next start); close world.db; exit 0. Everything within DEADLINE_MS, else exit 1.
+  // close saves that character and records games.player.left); a final checkpoint with every session
+  // dirty; await the write-behind drain (the checkpoint and every queued save); let requests in flight
+  // finish (DRAIN_MS); let the mirror pass and the progress summaries settle; stop the event outbox and
+  // await its last send (unsent rows stay for the next start); close the database; exit 0. Everything
+  // within DEADLINE_MS, else exit 1.
   let stopping: Promise<void> | null = null
   const shutdown = (signal: string): Promise<void> => {
     if (stopping) return stopping
@@ -439,13 +472,18 @@ async function main(): Promise<void> {
         closeSockets(gameWss, SOCKETS_MS),
         closeSockets(editors.wss, SOCKETS_MS),
       ])
+      // Mark every session dirty and queue the final checkpoint, then let the whole write-behind queue
+      // (that checkpoint plus every disconnect save queued before it) drain.
       game.shutdown()
+      const drained = await game.drain()
       const cut = await httpDone
       await within(2000, mirrorDone)
       await within(1000, progressSummary?.settle())
       await within(2000, outbox?.stop())
-      store.close()
+      await mods.flushWrites()
+      await store.close()
       physics.dispose()
+      await valkey?.close()
       log.info('stopped', {
         ms: Date.now() - t0,
         players: players.closed + players.terminated,
@@ -453,6 +491,7 @@ async function main(): Promise<void> {
         terminated: players.terminated + editorPeers.terminated,
         requestsCut: cut,
         outbox: outbox ? 'stopped' : 'off',
+        drained,
       })
       process.exit(0)
     })().catch((err: unknown) => {

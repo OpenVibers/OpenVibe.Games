@@ -23,7 +23,8 @@
  * events.event.publish). Events or Network being down never blocks a tick:
  * rows wait and are retried.
  */
-import type { EventInput, Outbox } from 'openvibe-sdk/events'
+import type { EventInput, PgOutbox } from 'openvibe-sdk/events'
+import type { Db, Tx } from 'openvibe-sdk/db'
 import type { SubjectRef } from 'openvibe-sdk/core'
 
 export const EVENT_SOURCE = 'games'
@@ -210,20 +211,30 @@ export function moderationEvent(
   }
 }
 
-/** Where events go. `enqueue` must run inside the transaction making the change. */
+/**
+ * Where events go. `enqueue` is awaited inside the transaction making the change and is handed that
+ * transaction's handle: the SDK's PostgreSQL outbox writes the row on it, so the event exists if and
+ * only if the change commits. Only the relay wake is deferred.
+ */
 export interface EventSink {
   readonly enabled: boolean
-  enqueue(event: EventInput): void
+  enqueue(t: Tx, event: EventInput): Promise<void>
 }
 
-export const NO_EVENTS: EventSink = { enabled: false, enqueue: () => {} }
+export const NO_EVENTS: EventSink = { enabled: false, enqueue: async () => {} }
 
-/** An EventSink over the SDK outbox; wakes the relay right after the write. */
-export function outboxSink(outbox: Outbox): EventSink {
+/** An EventSink over the SDK PostgreSQL outbox; wakes the relay right after the write. */
+export function outboxSink(outbox: PgOutbox, db: Db): EventSink {
   return {
     enabled: true,
-    enqueue(event) {
-      outbox.enqueue(event)
+    async enqueue(t, event) {
+      // The old SQLite outbox refused an enqueue outside a transaction; the PG port takes the tx handle
+      // but a Db also satisfies the type, so nothing else would stop an event committing on its own
+      // connection. Refuse it here too.
+      if (!db.inTransaction()) {
+        throw new Error('outbox.enqueue() must run inside the transaction that makes the change')
+      }
+      await outbox.enqueue(t, event)
       setImmediate(() => outbox.kick())
     },
   }
@@ -238,7 +249,7 @@ interface Tracked {
 /**
  * Per-session bookkeeping the game server drives: the progression baseline
  * each save is compared with, join times, and the world-save accumulator.
- * All `record*` methods run inside the caller's store transaction and return
+ * All `record*` methods are handed the caller's transaction handle and return
  * a callback to run once it has committed.
  */
 export class GameEventRecorder {
@@ -263,43 +274,51 @@ export class GameEventRecorder {
   }
 
   /** A character joined; `progress` is what the database holds for it. */
-  recordJoin(player: EventPlayer, progress: ProgressSnapshot, restored: boolean): void {
+  async recordJoin(
+    t: Tx,
+    player: EventPlayer,
+    progress: ProgressSnapshot,
+    restored: boolean,
+  ): Promise<void> {
     this.tracked.set(player.playerId, {
       player,
       progress: cloneProgress(progress),
       joinedAt: this.now(),
     })
-    this.sink.enqueue(playerJoinedEvent(player, { world: this.world, restored }))
+    await this.sink.enqueue(t, playerJoinedEvent(player, { world: this.world, restored }))
   }
 
   /**
    * Players were written: emits the progression they newly persisted.
    * Returns the commit callback that advances their baselines.
    */
-  recordPlayersSaved(saved: { player: EventPlayer; progress: ProgressSnapshot }[]): () => void {
+  async recordPlayersSaved(
+    t: Tx,
+    saved: { player: EventPlayer; progress: ProgressSnapshot }[],
+  ): Promise<() => void> {
     const advance: { id: string; progress: ProgressSnapshot }[] = []
     for (const { player, progress } of saved) {
-      const t = this.tracked.get(player.playerId)
-      if (t) {
-        for (const ev of progressEvents(player, t.progress, progress, this.world)) {
-          this.sink.enqueue(ev)
+      const tr = this.tracked.get(player.playerId)
+      if (tr) {
+        for (const ev of progressEvents(player, tr.progress, progress, this.world)) {
+          await this.sink.enqueue(t, ev)
         }
       }
       advance.push({ id: player.playerId, progress: cloneProgress(progress) })
     }
     return () => {
       for (const a of advance) {
-        const t = this.tracked.get(a.id)
-        if (t) t.progress = a.progress
+        const tr = this.tracked.get(a.id)
+        if (tr) tr.progress = a.progress
       }
     }
   }
 
   /** The character left; its final save is part of the same transaction. */
-  recordLeave(player: EventPlayer): () => void {
-    const t = this.tracked.get(player.playerId)
-    const sessionSeconds = t ? (this.now() - t.joinedAt) / 1000 : 0
-    this.sink.enqueue(playerLeftEvent(player, { world: this.world, sessionSeconds }))
+  async recordLeave(t: Tx, player: EventPlayer): Promise<() => void> {
+    const tr = this.tracked.get(player.playerId)
+    const sessionSeconds = tr ? (this.now() - tr.joinedAt) / 1000 : 0
+    await this.sink.enqueue(t, playerLeftEvent(player, { world: this.world, sessionSeconds }))
     return () => {
       this.tracked.delete(player.playerId)
     }
@@ -310,24 +329,32 @@ export class GameEventRecorder {
    * `games.world.saved` checkpoint at most once per interval (and always on
    * shutdown) with the totals since the previous one.
    */
-  recordWorldSaved(
+  async recordWorldSaved(
+    t: Tx,
     entities: number,
     players: number,
     reason: 'checkpoint' | 'shutdown',
-  ): () => void {
-    this.pendingEntities += entities
-    this.pendingPlayers += players
+  ): Promise<() => void> {
     const nowMs = this.now()
+    // The accumulator holds only committed saves. This flush's rows join it at commit, never before,
+    // so a failed (and retried) save is counted once and a rollback leaves nothing behind.
+    const totalEntities = this.pendingEntities + entities
+    const totalPlayers = this.pendingPlayers + players
     const due =
       reason === 'shutdown' ||
-      (nowMs - this.lastSavedEventMs >= this.checkpointEveryMs &&
-        this.pendingEntities + this.pendingPlayers > 0)
-    if (!due) return () => {}
-    this.sink.enqueue(
+      (nowMs - this.lastSavedEventMs >= this.checkpointEveryMs && totalEntities + totalPlayers > 0)
+    if (!due) {
+      return () => {
+        this.pendingEntities = totalEntities
+        this.pendingPlayers = totalPlayers
+      }
+    }
+    await this.sink.enqueue(
+      t,
       worldSavedEvent(this.world, {
         reason,
-        entities: this.pendingEntities,
-        players: this.pendingPlayers,
+        entities: totalEntities,
+        players: totalPlayers,
         sinceMs: this.sinceMs,
       }),
     )

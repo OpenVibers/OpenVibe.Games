@@ -1,2 +1,5 @@
 export * from './dto.js'
 export * from './repositories.js'
+export { accountKey } from './accountKey.js'
+export { openPgStore, type PgPersistenceStore, type PgStoreOptions } from './pg/pgStore.js'
+export { MIGRATIONS_DIR } from './migrations.js'

@@ -17,7 +17,10 @@ ExecStart=/usr/bin/env node --import tsx src/main.ts
 Environment=NODE_ENV=production
 Environment=PORT=8000
 Environment=HOST=127.0.0.1
-Environment=DB_PATH=/opt/openvibe.games/data/world.db
+Environment=GAMES_PLACE_ID=scraplandia
+Environment=GAMES_MIGRATIONS_DIR=/opt/openvibe.games/packages/persistence/migrations
+# DATABASE_URL (pooled), DATABASE_DIRECT_URL (owner role, for migrations) and VALKEY_URL live in the
+# env file (names only; they carry credentials).
 Environment=MAP_PATH=/opt/openvibe.games/data/map.json
 Environment=STATIC_DIR=/opt/openvibe.games/apps/client/dist
 Environment=SELF_URL=https://openvibe.games
@@ -25,7 +28,7 @@ Environment=PLAY_URL=https://play.openvibe.games
 EnvironmentFile=/etc/openvibe/games.env
 Restart=always
 RestartSec=3
-# The world flushes to SQLite on SIGTERM — give it time to finish.
+# The world drains its write-behind queue to PostgreSQL on SIGTERM — give it time to finish.
 TimeoutStopSec=30
 KillSignal=SIGTERM
 

@@ -22,7 +22,10 @@ function startServer(): Promise<void> {
       env: {
         ...process.env,
         PORT: String(PORT),
-        DB_PATH: join(dir, 'world.db'),
+        NODE_ENV: 'test',
+        DATABASE_DIR: dir,
+        DATABASE_URL: '',
+        DATABASE_DIRECT_URL: '',
         STATIC_DIR: 'apps/client/dist',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -95,14 +98,16 @@ async function main(): Promise<void> {
 
   // Look down to check the first-person body (drive input tracker directly).
   await page.evaluate(() => {
-    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch = -1.2
+    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch =
+      -1.2
   })
   await page.waitForTimeout(700)
   await shot(page, '04-look-down-body')
 
   console.log('phase: physgun E2E (walk to crates, grab, verify no freeze)')
   await page.evaluate(() => {
-    const w = (window as unknown as { __openvibe: { input: { yaw: number; pitch: number } } }).__openvibe
+    const w = (window as unknown as { __openvibe: { input: { yaw: number; pitch: number } } })
+      .__openvibe
     w.input.pitch = 0
     w.input.yaw = 0
   })
@@ -185,7 +190,8 @@ async function main(): Promise<void> {
   ])
   console.log(`  page responsive after grab: ${alive}`)
   const held = await page.evaluate(() => {
-    const w = (window as unknown as { __openvibe: { state: { heldBy: Map<string, string> } } }).__openvibe
+    const w = (window as unknown as { __openvibe: { state: { heldBy: Map<string, string> } } })
+      .__openvibe
     return w.state.heldBy.size
   })
   console.log(`  beams active (heldBy size): ${held}`)
@@ -193,7 +199,8 @@ async function main(): Promise<void> {
 
   // RMB while holding = freeze: held target goes 'frozen' and the beam drops.
   const heldId = await page.evaluate(() => {
-    const w = (window as unknown as { __openvibe: { state: { heldBy: Map<string, string> } } }).__openvibe
+    const w = (window as unknown as { __openvibe: { state: { heldBy: Map<string, string> } } })
+      .__openvibe
     return [...w.state.heldBy.keys()][0] ?? null
   })
   await page.evaluate(() => {
@@ -242,7 +249,8 @@ async function main(): Promise<void> {
   await page.waitForTimeout(600)
   // Lift the crate off the ground (friction fights the last few degrees).
   await page.evaluate(() => {
-    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch = 0.45
+    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch =
+      0.45
   })
   await page.waitForTimeout(800)
   await page.keyboard.down('KeyE')
@@ -310,7 +318,8 @@ async function main(): Promise<void> {
   // Beam fires even at nothing: aim at the sky, hold LMB, expect the dim
   // searching ray from the muzzle (GMod always-on beam).
   await page.evaluate(() => {
-    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch = 0.5
+    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch =
+      0.5
   })
   await page.waitForTimeout(200)
   await page.mouse.down()
@@ -320,7 +329,8 @@ async function main(): Promise<void> {
   void dbg
 
   await page.evaluate(() => {
-    const w = (window as unknown as { __openvibe: { input: { yaw: number; pitch: number } } }).__openvibe
+    const w = (window as unknown as { __openvibe: { input: { yaw: number; pitch: number } } })
+      .__openvibe
     w.input.pitch = -0.15
     w.input.yaw = Math.PI
   })
@@ -332,7 +342,8 @@ async function main(): Promise<void> {
   await page.keyboard.down('KeyC')
   await page.waitForTimeout(900)
   await page.evaluate(() => {
-    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch = -1.1
+    ;(window as unknown as { __openvibe: { input: { pitch: number } } }).__openvibe.input.pitch =
+      -1.1
   })
   await page.waitForTimeout(400)
   await shot(page, '09-crouch-lookdown')

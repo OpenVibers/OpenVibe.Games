@@ -1,7 +1,7 @@
 import { createContent } from '@openvibe/content'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import { openTestStore } from '@openvibe/persistence/testing'
 import { createConsoleLogger } from '@openvibe/shared'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP, placeableByMod, validateContentPack } from './contentPack.js'
 import { ModRegistry, type ModActor } from './registry.js'
 import {
@@ -55,12 +55,12 @@ function world(opts: { slowMs?: number } = {}) {
   return { host, entities, said }
 }
 
-function setup(effectsPerMinute = 60) {
+async function setup(effectsPerMinute = 60) {
   let now = 1_000_000
   const clock = { now: () => now, advance: (ms: number) => (now += ms) }
-  const store = openSqliteStore(':memory:')
+  const store = await openTestStore()
   const registry = new ModRegistry(store, content, undefined, clock.now)
-  const runtime = new ModRuntime(registry, store, content, log, {
+  const runtime = new ModRuntime(registry, content, log, {
     reconcileEveryTicks: 1,
     now: clock.now,
     effectsPerMinute,
@@ -85,11 +85,11 @@ const prop = (key: string, pos: [number, number, number] = [10, 0, 10]) => ({
 })
 
 describe('mod security', () => {
-  it('namespace escape: a mod reaches only its own placements, through frozen bindings', () => {
-    const { registry, runtime, install } = setup()
+  it('namespace escape: a mod reaches only its own placements, through frozen bindings', async () => {
+    const { registry, runtime, install } = await setup()
     const w = world()
-    install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP])
-    install(B, { props: [prop('bench', [20, 0, 20])] }, [CAP_PLACE_PROP])
+    await install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP])
+    await install(B, { props: [prop('bench', [20, 0, 20])] }, [CAP_PLACE_PROP])
     runtime.tick(1, w.host)
     expect([...w.entities.values()].map((e) => e.owner).sort()).toEqual([A, B])
     const apiA = runtime.bindingsFor(A, w.host)
@@ -101,10 +101,11 @@ describe('mod security', () => {
     expect(apiA.removeProp('bench')).toBe(true)
     expect([...w.entities.values()].map((e) => e.owner)).toEqual([B])
     expect(apiA.removeProp('bench')).toBe(false)
+    await registry.flushWrites()
     expect(
-      registry
-        .auditLog(B)
-        .some((a) => a.action === 'use' && JSON.stringify(a.detail ?? {}).includes('removed')),
+      (await registry.auditLog(B)).some(
+        (a) => a.action === 'use' && JSON.stringify(a.detail ?? {}).includes('removed'),
+      ),
     ).toBe(false)
     // Only inert items: anything with health, storage, a shop, a machine or a vehicle part is refused, at install
     // and at the binding.
@@ -116,11 +117,11 @@ describe('mod security', () => {
     expect(() => apiA.placeProp('x', loot!.id, [0, 0, 0])).toThrow(/not allowed/)
   })
 
-  it('event flood: past the allowance calls are refused, and only the flooding mod is disabled', () => {
-    const { registry, runtime, clock, install } = setup(10)
+  it('event flood: past the allowance calls are refused, and only the flooding mod is disabled', async () => {
+    const { registry, runtime, clock, install } = await setup(10)
     const w = world()
-    install(A, { announcements: [{ text: 'spam', everySeconds: 60 }] }, [CAP_ANNOUNCE])
-    install(B, { announcements: [{ text: 'hello', everySeconds: 60 }] }, [CAP_ANNOUNCE])
+    await install(A, { announcements: [{ text: 'spam', everySeconds: 60 }] }, [CAP_ANNOUNCE])
+    await install(B, { announcements: [{ text: 'hello', everySeconds: 60 }] }, [CAP_ANNOUNCE])
     const apiA = runtime.bindingsFor(A, w.host)
     const apiB = runtime.bindingsFor(B, w.host)
     let refused = 0
@@ -133,7 +134,8 @@ describe('mod security', () => {
     }
     expect(w.said.length).toBe(10)
     expect(refused).toBe(15)
-    expect(registry.auditLog(A).filter((a) => a.action === 'throttled').length).toBe(1)
+    await registry.flushWrites()
+    expect((await registry.auditLog(A)).filter((a) => a.action === 'throttled').length).toBe(1)
     apiB.announce('still here')
     expect(w.said.at(-1)).toContain('still here')
     // Flooding minute after minute: the mod is disabled, the other is not.
@@ -147,39 +149,42 @@ describe('mod security', () => {
         }
       }
     }
-    expect(registry.get(A)?.mod.status).toBe('disabled')
+    // The disable the flood triggers is a fire-and-forget registry write; wait for it to commit.
+    await vi.waitFor(() => expect(registry.get(A)?.mod.status).toBe('disabled'))
+    await registry.flushWrites()
     expect(
-      registry
-        .auditLog(A)
-        .some(
-          (a) => a.action === 'budget_enforced' && JSON.stringify(a.detail).includes('event_flood'),
-        ),
+      (await registry.auditLog(A)).some(
+        (a) => a.action === 'budget_enforced' && JSON.stringify(a.detail).includes('event_flood'),
+      ),
     ).toBe(true)
     expect(registry.get(B)?.mod.status).toBe('enabled')
     expect(() => apiA.announce('after')).toThrow()
   })
 
-  it('resource budget: a mod over its CPU budget reconcile after reconcile is disabled; the others run', () => {
-    const { registry, runtime, install } = setup()
+  it('resource budget: a mod over its CPU budget reconcile after reconcile is disabled; the others run', async () => {
+    const { registry, runtime, install } = await setup()
     const slow = world({ slowMs: 3 })
-    install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP], 1)
-    install(B, { props: [] }, [], 50)
+    await install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP], 1)
+    await install(B, { props: [] }, [], 50)
     // A's prop keeps vanishing, so every reconcile places it again: slow, over its 1 ms budget.
     for (let t = 1; t <= CPU_STRIKES + 2; t++) {
       slow.entities.clear()
       runtime.tick(t, slow.host)
     }
-    expect(registry.get(A)?.mod.status).toBe('disabled')
-    const enforced = registry.auditLog(A).find((a) => a.action === 'budget_enforced')
+    // The disable the budget triggers is a fire-and-forget registry write; wait for it to commit.
+    await vi.waitFor(() => expect(registry.get(A)?.mod.status).toBe('disabled'))
+    await registry.flushWrites()
+    const enforced = (await registry.auditLog(A)).find((a) => a.action === 'budget_enforced')
     expect(enforced?.detail).toMatchObject({ reason: 'cpu', budget_ms: 1, reconciles: CPU_STRIKES })
     expect(registry.get(B)?.mod.status).toBe('enabled')
     // Disabled means retracted on the next reconcile.
     runtime.tick(CPU_STRIKES + 3, slow.host)
     expect([...slow.entities.values()].filter((e) => e.owner === A)).toEqual([])
+    await registry.flushWrites()
   })
 
-  it("forged ownership: props are the mod's whatever the pack says; unknown or foreign principals change nothing", () => {
-    const { registry, runtime, install } = setup()
+  it("forged ownership: props are the mod's whatever the pack says; unknown or foreign principals change nothing", async () => {
+    const { registry, runtime, install } = await setup()
     const w = world()
     expect(
       validateContentPack(
@@ -187,12 +192,12 @@ describe('mod security', () => {
         content,
       ).ok,
     ).toBe(false)
-    install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP])
+    await install(A, { props: [prop('bench')] }, [CAP_PLACE_PROP])
     runtime.tick(1, w.host)
     expect([...w.entities.values()]).toEqual([{ item: 'workbench', owner: A }])
     // A principal Games does not have, or that another runtime owns, is not applied here.
     expect(
-      registry.applyNetwork({
+      await registry.applyNetwork({
         mod_id: B,
         status: 'active',
         approved: [CAP_PLACE_PROP, CAP_ANNOUNCE],
@@ -202,7 +207,7 @@ describe('mod security', () => {
     // A grant the manifest never requested cannot be applied, even from Network.
     const manifestA = sampleManifest({ id: A, permissions: { capabilities: [CAP_PLACE_PROP] } })
     expect(manifestA.permissions.capabilities).not.toContain('games.world.teleport')
-    registry.applyNetwork({
+    await registry.applyNetwork({
       mod_id: A,
       status: 'active',
       approved: [CAP_PLACE_PROP, 'games.world.teleport'],

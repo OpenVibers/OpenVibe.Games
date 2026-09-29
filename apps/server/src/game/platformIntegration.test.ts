@@ -1,7 +1,7 @@
 /**
  * The Wave 12 platform boundary exercised on the real authoritative server
- * (headless Havok, real SQLite file, protocol-level connections), across a
- * restart:
+ * (headless Havok, real PostgreSQL schema through in-memory PGlite,
+ * protocol-level connections), across a restart:
  *
  *  - a signed-in player is keyed by the canonical subject;
  *  - a guest presenting an account key as its token is refused;
@@ -17,7 +17,8 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createContent } from '@openvibe/content'
-import { openSqliteStore, type SqlitePersistenceStore } from '@openvibe/persistence/sqlite'
+import { openPgStore, type PgPersistenceStore } from '@openvibe/persistence'
+import { openTestDb } from '@openvibe/persistence/testing'
 import { createHeadlessHavokWorld } from '@openvibe/physics/havok'
 import {
   PROTOCOL_VERSION,
@@ -26,12 +27,8 @@ import {
   type ServerMessage,
 } from '@openvibe/protocol'
 import { createConsoleLogger } from '@openvibe/shared'
-import {
-  createEventsClient,
-  createOutbox,
-  type Outbox,
-  type SqliteDatabase,
-} from 'openvibe-sdk/events'
+import type { Db } from 'openvibe-sdk/db'
+import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/events'
 import { createMockPlatform } from 'openvibe-sdk/testing'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
@@ -53,16 +50,17 @@ const STAFF: ModActor = { audit: SUBJECT, subject: { type: 'user', id: SUBJECT }
 const log = createConsoleLogger({ app: 'test' }, 'error')
 
 const dir = mkdtempSync(join(tmpdir(), 'openvibe-platform-'))
-const dbPath = join(dir, 'world.db')
 const config = loadConfig({
-  DB_PATH: dbPath,
   MAP_PATH: join(dir, 'map.json'),
   OV_NETWORK_AUTH_URL: 'http://network.test/api/auth/me',
 })
 let havok: unknown
+/** One in-memory PGlite database for the whole file; the restart tests share its state. */
+let db: Db
 
 beforeAll(async () => {
   havok = await loadHavok()
+  db = await openTestDb()
   // openvibe.network's /api/auth/me for the one signed-in test account.
   vi.stubGlobal('fetch', async (_url: string, init?: RequestInit) => {
     const auth = new Headers(init?.headers).get('authorization')
@@ -76,20 +74,22 @@ afterAll(() => {
 })
 
 interface Boot {
-  store: SqlitePersistenceStore
+  store: PgPersistenceStore
   world: GameWorld
   game: GameServer
   registry: ModRegistry
-  outbox: Outbox
+  outbox: PgOutbox
   dispose(): void
 }
 
-function boot(platform: ReturnType<typeof createMockPlatform>): Boot {
+async function boot(platform: ReturnType<typeof createMockPlatform>): Promise<Boot> {
   const content = createContent()
   const physics = createHeadlessHavokWorld(havok)
-  const store = openSqliteStore(dbPath)
+  // The store rides on the shared database; close() is never called (the instance is shared).
+  const store = openPgStore(db, { placeId: config.placeId })
+  await store.ensurePlace()
   const world = new GameWorld(content, physics, log)
-  world.seedOrRestore(store)
+  await world.seedOrRestore(store)
   const pc = createPlatformClient(
     {
       ...config.platform,
@@ -99,18 +99,21 @@ function boot(platform: ReturnType<typeof createMockPlatform>): Boot {
     },
     platform.fetch,
   )!
-  const outbox = createOutbox(store.db as unknown as SqliteDatabase, {
+  const outbox = createPgOutbox(db, {
     events: createEventsClient(pc.client, { source: 'games' }),
   })
-  outbox.ensureSchema()
-  const sink = outboxSink(outbox)
-  const registry = new ModRegistry(store, content, sink)
-  const runtime = new ModRuntime(registry, store, content, log, { reconcileEveryTicks: 30 })
+  const sink = outboxSink(outbox, db)
+  const registry = new ModRegistry(store, content, sink, Date.now, log.child({ system: 'mods' }))
+  await registry.load()
+  const runtime = new ModRuntime(registry, content, log.child({ system: 'mods' }), {
+    reconcileEveryTicks: 30,
+  })
   const recorder = new GameEventRecorder(sink, content.world.id, 0)
   const game = new GameServer(config, world, store, new ServerMetrics(), log, {
     events: recorder,
     mods: runtime,
   })
+  await game.load()
   return {
     store,
     world,
@@ -118,7 +121,6 @@ function boot(platform: ReturnType<typeof createMockPlatform>): Boot {
     registry,
     outbox,
     dispose() {
-      store.close()
       physics.dispose()
     },
   }
@@ -165,10 +167,10 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     },
   })
   let signedInPlayerId = ''
-  let timeBefore = ''
+  let timeBefore = 0
 
   it('runs identity, mods and events against the live world', async () => {
-    const a = boot(platform)
+    const a = await boot(platform)
 
     // A guest cannot claim an account key as its token.
     const intruder = connect(a.game)
@@ -181,14 +183,16 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     const joined = await ana.hello('abcdefgh12', 'tok-ana')
     expect(joined.welcome).toBeDefined()
     signedInPlayerId = (joined.welcome as { playerId: string }).playerId
-    a.game.flush()
-    expect(a.store.players.findById(signedInPlayerId)).toMatchObject({
+    // The tick never awaits I/O; shutdown queues the final checkpoint, drain waits for it.
+    a.game.shutdown()
+    await a.game.drain()
+    expect(await a.store.players.findById(signedInPlayerId)).toMatchObject({
       token: SUBJECT,
       subjectId: SUBJECT,
     })
 
     // Mod A: props granted, announcements requested but denied.
-    a.registry.install(
+    await a.registry.install(
       {
         manifest: sampleManifest({ id: MOD_A }),
         pack: {
@@ -201,7 +205,7 @@ describe('Games on platform identity, events and mods (real server, restart)', (
       STAFF,
     )
     // Mod B: stays installed across the restart.
-    a.registry.install(
+    await a.registry.install(
       {
         manifest: sampleManifest({ id: MOD_B, name: 'Campfire' }),
         pack: { props: [{ key: 'fire', item: 'campfire', pos: [-20, 0, -20] }] },
@@ -215,20 +219,25 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     expect(benches.map((e) => e.prop?.defId)).toEqual(['workbench'])
     expect(propsOwnedBy(a.world, MOD_B).map((e) => e.prop?.defId)).toEqual(['campfire'])
     expect(ana.inbox.some((m) => m.t === 'announce')).toBe(false)
+    await a.registry.flushWrites()
     expect(
-      a.registry.auditLog(MOD_A).some((x) => x.action === 'deny' && x.capability === CAP_ANNOUNCE),
+      (await a.registry.auditLog(MOD_A)).some(
+        (x) => x.action === 'deny' && x.capability === CAP_ANNOUNCE,
+      ),
     ).toBe(true)
 
     // Revoke: gone on the very next tick, and players are told it despawned.
-    a.registry.revoke(MOD_A, STAFF, 'test')
+    await a.registry.revoke(MOD_A, STAFF, 'test')
     a.game.step()
     expect(propsOwnedBy(a.world, MOD_A)).toEqual([])
     expect(a.world.entities.get(benches[0]!.id)).toBeUndefined()
 
     a.game.onDisconnect(ana.conn)
     a.game.shutdown()
-    timeBefore = a.store.meta.get('env_time') ?? ''
-    expect(timeBefore).not.toBe('')
+    await a.game.drain()
+    await a.registry.flushWrites()
+    timeBefore = (await a.store.meta.get('env_time')) as number
+    expect(timeBefore).toBeGreaterThan(0)
 
     // Everything committed is published with the games principal.
     await a.outbox.flush()
@@ -252,9 +261,9 @@ describe('Games on platform identity, events and mods (real server, restart)', (
   }, 60_000)
 
   it('restores the authoritative state after a restart', async () => {
-    const b = boot(platform)
+    const b = await boot(platform)
     // World clock, mod registry and mod props came back from disk.
-    expect(b.store.meta.get('env_time')).toBe(timeBefore)
+    expect(await b.store.meta.get('env_time')).toBe(timeBefore)
     expect(b.registry.get(MOD_A)?.mod.status).toBe('revoked')
     expect(b.registry.get(MOD_B)?.mod.status).toBe('enabled')
     expect(propsOwnedBy(b.world, MOD_A)).toEqual([])
@@ -267,35 +276,43 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     const ana = connect(b.game)
     const again = await ana.hello('zyxwvut98', 'tok-ana')
     expect(again.welcome).toMatchObject({ playerId: signedInPlayerId })
-    expect(b.store.players.listByToken(SUBJECT).map((p) => p.id)).toEqual([signedInPlayerId])
+    expect((await b.store.players.listByToken(SUBJECT)).map((p) => p.id)).toEqual([
+      signedInPlayerId,
+    ])
     b.game.onDisconnect(ana.conn)
     b.game.shutdown()
+    await b.game.drain()
+    await b.registry.flushWrites()
     await b.outbox.stop()
     b.dispose()
   }, 60_000)
 
   it('a guest who signs in keeps their character (guest conversion, WS-B task 8)', async () => {
-    const c = boot(platform)
+    const c = await boot(platform)
     const guest = connect(c.game)
     const played = await guest.hello('guestconv77')
     expect(played.welcome).toBeDefined()
     const guestPlayer = (played.welcome as { playerId: string }).playerId
     c.game.shutdown()
+    await c.game.drain()
+    await c.registry.flushWrites()
     await c.outbox.stop()
     c.dispose()
-    const d = boot(platform)
+    const d = await boot(platform)
     const signedIn = connect(d.game)
     expect((await signedIn.hello('guestconv77', 'tok-ana')).welcome).toBeDefined()
-    const mine = d.store.players.listByToken(SUBJECT)
+    const mine = await d.store.players.listByToken(SUBJECT)
     expect(mine.some((p) => p.id === guestPlayer)).toBe(true)
-    expect(d.store.players.listByToken('guestconv77')).toEqual([])
+    expect(await d.store.players.listByToken('guestconv77')).toEqual([])
     d.game.shutdown()
+    await d.game.drain()
+    await d.registry.flushWrites()
     await d.outbox.stop()
     d.dispose()
   }, 60_000)
 
   it('a sign-out everywhere closes the signed-in session, never a guest (WS-B task 4)', async () => {
-    const c = boot(platform)
+    const c = await boot(platform)
     const ana = connect(c.game)
     expect((await ana.hello('abcdefgh12', 'tok-ana')).welcome).toBeDefined()
     const guest = connect(c.game)
@@ -305,6 +322,8 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     expect(ana.inbox.some((m) => m.t === 'reject' && m.reason === 'signed_out')).toBe(true)
     expect(guest.inbox.some((m) => m.t === 'reject')).toBe(false)
     c.game.shutdown()
+    await c.game.drain()
+    await c.registry.flushWrites()
     await c.outbox.stop()
     c.dispose()
   }, 60_000)

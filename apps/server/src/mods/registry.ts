@@ -1,7 +1,7 @@
 /**
  * The mod registry (ADR-013, roadmap Wave 12): installs, the approved subset
  * of each install's requested capabilities, lifecycle and the audit log, all
- * in Games' own SQLite database.
+ * in Games' own PostgreSQL database.
  *
  *   install   validate the manifest + pack, store it, grant the approved subset
  *   enable / disable
@@ -9,12 +9,14 @@
  *   revoke    terminal: every grant ends and the runtime retracts the mod's
  *             effects on the next tick
  *
- * Every change is one transaction holding the registry rows, the audit rows
- * and the `games.mod.*` outbox event. The in-memory view the runtime asks on
- * its hot path (`isGranted`) is refreshed only after that commit. Taking down
- * (revoke, disable) or putting back (enable after a disable) a mod someone
- * else published also writes `games.moderation.action` for Network's
- * moderation audit log (ADR-022) in that transaction.
+ * Every change is one database transaction holding the registry rows, the audit rows and the
+ * `games.mod.*` outbox event. The in-memory view the runtime asks on its hot path (`isGranted`, and the
+ * placements mirror) is refreshed only after that commit.
+ *
+ * The tick never awaits I/O: `audit`, `place` and `unplace` are called from the mod runtime on the tick
+ * and go through a serialized write queue (the placements mirror updates immediately, the database write
+ * commits asynchronously); a failure is logged and counted, never thrown into the tick. Everything the
+ * HTTP API and Network events call is explicit and awaited.
  *
  * Trust tiers are metadata: `isGranted` never looks at them.
  *
@@ -29,11 +31,13 @@ import type {
   ModAuditDto,
   ModGrantDto,
   ModInstallDto,
+  ModPlacementDto,
   ModStatus,
   ModTrustTier,
   PersistenceStore,
 } from '@openvibe/persistence'
 import type { SubjectRef } from 'openvibe-sdk/core'
+import type { Tx } from 'openvibe-sdk/db'
 import {
   moderationEvent,
   modEvent,
@@ -96,17 +100,32 @@ export interface ModView {
 
 export class ModRegistry {
   private readonly views = new Map<string, ModView>()
+  /** In-memory mirror of each install's placements the runtime reads on the tick. */
+  private readonly placementsByMod = new Map<string, ModPlacementDto[]>()
   /** The Network principal revision each install's grants were last set from (an older event changes nothing). */
   private readonly networkRevision = new Map<string, number>()
+  /** Serialized writes the tick path (and only it) fires without awaiting. */
+  private writeChain: Promise<void> = Promise.resolve()
   private revision = 0
+  /** Writes the tick path queued that failed; the runtime keeps running. */
+  writeFailures = 0
 
   constructor(
     private readonly store: PersistenceStore,
     private readonly content: ContentRegistry,
     private readonly events: EventSink = NO_EVENTS,
     private readonly now: () => number = Date.now,
-  ) {
-    for (const mod of store.mods.list()) this.refresh(mod.id)
+    private readonly log: { warn(msg: string, meta?: unknown): void } = {
+      warn: (msg, meta) => console.warn(msg, meta),
+    },
+  ) {}
+
+  /** Async boot: read every install, its grants and its placements into the in-memory mirrors. */
+  async load(): Promise<void> {
+    for (const mod of await this.store.mods.list()) await this.refresh(mod.id)
+    for (const view of this.views.values()) {
+      this.placementsByMod.set(view.mod.id, await this.store.mods.placements(view.mod.id))
+    }
   }
 
   /** Bumps on every committed change; the runtime reconciles when it moves. */
@@ -126,6 +145,11 @@ export class ModRegistry {
     return this.views.get(id)?.mod.status === 'enabled'
   }
 
+  /** The in-memory placements mirror (the tick reads this, never the database). */
+  placements(modId: string): ModPlacementDto[] {
+    return this.placementsByMod.get(modId) ?? []
+  }
+
   /**
    * The one grant check. True only while the install is enabled and the
    * capability is in its approved, unrevoked subset. The trust tier is not
@@ -136,30 +160,116 @@ export class ModRegistry {
     return view !== undefined && view.mod.status === 'enabled' && view.granted.has(capability)
   }
 
-  auditLog(id: string, limit = 100): ModAuditDto[] {
+  auditLog(id: string, limit = 100): Promise<ModAuditDto[]> {
     return this.store.mods.auditLog(id, Math.min(Math.max(limit, 1), 500))
   }
 
-  /** Appends a runtime audit record (use, deny, retract, …). */
-  audit(id: string, action: string, capability: string | null, detail?: Record<string, unknown>) {
-    this.store.mods.audit({
-      modId: id,
-      action,
-      capability,
-      actor: SYSTEM_ACTOR.audit,
-      detail: detail ?? null,
-      at: this.now(),
+  /**
+   * Appends a runtime audit record (use, deny, retract, …). Called from the tick: the write is queued,
+   * not awaited, and the placements/audit queue is one at a time so ordering is kept.
+   */
+  audit(
+    id: string,
+    action: string,
+    capability: string | null,
+    detail?: Record<string, unknown>,
+  ): void {
+    this.enqueueWrite(async () => {
+      await this.store.mods.audit({
+        modId: id,
+        action,
+        capability,
+        actor: SYSTEM_ACTOR.audit,
+        detail: detail ?? null,
+        at: this.now(),
+      })
     })
   }
 
+  /** Records (or re-records) a placement in the mirror and queue-writes it. Called from the tick. */
+  place(modId: string, key: string, entityId: string | null): void {
+    const at = this.now()
+    const before = (this.placementsByMod.get(modId) ?? []).filter((p) => p.key === key)
+    const list = (this.placementsByMod.get(modId) ?? []).filter((p) => p.key !== key)
+    list.push({ modId, key, entityId, at })
+    this.placementsByMod.set(modId, list)
+    this.enqueueWrite(
+      async () => {
+        await this.store.mods.setPlacement({ modId, key, entityId, at })
+      },
+      () => this.rollbackPlacement(modId, key, at, before),
+    )
+  }
+
+  /** Removes a placement from the mirror and queue-writes the delete. Called from the tick. */
+  unplace(modId: string, key: string): void {
+    const before = (this.placementsByMod.get(modId) ?? []).filter((p) => p.key === key)
+    const list = (this.placementsByMod.get(modId) ?? []).filter((p) => p.key !== key)
+    this.placementsByMod.set(modId, list)
+    this.enqueueWrite(
+      async () => {
+        await this.store.mods.deletePlacement(modId, key)
+      },
+      () => this.rollbackPlacement(modId, key, null, before),
+    )
+  }
+
+  /**
+   * The queued write never landed: put the mirror back so it agrees with the database. Only undoes the
+   * change when the mirror still holds it (`stamp` is what this call set, or null for a removal), so a
+   * later place/unplace of the same key is left to its own write.
+   */
+  private rollbackPlacement(
+    modId: string,
+    key: string,
+    stamp: number | null,
+    before: ModPlacementDto[],
+  ): void {
+    const current = this.placementsByMod.get(modId) ?? []
+    const entry = current.find((p) => p.key === key)
+    if ((entry?.at ?? null) !== stamp) return
+    const rest = current.filter((p) => p.key !== key)
+    this.placementsByMod.set(modId, [...rest, ...before])
+    this.log.warn('mod placement write failed: mirror rolled back', { mod: modId, key })
+  }
+
+  /** One serialized write queue for the tick path; failures are retried, then logged and counted, never thrown. */
+  private enqueueWrite(write: () => Promise<void>, onGiveUp?: () => void): void {
+    this.writeChain = this.writeChain.then(async () => {
+      const delaysMs = [25, 100]
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await write()
+          return
+        } catch (err: unknown) {
+          if (attempt < delaysMs.length) {
+            await new Promise((r) => setTimeout(r, delaysMs[attempt]))
+            continue
+          }
+          this.writeFailures++
+          onGiveUp?.()
+          this.log.warn('mod write failed', {
+            error: String((err as Error | undefined)?.message ?? err),
+          })
+          return
+        }
+      }
+    })
+  }
+
+  /** Waits for queued tick-path writes (shutdown/tests). */
+  async flushWrites(): Promise<void> {
+    await this.writeChain
+  }
+
   /** Everything install checks before it writes: the manifest, the pack, the approved subset and the options. */
-  checkInstall(req: InstallRequest): {
+  async checkInstall(req: InstallRequest): Promise<{
     manifest: ModManifest
     pack: ContentPack
     approve: string[]
     trustTier: ModTrustTier
     enable: boolean
-  } {
+  }> {
     const manifestCheck = validateManifest(req.manifest)
     if (!manifestCheck.ok) {
       throw new ModError('mod.manifest_invalid', 'manifest is invalid', 422, manifestCheck.errors)
@@ -188,14 +298,14 @@ export class ModRegistry {
     for (const cap of approve) this.assertGrantable(manifest, cap)
     const trustTier = parseTrustTier(req.trustTier ?? 'unreviewed')
     const enable = req.enable === true
-    if (this.views.has(manifest.id) || this.store.mods.get(manifest.id)) {
+    if (this.views.has(manifest.id) || (await this.store.mods.get(manifest.id))) {
       throw new ModError('mod.exists', `mod ${manifest.id} is already installed`, 409)
     }
     return { manifest, pack, approve, trustTier, enable }
   }
 
-  install(req: InstallRequest, actor: ModActor): ModView {
-    const { manifest, pack, approve, trustTier, enable } = this.checkInstall(req)
+  async install(req: InstallRequest, actor: ModActor): Promise<ModView> {
+    const { manifest, pack, approve, trustTier, enable } = await this.checkInstall(req)
     const requested = new Set(manifest.permissions.capabilities)
     const at = this.now()
     const mod: ModInstallDto = {
@@ -212,20 +322,20 @@ export class ModRegistry {
       installedAt: at,
       updatedAt: at,
     }
-    this.store.transaction(() => {
-      this.store.mods.insert(mod)
-      this.writeAudit(mod.id, 'install', null, actor, {
+    await this.store.transaction(async (t) => {
+      await this.store.mods.insert(mod)
+      await this.writeAudit(mod.id, 'install', null, actor, {
         version: mod.version,
         runtime: mod.runtime,
         trust_tier: trustTier,
         requested: [...requested].sort(),
       })
       for (const cap of approve) {
-        this.store.mods.upsertGrant(grantRow(mod.id, cap, actor, at))
-        this.writeAudit(mod.id, 'grant', cap, actor, null)
+        await this.store.mods.upsertGrant(grantRow(mod.id, cap, actor, at))
+        await this.writeAudit(mod.id, 'grant', cap, actor, null)
       }
-      if (enable) this.writeAudit(mod.id, 'enable', null, actor, null)
-      this.emit('installed', mod, actor, {
+      if (enable) await this.writeAudit(mod.id, 'enable', null, actor, null)
+      await this.emit(t, 'installed', mod, actor, {
         requested: [...requested].sort(),
         granted: [...approve].sort(),
         status: mod.status,
@@ -234,31 +344,31 @@ export class ModRegistry {
     return this.refresh(mod.id)
   }
 
-  enable(id: string, actor: ModActor): ModView {
+  enable(id: string, actor: ModActor): Promise<ModView> {
     return this.setStatus(id, 'enabled', actor)
   }
 
-  disable(id: string, actor: ModActor): ModView {
+  disable(id: string, actor: ModActor): Promise<ModView> {
     return this.setStatus(id, 'disabled', actor)
   }
 
   /** Ends the install for good: every grant is revoked and the mod stops at the next tick. */
-  revoke(id: string, actor: ModActor, reason?: string): ModView {
+  async revoke(id: string, actor: ModActor, reason?: string): Promise<ModView> {
     const view = this.require(id)
     if (view.mod.status === 'revoked') return view
     const at = this.now()
-    this.store.transaction(() => {
+    await this.store.transaction(async (t) => {
       for (const cap of view.granted) {
-        this.store.mods.revokeGrant(id, cap, actor.audit, at)
-        this.writeAudit(id, 'revoke_grant', cap, actor, null)
+        await this.store.mods.revokeGrant(id, cap, actor.audit, at)
+        await this.writeAudit(id, 'revoke_grant', cap, actor, null)
       }
-      this.store.mods.setStatus(id, 'revoked', at)
-      this.writeAudit(id, 'revoke', null, actor, reason ? { reason } : null)
-      this.emit('revoked', { ...view.mod, status: 'revoked' }, actor, {
+      await this.store.mods.setStatus(id, 'revoked', at)
+      await this.writeAudit(id, 'revoke', null, actor, reason ? { reason } : null)
+      await this.emit(t, 'revoked', { ...view.mod, status: 'revoked' }, actor, {
         revoked_grants: [...view.granted].sort(),
         ...(reason ? { reason } : {}),
       })
-      this.moderated('mod.revoked', view, actor, reason, {
+      await this.moderated(t, 'mod.revoked', view, actor, reason, {
         previous: view.mod.status,
         revoked_grants: [...view.granted].sort(),
       })
@@ -266,7 +376,7 @@ export class ModRegistry {
     return this.refresh(id)
   }
 
-  grant(id: string, capability: string, actor: ModActor): ModView {
+  async grant(id: string, capability: string, actor: ModActor): Promise<ModView> {
     const view = this.require(id)
     if (view.mod.status === 'revoked') {
       throw new ModError('mod.revoked', 'a revoked install cannot be granted anything', 409)
@@ -274,23 +384,23 @@ export class ModRegistry {
     this.assertGrantable(view.manifest, capability)
     if (view.granted.has(capability)) return view
     const at = this.now()
-    this.store.transaction(() => {
-      this.store.mods.upsertGrant(grantRow(id, capability, actor, at))
-      this.writeAudit(id, 'grant', capability, actor, null)
-      this.emit('grants_changed', view.mod, actor, { granted: [capability], revoked: [] })
+    await this.store.transaction(async (t) => {
+      await this.store.mods.upsertGrant(grantRow(id, capability, actor, at))
+      await this.writeAudit(id, 'grant', capability, actor, null)
+      await this.emit(t, 'grants_changed', view.mod, actor, { granted: [capability], revoked: [] })
     })
     return this.refresh(id)
   }
 
-  revokeGrant(id: string, capability: string, actor: ModActor): ModView {
+  async revokeGrant(id: string, capability: string, actor: ModActor): Promise<ModView> {
     const view = this.require(id)
     const at = this.now()
     let changed = false
-    this.store.transaction(() => {
-      changed = this.store.mods.revokeGrant(id, capability, actor.audit, at)
+    await this.store.transaction(async (t) => {
+      changed = await this.store.mods.revokeGrant(id, capability, actor.audit, at)
       if (!changed) return
-      this.writeAudit(id, 'revoke_grant', capability, actor, null)
-      this.emit('grants_changed', view.mod, actor, { granted: [], revoked: [capability] })
+      await this.writeAudit(id, 'revoke_grant', capability, actor, null)
+      await this.emit(t, 'grants_changed', view.mod, actor, { granted: [], revoked: [capability] })
     })
     return changed ? this.refresh(id) : view
   }
@@ -301,7 +411,7 @@ export class ModRegistry {
   }
 
   /** What grant checks before it writes (the Network call comes between). */
-  checkGrant(id: string, capability: string): void {
+  async checkGrant(id: string, capability: string): Promise<void> {
     const view = this.require(id)
     if (view.mod.status === 'revoked') {
       throw new ModError('mod.revoked', 'a revoked install cannot be granted anything', 409)
@@ -314,24 +424,32 @@ export class ModRegistry {
    * a revoked principal revokes the install; otherwise capabilities Network does not approve are revoked here and
    * approved ones this runtime can bind are granted. Unknown installs are ignored. Returns the view, or null.
    */
-  applyNetwork(
+  async applyNetwork(
     principal: { mod_id: string; status: string; approved: readonly string[]; revision?: number },
     actor: ModActor = NETWORK_ACTOR,
-  ): ModView | null {
+  ): Promise<ModView | null> {
     const view = this.views.get(principal.mod_id)
     if (!view) return null
-    // Events can arrive after the API already applied a newer answer: an older (or equal) revision changes nothing.
-    if (principal.revision !== undefined) {
-      if (principal.revision <= (this.networkRevision.get(view.mod.id) ?? 0)) return view
-      this.networkRevision.set(view.mod.id, principal.revision)
+    // Events can arrive after the API already applied a newer answer: an older (or equal) revision changes
+    // nothing. The revision is remembered only once the writes below succeed, so a failed write leaves the
+    // answer eligible for redelivery instead of being dropped as stale.
+    if (
+      principal.revision !== undefined &&
+      principal.revision <= (this.networkRevision.get(view.mod.id) ?? 0)
+    )
+      return view
+    const revision = principal.revision
+    const applied = (outcome: ModView): ModView => {
+      if (revision !== undefined) this.noteNetworkRevision(view.mod.id, revision)
+      return outcome
     }
     if (principal.status === 'revoked')
-      return this.revoke(view.mod.id, actor, 'revoked in OpenVibe.Network')
-    if (view.mod.status === 'revoked') return view
+      return applied(await this.revoke(view.mod.id, actor, 'revoked in OpenVibe.Network'))
+    if (view.mod.status === 'revoked') return applied(view)
     const approved = new Set(principal.approved)
     let current = view
     for (const cap of [...current.granted])
-      if (!approved.has(cap)) current = this.revokeGrant(view.mod.id, cap, actor)
+      if (!approved.has(cap)) current = await this.revokeGrant(view.mod.id, cap, actor)
     for (const cap of approved) {
       if (current.granted.has(cap)) continue
       try {
@@ -339,29 +457,33 @@ export class ModRegistry {
       } catch {
         continue
       }
-      current = this.grant(view.mod.id, cap, actor)
+      current = await this.grant(view.mod.id, cap, actor)
     }
-    return current
+    return applied(current)
   }
 
-  private setStatus(id: string, status: ModStatus, actor: ModActor): ModView {
+  private async setStatus(id: string, status: ModStatus, actor: ModActor): Promise<ModView> {
     const view = this.require(id)
     if (view.mod.status === 'revoked') {
       throw new ModError('mod.revoked', 'a revoked install stays revoked; install a new one', 409)
     }
     if (view.mod.status === status) return view
     const at = this.now()
-    this.store.transaction(() => {
+    await this.store.transaction(async (t) => {
       // Enabling puts a mod back only when someone disabled it before (a first enable is not moderation).
       const restoring =
         status === 'enabled' &&
-        this.store.mods.auditLog(id, 10_000).some((a: ModAuditDto) => a.action === 'disable')
-      this.store.mods.setStatus(id, status, at)
+        (await this.store.mods.auditLog(id, 10_000)).some(
+          (a: ModAuditDto) => a.action === 'disable',
+        )
+      await this.store.mods.setStatus(id, status, at)
       const action = status === 'enabled' ? 'enable' : 'disable'
-      this.writeAudit(id, action, null, actor, null)
-      this.emit(status === 'enabled' ? 'enabled' : 'disabled', view.mod, actor, {})
+      await this.writeAudit(id, action, null, actor, null)
+      await this.emit(t, status === 'enabled' ? 'enabled' : 'disabled', view.mod, actor, {})
       if (status === 'disabled' || restoring) {
-        this.moderated(`mod.${status}`, view, actor, undefined, { previous: view.mod.status })
+        await this.moderated(t, `mod.${status}`, view, actor, undefined, {
+          previous: view.mod.status,
+        })
       }
     })
     return this.refresh(id)
@@ -386,14 +508,14 @@ export class ModRegistry {
     return view
   }
 
-  private writeAudit(
+  private async writeAudit(
     id: string,
     action: string,
     capability: string | null,
     actor: ModActor,
     detail: Record<string, unknown> | null,
-  ): void {
-    this.store.mods.audit({
+  ): Promise<void> {
+    await this.store.mods.audit({
       modId: id,
       action,
       capability,
@@ -404,17 +526,19 @@ export class ModRegistry {
   }
 
   /** games.moderation.action, unless the publisher is acting on their own mod. */
-  private moderated(
+  private async moderated(
+    t: Tx,
     action: string,
     view: ModView,
     actor: ModActor,
     reason: string | undefined,
     details: Record<string, unknown>,
-  ): void {
+  ): Promise<void> {
     const publisher = view.manifest.publisher
     const owner = publisher && publisher.type === 'user' ? publisher.id : null
     if (owner && actor.subject.type === 'user' && actor.subject.id === owner) return
-    this.events.enqueue(
+    await this.events.enqueue(
+      t,
       moderationEvent(
         action,
         { type: 'mod', id: view.mod.id, ownerSubject: owner },
@@ -427,25 +551,25 @@ export class ModRegistry {
     )
   }
 
-  private emit(
+  private async emit(
+    t: Tx,
     kind: ModLifecycle,
     mod: ModInstallDto,
     actor: ModActor,
     detail: Record<string, unknown>,
-  ): void {
-    this.events.enqueue(modEvent(kind, mod, actor.subject, detail))
+  ): Promise<void> {
+    await this.events.enqueue(t, modEvent(kind, mod, actor.subject, detail))
   }
 
   /** Re-reads one install after a committed change. */
-  private refresh(id: string): ModView {
-    const mod = this.store.mods.get(id)
+  private async refresh(id: string): Promise<ModView> {
+    const mod = await this.store.mods.get(id)
     if (!mod) {
       this.views.delete(id)
       throw new ModError('mod.not_found', `no mod ${id}`, 404)
     }
     const granted = new Set(
-      this.store.mods
-        .grants(id)
+      (await this.store.mods.grants(id))
         .filter((g: ModGrantDto) => g.revokedAt === null)
         .map((g) => g.capability),
     )

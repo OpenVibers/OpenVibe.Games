@@ -17,6 +17,8 @@ import { CLOSE_RESTART, DEADLINE_MS } from './net/gracefulStop.js'
  */
 
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
+/** The real migrations, so the spawned server boots its embedded PGlite database. */
+const MIGRATIONS_DIR = join(SERVER_DIR, '..', '..', 'packages', 'persistence', 'migrations')
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 function freePort(): Promise<number> {
@@ -71,7 +73,11 @@ describe('SIGTERM', () => {
         NODE_ENV: 'test',
         PORT: String(port),
         HOST: '127.0.0.1',
-        DB_PATH: join(dir, 'world.db'),
+        // Embedded PGlite (no DATABASE_URL), migrated from the real migrations directory.
+        DATABASE_URL: '',
+        DATABASE_DIRECT_URL: '',
+        DATABASE_DIR: join(dir, 'db'),
+        GAMES_MIGRATIONS_DIR: MIGRATIONS_DIR,
         MAP_PATH: join(dir, 'map.json'),
         STATIC_DIR: '',
         // The platform side on, pointed at nothing: the outbox exists and has to be stopped.

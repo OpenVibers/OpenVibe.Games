@@ -8,8 +8,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * 200 when every required check passes, 503 otherwise; each failed check
  * carries its reason in `error`.
  *
- * Required: `db` (world.db answers a trivial query) and `tick` (the fixed-tick
- * simulation has advanced recently). /healthz stays liveness only.
+ * Required: `db` (the PostgreSQL handle answers a real round trip through db.ready()) and `tick` (the
+ * fixed-tick simulation has advanced recently). /healthz stays liveness only.
  */
 
 /**
@@ -41,8 +41,8 @@ export interface ReadinessBody {
 }
 
 export interface ReadinessDeps {
-  /** Runs a trivial query against world.db; throws or returns false when it fails. */
-  pingDb: () => boolean
+  /** A real round trip against the database (openvibe-sdk/db db.ready()). */
+  pingDb: () => Promise<{ ok: boolean; error?: string }>
   /** The tick counter and when the last tick completed (epoch ms, 0 = never). */
   metrics: { readonly tick: number; readonly lastTickAt: number }
   /** Players connected now (a non-required `sessions` check; OpenVibe.Host's protected probe reads it). */
@@ -59,11 +59,15 @@ function reason(err: unknown): string {
   return (text.split('\n')[0] ?? '').slice(0, 200) || 'failed'
 }
 
-function run(fn: () => Outcome, required: boolean, now: () => number): ReadinessCheck {
+async function run(
+  fn: () => Outcome | Promise<Outcome>,
+  required: boolean,
+  now: () => number,
+): Promise<ReadinessCheck> {
   const t0 = performance.now()
   let out: Outcome
   try {
-    out = fn()
+    out = await fn()
   } catch (err) {
     out = { ok: false, error: reason(err) }
   }
@@ -78,39 +82,40 @@ function run(fn: () => Outcome, required: boolean, now: () => number): Readiness
 }
 
 export function createReadiness(deps: ReadinessDeps): {
-  check: () => ReadinessBody
+  check: () => Promise<ReadinessBody>
   handle: (req: IncomingMessage, res: ServerResponse) => boolean
 } {
   const now = deps.now ?? Date.now
   const stallMs = deps.tickStallMs ?? TICK_STALL_MS
 
-  function check(): ReadinessBody {
-    const checks: Record<string, ReadinessCheck> = {
-      db: run(
-        () =>
-          deps.pingDb() ? { ok: true } : { ok: false, error: 'world.db query returned nothing' },
-        true,
-        now,
-      ),
-      tick: run(
-        () => {
-          const { tick, lastTickAt } = deps.metrics
-          const at = now()
-          const ageMs = lastTickAt > 0 ? at - lastTickAt : null
-          const detail = { tick, age_ms: ageMs, threshold_ms: stallMs }
-          if (ageMs === null) return { ok: false, error: 'simulation has not ticked yet', detail }
-          if (ageMs > stallMs) {
-            return { ok: false, error: `no simulation tick for ${Math.round(ageMs)} ms`, detail }
-          }
-          return { ok: true, detail }
-        },
-        true,
-        now,
-      ),
-    }
+  async function check(): Promise<ReadinessBody> {
+    const db = await run(
+      async () => {
+        const r = await deps.pingDb()
+        return r.ok ? { ok: true } : { ok: false, error: r.error ?? 'database did not answer' }
+      },
+      true,
+      now,
+    )
+    const tick = await run(
+      () => {
+        const { tick, lastTickAt } = deps.metrics
+        const at = now()
+        const ageMs = lastTickAt > 0 ? at - lastTickAt : null
+        const detail = { tick, age_ms: ageMs, threshold_ms: stallMs }
+        if (ageMs === null) return { ok: false, error: 'simulation has not ticked yet', detail }
+        if (ageMs > stallMs) {
+          return { ok: false, error: `no simulation tick for ${Math.round(ageMs)} ms`, detail }
+        }
+        return { ok: true, detail }
+      },
+      true,
+      now,
+    )
+    const checks: Record<string, ReadinessCheck> = { db, tick }
     if (deps.online) {
       const online = deps.online
-      checks.sessions = run(() => ({ ok: true, detail: { online: online() } }), false, now)
+      checks.sessions = await run(() => ({ ok: true, detail: { online: online() } }), false, now)
     }
     const names = Object.keys(checks)
     const failed = names.filter((n) => checks[n]?.required && checks[n]?.status !== 'ok')
@@ -134,12 +139,25 @@ export function createReadiness(deps: ReadinessDeps): {
       res.end('{"error":"method_not_allowed"}')
       return true
     }
-    const body = check()
-    res.writeHead(body.ready ? 200 : 503, {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
-    })
-    res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body))
+    void check()
+      .then((body) => {
+        if (res.writableEnded) return
+        res.writeHead(body.ready ? 200 : 503, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        })
+        res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body))
+      })
+      // A throw outside run()'s try (body assembly, header writes) must not leave the probe hanging
+      // or produce an unhandled rejection: answer not-ready like the check itself would.
+      .catch(() => {
+        if (res.writableEnded) return
+        res.writeHead(503, {
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+        })
+        res.end(req.method === 'HEAD' ? undefined : JSON.stringify({ error: 'probe_failed' }))
+      })
     return true
   }
 

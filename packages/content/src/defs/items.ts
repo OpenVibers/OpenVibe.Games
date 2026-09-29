@@ -402,8 +402,8 @@ export const ITEMS: ItemDef[] = [
     placeable: { maxRange: 3.5, snapStep: 0.35 },
   },
   {
-    // Id (and workstation kind) 'campfire' is persisted in world.db entity
-    // defIds and player inventories — the Scraplandia rename is display-only.
+    // Id (and workstation kind) 'campfire' is persisted in entity defIds
+    // and character inventories — the Scraplandia rename is display-only.
     id: 'campfire',
     name: 'Burn Barrel',
     description: 'A salvaged drum with a cook grate. Light it, cook food, stay warm.',

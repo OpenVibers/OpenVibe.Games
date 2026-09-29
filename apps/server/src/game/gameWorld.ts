@@ -576,22 +576,22 @@ export class GameWorld {
 
   // ── Persistence mapping ────────────────────────────────────────────
 
-  seedOrRestore(store: PersistenceStore): void {
+  async seedOrRestore(store: PersistenceStore): Promise<void> {
     const world = this.content.world
-    const seeded = store.meta.get('world_seeded') === 'yes'
-    const worldChanged = store.meta.get('world_id') !== world.id
+    const seeded = (await store.meta.get('world_seeded')) === true
+    const worldChanged = (await store.meta.get('world_id')) !== world.id
 
     if (!seeded) {
       this.seedProps(store)
       this.seedResources(store)
-      store.meta.set('world_seeded', 'yes')
-      store.meta.set('world_id', world.id)
-      this.flushDirty(store)
+      await store.meta.set('world_seeded', true)
+      await store.meta.set('world_id', world.id)
+      await this.flushDirty(store)
       this.log.info('world seeded', { world: world.id, entities: this.entities.size })
       return
     }
 
-    const rows = store.worldEntities.loadAll()
+    const rows = await store.worldEntities.loadAll()
     let restored = 0
     for (const row of rows) {
       if (row.kind === 'resource' && worldChanged) continue // re-seeded below
@@ -600,7 +600,7 @@ export class GameWorld {
 
     // Constraints restore after entities; dangling/invalid records are
     // pruned (an unknown type from a future build, or a despawned prop).
-    const constraintRows = store.constraints.loadAll()
+    const constraintRows = await store.constraints.loadAll()
     const pruned: string[] = []
     for (const row of constraintRows) {
       const a = this.entities.get(row.entityA as EntityId)
@@ -619,16 +619,16 @@ export class GameWorld {
         pruned.push(row.id)
       }
     }
-    if (pruned.length > 0) store.constraints.deleteMany(pruned)
+    if (pruned.length > 0) await store.constraints.deleteMany(pruned)
 
     if (worldChanged) {
       // The map definition changed: resource layout follows the new world,
       // player constructions persist, players go back to spawn.
-      store.worldEntities.deleteByKind('resource')
+      await store.worldEntities.deleteByKind('resource')
       this.seedResources(store)
-      store.players.resetAllPositions(worldSpawn(world).pos, worldSpawn(world).yaw)
-      store.meta.set('world_id', world.id)
-      this.flushDirty(store)
+      await store.players.resetAllPositions(worldSpawn(world).pos, worldSpawn(world).yaw)
+      await store.meta.set('world_id', world.id)
+      await this.flushDirty(store)
       this.log.info('world definition changed — resources re-seeded, players respawned', {
         world: world.id,
       })
@@ -910,46 +910,93 @@ export class GameWorld {
     return false
   }
 
-  flushDirty(store: PersistenceStore): number {
-    const dirty: WorldEntityDto[] = []
+  /**
+   * Copy-on-write snapshot of everything dirty, clearing the flags and sets as it copies. Taken
+   * synchronously on the tick; the write-behind flusher persists it in one transaction. A failed
+   * flush calls `restoreDirty` so nothing is lost.
+   */
+  takeDirty(): WorldDirtySnapshot {
     const now = Date.now()
+    const entityUpserts: WorldEntityDto[] = []
     for (const entity of this.entities.all()) {
       // Players persist via their repository; NPCs via the NpcManager
       // (their abstract state, never the materialized entity).
       if (!entity.dirty || !entity.persistent) continue
       if (entity.kind === 'player' || entity.kind === 'npc') continue
-      dirty.push(entityToDto(entity, now))
+      entityUpserts.push(entityToDto(entity, now))
       entity.dirty = false
     }
-    if (dirty.length > 0) store.worldEntities.upsertMany(dirty)
-    if (this.deletedIds.size > 0) {
-      store.worldEntities.deleteMany([...this.deletedIds])
-      this.deletedIds.clear()
-    }
-    if (this.constraintsDirty.size > 0) {
-      const dtos: ConstraintDto[] = []
-      for (const id of this.constraintsDirty) {
-        const rec = this.constraintRecords.get(id)
-        if (rec) {
-          dtos.push({
-            id: rec.id,
-            type: rec.type,
-            entityA: rec.a,
-            entityB: rec.b,
-            params: rec.params as Record<string, unknown>,
-            updatedAt: now,
-          })
-        }
+    const entityDeletes = [...this.deletedIds]
+    this.deletedIds.clear()
+
+    const constraintUpserts: ConstraintDto[] = []
+    for (const id of this.constraintsDirty) {
+      const rec = this.constraintRecords.get(id)
+      if (rec) {
+        constraintUpserts.push({
+          id: rec.id,
+          type: rec.type,
+          entityA: rec.a,
+          entityB: rec.b,
+          params: rec.params as Record<string, unknown>,
+          updatedAt: now,
+        })
       }
-      store.constraints.upsertMany(dtos)
-      this.constraintsDirty.clear()
     }
-    if (this.constraintsDeleted.size > 0) {
-      store.constraints.deleteMany([...this.constraintsDeleted])
-      this.constraintsDeleted.clear()
+    this.constraintsDirty.clear()
+    const constraintDeletes = [...this.constraintsDeleted]
+    this.constraintsDeleted.clear()
+
+    return {
+      entityUpserts,
+      entityDeletes,
+      constraintUpserts,
+      constraintDeletes,
+      dirtyEntityIds: entityUpserts.map((e) => e.id),
+      dirtyConstraintIds: constraintUpserts.map((c) => c.id),
     }
-    return dirty.length
   }
+
+  /** Puts back what a failed flush took: rows still present are dirty again, deletes re-armed. */
+  restoreDirty(snapshot: WorldDirtySnapshot): void {
+    for (const id of snapshot.dirtyEntityIds) {
+      const entity = this.entities.get(id as EntityId)
+      if (entity) entity.dirty = true
+    }
+    for (const id of snapshot.entityDeletes) {
+      if (!this.entities.get(id as EntityId)) this.deletedIds.add(id as EntityId)
+    }
+    for (const id of snapshot.dirtyConstraintIds) {
+      if (this.constraintRecords.has(id)) this.constraintsDirty.add(id)
+    }
+    for (const id of snapshot.constraintDeletes) {
+      if (!this.constraintRecords.has(id)) this.constraintsDeleted.add(id)
+    }
+  }
+
+  /** Boot/seed convenience: take everything dirty and write it in one call (never on the tick). */
+  async flushDirty(store: PersistenceStore): Promise<number> {
+    const snapshot = this.takeDirty()
+    if (snapshot.entityUpserts.length > 0)
+      await store.worldEntities.upsertMany(snapshot.entityUpserts)
+    if (snapshot.entityDeletes.length > 0)
+      await store.worldEntities.deleteMany(snapshot.entityDeletes)
+    if (snapshot.constraintUpserts.length > 0)
+      await store.constraints.upsertMany(snapshot.constraintUpserts)
+    if (snapshot.constraintDeletes.length > 0)
+      await store.constraints.deleteMany(snapshot.constraintDeletes)
+    return snapshot.entityUpserts.length
+  }
+}
+
+/** What `takeDirty` hands the flusher; `restoreDirty` can put it all back on failure. */
+export interface WorldDirtySnapshot {
+  entityUpserts: WorldEntityDto[]
+  entityDeletes: string[]
+  constraintUpserts: ConstraintDto[]
+  constraintDeletes: string[]
+  dirtyEntityIds: string[]
+  dirtyConstraintIds: string[]
 }
 
 function entityToDto(entity: GameEntity, now: number): WorldEntityDto {

@@ -18,12 +18,15 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
+import type { Db } from 'openvibe-sdk/db'
 import type { Logger } from '@openvibe/shared'
 
 const req = createRequire(import.meta.url)
 
 interface RevocationStore {
-  apply(event: unknown): string
+  /** Reads every cutoff into memory at boot (few people have one); call before serving. */
+  load(): Promise<number>
+  apply(event: unknown): Promise<string>
   isRevoked(claims: { iat?: number; subject_id?: string } | null | undefined): boolean
   cutoffFor(subject: string): number
 }
@@ -50,8 +53,8 @@ type ParseDelivery = (
   }
 } | null
 
-const { createRevocationStore } = req('openvibe-sdk/auth') as {
-  createRevocationStore(db: unknown, opts?: { table?: string }): RevocationStore
+const { createPgRevocationStore } = req('openvibe-sdk/auth') as {
+  createPgRevocationStore(db: unknown, opts?: { table?: string }): RevocationStore
 }
 const { parseDelivery } = req('openvibe-sdk/events') as { parseDelivery: ParseDelivery }
 
@@ -78,7 +81,7 @@ export interface RevocationEvents {
 }
 
 export function createRevocationEvents(opts: {
-  db: unknown
+  db: Db
   secrets: string[]
   onRevoked: (subjectId: string, validAfterMs: number) => number
   /** An account merge: move `from`'s characters to `into` (returns what moved; `already` when applied before). */
@@ -86,7 +89,7 @@ export function createRevocationEvents(opts: {
     from: string,
     into: string,
     mergeId: string,
-  ) => { moved: number; kept: number; already: boolean }
+  ) => Promise<{ moved: number; kept: number; already: boolean }>
   /** Account export or deletion (ADR-033): resolves to the outcome; a rejection is answered 500 and redelivered. */
   onAccountEvent?: (
     event: NonNullable<NonNullable<ReturnType<ParseDelivery>>['event']>,
@@ -98,10 +101,10 @@ export function createRevocationEvents(opts: {
     status: string
     approved: string[]
     revision: number
-  }) => string
+  }) => Promise<string>
   log: Logger
 }): RevocationEvents {
-  const store = createRevocationStore(opts.db, { table: 'token_revocations' })
+  const store = createPgRevocationStore(opts.db, { table: 'token_revocations' })
   const stats = { received: 0, revoked: 0, closed: 0, refused: 0, ignored: 0 }
   const send = (res: ServerResponse, status: number, body: unknown): void => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' })
@@ -133,7 +136,7 @@ export function createRevocationEvents(opts: {
       if (size > MAX_BODY) req.destroy()
       else chunks.push(c)
     })
-    req.on('end', () => {
+    req.on('end', async () => {
       const raw = Buffer.concat(chunks)
       let delivery: ReturnType<ParseDelivery> = null
       for (const s of opts.secrets) {
@@ -147,93 +150,101 @@ export function createRevocationEvents(opts: {
       }
       stats.received++
       const event = delivery.event
-      if (
-        event.event_type === 'network.account.export_requested' ||
-        event.event_type === 'network.account.deleted'
-      ) {
-        if (!opts.onAccountEvent) {
-          stats.ignored++
-          send(res, 200, { event_id: event.event_id ?? null, outcome: 'ignored:no_handler' })
-          return
-        }
-        opts.onAccountEvent(event).then(
-          (outcome) => {
+      try {
+        if (
+          event.event_type === 'network.account.export_requested' ||
+          event.event_type === 'network.account.deleted'
+        ) {
+          if (!opts.onAccountEvent) {
+            stats.ignored++
+            send(res, 200, { event_id: event.event_id ?? null, outcome: 'ignored:no_handler' })
+            return
+          }
+          // Awaited inside the outer try: a throw from send() (e.g. a closed socket) is caught here
+          // too, not just a rejection from onAccountEvent.
+          try {
+            const outcome = await opts.onAccountEvent(event)
             if (outcome.startsWith('ignored')) stats.ignored++
             send(res, 200, { event_id: event.event_id ?? null, outcome })
-          },
-          (err: unknown) => {
+          } catch (err) {
             opts.log.warn('account event failed (Events retries)', {
               type: event.event_type,
               error: String((err as Error)?.message ?? err),
             })
-            send(res, 500, { error: 'not applied' })
-          },
-        )
-        return
-      }
-      if (event.event_type === MOD_GRANTS_TOPIC) {
-        const p = (event.payload ?? {}) as {
-          mod_id?: unknown
-          owner?: unknown
-          status?: unknown
-          approved?: unknown
-          revision?: unknown
+            if (!res.writableEnded) send(res, 500, { error: 'not applied' })
+          }
+          return
         }
-        let outcome: string
-        if (event.source !== 'network') outcome = 'ignored:source'
-        else if (!opts.onModGrants) outcome = 'ignored:no_handler'
-        else if (
-          typeof p.mod_id !== 'string' ||
-          !Array.isArray(p.approved) ||
-          typeof p.status !== 'string'
-        )
-          outcome = 'ignored:payload'
-        else if (p.owner !== 'games') outcome = 'ignored:owner'
-        else
-          outcome = opts.onModGrants({
-            mod_id: p.mod_id,
-            owner: p.owner,
-            status: p.status,
-            approved: p.approved.map(String),
-            revision: Number(p.revision) || 0,
-          })
-        if (outcome.startsWith('ignored')) stats.ignored++
-        send(res, 200, { event_id: event.event_id ?? null, outcome })
-        return
-      }
-      if (event.event_type === MERGE_TOPIC) {
-        const p = event.payload ?? {}
-        let outcome = 'merged'
-        if (event.source !== 'network') outcome = 'ignored:source'
-        else if (!opts.onMerged) outcome = 'ignored:no_handler'
-        else if (
-          !MERGE_RE.test(String(p.merge_id ?? '')) ||
-          !SUBJECT_RE.test(String(p.from ?? '')) ||
-          !SUBJECT_RE.test(String(p.into ?? '')) ||
-          p.from === p.into
-        )
-          outcome = 'ignored:payload'
-        else {
-          const r = opts.onMerged(String(p.from), String(p.into), String(p.merge_id))
-          outcome = r.already ? 'unchanged' : 'merged'
-          if (!r.already)
-            opts.log.info('account merged: characters moved', { moved: r.moved, kept: r.kept })
+        if (event.event_type === MOD_GRANTS_TOPIC) {
+          const p = (event.payload ?? {}) as {
+            mod_id?: unknown
+            owner?: unknown
+            status?: unknown
+            approved?: unknown
+            revision?: unknown
+          }
+          let outcome: string
+          if (event.source !== 'network') outcome = 'ignored:source'
+          else if (!opts.onModGrants) outcome = 'ignored:no_handler'
+          else if (
+            typeof p.mod_id !== 'string' ||
+            !Array.isArray(p.approved) ||
+            typeof p.status !== 'string'
+          )
+            outcome = 'ignored:payload'
+          else if (p.owner !== 'games') outcome = 'ignored:owner'
+          else
+            outcome = await opts.onModGrants({
+              mod_id: p.mod_id,
+              owner: p.owner,
+              status: p.status,
+              approved: p.approved.map(String),
+              revision: Number(p.revision) || 0,
+            })
+          if (outcome.startsWith('ignored')) stats.ignored++
+          send(res, 200, { event_id: event.event_id ?? null, outcome })
+          return
         }
-        if (outcome.startsWith('ignored')) stats.ignored++
-        send(res, 200, { event_id: event.event_id ?? null, outcome })
-        return
+        if (event.event_type === MERGE_TOPIC) {
+          const p = event.payload ?? {}
+          let outcome = 'merged'
+          if (event.source !== 'network') outcome = 'ignored:source'
+          else if (!opts.onMerged) outcome = 'ignored:no_handler'
+          else if (
+            !MERGE_RE.test(String(p.merge_id ?? '')) ||
+            !SUBJECT_RE.test(String(p.from ?? '')) ||
+            !SUBJECT_RE.test(String(p.into ?? '')) ||
+            p.from === p.into
+          )
+            outcome = 'ignored:payload'
+          else {
+            const r = await opts.onMerged(String(p.from), String(p.into), String(p.merge_id))
+            outcome = r.already ? 'unchanged' : 'merged'
+            if (!r.already)
+              opts.log.info('account merged: characters moved', { moved: r.moved, kept: r.kept })
+          }
+          if (outcome.startsWith('ignored')) stats.ignored++
+          send(res, 200, { event_id: event.event_id ?? null, outcome })
+          return
+        }
+        const outcome = await store.apply(event)
+        let closed = 0
+        if (outcome === 'revoked') {
+          stats.revoked++
+          const sub = event.payload?.subject
+          const subject = (typeof sub === 'object' && sub ? sub.id : undefined) ?? ''
+          closed = opts.onRevoked(subject, Date.parse(event.payload?.valid_after ?? ''))
+          stats.closed += closed
+          if (closed) opts.log.info('signed out everywhere: sessions closed', { closed })
+        } else if (outcome.startsWith('ignored')) stats.ignored++
+        send(res, 200, { event_id: event.event_id ?? null, outcome, closed })
+      } catch (err) {
+        opts.log.warn('event delivery failed (Events retries)', {
+          type: event.event_type,
+          error: String((err as Error)?.message ?? err),
+        })
+        if (!res.writableEnded) send(res, 500, { error: 'not applied' })
       }
-      const outcome = store.apply(event)
-      let closed = 0
-      if (outcome === 'revoked') {
-        stats.revoked++
-        const sub = event.payload?.subject
-        const subject = (typeof sub === 'object' && sub ? sub.id : undefined) ?? ''
-        closed = opts.onRevoked(subject, Date.parse(event.payload?.valid_after ?? ''))
-        stats.closed += closed
-        if (closed) opts.log.info('signed out everywhere: sessions closed', { closed })
-      } else if (outcome.startsWith('ignored')) stats.ignored++
-      send(res, 200, { event_id: event.event_id ?? null, outcome, closed })
     })
     return true
   }

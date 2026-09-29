@@ -6,9 +6,10 @@
  */
 import { createRequire } from 'node:module'
 import { createContent } from '@openvibe/content'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
+import { openTestStore } from '@openvibe/persistence/testing'
 import { createClient } from 'openvibe-sdk/core'
-import { createEventsClient, createOutbox, type SqliteDatabase } from 'openvibe-sdk/events'
+import { sql } from 'openvibe-sdk/db'
+import { createEventsClient, createPgOutbox } from 'openvibe-sdk/events'
 import { describe, expect, it } from 'vitest'
 import { EVENT_SOURCE, outboxSink } from '../platform/gameEvents.js'
 import { CAP_PLACE_PROP } from './contentPack.js'
@@ -43,8 +44,8 @@ interface Envelope {
   }
 }
 
-function setup() {
-  const store = openSqliteStore(':memory:')
+async function setup() {
+  const store = await openTestStore()
   const client = createClient({
     baseUrls: { events: 'http://127.0.0.1:9' },
     autoDiscover: false,
@@ -53,22 +54,22 @@ function setup() {
       throw new Error('no relay in this test')
     },
   })
-  const outbox = createOutbox(store.db as unknown as SqliteDatabase, {
+  const outbox = createPgOutbox(store.db, {
     events: createEventsClient(client, { source: EVENT_SOURCE }),
   })
-  outbox.ensureSchema()
-  const registry = new ModRegistry(store, createContent(), outboxSink(outbox))
-  registry.install(
+  await outbox.ensureSchema()
+  const registry = new ModRegistry(store, createContent(), outboxSink(outbox, store.db))
+  await registry.install(
     { manifest: sampleManifest(), pack: PACK, approve: [CAP_PLACE_PROP], enable: true },
     STAFF,
   )
-  const moderation = () =>
+  const moderation = async (): Promise<Envelope[]> =>
     (
-      store.db.prepare('SELECT envelope FROM event_outbox ORDER BY id').all() as {
-        envelope: string
-      }[]
+      await store.db.many<{ envelope: Envelope }>(
+        sql`SELECT envelope FROM event_outbox ORDER BY id`,
+      )
     )
-      .map((r) => JSON.parse(r.envelope) as Envelope)
+      .map((r) => r.envelope)
       .filter((e) => e.event_type === 'games.moderation.action')
   return { registry, outbox, moderation }
 }
@@ -85,10 +86,10 @@ function expectValid(e: Envelope) {
 }
 
 describe('games.moderation.action', () => {
-  it("staff revoking someone else's mod enqueues exactly one valid event", () => {
-    const { registry, outbox, moderation } = setup()
-    registry.revoke(MOD_ID, STAFF, 'griefing props')
-    const ev = moderation()
+  it("staff revoking someone else's mod enqueues exactly one valid event", async () => {
+    const { registry, outbox, moderation } = await setup()
+    await registry.revoke(MOD_ID, STAFF, 'griefing props')
+    const ev = await moderation()
     expect(ev).toHaveLength(1)
     expectValid(ev[0]!)
     expect(ev[0]!.payload.action).toBe('mod.revoked')
@@ -97,29 +98,29 @@ describe('games.moderation.action', () => {
       previous: 'enabled',
       revoked_grants: [CAP_PLACE_PROP],
     })
-    registry.revoke(MOD_ID, STAFF, 'again')
-    expect(moderation()).toHaveLength(1)
+    await registry.revoke(MOD_ID, STAFF, 'again')
+    expect(await moderation()).toHaveLength(1)
     void outbox.stop()
   })
 
-  it('a disable, and the enable that puts it back, are one event each; installing is none', () => {
-    const { registry, outbox, moderation } = setup()
-    expect(moderation()).toHaveLength(0)
-    registry.disable(MOD_ID, STAFF)
-    expect(moderation().map((e) => e.payload.action)).toEqual(['mod.disabled'])
-    registry.enable(MOD_ID, STAFF)
-    const ev = moderation()
+  it('a disable, and the enable that puts it back, are one event each; installing is none', async () => {
+    const { registry, outbox, moderation } = await setup()
+    expect(await moderation()).toHaveLength(0)
+    await registry.disable(MOD_ID, STAFF)
+    expect((await moderation()).map((e) => e.payload.action)).toEqual(['mod.disabled'])
+    await registry.enable(MOD_ID, STAFF)
+    const ev = await moderation()
     expect(ev.map((e) => e.payload.action)).toEqual(['mod.disabled', 'mod.enabled'])
     for (const e of ev) expectValid(e)
     void outbox.stop()
   })
 
-  it('the publisher acting on their own mod enqueues none', () => {
-    const { registry, outbox, moderation } = setup()
-    registry.disable(MOD_ID, OWNER)
-    registry.enable(MOD_ID, OWNER)
-    registry.revoke(MOD_ID, OWNER, 'withdrawn by its author')
-    expect(moderation()).toHaveLength(0)
+  it('the publisher acting on their own mod enqueues none', async () => {
+    const { registry, outbox, moderation } = await setup()
+    await registry.disable(MOD_ID, OWNER)
+    await registry.enable(MOD_ID, OWNER)
+    await registry.revoke(MOD_ID, OWNER, 'withdrawn by its author')
+    expect(await moderation()).toHaveLength(0)
     void outbox.stop()
   })
 })

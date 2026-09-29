@@ -90,7 +90,7 @@ beforeAll(async () => {
   metrics.tick = 42
   metrics.lastTickAt = Date.now()
   // /api/ready arrives through the platform hook, as main.ts wires it.
-  const readiness = createReadiness({ pingDb: () => true, metrics })
+  const readiness = createReadiness({ pingDb: async () => ({ ok: true }), metrics })
   server = createHttpServer(
     dist,
     metrics,

@@ -64,7 +64,10 @@ const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main
   env: {
     ...process.env,
     PORT: String(PORT),
-    DB_PATH: join(dir, 'world.db'),
+    NODE_ENV: 'test',
+    DATABASE_DIR: dir,
+    DATABASE_URL: '',
+    DATABASE_DIRECT_URL: '',
     STATIC_DIR: 'apps/client/dist',
     MAP_PATH: mapPath,
     EDITOR_KEY: KEY,

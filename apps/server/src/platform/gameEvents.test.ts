@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
-import { openSqliteStore } from '@openvibe/persistence/sqlite'
-import { createEventsClient, createOutbox, type SqliteDatabase } from 'openvibe-sdk/events'
+import { openTestStore } from '@openvibe/persistence/testing'
+import type { Tx } from 'openvibe-sdk/db'
+import { createEventsClient, createPgOutbox } from 'openvibe-sdk/events'
 import { createMockPlatform } from 'openvibe-sdk/testing'
 import { describe, expect, it } from 'vitest'
 import { loadPlatformConfig } from '../config.js'
@@ -28,13 +29,17 @@ const contracts = createRequire(import.meta.url)('openvibe-contracts') as Contra
 const SUBJECT = 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0'
 const signedIn = { playerId: 'pl_1', slot: 0, name: 'Ana', subjectId: SUBJECT }
 const guest = { playerId: 'pl_2', slot: 0, name: 'Guest', subjectId: null }
+/** The recorder only forwards the transaction handle to the sink; a capture sink ignores it. */
+const ANY_TX = {} as Tx
 
 function capture(): EventSink & { events: { event_type: string; payload: unknown }[] } {
   const events: { event_type: string; payload: unknown }[] = []
   return {
     enabled: true,
     events,
-    enqueue: (e) => events.push(e as { event_type: string; payload: unknown }),
+    enqueue: async (_t, e) => {
+      events.push(e as { event_type: string; payload: unknown })
+    },
   }
 }
 
@@ -116,18 +121,21 @@ describe('event envelopes', () => {
 })
 
 describe('GameEventRecorder', () => {
-  it('diffs each save against the last persisted progress', () => {
+  it('diffs each save against the last persisted progress', async () => {
     const sink = capture()
     const rec = new GameEventRecorder(sink, 'w', 60_000, () => 0)
-    rec.recordJoin(signedIn, { levels: { mining: 2 }, unlocks: [] }, true)
-    rec.recordPlayersSaved([
+    await rec.recordJoin(ANY_TX, signedIn, { levels: { mining: 2 }, unlocks: [] }, true)
+    let commit = await rec.recordPlayersSaved(ANY_TX, [
       { player: signedIn, progress: { levels: { mining: 3 }, unlocks: [] } },
-    ])()
+    ])
+    commit()
     // Saved again with no change: nothing new.
-    rec.recordPlayersSaved([
+    commit = await rec.recordPlayersSaved(ANY_TX, [
       { player: signedIn, progress: { levels: { mining: 3 }, unlocks: [] } },
-    ])()
-    rec.recordLeave(signedIn)()
+    ])
+    commit()
+    commit = await rec.recordLeave(ANY_TX, signedIn)
+    commit()
     expect(sink.events.map((e) => e.event_type)).toEqual([
       'games.player.joined',
       'games.skill.leveled',
@@ -135,34 +143,55 @@ describe('GameEventRecorder', () => {
     ])
   })
 
-  it('does not advance the baseline when the save is not committed', () => {
+  it('does not advance the baseline when the save is not committed', async () => {
     const sink = capture()
     const rec = new GameEventRecorder(sink, 'w', 60_000, () => 0)
-    rec.recordJoin(signedIn, { levels: { mining: 2 }, unlocks: [] }, true)
+    await rec.recordJoin(ANY_TX, signedIn, { levels: { mining: 2 }, unlocks: [] }, true)
     // Rolled back: the commit callback never runs, so the next save reports it again.
-    rec.recordPlayersSaved([{ player: signedIn, progress: { levels: { mining: 3 }, unlocks: [] } }])
-    rec.recordPlayersSaved([
+    await rec.recordPlayersSaved(ANY_TX, [
       { player: signedIn, progress: { levels: { mining: 3 }, unlocks: [] } },
-    ])()
+    ])
+    const commit = await rec.recordPlayersSaved(ANY_TX, [
+      { player: signedIn, progress: { levels: { mining: 3 }, unlocks: [] } },
+    ])
+    commit()
     expect(sink.events.filter((e) => e.event_type === 'games.skill.leveled')).toHaveLength(2)
   })
 
-  it('checkpoints world saves at most once per interval, always on shutdown', () => {
+  it('checkpoints world saves at most once per interval, always on shutdown', async () => {
     let now = 0
     const sink = capture()
     const rec = new GameEventRecorder(sink, 'w', 60_000, () => now)
     now = 10_000
-    rec.recordWorldSaved(5, 1, 'checkpoint')()
+    let commit = await rec.recordWorldSaved(ANY_TX, 5, 1, 'checkpoint')
+    commit()
     now = 70_000
-    rec.recordWorldSaved(2, 0, 'checkpoint')()
+    commit = await rec.recordWorldSaved(ANY_TX, 2, 0, 'checkpoint')
+    commit()
     now = 80_000
-    rec.recordWorldSaved(1, 1, 'checkpoint')()
-    rec.recordWorldSaved(0, 0, 'shutdown')()
+    commit = await rec.recordWorldSaved(ANY_TX, 1, 1, 'checkpoint')
+    commit()
+    commit = await rec.recordWorldSaved(ANY_TX, 0, 0, 'shutdown')
+    commit()
     const saved = sink.events.filter((e) => e.event_type === 'games.world.saved')
     expect(saved.map((e) => e.payload)).toEqual([
       expect.objectContaining({ reason: 'checkpoint', entities_written: 7, players_written: 1 }),
       expect.objectContaining({ reason: 'shutdown', entities_written: 1, players_written: 1 }),
     ])
+  })
+
+  it('counts a rolled-back world save once when the flush is retried', async () => {
+    const sink = capture()
+    const rec = new GameEventRecorder(sink, 'w', 0, () => 1)
+    // First attempt: the event is queued but its transaction rolls back, so the commit callback never
+    // runs. The retry of the same flush must not add its rows to the accumulator a second time.
+    await rec.recordWorldSaved(ANY_TX, 5, 1, 'checkpoint')
+    const commit = await rec.recordWorldSaved(ANY_TX, 5, 1, 'checkpoint')
+    commit()
+    const saved = sink.events.filter((e) => e.event_type === 'games.world.saved')
+    expect(saved.at(-1)?.payload).toEqual(
+      expect.objectContaining({ entities_written: 5, players_written: 1 }),
+    )
   })
 })
 
@@ -183,40 +212,35 @@ describe('transactional outbox → OpenVibe.Events (mock platform)', () => {
       eventsUrl: platform.origins.events,
     }
     const pc = createPlatformClient(cfg, platform.fetch)!
-    const store = openSqliteStore(':memory:')
-    const outbox = createOutbox(store.db as unknown as SqliteDatabase, {
+    const store = await openTestStore()
+    const outbox = createPgOutbox(store.db, {
       events: createEventsClient(pc.client, { source: EVENT_SOURCE }),
     })
-    outbox.ensureSchema()
-    const sink = outboxSink(outbox)
+    const sink = outboxSink(outbox, store.db)
 
     // Committed with the change it describes.
-    store.transaction(() => {
-      store.meta.set('env_time', '0.5')
-      sink.enqueue(playerJoinedEvent(signedIn, { world: 'w', restored: false }))
+    await store.transaction(async (t) => {
+      await store.meta.set('env_time', 0.5)
+      await sink.enqueue(t, playerJoinedEvent(signedIn, { world: 'w', restored: false }))
     })
     // Rolled back: the event never existed.
-    expect(() =>
-      store.transaction(() => {
-        store.meta.set('env_time', '0.9')
-        sink.enqueue(playerLeftEvent(signedIn, { world: 'w', sessionSeconds: 1 }))
+    await expect(
+      store.transaction(async (t) => {
+        await store.meta.set('env_time', 0.9)
+        await sink.enqueue(t, playerLeftEvent(signedIn, { world: 'w', sessionSeconds: 1 }))
         throw new Error('rollback')
       }),
-    ).toThrow('rollback')
-    // Outside a transaction the outbox refuses.
-    expect(() =>
-      sink.enqueue(playerLeftEvent(signedIn, { world: 'w', sessionSeconds: 1 })),
-    ).toThrow()
+    ).rejects.toThrow('rollback')
 
-    expect(outbox.pending()).toBe(1)
+    expect(await outbox.pending()).toBe(1)
     const stats = await outbox.flush()
     expect(stats).toEqual({ sent: 1, failed: 0, rejected: 0 })
     expect(platform.state.events.map((e) => [e.event.event_type, e.publisher])).toEqual([
       ['games.player.joined', 'svc:games'],
     ])
-    expect(store.meta.get('env_time')).toBe('0.5')
+    expect(await store.meta.get('env_time')).toBe(0.5)
     await outbox.stop()
-    store.close()
+    await store.close()
   })
 
   it('keeps events queued while the grant is missing', async () => {
@@ -227,22 +251,45 @@ describe('transactional outbox → OpenVibe.Events (mock platform)', () => {
       networkUrl: platform.origins.network,
       eventsUrl: platform.origins.events,
     }
-    const store = openSqliteStore(':memory:')
-    const outbox = createOutbox(store.db as unknown as SqliteDatabase, {
+    const store = await openTestStore()
+    const outbox = createPgOutbox(store.db, {
       events: createEventsClient(createPlatformClient(cfg, platform.fetch)!.client, {
         source: EVENT_SOURCE,
       }),
     })
-    outbox.ensureSchema()
-    store.transaction(() =>
-      outboxSink(outbox).enqueue(
+    await store.transaction((t) =>
+      outboxSink(outbox, store.db).enqueue(
+        t,
         worldSavedEvent('w', { reason: 'shutdown', entities: 0, players: 0, sinceMs: 0 }),
       ),
     )
     const stats = await outbox.flush()
     expect(stats.sent).toBe(0)
-    expect(outbox.pending() + outbox.rejected()).toBe(1)
+    expect(((await outbox.pending()) ?? 0) + ((await outbox.rejected()) ?? 0)).toBe(1)
     await outbox.stop()
-    store.close()
+    await store.close()
+  })
+
+  it('refuses to enqueue outside a transaction: an event never commits on its own connection', async () => {
+    const platform = createMockPlatform({ clients: { games: { secret: 's3cret', grants: [] } } })
+    const cfg = {
+      ...loadPlatformConfig({}),
+      clientSecret: 's3cret',
+      networkUrl: platform.origins.network,
+      eventsUrl: platform.origins.events,
+    }
+    const store = await openTestStore()
+    const outbox = createPgOutbox(store.db, {
+      events: createEventsClient(createPlatformClient(cfg, platform.fetch)!.client, {
+        source: EVENT_SOURCE,
+      }),
+    })
+    const sink = outboxSink(outbox, store.db)
+    await expect(
+      sink.enqueue({} as Tx, playerJoinedEvent(signedIn, { world: 'w', restored: false })),
+    ).rejects.toThrow('must run inside the transaction')
+    expect(await outbox.pending()).toBe(0)
+    await outbox.stop()
+    await store.close()
   })
 })

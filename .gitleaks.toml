@@ -7,5 +7,5 @@ useDefault = true
 [[allowlists]]
 description = "Made-up player/session tokens in unit tests"
 condition = "AND"
-paths = ['''^packages/(persistence/src/sqlite/sqliteStore|protocol/src/codec)\.test\.ts$''']
+paths = ['''^packages/(persistence/src/pg/pgStore|protocol/src/codec)\.test\.ts$''']
 regexes = ['''^(tok_12345678|abcdefgh12345678)$''']

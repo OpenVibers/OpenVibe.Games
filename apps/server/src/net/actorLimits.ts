@@ -9,7 +9,8 @@
  */
 import { createHash } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createActorLimiter } from 'openvibe-sdk/limits'
+import { createActorLimiter, createValkeyLimitStore } from 'openvibe-sdk/limits'
+import type { Valkey } from 'openvibe-sdk/valkey'
 
 type Req = IncomingMessage & { ovActor?: string }
 const num = (v: string | undefined, d: number): number => {
@@ -22,13 +23,17 @@ export function createGamesActorLimits(
     env?: NodeJS.ProcessEnv
     now?: () => number
     onLimited?: (name: string, actor: string) => void
+    /** Shared Valkey: one actor counts the same across every instance; null = in-process counters. */
+    valkey?: Valkey | null
   } = {},
 ) {
   const env = opts.env ?? process.env
+  const store = opts.valkey ? createValkeyLimitStore(opts.valkey) : null
   const limiter = createActorLimiter({
     limits: { minute: num(env.GAMES_LIMITS_MINUTE, 120), hour: num(env.GAMES_LIMITS_HOUR, 3000) },
     actor: (req) => (req as Req).ovActor ?? null,
     ...(opts.now ? { now: opts.now } : {}),
+    ...(store ? { store } : {}),
     onLimited: (e) => opts.onLimited?.(e.name, e.actor),
   })
   // A map save validates and migrates the whole map and swaps it live; an asset is hashed and stored on disk.

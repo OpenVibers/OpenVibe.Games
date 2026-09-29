@@ -9,12 +9,13 @@ extraction risk — running against an authoritative dedicated server.
 
 **Stack:** TypeScript everywhere · Babylon.js (WebGPU with WebGL fallback) ·
 Havok physics (Babylon Physics V2, headless on the server via NullEngine) ·
-WebSocket protocol · SQLite persistence · pnpm monorepo.
+WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm monorepo.
 
 ## Owns
 
 - the game: the authoritative simulation, the world, characters, inventories, skills, blueprints and
-  props, in `world.db` (SQLite, forward-only migrations; `SCHEMA_VERSION` 11)
+  props, in PostgreSQL (ADR-0007 decision 5: schema from scratch, migrations under
+  `packages/persistence/migrations`, a write-behind flusher — the tick never awaits I/O)
 - the map editor and its assets, the mod registry (`games-content@1` packs, grants, audit) and the
   `games.*` events
 - the game WebSocket protocol and the portal, `/play` and `/editor` pages
@@ -30,8 +31,9 @@ WebSocket protocol · SQLite persistence · pnpm monorepo.
 
 - OpenVibe.Network (SSO, JWKS, client-credentials tokens, identity resolve, the `games.progress.summary`
   user module, mod grants), OpenVibe.Events (outbox relay, subscriptions), OpenVibe.Media (asset mirror)
-- `openvibe-contracts` v0.71.0, `openvibe-sdk` v0.12.0 and `openvibe-shared` v1.23.0 (pinned by release
-  tarball in `apps/server/package.json`), Babylon.js, Havok, better-sqlite3
+- `openvibe-contracts` v0.71.0, `openvibe-sdk` v0.22.0 and `openvibe-shared` v1.30.1 (pinned by release
+  tarball in `apps/server/package.json`), Babylon.js, Havok, PostgreSQL (`pg`, or embedded PGlite in
+  development), Valkey (`iovalkey`, optional)
 
 ## Repository layout
 
@@ -45,7 +47,7 @@ packages/
   content/       Data-driven item/recipe/world definitions + validation registry
   gameplay/      Pure domain logic: inventory, crafting, movement sim, zones, entities
   physics/       PhysicsWorld abstraction + Havok adapter (@openvibe/physics/havok)
-  persistence/   DTOs, repository interfaces, SQLite implementation
+  persistence/   DTOs, repository interfaces, PostgreSQL implementation, migrations
 docs/adr/        Architecture decision records
 ```
 
@@ -104,27 +106,34 @@ freeze. Props are protected: only you and players you trust can move them.
 
 ```bash
 pnpm build
-STATIC_DIR=apps/client/dist PORT=8000 DB_PATH=data/world.db pnpm --filter @openvibe/server start
+DATABASE_URL=postgres://… DATABASE_DIRECT_URL=postgres://… STATIC_DIR=apps/client/dist PORT=8000 pnpm --filter @openvibe/server start
 ```
+
+`DATABASE_URL` (pooled, through PgBouncer) serves; migrations run at boot on `DATABASE_DIRECT_URL`
+(the owner role, a direct session). With neither set and `NODE_ENV` not `production`, the server uses
+an embedded PGlite database under `DATABASE_DIR` (default `data/`) — development only, one process.
+`GAMES_PLACE_ID` (default `scraplandia`) is the place every world row belongs to; `VALKEY_URL`
+(optional) makes the per-actor limits shared across instances. See [.env.example](.env.example).
 
 The server serves the built client, `/healthz` (liveness), `/api/ready`, `/metrics`, and the game
 WebSocket on one port. Pages are `/` (portal), `/play` and `/editor`; on play.openvibe.games `/` is
 the game and `/play` redirects there. Any other path that is neither a file of the build nor a route
 answers 404 (an HTML page with links to those pages; `{"error":"not_found"}` under `/api`; plain text
-for a missing asset), never the portal with a 200. `/api/ready` is 200 only while `world.db` answers a query and the simulation
+for a missing asset), never the portal with a 200. `/api/ready` is 200 only while the database answers a real round trip
+(`db.ready()`) and the simulation
 has ticked within the last 5 s, otherwise 503 naming the failed check (`status`
-`ready`/`not_ready`, `checks.db`, `checks.tick`); nginx keeps it off the public vhosts. Environment: `PORT`, `HOST`, `DB_PATH`, `STATIC_DIR`,
-`MAX_PLAYERS`, `LOG_LEVEL` (platform variables below).
+`ready`/`not_ready`, `checks.db`, `checks.tick`); nginx keeps it off the public vhosts. Environment: `PORT`, `HOST`, `STATIC_DIR`,
+`MAX_PLAYERS`, `LOG_LEVEL`, `GAMES_PLACE_ID`, the database variables above (platform variables below).
 
 Deployed at https://openvibe.games (nginx TLS termination → server on 127.0.0.1:8000,
 systemd unit `openvibe-games.service` from [deploy/openvibe-games.service](deploy/openvibe-games.service),
-env file `/etc/openvibe/games.env`, database `/opt/openvibe.games/data/world.db`;
+env file `/etc/openvibe/games.env` (which holds `DATABASE_URL`, `DATABASE_DIRECT_URL` and `VALKEY_URL`);
 play.openvibe.games Host-routes to the same process).
 
 Deploy on the host with `sudo /opt/openvibe.games/deploy/scripts/deploy.sh`, which runs
 `ovhost deploy games` (OpenVibe.Host, strategy `pnpm-build`; roadmap WS-N task 11): a fast-forward pull as
 the checkout owner, `pnpm install --frozen-lockfile`, every workspace package's dependencies checked, `pnpm build`,
-better-sqlite3 loaded under the host's Node, the restart, `/api/ready`, and on failure the checkout
+the restart (the SDK migrator applies any new migration as the owner before serving), `/api/ready`, and on failure the checkout
 restored, reinstalled and rebuilt and the server restarted again. Players online are reported and
 reconnect; `--wait-idle` holds the restart until nobody plays, `--rollback` runs `ovhost rollback games`,
 `DRY_RUN=1` prints `ovhost plan games`. Do not pull by hand first (ovhost would find nothing new; pass
@@ -134,8 +143,8 @@ wrapper runs `deploy/scripts/deploy-legacy.sh`: the procedure as it was run by h
 `sudo systemctl restart openvibe-games`).
 
 Rollback: `sudo deploy/scripts/deploy.sh --rollback` (`ovhost rollback games`), which rebuilds the previous
-commit. One blocker: a build refuses a `world.db` whose `meta.schema_version` is newer than its own, so going
-back past a schema bump fails at boot.
+commit. Migrations are additive and applied at boot, so an older build starts on the newer schema; the SDK
+migrator refuses a migration file that was edited after it ran (write a new one instead).
 
 ## Platform integration (OpenVibe network)
 
@@ -153,7 +162,7 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   made for a player (`/api/auth/me`, code and FedCM exchanges) keep using the
   player's own token.
 - **Events** (OpenVibe.Events, through a transactional outbox in
-  `world.db`, table `event_outbox`): `games.player.joined|left`,
+  PostgreSQL, table `event_outbox`): `games.player.joined|left`,
   `games.skill.leveled`, `games.blueprint.unlocked`, `games.world.saved`
   (at most one checkpoint per `WORLD_SAVED_EVENT_MINUTES`, plus shutdown) and
   `games.mod.installed|enabled|disabled|grants_changed|revoked`. There is no

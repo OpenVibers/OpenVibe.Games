@@ -1,3 +1,4 @@
+import type { Db, Tx } from 'openvibe-sdk/db'
 import type {
   ConstraintDto,
   MediaMirrorDto,
@@ -12,36 +13,38 @@ import type {
 
 /**
  * Repository boundary: gameplay/server code never touches SQL or the
- * database driver. Writes are designed to be batched — the server flushes
- * dirty entities periodically and on shutdown, not per mutation.
+ * database driver. Every method is async (PostgreSQL through openvibe-sdk/db);
+ * the server's write-behind flusher batches world rows in one transaction
+ * rather than writing per mutation.
  */
 
 export interface WorldEntityRepository {
-  loadAll(): WorldEntityDto[]
-  /** Transactional batch upsert. */
-  upsertMany(entities: readonly WorldEntityDto[]): void
-  deleteMany(ids: readonly string[]): void
+  loadAll(): Promise<WorldEntityDto[]>
+  /** Batch upsert, chunked multi-row INSERT … ON CONFLICT. */
+  upsertMany(entities: readonly WorldEntityDto[]): Promise<void>
+  deleteMany(ids: readonly string[]): Promise<void>
   /** Bulk removal used on world-definition changes (e.g. all resource nodes). */
-  deleteByKind(kind: string): void
+  deleteByKind(kind: string): Promise<void>
 }
 
 export interface PlayerRepository {
-  findByToken(token: string): PlayerDto | null
+  /** Looks a character up by account token; a guest token is hashed first. */
+  findByToken(token: string): Promise<PlayerDto | null>
   /** All characters under an account token (max 3, ordered by slot). */
-  listByToken(token: string): PlayerDto[]
-  findByTokenSlot(token: string, slot: number): PlayerDto | null
+  listByToken(token: string): Promise<PlayerDto[]>
+  findByTokenSlot(token: string, slot: number): Promise<PlayerDto | null>
   /** Offline lookups (prop protection checks owners who are not connected). */
-  findById(id: string): PlayerDto | null
-  upsert(player: PlayerDto): void
-  upsertMany(players: readonly PlayerDto[]): void
+  findById(id: string): Promise<PlayerDto | null>
+  upsert(player: PlayerDto): Promise<void>
+  upsertMany(players: readonly PlayerDto[]): Promise<void>
   /** World-change safety: move every player to the given spawn. */
-  resetAllPositions(pos: [number, number, number], yaw: number): void
+  resetAllPositions(pos: [number, number, number], yaw: number): Promise<void>
 }
 
 export interface ConstraintRepository {
-  loadAll(): ConstraintDto[]
-  upsertMany(constraints: readonly ConstraintDto[]): void
-  deleteMany(ids: readonly string[]): void
+  loadAll(): Promise<ConstraintDto[]>
+  upsertMany(constraints: readonly ConstraintDto[]): Promise<void>
+  deleteMany(ids: readonly string[]): Promise<void>
 }
 
 /**
@@ -61,7 +64,7 @@ export interface IdentityRepository {
     guestToken: string,
     subjectId: string,
     now: number,
-  ): { moved: number; slot: number | null; full: boolean }
+  ): Promise<{ moved: number; slot: number | null; full: boolean }>
   /**
    * Account merge (roadmap WS-B task 5, ADR-029; network.subject.merged): the folded-in subject's characters
    * move to the survivor, each into its own slot when free there, else the first free one (0..2). A character
@@ -73,43 +76,43 @@ export interface IdentityRepository {
     intoSubject: string,
     mergeId: string,
     now: number,
-  ): { moved: number; kept: number; already: boolean }
+  ): Promise<{ moved: number; kept: number; already: boolean }>
   /**
    * What Games keeps about a subject, for their data export (roadmap WS-B task 7, ADR-033): their characters (without
-   * the sign-in token) and the world structures those characters own.
+   * the account key) and the world structures those characters own.
    */
-  exportSubject(subject: string): {
+  exportSubject(subject: string): Promise<{
     characters: Record<string, unknown>[]
     structures: Record<string, unknown>[]
-  }
+  }>
   /**
    * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their
    * characters and adoption rows go; the structures their characters built stay in the world without an owner.
    * Returns counts.
    */
-  eraseSubjects(subjects: string[]): {
+  eraseSubjects(subjects: string[]): Promise<{
     characters: number
     structures_unowned: number
     identity_rows: number
-  }
+  }>
 }
 
 /** Installed mods, their approved capabilities, placements and audit log. */
 export interface ModRepository {
-  list(): ModInstallDto[]
-  get(id: string): ModInstallDto | null
-  insert(mod: ModInstallDto): void
-  setStatus(id: string, status: ModStatus, at: number): void
-  grants(modId: string): ModGrantDto[]
+  list(): Promise<ModInstallDto[]>
+  get(id: string): Promise<ModInstallDto | null>
+  insert(mod: ModInstallDto): Promise<void>
+  setStatus(id: string, status: ModStatus, at: number): Promise<void>
+  grants(modId: string): Promise<ModGrantDto[]>
   /** Grants (or re-grants) a capability. */
-  upsertGrant(grant: ModGrantDto): void
+  upsertGrant(grant: ModGrantDto): Promise<void>
   /** Returns false when the capability was not actively granted. */
-  revokeGrant(modId: string, capability: string, by: string, at: number): boolean
-  audit(entry: ModAuditDto): void
-  auditLog(modId: string, limit: number): ModAuditDto[]
-  placements(modId: string): ModPlacementDto[]
-  setPlacement(placement: ModPlacementDto): void
-  deletePlacement(modId: string, key: string): void
+  revokeGrant(modId: string, capability: string, by: string, at: number): Promise<boolean>
+  audit(entry: ModAuditDto): Promise<void>
+  auditLog(modId: string, limit: number): Promise<ModAuditDto[]>
+  placements(modId: string): Promise<ModPlacementDto[]>
+  setPlacement(placement: ModPlacementDto): Promise<void>
+  deletePlacement(modId: string, key: string): Promise<void>
 }
 
 /** Queue of local assets to copy into OpenVibe.Media. */
@@ -118,29 +121,47 @@ export interface MediaMirrorRepository {
   enqueue(
     asset: { assetHash: string; fileName: string; mime: string; bytes: number },
     now: number,
-  ): boolean
-  get(assetHash: string): MediaMirrorDto | null
+  ): Promise<boolean>
+  get(assetHash: string): Promise<MediaMirrorDto | null>
   /** Pending rows whose next attempt is due, oldest first. */
-  due(now: number, limit: number): MediaMirrorDto[]
+  due(now: number, limit: number): Promise<MediaMirrorDto[]>
   /** Remembers the Media object created for an asset before its bytes are confirmed. */
-  noteObject(assetHash: string, mediaId: string, now: number): void
-  markMirrored(assetHash: string, mediaId: string, publicUrl: string | null, now: number): void
+  noteObject(assetHash: string, mediaId: string, now: number): Promise<void>
+  markMirrored(
+    assetHash: string,
+    mediaId: string,
+    publicUrl: string | null,
+    now: number,
+  ): Promise<void>
   markFailed(
     assetHash: string,
     error: string,
     nextAttemptAt: number,
     terminal: boolean,
     now: number,
-  ): void
-  counts(): Record<MediaMirrorDto['status'], number>
+  ): Promise<void>
+  counts(): Promise<Record<MediaMirrorDto['status'], number>>
 }
 
+/** Per-place key/value state. Values are JSON: env_time, env_weather, market_<id>, … */
 export interface MetaRepository {
-  get(key: string): string | null
-  set(key: string, value: string): void
+  get(key: string): Promise<unknown | null>
+  set(key: string, value: unknown): Promise<void>
+  /** Every key beginning with `prefix`, for boot-time loads (markets). */
+  list(prefix: string): Promise<{ key: string; value: unknown }[]>
 }
 
 export interface PersistenceStore {
+  /**
+   * The openvibe-sdk/db handle. Exposed ONLY for apps/server's platform adapters that must share the
+   * exact same transaction as the state they describe — the event outbox (createPgOutbox), the token
+   * revocations (createPgRevocationStore) and the account-data adapter. Gameplay code goes through the
+   * repositories below and never touches this.
+   */
+  readonly db: Db
+  readonly placeId: string
+  /** Upserts this instance's configured place; call once at boot before any world write. */
+  ensurePlace(name?: string): Promise<void>
   readonly worldEntities: WorldEntityRepository
   readonly players: PlayerRepository
   readonly constraints: ConstraintRepository
@@ -149,10 +170,12 @@ export interface PersistenceStore {
   readonly mods: ModRepository
   readonly mediaMirrors: MediaMirrorRepository
   /**
-   * Runs `fn` in one transaction (nested calls become savepoints). Anything
-   * written inside — world rows, player rows, outbox events — commits or
-   * rolls back together.
+   * Runs `fn` in one transaction (a nested call becomes a savepoint). Anything written inside — world
+   * rows, character rows, outbox events — commits or rolls back together. Plain repository and db calls
+   * made inside `fn` join the transaction (the SDK's ambient mode). `fn` receives the SDK transaction
+   * handle: the outbox must be handed exactly this handle, so an event cannot be written on a different
+   * connection than the change it describes.
    */
-  transaction<T>(fn: () => T): T
-  close(): void
+  transaction<T>(fn: (t: Tx) => Promise<T>): Promise<T>
+  close(): Promise<void>
 }

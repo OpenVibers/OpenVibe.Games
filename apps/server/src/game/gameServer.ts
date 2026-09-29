@@ -98,6 +98,7 @@ import {
 import { buildSnapshot, updateInterest, wireEntityFor } from './replication.js'
 import { NpcManager } from './npcManager.js'
 import { EventManager } from './eventManager.js'
+import { Flusher, type FlushCharacter, type FlushPayload } from './flusher.js'
 
 /** A network connection as the game sees it — transport-agnostic. */
 export interface GameConnection {
@@ -107,6 +108,8 @@ export interface GameConnection {
 
 const MOVE = DEFAULT_MOVEMENT
 const MAX_INPUT_QUEUE = 6
+/** The five weather kinds a persisted env_weather may name. */
+const WEATHERS = new Set<WeatherKind>(['clear', 'cloudy', 'rain', 'storm', 'fog'])
 
 /**
  * Platform adapters the server drives (roadmap Wave 12). Both optional: the
@@ -141,6 +144,12 @@ export class GameServer {
   private readonly heldEntityIds = new Set<string>()
   /** Short-lived cache of OFFLINE owners' friend lists (prop protection). */
   private readonly offlineFriendsCache = new Map<string, { friends: Set<string>; at: number }>()
+  /** Offline-owner lookups in flight, so the tick never issues the same read twice. */
+  private readonly friendsLoadInFlight = new Set<string>()
+  /** Connections whose hello is still resolving (a second one while it is refused). */
+  private readonly hellosInFlight = new Set<GameConnection>()
+  /** Write-behind persistence: one transaction in flight, the tick never awaits it. */
+  private readonly flusher: Flusher
   private tick = 0
   private readonly moveQueries: CollisionQueries
   /** Body excluded from the current movement sweep (the moving player's own). */
@@ -172,20 +181,9 @@ export class GameServer {
     private readonly log: Logger,
     private readonly integrations: GameIntegrations = {},
   ) {
-    // The world clock and weather survive restarts (a rainy dusk stays a
-    // rainy dusk).
-    const savedTime = Number(store.meta.get('env_time') ?? Number.NaN)
-    this.env = createEnvironment(Number.isFinite(savedTime) ? savedTime : 0.34)
-    const savedWeather = store.meta.get('env_weather')
-    if (
-      savedWeather === 'clear' ||
-      savedWeather === 'cloudy' ||
-      savedWeather === 'rain' ||
-      savedWeather === 'storm' ||
-      savedWeather === 'fog'
-    ) {
-      this.env.weather = savedWeather as WeatherKind
-    }
+    // The world clock and weather survive restarts (a rainy dusk stays a rainy dusk); they are
+    // loaded asynchronously in load(), before the tick loop starts.
+    this.env = createEnvironment(0.34)
     this.npcs = new NpcManager(
       world,
       this.regions,
@@ -222,7 +220,6 @@ export class GameServer {
       },
       log.child({ system: 'npc' }),
     )
-    this.npcs.seedOrRestore(store)
 
     this.events = new EventManager(
       world,
@@ -249,6 +246,13 @@ export class GameServer {
       log.child({ system: 'events' }),
     )
 
+    this.flusher = new Flusher(
+      store,
+      metrics,
+      log.child({ system: 'persist' }),
+      integrations.events,
+    )
+
     // Players block players: sweeps include the Player layer, minus the
     // mover's own kinematic body.
     this.moveQueries = {
@@ -262,6 +266,32 @@ export class GameServer {
           this.sweepSelf,
         ),
     }
+  }
+
+  /**
+   * Async boot: world clock/weather, market stock and the NPC population are read from PostgreSQL.
+   * main.ts awaits this before starting the tick loop.
+   */
+  async load(): Promise<void> {
+    const rawTime = await this.store.meta.get('env_time')
+    const savedTime = Number(rawTime ?? Number.NaN)
+    if (Number.isFinite(savedTime)) this.env.timeOfDay = savedTime
+    const savedWeather = await this.store.meta.get('env_weather')
+    if (typeof savedWeather === 'string' && WEATHERS.has(savedWeather as WeatherKind)) {
+      this.env.weather = savedWeather as WeatherKind
+    }
+    for (const { key, value } of await this.store.meta.list('market_')) {
+      const market = new Map<string, { stock: number; at: number }>()
+      if (value && typeof value === 'object') {
+        for (const [item, state] of Object.entries(
+          value as Record<string, { stock: number; at: number }>,
+        )) {
+          market.set(item, state)
+        }
+      }
+      this.marketStock.set(key.slice('market_'.length), market)
+    }
+    await this.npcs.seedOrRestore(this.store)
   }
 
   get currentTick(): number {
@@ -282,10 +312,25 @@ export class GameServer {
     if (cached && Date.now() - cached.at < 30_000) {
       return cached.friends.has(session.playerId)
     }
-    const owner = this.store.players.findById(entity.owner)
-    const friends = new Set(owner?.friends ?? [])
-    this.offlineFriendsCache.set(entity.owner, { friends, at: Date.now() })
-    return friends.has(session.playerId)
+    // Offline owner, no cached answer: start an async load and DENY this tick. The tick never awaits
+    // I/O; the cached answer is used from the next tick on (the same 30 s TTL).
+    const owner = entity.owner
+    if (!this.friendsLoadInFlight.has(owner)) {
+      this.friendsLoadInFlight.add(owner)
+      void this.store.players
+        .findById(owner)
+        .then((found) => {
+          this.offlineFriendsCache.set(owner, {
+            friends: new Set(found?.friends ?? []),
+            at: Date.now(),
+          })
+        })
+        .catch((err: unknown) => {
+          this.log.warn('offline owner lookup failed', { owner, error: String(err) })
+        })
+        .finally(() => this.friendsLoadInFlight.delete(owner))
+    }
+    return false
   }
 
   // ── Connection lifecycle ───────────────────────────────────────────
@@ -293,8 +338,15 @@ export class GameServer {
   onMessage(conn: GameConnection, msg: ClientMessage): void {
     const session = this.sessionsByConn.get(conn)
     if (!session) {
-      if (msg.t === 'hello') void this.handleHello(conn, msg)
-      else conn.close(4001, 'hello_first')
+      if (msg.t === 'hello') {
+        // A second hello while the first is still resolving (it awaits Network) is refused, so two
+        // frames cannot both create a session for one connection.
+        if (this.hellosInFlight.has(conn)) {
+          conn.close(4008, 'hello_in_flight')
+          return
+        }
+        void this.handleHello(conn, msg)
+      } else conn.close(4001, 'hello_first')
       return
     }
     switch (msg.t) {
@@ -461,7 +513,7 @@ export class GameServer {
         break
       }
       case 'trust': {
-        this.handleTrust(session, msg.player, msg.trusted)
+        void this.handleTrust(session, msg.player, msg.trusted)
         break
       }
       case 'constraint': {
@@ -778,17 +830,8 @@ export class GameServer {
   ): { stock: number; at: number } {
     let market = this.marketStock.get(marketId)
     if (!market) {
-      // Restore from the persisted blob once per market.
+      // Persisted market blobs are loaded at boot (GameServer.load); an unknown market starts fresh.
       market = new Map()
-      const raw = this.store.meta.get(`market_${marketId}`)
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as Record<string, { stock: number; at: number }>
-          for (const [item, s] of Object.entries(parsed)) market.set(item, s)
-        } catch {
-          /* corrupted blob: fall through to fresh stock */
-        }
-      }
       this.marketStock.set(marketId, market)
     }
     let state = market.get(entry.item)
@@ -801,12 +844,6 @@ export class GameServer {
       state.at = nowMs + entry.restockSeconds * 1000
     }
     return state
-  }
-
-  private persistMarkets(): void {
-    for (const [id, market] of this.marketStock) {
-      this.store.meta.set(`market_${id}`, JSON.stringify(Object.fromEntries(market)))
-    }
   }
 
   /**
@@ -1218,7 +1255,17 @@ export class GameServer {
     this.log.info('player disconnected', { playerId: session.playerId, name: session.name })
   }
 
+  /** Guards one hello per connection while it resolves (it awaits Network); see onMessage. */
   private async handleHello(conn: GameConnection, msg: ClientHello): Promise<void> {
+    this.hellosInFlight.add(conn)
+    try {
+      await this.resolveHello(conn, msg)
+    } finally {
+      this.hellosInFlight.delete(conn)
+    }
+  }
+
+  private async resolveHello(conn: GameConnection, msg: ClientHello): Promise<void> {
     if (msg.v !== PROTOCOL_VERSION) {
       conn.send(encodeServerMessage({ t: 'reject', reason: 'protocol_mismatch' }))
       conn.close(4002, 'protocol_mismatch')
@@ -1254,7 +1301,7 @@ export class GameServer {
       // Guest conversion (WS-B task 8): the character this browser played as a guest joins the
       // account in its first free slot, once.
       if (isGuestToken(msg.token)) {
-        const g = this.store.identity.adoptGuestCharacter(msg.token, subjectId, Date.now())
+        const g = await this.store.identity.adoptGuestCharacter(msg.token, subjectId, Date.now())
         if (g.moved > 0)
           this.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
         else if (g.full)
@@ -1275,7 +1322,9 @@ export class GameServer {
         return
       }
     }
-    const existing = this.store.players.findByTokenSlot(token, slot)
+    // A disconnect save of this character may still be queued: read after it lands, not before.
+    await this.flusher.drain(5000)
+    const existing = await this.store.players.findByTokenSlot(token, slot)
     // One live session per CHARACTER; other characters of the same account
     // may stay online (an account still only plays one at a time in
     // practice — same token kicks apply per slot).
@@ -1378,7 +1427,7 @@ export class GameServer {
     })
     this.sendInventory(session)
     this.sendSkills(session)
-    this.sendFriends(session)
+    await this.sendFriends(session)
     this.send(session, this.timeWire())
     this.sendReputation(session)
     this.metrics.sessions = this.sessions.size
@@ -1390,9 +1439,9 @@ export class GameServer {
       const stored = existing
         ? progressOf(SkillSet.fromDto(existing.skills, this.world.content), existing.unlocks)
         : { levels: {}, unlocks: [] }
-      this.store.transaction(() =>
-        recorder.recordJoin(eventPlayer(session), stored, existing !== null),
-      )
+      await this.store.transaction(async (t) => {
+        await recorder.recordJoin(t, eventPlayer(session), stored, existing !== null)
+      })
     }
     this.log.info('player connected', {
       playerId: playerId as string,
@@ -1485,14 +1534,18 @@ export class GameServer {
     }
   }
 
-  private handleTrust(session: PlayerSession, targetId: string, trusted: boolean): void {
+  private async handleTrust(
+    session: PlayerSession,
+    targetId: string,
+    trusted: boolean,
+  ): Promise<void> {
     if (targetId === (session.playerId as string)) {
       this.send(session, { t: 'result', action: 'trust', ok: false, error: 'self' })
       return
     }
     // Target must be a real player (online or persisted).
     const online = this.sessions.get(targetId as PlayerId)
-    const known = online ?? this.store.players.findById(targetId)
+    const known = online ?? (await this.store.players.findById(targetId))
     if (!known) {
       this.send(session, { t: 'result', action: 'trust', ok: false, error: 'unknown_player' })
       return
@@ -1501,14 +1554,14 @@ export class GameServer {
     else session.friends.delete(targetId)
     session.dirty = true
     this.send(session, { t: 'result', action: 'trust', ok: true })
-    this.sendFriends(session)
+    await this.sendFriends(session)
   }
 
-  private sendFriends(session: PlayerSession): void {
+  private async sendFriends(session: PlayerSession): Promise<void> {
     const friends: { id: string; name: string }[] = []
     for (const id of session.friends) {
       const online = this.sessions.get(id as PlayerId)
-      const name = online?.name ?? this.store.players.findById(id)?.name ?? 'unknown'
+      const name = online?.name ?? (await this.store.players.findById(id))?.name ?? 'unknown'
       friends.push({ id, name })
     }
     this.send(session, { t: 'friends', friends })
@@ -2340,10 +2393,10 @@ export class GameServer {
     // retracted on the first tick after the change).
     this.integrations.mods?.tick(this.tick, this.modHost)
 
-    // 9. Periodic persistence flush.
+    // 9. Periodic persistence checkpoint (write-behind: returns immediately).
     if (this.tick - this.lastFlushTick >= this.config.persistFlushSeconds * this.config.tickRate) {
       this.lastFlushTick = this.tick
-      this.flush()
+      this.checkpoint()
     }
 
     this.metrics.tick = this.tick
@@ -2484,62 +2537,113 @@ export class GameServer {
   // ── Persistence ────────────────────────────────────────────────────
 
   /**
-   * One transaction per flush: world rows, player rows and the outbox
-   * events describing them commit together (or not at all).
+   * The tick's persistence call: builds the snapshot synchronously and hands it to the write-behind
+   * flusher. It returns immediately; a checkpoint already in flight coalesces this one.
    */
-  flush(reason: 'checkpoint' | 'shutdown' = 'checkpoint'): void {
-    const recorder = this.integrations.events
-    const dirty: PlayerSession[] = []
-    const afterCommit = this.store.transaction(() => {
-      // World clock + weather ride along with every flush (tiny meta writes).
-      this.store.meta.set('env_time', String(this.env.timeOfDay))
-      this.store.meta.set('env_weather', this.env.weather)
-      this.persistMarkets()
-      this.npcs.flush(this.store, Date.now())
-      const wrote = this.world.flushDirty(this.store)
-      const dirtyPlayers: PlayerDto[] = []
-      for (const session of this.sessions.values()) {
-        if (!session.dirty) continue
-        dirtyPlayers.push(this.playerToDto(session))
-        dirty.push(session)
-      }
-      if (dirtyPlayers.length > 0) this.store.players.upsertMany(dirtyPlayers)
-      if (wrote > 0 || dirtyPlayers.length > 0) {
-        this.log.debug('persistence flush', { entities: wrote, players: dirtyPlayers.length })
-      }
-      if (!recorder) return []
-      return [
-        recorder.recordPlayersSaved(
-          dirty.map((sess) => ({ player: eventPlayer(sess), progress: sessionProgress(sess) })),
-        ),
-        recorder.recordWorldSaved(wrote, dirtyPlayers.length, reason),
-      ]
-    })
-    for (const session of dirty) session.dirty = false
-    for (const done of afterCommit) done()
-    this.metrics.dbDirtyQueue = 0
+  private checkpoint(reason: 'checkpoint' | 'shutdown' = 'checkpoint'): void {
+    this.flusher.checkpoint(() => this.buildFlushPayload(reason))
   }
 
-  /** Full save on shutdown. */
+  /**
+   * Copy-on-write snapshot of everything dirty (clearing the flags as it copies). One transaction
+   * writes meta, NPC/entity upserts and deletes, constraints, characters and the outbox events
+   * describing them; on failure the snapshot's dirtiness is restored.
+   */
+  private buildFlushPayload(reason: 'checkpoint' | 'shutdown'): FlushPayload {
+    const now = Date.now()
+    const world = this.world.takeDirty()
+    const npcs = this.npcs.takeDirty(now)
+    const characters: FlushCharacter[] = []
+    for (const session of this.sessions.values()) {
+      if (!session.dirty) continue
+      session.dirty = false
+      characters.push(this.flushCharacter(session))
+    }
+    // World clock + weather and the market blobs ride along with every checkpoint.
+    const meta: Record<string, unknown> = {
+      env_time: this.env.timeOfDay,
+      env_weather: this.env.weather,
+    }
+    for (const [id, market] of this.marketStock) meta[`market_${id}`] = Object.fromEntries(market)
+    if (world.entityUpserts.length > 0 || characters.length > 0) {
+      this.log.debug('persistence checkpoint', {
+        entities: world.entityUpserts.length,
+        npcs: npcs.length,
+        players: characters.length,
+      })
+    }
+    return {
+      reason,
+      leaving: false,
+      worldSaved: true,
+      meta,
+      entityUpserts: world.entityUpserts,
+      entityDeletes: world.entityDeletes,
+      npcUpserts: npcs,
+      constraintUpserts: world.constraintUpserts,
+      constraintDeletes: world.constraintDeletes,
+      characters,
+      worldSavedCount: world.entityUpserts.length,
+      restore: () => {
+        this.world.restoreDirty(world)
+        this.npcs.restoreDirty(npcs.map((n) => n.id))
+        // A disconnected session was saved by its own queued save, which runs after this one.
+        for (const c of characters) {
+          if (this.sessions.has(c.session.playerId)) c.session.dirty = true
+        }
+      },
+    }
+  }
+
+  private flushCharacter(session: PlayerSession): FlushCharacter {
+    return {
+      session,
+      dto: this.playerToDto(session),
+      player: eventPlayer(session),
+      progress: sessionProgress(session),
+    }
+  }
+
+  /** Full save on shutdown; main.ts awaits drain() after this. */
   shutdown(): void {
     for (const session of this.sessions.values()) session.dirty = true
-    this.flush('shutdown')
+    // Never coalesced: behind a checkpoint still in flight this one is queued, not dropped.
+    this.flusher.checkpoint(() => this.buildFlushPayload('shutdown'), { final: true })
     this.log.info('world saved on shutdown', {})
   }
 
-  /** Saves one character; `leaving` also records games.player.left in the same transaction. */
+  /** Resolves when the write-behind queue is empty (shutdown). */
+  async drain(timeoutMs = 25_000): Promise<boolean> {
+    return this.flusher.drain(timeoutMs)
+  }
+
+  /**
+   * Saves one character; `leaving` also records games.player.left in the same transaction. The DTO is
+   * built synchronously and the transaction is queued on the same queue as checkpoints, so a
+   * disconnect save always lands after an earlier checkpoint of that character. The caller does not
+   * await it.
+   */
   private savePlayer(session: PlayerSession, leaving = false): void {
-    const recorder = this.integrations.events
-    const afterCommit = this.store.transaction(() => {
-      this.store.players.upsert(this.playerToDto(session))
-      if (!recorder) return []
-      const player = eventPlayer(session)
-      const done = [recorder.recordPlayersSaved([{ player, progress: sessionProgress(session) }])]
-      if (leaving) done.push(recorder.recordLeave(player))
-      return done
-    })
     session.dirty = false
-    for (const done of afterCommit) done()
+    this.flusher.savePlayer(
+      {
+        reason: 'checkpoint',
+        leaving,
+        worldSaved: false,
+        meta: {},
+        entityUpserts: [],
+        entityDeletes: [],
+        npcUpserts: [],
+        constraintUpserts: [],
+        constraintDeletes: [],
+        characters: [this.flushCharacter(session)],
+        worldSavedCount: 0,
+        restore: () => {
+          if (this.sessions.has(session.playerId)) session.dirty = true
+        },
+      },
+      () => this.sessions.has(session.playerId),
+    )
   }
 
   /**

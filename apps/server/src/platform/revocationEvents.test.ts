@@ -1,6 +1,8 @@
+import { EventEmitter } from 'node:events'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createRequire } from 'node:module'
+import { openTestDb } from '@openvibe/persistence/testing'
 import { createConsoleLogger } from '@openvibe/shared'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
@@ -16,7 +18,6 @@ import {
  * person's sessions are closed through onRevoked; the boot subscription is created once.
  */
 const req = createRequire(import.meta.url)
-const Database = req('better-sqlite3') as new (path: string) => unknown
 const { signDeliveryHeaders } = req('openvibe-sdk/events') as {
   signDeliveryHeaders(body: string, secret: string): Record<string, string>
 }
@@ -28,17 +29,17 @@ const mergedCalls: [string, string, string][] = []
 const accountCalls: string[] = []
 const modGrantCalls: [string, string, string][] = []
 const events = createRevocationEvents({
-  db: new Database(':memory:'),
+  db: await openTestDb(),
   secrets: [SECRET],
   onRevoked: (s, ms) => {
     closedFor.push([s, ms])
     return 2
   },
-  onMerged: (from, into, id) => {
+  onMerged: async (from, into, id) => {
     mergedCalls.push([from, into, id])
     return { moved: 2, kept: 1, already: mergedCalls.length > 1 }
   },
-  onModGrants: (p) => {
+  onModGrants: async (p) => {
     modGrantCalls.push([p.mod_id, p.status, p.approved.join(',')])
     return 'mod:enabled'
   },
@@ -50,6 +51,7 @@ const events = createRevocationEvents({
   },
   log,
 })
+await events.store.load()
 let server: Server
 let url: string
 
@@ -147,6 +149,54 @@ describe('revocation events', () => {
       'network.account.export_requested',
       'network.account.export_requested',
     ])
+  })
+
+  it('a response write that throws on the success path is caught, not an unhandled rejection', async () => {
+    // A response whose first end() throws (the socket closed under us) and whose second succeeds.
+    let ends = 0
+    const res = {
+      writableEnded: false,
+      statusCode: 0,
+      writeHead(status: number) {
+        res.statusCode = status
+        return res
+      },
+      end() {
+        ends++
+        if (ends === 1) throw new Error('write after end')
+        res.writableEnded = true
+        return res
+      },
+    }
+    const body = JSON.stringify({
+      event: envelope({
+        event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2F8',
+        event_type: 'network.account.export_requested',
+        payload: { export_id: 'exp_01J8Z3Q4R5S6T7V8W9X0Y1Z2F9', subject: SUBJECT },
+      }),
+      seq: 1,
+    })
+    const req = Object.assign(new EventEmitter(), {
+      url: '/internal/events',
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...signDeliveryHeaders(body, SECRET) },
+    })
+    const unhandled: unknown[] = []
+    const onUnhandled = (err: unknown) => unhandled.push(err)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      if (!events.handle(req as never, res as never)) throw new Error('not handled')
+      req.emit('data', Buffer.from(body))
+      req.emit('end')
+      for (let i = 0; i < 100 && !res.writableEnded; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 5))
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
+    expect(unhandled).toEqual([])
+    expect(res.statusCode).toBe(500)
   })
 
   it("network.mod.grants_changed (ADR-013) reaches onModGrants for Games' own mods only", async () => {

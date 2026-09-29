@@ -9,5 +9,8 @@ export default defineConfig({
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts', 'apps/**/*.audit.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     environment: 'node',
+    // Every persistence test runs against a real in-memory PGlite (WASM), which takes seconds to start.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 })

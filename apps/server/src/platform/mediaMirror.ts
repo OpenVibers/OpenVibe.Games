@@ -69,15 +69,21 @@ export class MediaMirror {
     this.now = opts.now ?? Date.now
   }
 
-  /** Queues one stored asset (idempotent) and wakes the worker. */
+  /** Queues one stored asset (idempotent) and wakes the worker. Fire-and-forget (off the tick). */
   enqueue(asset: { hash: string; url: string; bytes: number; mime: string }): void {
     const fileName = asset.url.split('/').pop() ?? ''
     if (!CONTENT_ADDRESSED.test(fileName)) return
-    const added = this.opts.store.mediaMirrors.enqueue(
-      { assetHash: asset.hash, fileName, mime: asset.mime, bytes: asset.bytes },
-      this.now(),
-    )
-    if (added) this.kick()
+    void this.opts.store.mediaMirrors
+      .enqueue(
+        { assetHash: asset.hash, fileName, mime: asset.mime, bytes: asset.bytes },
+        this.now(),
+      )
+      .then((added) => {
+        if (added) this.kick()
+      })
+      .catch((err: unknown) => {
+        this.opts.log.warn('media mirror enqueue failed', { error: String(err) })
+      })
   }
 
   /** Queues every content-addressed asset already on disk (a no-op for known ones). */
@@ -93,7 +99,7 @@ export class MediaMirror {
       const m = CONTENT_ADDRESSED.exec(name)
       if (!m) continue
       const bytes = (await readFile(join(this.opts.assetsDir, name))).length
-      const queued = this.opts.store.mediaMirrors.enqueue(
+      const queued = await this.opts.store.mediaMirrors.enqueue(
         { assetHash: m[1] ?? '', fileName: name, mime: MIME_BY_EXT[m[2] ?? ''] ?? '', bytes },
         this.now(),
       )
@@ -134,17 +140,23 @@ export class MediaMirror {
     if (this.timer) clearTimeout(this.timer)
     this.timer = setTimeout(() => {
       this.timer = null
-      void this.runOnce().finally(() => this.schedule(this.opts.intervalMs ?? 60_000))
+      // The scheduled path must never surface an unhandled rejection: a rejected pass() (e.g. the
+      // markFailed write failing) is logged, then the next pass is scheduled as usual.
+      void this.runOnce()
+        .finally(() => this.schedule(this.opts.intervalMs ?? 60_000))
+        .catch((err: unknown) => {
+          this.opts.log.warn('media mirror pass failed', { error: String(err) })
+        })
     }, ms)
     this.timer.unref()
   }
 
   private async pass(): Promise<void> {
-    for (const row of this.opts.store.mediaMirrors.due(this.now(), 20)) {
+    for (const row of await this.opts.store.mediaMirrors.due(this.now(), 20)) {
       try {
         await this.mirror(row)
       } catch (err) {
-        this.fail(row, err as HttpError)
+        await this.fail(row, err as HttpError)
       }
     }
   }
@@ -159,7 +171,7 @@ export class MediaMirror {
     try {
       bytes = await readFile(join(this.opts.assetsDir, row.fileName))
     } catch {
-      store.mediaMirrors.markFailed(
+      await store.mediaMirrors.markFailed(
         row.assetHash,
         'local file missing',
         this.now(),
@@ -187,7 +199,7 @@ export class MediaMirror {
         idempotencyKey: false,
       })
       id = init.id
-      store.mediaMirrors.noteObject(row.assetHash, id, this.now())
+      await store.mediaMirrors.noteObject(row.assetHash, id, this.now())
     }
     try {
       await client.request({
@@ -209,17 +221,22 @@ export class MediaMirror {
       json: { content_hash: sha256 },
       idempotent: true,
     })
-    store.mediaMirrors.markMirrored(row.assetHash, done.id, done.public_url ?? null, this.now())
+    await store.mediaMirrors.markMirrored(
+      row.assetHash,
+      done.id,
+      done.public_url ?? null,
+      this.now(),
+    )
     this.opts.log.info('map asset mirrored to media', { asset: row.assetHash, media: done.id })
   }
 
-  private fail(row: MediaMirrorDto, err: HttpError): void {
+  private async fail(row: MediaMirrorDto, err: HttpError): Promise<void> {
     const status = err.status ?? 0
     const attempts = row.attempts + 1
     const terminal = TERMINAL_STATUS.has(status) || attempts >= MAX_ATTEMPTS
     const wait = BACKOFF_MS[Math.min(row.attempts, BACKOFF_MS.length - 1)] ?? 60_000
     const message = `${err.code ?? `http.${status}`}: ${err.message ?? 'failed'}`
-    this.opts.store.mediaMirrors.markFailed(
+    await this.opts.store.mediaMirrors.markFailed(
       row.assetHash,
       message,
       this.now() + wait,

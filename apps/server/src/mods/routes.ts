@@ -167,7 +167,9 @@ export function handleModsRequest(
     if (method === 'GET' && parts.length === 2 && parts[1] === 'audit') {
       const limit = Number(url.searchParams.get('limit') ?? 100)
       if (!api.registry.get(id)) return problem(res, 404, 'mod.not_found', 'no such mod')
-      json(res, 200, { audit: api.registry.auditLog(id, Number.isFinite(limit) ? limit : 100) })
+      json(res, 200, {
+        audit: await api.registry.auditLog(id, Number.isFinite(limit) ? limit : 100),
+      })
       return
     }
     if (method === 'DELETE' && parts.length === 3 && parts[1] === 'grants') {
@@ -177,7 +179,7 @@ export function handleModsRequest(
         const principal = await api.grants.change(id, cap, 'revoke', actor.audit)
         api.registry.noteNetworkRevision(id, principal.revision)
       }
-      json(res, 200, publicView(api.registry.revokeGrant(id, cap, actor)))
+      json(res, 200, publicView(await api.registry.revokeGrant(id, cap, actor)))
       return
     }
     if (method !== 'POST') return problem(res, 405, 'request.method_not_allowed', method)
@@ -195,12 +197,12 @@ export function handleModsRequest(
       let revision = 0
       if (api.grants) {
         // Network registers mod:<id> first; what it approved is what is granted here.
-        const checked = api.registry.checkInstall(request)
+        const checked = await api.registry.checkInstall(request)
         const principal = await api.grants.register(checked.manifest, checked.approve, actor.audit)
         request.approve = principal.status === 'active' ? principal.approved : []
         revision = principal.revision
       }
-      const view = api.registry.install(request, actor)
+      const view = await api.registry.install(request, actor)
       if (revision) api.registry.noteNetworkRevision(view.mod.id, revision)
       api.log.info('mod installed', { mod: view.mod.id, by: actor.audit, status: view.mod.status })
       json(res, 201, publicView(view))
@@ -208,7 +210,9 @@ export function handleModsRequest(
     }
     if (parts.length === 2 && (parts[1] === 'enable' || parts[1] === 'disable')) {
       const view =
-        parts[1] === 'enable' ? api.registry.enable(id, actor) : api.registry.disable(id, actor)
+        parts[1] === 'enable'
+          ? await api.registry.enable(id, actor)
+          : await api.registry.disable(id, actor)
       api.log.info(`mod ${parts[1]}d`, { mod: id, by: actor.audit })
       json(res, 200, publicView(view))
       return
@@ -221,7 +225,7 @@ export function handleModsRequest(
           (await api.grants.revoke(id, actor.audit, reason)).revision,
         )
       }
-      const view = api.registry.revoke(id, actor, reason)
+      const view = await api.registry.revoke(id, actor, reason)
       api.log.info('mod revoked', { mod: id, by: actor.audit })
       json(res, 200, publicView(view))
       return
@@ -231,11 +235,11 @@ export function handleModsRequest(
         return problem(res, 400, 'mod.invalid_request', 'capability is required')
       }
       if (api.grants) {
-        api.registry.checkGrant(id, b.capability)
+        await api.registry.checkGrant(id, b.capability)
         const principal = await api.grants.change(id, b.capability, 'approve', actor.audit)
         api.registry.noteNetworkRevision(id, principal.revision)
       }
-      json(res, 200, publicView(api.registry.grant(id, b.capability, actor)))
+      json(res, 200, publicView(await api.registry.grant(id, b.capability, actor)))
       return
     }
     problem(res, 404, 'request.not_found', 'no such mods route')

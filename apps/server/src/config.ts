@@ -1,7 +1,29 @@
+import { MIGRATIONS_DIR } from '@openvibe/persistence'
+
+export interface DbConfig {
+  /** Pooled PostgreSQL URL (through PgBouncer); null in development, where an embedded PGlite is used. */
+  url: string | null
+  /** Owner-role direct URL migrations run on; required when `url` is set. */
+  directUrl: string | null
+  /** DATABASE_DIR: where the development PGlite database lives (default ./data). */
+  dataDir: string
+  /**
+   * The SQL migrations directory. Defaults to the persistence package's absolute migrations dir, so it
+   * resolves the same from any working directory; GAMES_MIGRATIONS_DIR overrides it.
+   */
+  migrationsDir: string
+  isProduction: boolean
+  /** Shared Valkey (limits, and M4 leases); null = in-process counters. */
+  valkeyUrl: string | null
+  valkeyPrefix: string
+}
+
 export interface ServerConfig {
   port: number
   host: string
-  dbPath: string
+  /** GAMES_PLACE_ID: the place every world row on this instance belongs to. */
+  placeId: string
+  db: DbConfig
   /** Directory of built client assets to serve, or null for API/WS only. */
   staticDir: string | null
   mapPath: string
@@ -88,7 +110,16 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   return {
     port: intEnv(env, 'PORT', 8000),
     host: env.HOST ?? '0.0.0.0',
-    dbPath: env.DB_PATH ?? 'data/world.db',
+    placeId: env.GAMES_PLACE_ID ?? 'scraplandia',
+    db: {
+      url: env.DATABASE_URL ?? null,
+      directUrl: env.DATABASE_DIRECT_URL ?? null,
+      dataDir: env.DATABASE_DIR ?? 'data',
+      migrationsDir: env.GAMES_MIGRATIONS_DIR ?? MIGRATIONS_DIR,
+      isProduction: env.NODE_ENV === 'production',
+      valkeyUrl: env.VALKEY_URL ?? null,
+      valkeyPrefix: env.VALKEY_PREFIX ?? 'ov:games:',
+    },
     staticDir: env.STATIC_DIR ?? null,
     mapPath: env.MAP_PATH ?? 'data/map.json',
     /** Fallback admin secret for the map editor (until openvibe.network SSO). */

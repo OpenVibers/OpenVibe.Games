@@ -4,10 +4,7 @@ dist-types/
 *.tsbuildinfo
 .env
 *.log
-# Runtime SQLite state, at the repo root or in any app (never a fixture).
-data/*.db
-data/*.db-*
-apps/*/data/*.db
-apps/*/data/*.db-*
+# Embedded development database (PGlite under the data dir), never a fixture.
+**/data/pglite/
 .DS_Store
 scratch/
