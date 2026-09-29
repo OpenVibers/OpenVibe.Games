@@ -3,25 +3,11 @@ import { Inventory, SkillSet, type GameEntity } from '@openvibe/gameplay'
 import { CollisionLayer } from '@openvibe/physics'
 import { PROTOCOL_VERSION, encodeServerMessage, type ClientHello } from '@openvibe/protocol'
 import { asPlayerId, newEntityId, newPlayerId, qfromYaw, quat, vec3 } from '@openvibe/shared'
-import { resolveNetworkUser } from '../../net/networkAuth.js'
-import { isGuestToken } from '../../platform/accounts.js'
 import type { GameConnection, ServerContext } from './context.js'
 import { MOVE } from './movement.js'
 import { eventPlayer, progressOf } from './platform.js'
 import { createSession, HOTBAR_SIZE, INVENTORY_SIZE } from '../playerSession.js'
 import type { HandlerMap, System } from './system.js'
-
-/** A JWT's iat (seconds), read from a token the Network has already accepted; null otherwise. */
-function tokenIat(jwt: string): number | null {
-  const part = jwt.split('.')[1]
-  if (!part) return null
-  try {
-    const claims = JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as { iat?: unknown }
-    return typeof claims.iat === 'number' ? claims.iat : null
-  } catch {
-    return null
-  }
-}
 
 /**
  * Connect, hello, disconnect, supersede and revocation close: everything about a session's
@@ -41,10 +27,16 @@ export class SessionsSystem implements System {
       hello: (session, msg, conn) => {
         // A session already exists: a duplicate hello is silently ignored.
         if (session) return
-        // A second hello while the first is still resolving (it awaits Network) is refused, so two
+        // A second hello while the first is still resolving is refused, so two
         // frames cannot both create a session for one connection.
         if (this.hellosInFlight.has(conn)) {
           conn.close(4008, 'hello_in_flight')
+          return
+        }
+        // No identity on the upgrade? The transport must have validated a
+        // ticket before accepting the socket — refuse anyone who bypasses it.
+        if (!conn.identity) {
+          conn.close(4012, 'no_identity')
           return
         }
         void this.handleHello(conn, msg as ClientHello)
@@ -106,49 +98,51 @@ export class SessionsSystem implements System {
     }
 
     const slot = msg.slot ?? 0
-    // Account resolution. openvibe.network sign-in keys the account on the
-    // canonical subject (3 slots, follows you across devices). Guests get ONE
-    // character bound to their connection's browser token.
-    let token = msg.token
+    // Identity was resolved at the WS upgrade (ADR-0007 netcode). hello
+    // carries slot, client version and appearance only; any auth field is
+    // ignored — there is no old hello-identity fallback (owner rule).
+    const id = conn.identity
+    if (!id) {
+      conn.close(4012, 'no_identity')
+      return
+    }
+    let token: string
     let subjectId: string | null = null
     let authIat: number | null = null
     let rank: 'owner' | 'admin' | 'moderator' | null = null
-    if (msg.auth) {
-      const user = await resolveNetworkUser(ctx.config.networkAuthUrl, msg.auth)
-      // A signed-in account is keyed by its canonical subject (ADR-0006); a
-      // token that carries none cannot name an account.
-      if (!user || !user.subjectId) {
-        conn.send(encodeServerMessage({ t: 'reject', reason: 'auth_failed' }))
-        conn.close(4009, 'auth_failed')
-        return
-      }
-      token = user.subjectId
-      subjectId = user.subjectId
-      authIat = tokenIat(msg.auth)
-      rank = user.rank
-      // Guest conversion (WS-B task 8): the character this browser played as a guest joins the
-      // account in its first free slot, once.
-      if (isGuestToken(msg.token)) {
-        const g = await ctx.store.identity.adoptGuestCharacter(msg.token, subjectId, Date.now())
+    if ('subject' in id) {
+      // A signed-in account is keyed by its canonical subject (3 slots,
+      // follows you across devices).
+      subjectId = id.subject
+      token = id.subject
+      authIat = id.authIat
+      rank = id.rank
+      // Guest conversion (WS-B task 8): the ticket request carried the guest
+      // token (hashed at POST /api/ws-ticket); adoptGuestCharacter's
+      // accountKey() is idempotent on `guest:<sha256>`, so the key is passed
+      // as-is. `hello.token` is never an input.
+      if (id.adoptGuestKeyHash) {
+        const g = await ctx.store.identity.adoptGuestCharacter(
+          `guest:${id.adoptGuestKeyHash}`,
+          subjectId,
+          Date.now(),
+        )
         if (g.moved > 0)
           ctx.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
         else if (g.full)
           ctx.log.info('guest character kept: account slots full', { subject: subjectId })
       }
     } else {
-      // A guest token may never look like an account key (`usr_…`): that
-      // would open someone else's characters. The client mints plain
-      // alphanumerics; anything key-shaped is refused.
-      if (!isGuestToken(msg.token)) {
-        conn.send(encodeServerMessage({ t: 'reject', reason: 'invalid_hello' }))
-        conn.close(4007, 'invalid_guest_token')
-        return
-      }
+      // Guests get ONE character bound to the hashed guest key the ticket
+      // carried. The raw token never reaches the server here: `guest:` +
+      // sha256hex is exactly the account_key the repository stores, so
+      // hello's `token` is ignored entirely (ADR-0007 decision 8).
       if (slot > 0) {
         conn.send(encodeServerMessage({ t: 'reject', reason: 'guest_one_character' }))
         conn.close(4010, 'guest_one_character')
         return
       }
+      token = `guest:${id.guestKeyHash}`
     }
     // A disconnect save of this character may still be queued: read after it lands, not before.
     await ctx.systems.persistence.drain(5000)

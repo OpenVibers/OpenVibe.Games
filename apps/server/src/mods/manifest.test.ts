@@ -1,20 +1,113 @@
-import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { Ajv2020 } from 'ajv/dist/2020.js'
 import { createContent } from '@openvibe/content'
 import { describe, expect, it } from 'vitest'
 import { validateContentPack } from './contentPack.js'
-import { checkForGames, validateManifest } from './manifest.js'
-import { MOD_MANIFEST_SCHEMA } from './manifestSchema.js'
-import { sampleManifest } from './testFixtures.js'
+import { checkForGames, MOD_MANIFEST_REF, validateManifest } from './manifest.js'
+import { MOD_ID, sampleManifest } from './testFixtures.js'
+
+interface ContractsModule {
+  schema(ref: string): Record<string, unknown>
+}
+const contracts = createRequire(import.meta.url)('openvibe-contracts') as ContractsModule
 
 describe('mod manifest schema', () => {
-  it('is the same document as the Contracts proposal', () => {
-    const proposal: unknown = JSON.parse(
-      readFileSync(
-        new URL('../../../../docs/contracts-proposal/mods/mod-manifest.v1.json', import.meta.url),
-        'utf8',
-      ),
-    )
-    expect(MOD_MANIFEST_SCHEMA).toEqual(proposal)
+  // 1.1.0 (openvibe-contracts v0.34.0) added permissions.readGrants and
+  // writeGrants, billingHooks and dependencies; a 1.0 structure rejects them
+  // (additionalProperties: false). Exercising them is what makes the
+  // agreement test below a real drift detector: a local 1.0 copy that happens
+  // to match the minimal fixtures would fail here.
+  const minimalV11 = {
+    ...sampleManifest(),
+    permissions: {
+      capabilities: ['games.world.announce'],
+      readGrants: { modules: ['other.read'] },
+      writeGrants: { mediaNamespaces: ['games'] },
+    },
+    billingHooks: [{ kind: 'entitlement', key: 'vip.plan:pln_01jab' }],
+    dependencies: [{ id: MOD_ID, version: '>=1.0.0' }],
+  } as unknown as Record<string, unknown>
+
+  it('validates against the installed contracts schema for mods.mod-manifest@1, version 1.1.0', () => {
+    // The installed package advertises the version the pin claims. Neither the
+    // schema nor contracts exposes a machine-readable version field, so the
+    // canonical $id and the description's version marker are asserted here.
+    const schema = contracts.schema(MOD_MANIFEST_REF) as { $id?: string; description?: string }
+    expect(schema.$id).toBe('https://openvibe.network/contracts/mods/mod-manifest.v1.json')
+    expect(schema.description).toContain('1.1.0')
+    // The 1.1.0-only fields are accepted: proof validateManifest is using the
+    // package's 1.1.0 schema, not a stale local 1.0 copy.
+    expect(validateManifest(minimalV11).ok).toBe(true)
+  })
+
+  it('agrees with the installed contracts package on every sample manifest', () => {
+    // Pin drift is a defect (ADR-0007 decision 12): whenever Games accepts a
+    // manifest, the installed contracts package must accept it too, and the
+    // other way round. Both validators must return the SAME verdict for
+    // every case, valid or invalid — if a future change reintroduces a local
+    // schema copy, this fails the moment the two disagree.
+    const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false })
+    ajv.addSchema(contracts.schema('identity.subject-ref@1'))
+    ajv.addSchema(contracts.schema('media.media-ref@1'))
+    const validate = ajv.compile(contracts.schema(MOD_MANIFEST_REF))
+
+    const minimal = sampleManifest()
+    const missingRequired = { ...minimal } as Record<string, unknown>
+    delete missingRequired['version']
+    const cases: [string, unknown][] = [
+      [
+        'the full fixture (assets, modules, mediaNamespaces, events, homepage)',
+        sampleManifest({
+          assets: [{ media_id: 'med_01JABCDEFGHJKMNPQRSTVWXYZ0', role: 'icon' }],
+          homepage: 'https://openvibe.games/mods/town-square',
+          permissions: {
+            capabilities: ['games.world.announce'],
+            events: ['games.player.joined'],
+            modules: ['games.progress.summary'],
+            mediaNamespaces: ['games'],
+          },
+        }),
+      ],
+      ['the minimal fixture', minimal],
+      ['the 1.1.0-only fields (readGrants, writeGrants, billingHooks, dependencies)', minimalV11],
+      ['a 1.0 structure that omits the 1.1.0 fields', minimal],
+      ['a non-conforming id', { ...minimal, id: 'my-mod' }],
+      ['an unknown top-level property', { ...minimal, extra: true }],
+      ['a missing required field', missingRequired],
+      [
+        'a bad 1.1.0 billingHooks kind',
+        { ...minimalV11, billingHooks: [{ kind: 'nope', key: 'vip.plan:x' }] },
+      ],
+      [
+        'a 1.1.0 dependency id that is not a mod ULID',
+        { ...minimalV11, dependencies: [{ id: 'other', version: '>=1.0.0' }] },
+      ],
+    ]
+    for (const [label, manifest] of cases) {
+      expect(validateManifest(manifest).ok, `Games vs contracts: ${label}`).toBe(
+        Boolean(validate(manifest)),
+      )
+    }
+  })
+
+  it('has an independent expected verdict for each 1.1.0 delta case', () => {
+    // A second oracle, not agreement: the explicit verdicts these fields must
+    // get, so a future schema bump that Games silently ignores is caught even
+    // if both validators are (wrongly) reading the same stale source.
+    expect(validateManifest(minimalV11).ok).toBe(true)
+    expect(
+      validateManifest({
+        ...minimalV11,
+        permissions: { capabilities: ['games.world.announce'], readGrants: {} },
+      }).ok,
+    ).toBe(false)
+    expect(
+      validateManifest({
+        ...minimalV11,
+        billingHooks: [{ kind: 'refund', key: 'vip.plan:x' }],
+      }).ok,
+    ).toBe(false)
+    expect(validateManifest({ ...minimalV11, dependencies: [{ id: MOD_ID }] }).ok).toBe(false)
   })
 
   it('accepts a complete manifest, including Media asset refs', () => {

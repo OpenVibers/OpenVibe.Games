@@ -3,10 +3,11 @@
  * rank that may edit the map), or a platform principal whose client-
  * credentials token for audience `openvibe.games` carries the
  * `games.mod.manage` capability (verified offline against the Network JWKS).
- * Without a Network configured (local development) the EDITOR_KEY is
- * accepted, exactly as for the map editor.
+ *
+ * The editor (HTTP map save, asset upload, WS presence) authorizes through
+ * the same Network staff check; there is no longer a shared-secret
+ * legacy shared-secret fallback (ADR-0007 "Deleted").
  */
-import { timingSafeEqual } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 import { createRequire } from 'node:module'
 import { verifyUserToken, type UserTokenClaims } from 'openvibe-sdk/auth'
@@ -26,7 +27,6 @@ export interface StaffAuthOptions {
   networkAuthUrl: string | null
   /** Network base for the JWKS (`/api/.well-known/jwks`). */
   networkUrl: string
-  editorKey: string | null
   /** Test seam: verifies a principal token. */
   verifyPrincipal?: (token: string) => Promise<UserTokenClaims>
 }
@@ -49,12 +49,6 @@ function looksLikePrincipal(token: string): boolean {
   }
 }
 
-function sameSecret(a: string, b: string): boolean {
-  const x = Buffer.from(a)
-  const y = Buffer.from(b)
-  return x.length === y.length && timingSafeEqual(x, y)
-}
-
 export function createStaffAuthorizer(
   opts: StaffAuthOptions,
 ): (req: IncomingMessage) => Promise<ModActor | null> {
@@ -69,11 +63,9 @@ export function createStaffAuthorizer(
 
   return async (req) => {
     const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]?.trim()
-    const editorKey = req.headers['x-editor-key']
-    const token = bearer ?? (typeof editorKey === 'string' ? editorKey : undefined)
-    if (!token) return null
+    if (!bearer) return null
 
-    if (bearer && looksLikePrincipal(bearer)) {
+    if (looksLikePrincipal(bearer)) {
       try {
         const claims = await verifyPrincipal(bearer)
         if (!contracts.capabilities.grants(claims.cap, CAP_MOD_MANAGE)) return null
@@ -89,7 +81,7 @@ export function createStaffAuthorizer(
     }
 
     if (opts.networkAuthUrl) {
-      const user = await resolveNetworkUser(opts.networkAuthUrl, token)
+      const user = await resolveNetworkUser(opts.networkAuthUrl, bearer)
       if (!user || !canEditMap(user.rank)) return null
       if (user.subjectId?.startsWith('usr_')) {
         return { audit: user.subjectId, subject: { type: 'user', id: user.subjectId } }
@@ -101,9 +93,9 @@ export function createStaffAuthorizer(
         subject: { type: 'service', id: 'games' },
       }
     }
-    if (opts.editorKey && sameSecret(token, opts.editorKey)) {
-      return { audit: 'editor-key', subject: { type: 'service', id: 'games' } }
-    }
+    // Without Network configured (local development) no Authorization
+    // header gets a result. the legacy editor key is gone — there is no shared-secret
+    // fallback for the mods API either.
     return null
   }
 }

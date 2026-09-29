@@ -11,6 +11,8 @@
  *   pnpm test:editor
  */
 import { spawn } from 'node:child_process'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -79,6 +81,41 @@ writeFileSync(
   }),
 )
 
+const TEST_TOKEN = 'test-admin-token'
+/**
+ * The editor authenticates against openvibe.network's /api/auth/me. The legacy editor key
+ * is gone. Spin up a tiny mock that says "yes, staff.games.manage" for the
+ * test bearer and rejects every other token, and point the spawned server
+ * at it.
+ */
+const mockNet = createServer((req, res) => {
+  if (req.url === '/api/auth/me') {
+    const auth = req.headers.authorization ?? ''
+    const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1]
+    if (bearer !== TEST_TOKEN) {
+      res.writeHead(401, { 'content-type': 'application/json' })
+      res.end('{"error":"forbidden"}')
+      return
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        user: {
+          id: 1,
+          username: 'admin',
+          role: 'admin',
+          subject_id: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0',
+        },
+      }),
+    )
+    return
+  }
+  res.writeHead(404)
+  res.end()
+})
+await new Promise<void>((r) => mockNet.listen(0, '127.0.0.1', r))
+const mockNetUrl = `http://127.0.0.1:${(mockNet.address() as AddressInfo).port}/api/auth/me`
+
 const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
   env: {
     ...process.env,
@@ -89,7 +126,7 @@ const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main
     DATABASE_DIRECT_URL: '',
     STATIC_DIR: 'apps/client/dist',
     MAP_PATH: mapPath,
-    EDITOR_KEY: 'test-admin-key',
+    OV_NETWORK_AUTH_URL: mockNetUrl,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
@@ -705,7 +742,7 @@ async function withMap(
       DATABASE_DIRECT_URL: '',
       STATIC_DIR: 'apps/client/dist',
       MAP_PATH: mp,
-      EDITOR_KEY: 'test-admin-key',
+      OV_NETWORK_AUTH_URL: mockNetUrl,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -726,7 +763,12 @@ async function withMap(
     try {
       const pg = await br.newPage({ viewport: { width: 1400, height: 900 } })
       // Asset upload and collaboration both need the editor credential.
-      await pg.addInitScript(() => localStorage.setItem('openvibe.editorkey', 'test-admin-key'))
+      // the legacy editor key is gone: the page reads the SSO access token from the
+      // `ovg_sso` cookie or `ovg_sso` localStorage entry.
+      await pg.addInitScript((t) => {
+        localStorage.setItem('ovg_sso', t as string)
+        document.cookie = `ovg_sso=${encodeURIComponent(t as string)}; Path=/; SameSite=Lax`
+      }, TEST_TOKEN)
       pg.on('pageerror', (e) =>
         console.log('[pageerror]', String((e as Error).stack ?? e).slice(0, 500)),
       )
@@ -780,7 +822,7 @@ section('O. Live static reconciliation reaches the running server')
       DATABASE_DIRECT_URL: '',
       STATIC_DIR: 'apps/client/dist',
       MAP_PATH: mp,
-      EDITOR_KEY: 'test-admin-key',
+      OV_NETWORK_AUTH_URL: mockNetUrl,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -812,7 +854,7 @@ section('O. Live static reconciliation reaches the running server')
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-editor-key': 'test-admin-key',
+          authorization: `Bearer ${TEST_TOKEN}`,
           ...(ifMatch ? { 'if-match': ifMatch } : {}),
         },
         body: JSON.stringify(map),
@@ -828,11 +870,11 @@ section('O. Live static reconciliation reaches the running server')
     ])
     const upload = async (
       body: Buffer,
-      key = 'test-admin-key',
+      token: string = TEST_TOKEN,
     ): Promise<{ status: number; json: Record<string, unknown> }> => {
       const resp = await fetch(`${root}/api/map-assets`, {
         method: 'POST',
-        headers: { 'x-editor-key': key },
+        headers: { authorization: `Bearer ${token}` },
         body: new Uint8Array(body),
       })
       return { status: resp.status, json: (await resp.json()) as Record<string, unknown> }
@@ -866,8 +908,12 @@ section('O. Live static reconciliation reaches the running server')
     const bogus = await upload(Buffer.from('<?php system($_GET[0]); ?>'))
     ok('unsupported content is refused, not stored', bogus.status === 400, bogus)
 
-    const unauth = await upload(png, 'wrong-key')
-    ok('an upload without the editor key is forbidden', unauth.status === 403, unauth)
+    const unauth = await upload(png, 'not-a-real-token')
+    ok(
+      'an upload with a bearer the mock Network rejects is forbidden',
+      unauth.status === 403,
+      unauth,
+    )
 
     const fetched = await fetch(`${root}${String(first.json['url'])}`)
     ok('the stored asset is served back', fetched.status === 200)
@@ -1037,7 +1083,7 @@ section('U. Live reconciliation touches only what changed')
       DATABASE_DIRECT_URL: '',
       STATIC_DIR: 'apps/client/dist',
       MAP_PATH: mp,
-      EDITOR_KEY: 'test-admin-key',
+      OV_NETWORK_AUTH_URL: mockNetUrl,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -1066,7 +1112,7 @@ section('U. Live reconciliation touches only what changed')
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-editor-key': 'test-admin-key',
+          authorization: `Bearer ${TEST_TOKEN}`,
           ...(ifMatch ? { 'if-match': ifMatch } : {}),
         },
         body: JSON.stringify(map),

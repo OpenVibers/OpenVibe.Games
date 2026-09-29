@@ -177,7 +177,15 @@ class TestClient {
     []
 
   async connect(name: string, token: string, appearance?: Appearance): Promise<void> {
-    this.ws = new WebSocket(URL)
+    // Authenticate at the upgrade: POST /api/ws-ticket first (ADR-0007 netcode).
+    const httpBase = URL.replace(/^ws/, 'http').replace(/\/ws$/, '')
+    const ticketResp = await fetch(`${httpBase}/api/ws-ticket`, {
+      method: 'POST',
+      headers: { 'x-guest-token': token },
+    })
+    if (!ticketResp.ok) throw new Error(`ws-ticket failed: ${ticketResp.status}`)
+    const { ticket } = (await ticketResp.json()) as { ticket: string }
+    this.ws = new WebSocket(`${URL}?ticket=${encodeURIComponent(ticket)}`)
     await new Promise<void>((res, rej) => {
       this.ws.on('open', () => res())
       this.ws.on('error', rej)
@@ -186,7 +194,6 @@ class TestClient {
     this.send({
       t: 'hello',
       v: PROTOCOL_VERSION,
-      token,
       slot: 0,
       name,
       appearance: appearance ?? defaultAppearance(),

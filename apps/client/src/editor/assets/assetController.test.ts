@@ -62,7 +62,7 @@ const controller = (doc: EditorDocument) => {
     doc,
     history,
     modelCache: { forget: () => undefined, instantiate: () => Promise.resolve(null) } as never,
-    editorKey: () => 'k',
+    editorToken: () => 'k',
     onAssetsChanged: () => undefined,
     setMessage: (m) => messages.push(m),
   })

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -13,6 +13,28 @@ import { loadConfig } from './config.js'
 
 /** apps/server (the dev cwd), from this test file's location. */
 const SERVER_DIR = join(dirname(fileURLToPath(import.meta.url)), '..')
+
+const REPO_DIR = join(SERVER_DIR, '..', '..')
+
+describe('production client address', () => {
+  // Behind nginx every TCP peer is 127.0.0.1: without TRUST_PROXY the per-address limits collapse into one
+  // global bucket, and trusting nginx is only safe while nginx overwrites every client-address header.
+  it('trusts the local nginx in the unit', () => {
+    const unit = readFileSync(join(REPO_DIR, 'deploy/openvibe-games.service'), 'utf8')
+    expect(unit).toMatch(/^Environment=HOST=127\.0\.0\.1$/m)
+    expect(unit).toMatch(/^Environment=TRUST_PROXY=127\.0\.0\.1$/m)
+    expect(loadConfig({ TRUST_PROXY: '127.0.0.1' }).trustProxy).toEqual(['127.0.0.1'])
+  })
+  it('has nginx overwrite every client-address header it proxies', () => {
+    const conf = readFileSync(join(REPO_DIR, 'deploy/nginx-openvibe-games.conf'), 'utf8')
+    const proxies = conf.match(/proxy_pass /g) ?? []
+    expect(proxies.length).toBeGreaterThan(0)
+    for (const header of ['X-Real-IP', 'X-Forwarded-For', 'CF-Connecting-IP']) {
+      const set = conf.match(new RegExp(`proxy_set_header ${header} \\$remote_addr;`, 'g')) ?? []
+      expect(set.length, header).toBe(proxies.length)
+    }
+  })
+})
 
 const originalCwd = process.cwd()
 afterEach(() => process.chdir(originalCwd))

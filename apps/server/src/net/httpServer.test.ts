@@ -9,6 +9,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { ServerMetrics } from '../observability/metrics.js'
 import { createReadiness } from '../observability/readiness.js'
 import { createHttpServer } from './httpServer.js'
+import { createWsTicketStore } from './wsTicket.js'
+import { createGamesActorLimits } from './actorLimits.js'
 import { escapeHtml, notFoundPage } from './notFound.js'
 
 /**
@@ -96,7 +98,10 @@ beforeAll(async () => {
     metrics,
     log,
     mapPath,
-    { key: 'editor-secret', networkAuthUrl: null },
+    // the legacy editor key is gone — the editor requires a Network session. The
+    // test stays a "no Network" server, so the editor routes return 403
+    // for everyone, which is exactly what we want to lock in.
+    { networkAuthUrl: null },
     undefined,
     async () => [{ slot: 0, name: 'Ana', appearance: null }],
     null,
@@ -297,5 +302,47 @@ describe('404 page', () => {
     expect(page).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg">')
     const icon = fileURLToPath(new URL('../../../client/public/favicon.svg', import.meta.url))
     expect(existsSync(icon)).toBe(true)
+  })
+})
+
+describe('/api/ws-ticket is rate limited per address', () => {
+  it('refuses a flood from one address with 429, and spoofed X-Forwarded-For does not help', async () => {
+    const metrics = new ServerMetrics()
+    const limits = createGamesActorLimits({})
+    const tickets = createWsTicketStore()
+    const server = createHttpServer(
+      null,
+      metrics,
+      log,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      null,
+      {
+        handle: () => false,
+        limits,
+        // Trust nothing: forwarded headers must not create fresh buckets.
+        clientAddress: (req) => req.socket.remoteAddress ?? 'unknown',
+      },
+      tickets,
+    )
+    const ticketPort = await listen(server)
+    try {
+      // The per-address cap is 60/minute: the first 60 succeed, the next is 429.
+      let status = 0
+      for (let i = 0; i < 61; i++) {
+        const r = await send('/api/ws-ticket', {
+          to: ticketPort,
+          method: 'POST',
+          headers: { 'x-guest-token': 'guesttoken1234', 'x-forwarded-for': `203.0.113.${i}` },
+        })
+        status = r.status
+        if (status === 429) break
+      }
+      expect(status).toBe(429)
+    } finally {
+      server.close()
+    }
   })
 })

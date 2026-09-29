@@ -1,4 +1,5 @@
 import { MIGRATIONS_DIR } from '@openvibe/persistence'
+import { parseProxyTrust, type ProxyTrust } from './net/clientAddress.js'
 
 export interface DbConfig {
   /** Pooled PostgreSQL URL (through PgBouncer); null in development, where an embedded PGlite is used. */
@@ -27,7 +28,15 @@ export interface ServerConfig {
   /** Directory of built client assets to serve, or null for API/WS only. */
   staticDir: string | null
   mapPath: string
-  editorKey: string | null
+  /**
+   * TRUST_PROXY: which proxies may set the client-address headers. null = none
+   * (the TCP peer is the client). 'all' = the server is only reachable through
+   * the proxy. Otherwise a list of trusted proxy IPs/CIDRs. Forwarded headers
+   * are ignored from any other peer, so they cannot be spoofed into fresh
+   * rate-limit buckets.
+   */
+  trustProxy: ProxyTrust | null
+  /** openvibe.network /api/auth/me (the editor authorizes through it; the legacy key is gone). */
   networkAuthUrl: string | null
   /** openvibe.network OAuth client (SSO); null until the secret is configured. */
   oauth: {
@@ -122,8 +131,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     },
     staticDir: env.STATIC_DIR ?? null,
     mapPath: env.MAP_PATH ?? 'data/map.json',
-    /** Fallback admin secret for the map editor (until openvibe.network SSO). */
-    editorKey: env.EDITOR_KEY ?? null,
+    trustProxy: parseProxyTrust(env.TRUST_PROXY),
     /** openvibe.network auth endpoint; when set, editor tokens validate there. */
     networkAuthUrl:
       env.OV_NETWORK_AUTH_URL ??

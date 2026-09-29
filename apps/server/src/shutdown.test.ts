@@ -41,6 +41,16 @@ async function refused(port: number): Promise<boolean> {
   }
 }
 
+async function fetchTicket(httpBase: string, guest = 'shutdown-guest-token'): Promise<string> {
+  const resp = await fetch(`${httpBase}/api/ws-ticket`, {
+    method: 'POST',
+    headers: { 'x-guest-token': guest },
+  })
+  if (!resp.ok) throw new Error(`ws-ticket failed: ${resp.status}`)
+  const { ticket } = (await resp.json()) as { ticket: string }
+  return ticket
+}
+
 function openSocket(
   url: string,
 ): Promise<{ ws: WebSocket; closed: Promise<{ code: number; reason: string }> }> {
@@ -99,7 +109,10 @@ describe('SIGTERM', () => {
     }
     expect(out).toContain('"events on"')
 
-    const player = await openSocket(`ws://127.0.0.1:${port}/ws`)
+    const playerTicket = await fetchTicket(`http://127.0.0.1:${port}`)
+    const player = await openSocket(
+      `ws://127.0.0.1:${port}/ws?ticket=${encodeURIComponent(playerTicket)}`,
+    )
     const editor = await openSocket(`ws://127.0.0.1:${port}/editor-ws`)
 
     // A request in flight: POST /internal/events reads its whole body before it answers.

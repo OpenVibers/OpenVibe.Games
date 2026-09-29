@@ -15,13 +15,16 @@
  *   pnpm test:collab
  */
 import { spawn } from 'node:child_process'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type Browser, type JSHandle, type Page } from 'playwright'
 
 const PORT = 18271
-const KEY = 'test-admin-key'
+const TEST_TOKEN = 'test-admin-token'
+const KEY = TEST_TOKEN // back-compat alias used below
 const dir = mkdtempSync(join(tmpdir(), 'openvibe-collab-'))
 const mapPath = join(dir, 'map.json')
 
@@ -60,6 +63,34 @@ writeFileSync(
   }),
 )
 
+/** Mock openvibe.network: accepts the test token, returns staff.games.manage. */
+const mockNet = createServer((req, res) => {
+  if (req.url === '/api/auth/me') {
+    const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]
+    if (bearer !== TEST_TOKEN) {
+      res.writeHead(401, { 'content-type': 'application/json' })
+      res.end('{"error":"forbidden"}')
+      return
+    }
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        user: {
+          id: 1,
+          username: 'admin',
+          role: 'admin',
+          subject_id: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0',
+        },
+      }),
+    )
+    return
+  }
+  res.writeHead(404)
+  res.end()
+})
+await new Promise<void>((r) => mockNet.listen(0, '127.0.0.1', r))
+const mockNetUrl = `http://127.0.0.1:${(mockNet.address() as AddressInfo).port}/api/auth/me`
+
 const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
   env: {
     ...process.env,
@@ -70,7 +101,7 @@ const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main
     DATABASE_DIRECT_URL: '',
     STATIC_DIR: 'apps/client/dist',
     MAP_PATH: mapPath,
-    EDITOR_KEY: KEY,
+    OV_NETWORK_AUTH_URL: mockNetUrl,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
@@ -135,10 +166,12 @@ async function openEditor(browser: Browser, name: string): Promise<Page> {
   const context = await browser.newContext({ viewport: { width: 1280, height: 820 } })
   const page = await context.newPage()
   page.on('pageerror', (e) => console.log(`[${name} pageerror]`, String(e).slice(0, 300)))
-  // Seed the credential and name before boot, so `hello` goes out on connect.
+  // Seed the SSO credential (the legacy editor key is gone) and name before boot, so
+  // the editor's WebSocket hello authorizes as a Network staff session.
   await page.addInitScript(
     ([k, n]) => {
-      localStorage.setItem('openvibe.editorkey', k as string)
+      localStorage.setItem('ovg_sso', k as string)
+      document.cookie = `ovg_sso=${encodeURIComponent(k as string)}; Path=/; SameSite=Lax`
       localStorage.setItem('openvibe.editor.name', n as string)
     },
     [KEY, name],

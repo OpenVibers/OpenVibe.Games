@@ -132,13 +132,6 @@ export function buildShell(mount: HTMLElement, canvas: HTMLCanvasElement): Shell
   spaceBtn.title = 'Transform space (World / Local)'
 
   const right = el('div', 'toolbar-right')
-  const key = el('input', undefined, 'key')
-  key.type = 'password'
-  key.placeholder = 'admin token'
-  key.title =
-    'Optional override. Signed in with OpenVibe on /play as admin/owner? ' +
-    'The editor uses that session automatically.'
-  key.size = 14
   const save = el('button', 'primary', 'save')
   save.type = 'button'
   save.textContent = '💾 Save map (applies live)'
@@ -156,7 +149,7 @@ export function buildShell(mount: HTMLElement, canvas: HTMLCanvasElement): Shell
   settings.type = 'button'
   settings.textContent = '⚙'
   settings.title = 'Keyboard shortcuts'
-  right.append(key, save, exportBtn, importLabel, settings)
+  right.append(save, exportBtn, importLabel, settings)
   toolbar.append(tools, gizmoModes, spaceBtn, right)
 
   // ── Columns ─────────────────────────────────────────────────────────

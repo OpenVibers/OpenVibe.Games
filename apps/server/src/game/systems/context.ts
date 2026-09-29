@@ -4,6 +4,7 @@ import type { BodyId } from '@openvibe/physics'
 import type { ServerMessage, ServerStats } from '@openvibe/protocol'
 import type { EntityId, Logger, PlayerId } from '@openvibe/shared'
 import type { ServerConfig } from '../../config.js'
+import type { TicketIdentity } from '../../net/wsTicket.js'
 import type { ModRuntime } from '../../mods/runtime.js'
 import type { ServerMetrics } from '../../observability/metrics.js'
 import type { GameEventRecorder } from '../../platform/gameEvents.js'
@@ -29,11 +30,30 @@ import type { SocialSystem } from './social.js'
 import type { VehicleSystem } from './vehicles.js'
 import type { WorldEventSystem } from './worldEvents.js'
 
-/** A network connection as the game sees it — transport-agnostic. */
+/**
+ * A network connection as the game sees it — transport-agnostic.
+ *
+ * `identity` is the resolved identity stamped on the socket by the WS
+ * upgrade handler after it consumed the ticket. The session system reads
+ * this and ignores `msg.auth` (ADR-0007 netcode + decision 8).
+ */
 export interface GameConnection {
   send(text: string): void
   close(code: number, reason: string): void
+  /**
+   * Either a Network subject (signed-in caller) or a hashed guest key
+   * (local guest). Exactly one per connection; absent only when the
+   * upgrade handler bypassed ticket validation, which the session system
+   * treats as a connection error.
+   */
+  identity?: ResolvedConnectionIdentity
 }
+
+/**
+ * The identity bound to a WS connection at the upgrade: exactly the ticket
+ * identity, so the two shapes cannot drift.
+ */
+export type ResolvedConnectionIdentity = TicketIdentity
 
 /**
  * Platform adapters the server drives (roadmap Wave 12). Both optional: the

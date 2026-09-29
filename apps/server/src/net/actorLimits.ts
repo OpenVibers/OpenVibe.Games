@@ -41,6 +41,13 @@ export function createGamesActorLimits(
   const asset = limiter('games.map.asset', { minute: 60, hour: 1200 })
   // Mod installs, grants and revokes each ask OpenVibe.Network first.
   const modWrite = limiter('games.mod.write', { minute: 30, hour: 300 })
+  // Ticket minting, counted per address: without this an unauthenticated
+  // caller could mint tickets faster than the store sweeps them (ADR-0007
+  // decision 8; the store is also capped and swept on issue).
+  const ticket = limiter('games.ws.ticket', { minute: 60, hour: 1200 })
+  // WebSocket upgrades, counted per address BEFORE the ticket is consumed: a
+  // flood must not get to spend tickets or hold sockets (ADR-0007 decision 8).
+  const upgrade = limiter('games.ws.upgrade', { minute: 90, hour: 1800 })
   const run =
     (mw: ReturnType<typeof limiter>) =>
     (req: IncomingMessage, res: ServerResponse, actor: string): Promise<boolean> =>
@@ -57,6 +64,8 @@ export function createGamesActorLimits(
     mapSave: run(mapSave),
     asset: run(asset),
     modWrite: run(modWrite),
+    ticket: run(ticket),
+    upgrade: run(upgrade),
   }
 }
 

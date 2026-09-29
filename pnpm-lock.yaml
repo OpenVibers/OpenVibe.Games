@@ -114,8 +114,8 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
       openvibe-contracts:
-        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.71.0
-        version: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.71.0
+        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.77.0
+        version: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.77.0
       openvibe-sdk:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.22.0
         version: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.22.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
@@ -2035,12 +2035,12 @@ packages:
         integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==,
       }
 
-  openvibe-contracts@https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.71.0:
+  openvibe-contracts@https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.77.0:
     resolution:
       {
-        tarball: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.71.0,
+        tarball: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.77.0,
       }
-    version: 0.71.0
+    version: 0.77.0
     engines: { node: '>=20' }
     hasBin: true
 
@@ -3751,7 +3751,7 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
-  openvibe-contracts@https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.71.0:
+  openvibe-contracts@https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.77.0:
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)

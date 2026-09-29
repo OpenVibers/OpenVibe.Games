@@ -71,7 +71,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
   // the last place two authorities described the same map.
   const serialize = (): MapFileV2 => doc.serialize()
 
-  const editorKey = editorToken
+  const tokenOf = editorToken
 
   /**
    * Masks stay canvases while editing and become content-addressed assets on
@@ -91,7 +91,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
       try {
         const resp = await fetch('/api/map-assets', {
           method: 'POST',
-          headers: { 'x-editor-key': editorKey() },
+          headers: { authorization: `Bearer ${tokenOf()}` },
           body: blob,
         })
         if (!resp.ok) continue
@@ -110,11 +110,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
   }
 
   const save = async (): Promise<void> => {
-    const key = editorKey()
-    // Persist only a hand-typed override token — never the SSO session,
-    // which lives in ovg_sso and is resolved fresh on every request.
-    const manual = (document.getElementById('key') as HTMLInputElement | null)?.value.trim() ?? ''
-    localStorage.setItem('openvibe.editorkey', manual)
+    const token = tokenOf()
     setMessage('saving…')
     await uploadDirtyMasks()
     const file = serialize()
@@ -124,7 +120,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-editor-key': key,
+          authorization: `Bearer ${token}`,
           // The revision we last loaded: the server 409s a stale save rather
           // than letting it overwrite another admin's work.
           ...(baseRevision ? { 'if-match': baseRevision } : {}),

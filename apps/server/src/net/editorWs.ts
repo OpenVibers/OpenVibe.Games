@@ -13,6 +13,12 @@ import { LockManager } from './editorLocks.js'
 import type { EditorAuth } from './httpServer.js'
 
 /**
+ * The shared-secret editor-key path is gone (ADR-0007 "Deleted"). The editor
+ * uses a Network session with `staff.games.manage`; the WS handshake reads
+ * the same bearer token the editor's HTTP saves use.
+ */
+
+/**
  * Live collaboration for the map editor (`/editor-ws`).
  *
  * After an authorized `hello`, each editor streams its camera pose and its
@@ -127,7 +133,7 @@ export function attachEditorWs(http: Server, auth: EditorAuth, log: Logger): Edi
           ws.close(4001, 'hello_first')
           return
         }
-        void authorizeEditor(auth, msg.key).then((ok) => {
+        void authorizeEditor(auth, msg.auth).then((ok) => {
           if (!ok) {
             ws.close(4003, 'not_authorized')
             return
@@ -250,10 +256,12 @@ export function attachEditorWs(http: Server, auth: EditorAuth, log: Logger): Edi
   }
 }
 
-async function authorizeEditor(auth: EditorAuth, key: string): Promise<boolean> {
-  if (auth.networkAuthUrl) {
-    const user = await resolveNetworkUser(auth.networkAuthUrl, key)
-    return user !== null && canEditMap(user.rank)
-  }
-  return auth.key !== null && key === auth.key
+/**
+ * The editor WS authorizes exactly like the HTTP save: a Network bearer
+ * token whose session is staff.games.manage. No key, no fallback.
+ */
+async function authorizeEditor(auth: EditorAuth, token: string): Promise<boolean> {
+  if (!auth.networkAuthUrl) return false
+  const user = await resolveNetworkUser(auth.networkAuthUrl, token)
+  return user !== null && canEditMap(user.rank)
 }

@@ -764,7 +764,7 @@ export async function bootEditor(): Promise<void> {
     doc,
     history,
     modelCache,
-    editorKey: editorToken,
+    editorToken,
     onAssetsChanged: () => {
       registerCustomTextures(doc.textures() as MapTextureEntry[])
       ui.refreshAll()
@@ -990,18 +990,13 @@ export async function bootEditor(): Promise<void> {
 
   ui.refreshAll()
 
-  // Seed the credential from the last session so collaboration connects on
-  // boot rather than only after someone retypes the token. Changing it
-  // reconnects deliberately — the socket must not stay authenticated as
-  // whoever was there before. With a OpenVibe SSO session present the
-  // token box is only an override, and says so.
-  const keyInput = document.getElementById('key') as HTMLInputElement
-  keyInput.value = localStorage.getItem('openvibe.editorkey') ?? ''
-  if (ssoToken()) keyInput.placeholder = 'OpenVibe SSO ✓'
-  keyInput.addEventListener('change', () => {
-    localStorage.setItem('openvibe.editorkey', keyInput.value.trim())
-    connection.connect()
-  })
+  // The editor authenticates with the signed-in Network session (ovg_sso).
+  // There is no key prompt to read: the page boots, picks the bearer
+  // cookie, and connects. A sign-out / sign-in flow elsewhere in the app
+  // reloads the editor with the new token.
+  if (!ssoToken()) {
+    ui.setMessage('Sign in with OpenVibe (top right) before editing')
+  }
   connection.connect()
   // Offer any unsaved work from a previous session. Never automatic: a
   // crash recovering itself into everyone else's world would be worse than

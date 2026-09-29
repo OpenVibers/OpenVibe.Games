@@ -29,7 +29,7 @@ export interface AssetControllerOptions {
   doc: EditorDocument
   history: CommandHistory<EditorDocument>
   modelCache: ModelCache
-  editorKey: () => string
+  editorToken: () => string
   /** Re-register custom textures with the renderer after a change. */
   onAssetsChanged: () => void
   setMessage: (m: string) => void
@@ -122,7 +122,7 @@ export class AssetController {
     try {
       const resp = await fetch('/api/map-assets', {
         method: 'POST',
-        headers: { 'x-editor-key': this.opts.editorKey() },
+        headers: { authorization: `Bearer ${this.opts.editorToken()}` },
         body: blob,
       })
       if (resp.status === 403) return 'forbidden'

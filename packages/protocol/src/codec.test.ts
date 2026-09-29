@@ -6,14 +6,9 @@ import { defaultAppearance } from './appearance.js'
 describe('protocol codec', () => {
   it('roundtrips every client message kind', () => {
     const messages: ClientMessage[] = [
-      {
-        t: 'hello',
-        v: 1,
-        token: 'abcdefgh12345678',
-        slot: 0,
-        name: 'Tester',
-        appearance: defaultAppearance(),
-      },
+      // hello carries no identity field: authentication happens at the
+      // WebSocket upgrade (ADR-0007 decision 8).
+      { t: 'hello', v: 1, slot: 0, name: 'Tester', appearance: defaultAppearance() },
       { t: 'input', seq: 42, moveX: 1, moveZ: -0.5, yaw: 1.2, pitch: -0.3, buttons: 5 },
       { t: 'use', target: 'abc123' },
       { t: 'craft', recipe: 'craft_wooden_crate' },
@@ -45,6 +40,22 @@ describe('protocol codec', () => {
         '{"t":"input","seq":1,"moveX":5,"moveZ":0,"yaw":0,"pitch":0,"buttons":0}',
       ),
     ).toBeNull()
+  })
+
+  it('ignores an identity field in hello (the upgrade is the only authn gate)', () => {
+    const decoded = decodeClientMessage(
+      JSON.stringify({
+        t: 'hello',
+        v: 1,
+        token: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0',
+        slot: 0,
+        name: 'Tester',
+        appearance: defaultAppearance(),
+      }),
+    )
+    expect(decoded).not.toBeNull()
+    // The smuggled account key never becomes part of the message.
+    expect(decoded).not.toHaveProperty('token')
   })
 
   it('rejects oversized strings', () => {

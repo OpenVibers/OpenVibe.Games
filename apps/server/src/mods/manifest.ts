@@ -1,20 +1,21 @@
 /**
- * Mod manifest validation (mods/mod-manifest.v1, ADR-013).
+ * Mod manifest validation (mods.mod-manifest@1.1.0, ADR-013).
  *
- * Structure is checked against the JSON Schema itself (Ajv, draft 2020-12,
- * with the SubjectRef and MediaRef contracts from openvibe-contracts), so the
- * schema proposed to Contracts and the one Games enforces are the same
- * document. `checkForGames` adds what only this runtime can judge.
+ * Structure is checked against the JSON Schema in the INSTALLED
+ * openvibe-contracts package, so the schema Games enforces and the one
+ * released on Contracts can never drift (ADR decision 12). `checkForGames`
+ * adds what only this runtime can judge.
  */
 import { createRequire } from 'node:module'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import { satisfiesRange } from 'openvibe-sdk/core'
-import { MOD_MANIFEST_SCHEMA } from './manifestSchema.js'
 
 interface ContractsModule {
   schema(ref: string): Record<string, unknown>
 }
 const contracts = createRequire(import.meta.url)('openvibe-contracts') as ContractsModule
+
+export const MOD_MANIFEST_REF = 'mods.mod-manifest@1'
 
 export interface ModManifest {
   id: string
@@ -39,11 +40,11 @@ export interface ModManifest {
 const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false })
 ajv.addSchema(contracts.schema('identity.subject-ref@1'))
 ajv.addSchema(contracts.schema('media.media-ref@1'))
-const validateSchema = ajv.compile(MOD_MANIFEST_SCHEMA)
+const validateSchema = ajv.compile(contracts.schema(MOD_MANIFEST_REF))
 
 export type Validation<T> = { ok: true; value: T } | { ok: false; errors: string[] }
 
-/** Structural validation against mods/mod-manifest.v1. */
+/** Structural validation against mods.mod-manifest@1.1.0. */
 export function validateManifest(value: unknown): Validation<ModManifest> {
   if (validateSchema(value)) return { ok: true, value: value as unknown as ModManifest }
   return {

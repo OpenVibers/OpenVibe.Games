@@ -27,7 +27,9 @@ import {
 import { MAX_MAP_BYTES, loadMap, saveMap } from './mapStore.js'
 import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore.js'
 import type { GamesActorLimits } from './actorLimits.js'
+import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
+import { handleWsTicketRequest, type WsTicketStore } from './wsTicket.js'
 import type { MapFileV2 } from '@openvibe/content'
 
 /**
@@ -55,9 +57,12 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
 }
 
+/**
+ * Authorization for the editor HTTP routes. Owner rule (ADR-0007 deleted
+ * the shared secret): a Network staff session with `staff.games.manage` is
+ * the ONLY way to edit the map. No legacy fallback remains.
+ */
 export interface EditorAuth {
-  /** Shared-secret fallback. */
-  key: string | null
   /** openvibe.network session endpoint; token validated there when configured. */
   networkAuthUrl: string | null
 }
@@ -75,17 +80,17 @@ export interface OAuthConfig {
 }
 
 /**
- * Validates a map-editor token: against openvibe.network when configured (the
- * endpoint must answer a JSON body with an admin-ish rank for the given
- * bearer token), else against the EDITOR_KEY shared secret.
+ * Validates an editor request: the bearer token MUST be a Network session
+ * whose rank resolves to owner or admin (`staff.games.manage`, ADR-022).
+ * The shared-secret editor key is gone (ADR-0007 "Deleted"), and no
+ * local-only fallback remains — a developer without Network configured
+ * must run openvibe.network to use the editor.
  */
 async function editorAuthorized(auth: EditorAuth, token: string | undefined): Promise<boolean> {
   if (!token) return false
-  if (auth.networkAuthUrl) {
-    const user = await resolveNetworkUser(auth.networkAuthUrl, token)
-    return user !== null && canEditMap(user.rank)
-  }
-  return auth.key !== null && token === auth.key
+  if (!auth.networkAuthUrl) return false
+  const user = await resolveNetworkUser(auth.networkAuthUrl, token)
+  return user !== null && canEditMap(user.rank)
 }
 
 /** Reads a small request body as utf8, or null when it exceeds `limit`. */
@@ -113,8 +118,10 @@ export interface HttpPlatformHooks {
   handle?: (req: IncomingMessage, res: ServerResponse) => boolean
   /** A map asset was stored (or found already stored) locally. */
   onAssetStored?: (asset: { hash: string; url: string; bytes: number; mime: string }) => void
-  /** Per-actor limits on editor saves and uploads (./actorLimits.ts); absent in tests that do not need them. */
+  /** Per-actor limits on editor saves, uploads, the mods API and ticket minting (./actorLimits.ts); absent in tests that do not need them. */
   limits?: GamesActorLimits
+  /** Trusted-proxy-aware client address (./clientAddress.ts); the socket address when absent. */
+  clientAddress?: (req: IncomingMessage) => string
 }
 
 /** The token endpoint's answer, for both the code and the jwt-bearer grant. */
@@ -140,6 +147,7 @@ export function createHttpServer(
   ) => Promise<{ slot: number; name: string; appearance: unknown }[]>,
   oauth?: OAuthConfig | null,
   platform?: HttpPlatformHooks,
+  tickets?: WsTicketStore,
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
@@ -164,6 +172,30 @@ export function createHttpServer(
     // /map.json, /api, /auth, websockets — behaves identically on both.
     const playHost = (req.headers.host ?? '').toLowerCase().startsWith('play.')
     const notFound = () => sendNotFound(req, res, url, playHost ? playLinks : apexLinks)
+    if (tickets && url === '/api/ws-ticket') {
+      const ticketLimits = platform?.limits
+      const address =
+        platform?.clientAddress ?? ((r: IncomingMessage) => resolveClientAddress(r, null))
+      void (async () => {
+        // Per-address limit BEFORE any identity is resolved or ticket minted:
+        // an unauthenticated caller cannot flood the store.
+        if (ticketLimits && !(await ticketLimits.ticket(req, res, `ip:${address(req)}`))) return
+        await handleWsTicketRequest(req, res, {
+          tickets,
+          networkAuthUrl: editorAuth?.networkAuthUrl ?? null,
+          log,
+        })
+      })().catch((err: unknown) => {
+        log.warn('ws-ticket request failed', {
+          error: err instanceof Error ? err.message : String(err),
+        })
+        if (!res.headersSent) {
+          res.writeHead(503, { 'content-type': 'application/json' })
+          res.end('{"error":"ticket_unavailable"}')
+        }
+      })
+      return
+    }
     if (platform?.handle?.(req, res)) return
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
@@ -179,7 +211,7 @@ export function createHttpServer(
       return
     }
     if (url === '/api/map' && req.method === 'POST' && mapPath && editorAuth) {
-      const token = (req.headers['x-editor-key'] as string | undefined) ?? undefined
+      const token = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]
       void editorAuthorized(editorAuth, token).then(async (ok) => {
         if (!ok) {
           log.warn('editor save rejected', {})
@@ -251,7 +283,7 @@ export function createHttpServer(
     // artifact instead of being base64-embedded into map.json.
     // Generic content-addressed upload (textures, paint masks, models).
     if (url === '/api/map-assets' && req.method === 'POST' && mapPath && editorAuth) {
-      const token = (req.headers['x-editor-key'] as string | undefined) ?? undefined
+      const token = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]
       void editorAuthorized(editorAuth, token).then(async (authed) => {
         if (!authed) {
           res.writeHead(403, { 'content-type': 'application/json' })

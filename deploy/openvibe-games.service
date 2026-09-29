@@ -1,6 +1,6 @@
 # OpenVibe.Games — authoritative game server (Scraplandia) + portal static host.
 # Install: cp deploy/openvibe-games.service /etc/systemd/system/ && systemctl daemon-reload
-# Env secrets (OV_OAUTH_CLIENT_SECRET, EDITOR_KEY, ...) live in /etc/openvibe/games.env (0600).
+# Env secrets (OV_OAUTH_CLIENT_SECRET, ...) live in /etc/openvibe/games.env (0600).
 # Platform (optional, see README "Platform integration"): OV_NETWORK_INTERNAL_URL=http://127.0.0.1:4000,
 # EVENTS_URL=http://127.0.0.1:4300, MEDIA_URL=http://127.0.0.1:4100 (MEDIA_NAMESPACE=games) in the same file.
 [Unit]
@@ -17,6 +17,10 @@ ExecStart=/usr/bin/env node --import tsx src/main.ts
 Environment=NODE_ENV=production
 Environment=PORT=8000
 Environment=HOST=127.0.0.1
+# nginx on this host is the only way in (HOST=127.0.0.1) and overwrites X-Real-IP, X-Forwarded-For and
+# CF-Connecting-IP with its Cloudflare-verified $remote_addr, so the per-address limits may trust it.
+# Without this every request resolves to 127.0.0.1 and the limits become one global bucket.
+Environment=TRUST_PROXY=127.0.0.1
 Environment=GAMES_PLACE_ID=scraplandia
 Environment=GAMES_MIGRATIONS_DIR=/opt/openvibe.games/packages/persistence/migrations
 # DATABASE_URL (pooled), DATABASE_DIRECT_URL (owner role, for migrations) and VALKEY_URL live in the

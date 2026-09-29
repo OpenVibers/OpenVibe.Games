@@ -10,10 +10,6 @@ import { AppearanceSchema } from '../appearance.js'
 export const ClientHelloSchema = z.object({
   t: z.literal('hello'),
   v: z.number().int(),
-  /** Persistent identity token (localStorage). Replaced by real auth later. */
-  token: z.string().min(8).max(64),
-  /** openvibe.network session token (a JWT — they run long); absent for guests. */
-  auth: z.string().min(1).max(2048).optional(),
   /** Character slot under this account (MMO-style, 3 max). */
   slot: z.number().int().min(0).max(2).default(0),
   name: z.string().min(1).max(24),

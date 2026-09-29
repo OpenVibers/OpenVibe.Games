@@ -116,7 +116,6 @@ describe('staff authorization', () => {
     const authorize = createStaffAuthorizer({
       networkAuthUrl: null,
       networkUrl: platform.origins.network,
-      editorKey: null,
       verifyPrincipal: (t) =>
         verifyUserToken(t, {
           jwks: platform.keys.jwks,
@@ -149,19 +148,18 @@ describe('staff authorization', () => {
     expect(await authorize(req('not-a-token'))).toBeNull()
   })
 
-  it('falls back to the editor key only without a Network', async () => {
+  it('refuses every credential without Network configured', async () => {
+    // The legacy shared secret is gone: with no Network endpoint and no
+    // Authorization bearer, every request is anonymous and refused.
     const authorize = createStaffAuthorizer({
       networkAuthUrl: null,
       networkUrl: 'http://x',
-      editorKey: 'k3y',
     })
-    const withKey = {
-      headers: { 'x-editor-key': 'k3y' },
-    } as unknown as IncomingMessage
-    expect(await authorize(withKey)).toMatchObject({ audit: 'editor-key' })
-    const wrong = {
-      headers: { 'x-editor-key': 'nope' },
-    } as unknown as IncomingMessage
-    expect(await authorize(wrong)).toBeNull()
+    expect(
+      await authorize({
+        headers: { authorization: 'Bearer anything' },
+      } as unknown as IncomingMessage),
+    ).toBeNull()
+    expect(await authorize({ headers: {} } as unknown as IncomingMessage)).toBeNull()
   })
 })

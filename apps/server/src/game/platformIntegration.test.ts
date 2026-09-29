@@ -4,7 +4,7 @@
  * protocol-level connections), across a restart:
  *
  *  - a signed-in player is keyed by the canonical subject;
- *  - a guest presenting an account key as its token is refused;
+ *  - a session that bypasses the upgrade gate (no stamped identity) is refused;
  *  - a mod's props enter the world through the runtime seam, a denied
  *    capability never takes effect, and a revoked mod's props are gone on
  *    the next tick;
@@ -33,6 +33,7 @@ import { createMockPlatform } from 'openvibe-sdk/testing'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
 import { loadHavok } from '../havokLoader.js'
+import { hashGuestKey } from '../net/guestIdentity.js'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP } from '../mods/contentPack.js'
 import { ModRegistry, type ModActor } from '../mods/registry.js'
 import { ModRuntime } from '../mods/runtime.js'
@@ -129,18 +130,22 @@ async function boot(platform: ReturnType<typeof createMockPlatform>): Promise<Bo
 function connect(game: GameServer) {
   const inbox: ServerMessage[] = []
   let closed: { code: number; reason: string } | null = null
+  // The session system now requires an identity stamped on the connection
+  // (the WS upgrade handler is the only path that sets it). The test
+  // harness calls `game.onMessage` directly, so we mirror what the
+  // upgrade would have done: peek at the next hello to decide subject vs
+  // guest, then stamp the conn just before invoking the message handler.
   const conn: GameConnection = {
     send: (text) => inbox.push(JSON.parse(text) as ServerMessage),
     close: (code, reason) => {
       closed = { code, reason }
     },
   }
-  const hello = async (token: string, auth?: string) => {
+  const sendHello = async (): Promise<void> => {
+    // hello carries no identity field (ADR-0007 decision 8).
     const msg = {
       t: 'hello',
       v: PROTOCOL_VERSION,
-      token,
-      ...(auth ? { auth } : {}),
       slot: 0,
       name: 'Ana',
       appearance: defaultAppearance(),
@@ -149,9 +154,24 @@ function connect(game: GameServer) {
     for (let i = 0; i < 100 && !closed && !inbox.some((m) => m.t === 'welcome'); i++) {
       await new Promise((r) => setTimeout(r, 5))
     }
+  }
+  const hello = async (token: string, auth?: string) => {
+    // Mirror what the upgrade gate stamps: a subject ticket (carrying the
+    // hashed guest key as the adoption hint, as POST /api/ws-ticket does) or
+    // a guest ticket bound to sha256hex(raw token) — never hello's fields.
+    conn.identity = auth
+      ? { subject: SUBJECT, rank: 'admin', authIat: null, adoptGuestKeyHash: hashGuestKey(token) }
+      : { guestKeyHash: hashGuestKey(token) }
+    await sendHello()
+    delete conn.identity
     return { welcome: inbox.find((m) => m.t === 'welcome'), closed: closed as typeof closed }
   }
-  return { conn, inbox, hello }
+  /** A raw hello on a connection the transport never authenticated. */
+  const helloWithoutIdentity = async () => {
+    await sendHello()
+    return { welcome: inbox.find((m) => m.t === 'welcome'), closed: closed as typeof closed }
+  }
+  return { conn, inbox, hello, helloWithoutIdentity }
 }
 
 const propsOwnedBy = (world: GameWorld, owner: string) =>
@@ -172,11 +192,14 @@ describe('Games on platform identity, events and mods (real server, restart)', (
   it('runs identity, mods and events against the live world', async () => {
     const a = await boot(platform)
 
-    // A guest cannot claim an account key as its token.
-    const intruder = connect(a.game)
-    const refused = await intruder.hello(SUBJECT)
+    // The upgrade gate is the only identity source (ADR-0007 decision 8):
+    // a hello that arrives on a connection the transport never stamped is
+    // refused before any world state is touched. (Account-shaped guest
+    // tokens are refused even earlier, at /api/ws-ticket.)
+    const unauthenticated = connect(a.game)
+    const refused = await unauthenticated.helloWithoutIdentity()
     expect(refused.welcome).toBeUndefined()
-    expect(refused.closed).toEqual({ code: 4007, reason: 'invalid_guest_token' })
+    expect(refused.closed).toEqual({ code: 4012, reason: 'no_identity' })
 
     // The signed-in player is keyed by the canonical subject.
     const ana = connect(a.game)

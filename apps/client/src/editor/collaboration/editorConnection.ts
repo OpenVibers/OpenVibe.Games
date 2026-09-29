@@ -156,7 +156,7 @@ export function createEditorConnection(opts: EditorConnectionOptions): EditorCon
     socket = ws
     ws.addEventListener('open', () => {
       open = true
-      send({ t: 'hello', key, name: opts.nameOf() })
+      send({ t: 'hello', auth: key, name: opts.nameOf() })
       startTimers()
     })
     ws.addEventListener('message', (e) => onMessage(String(e.data)))

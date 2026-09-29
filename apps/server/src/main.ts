@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import type { IncomingMessage } from 'node:http'
 import { dirname, join } from 'node:path'
 import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/events'
 import { createValkey } from 'openvibe-sdk/valkey'
@@ -22,7 +23,8 @@ import {
 } from './net/gracefulStop.js'
 import { createHttpServer } from './net/httpServer.js'
 import { resolveNetworkUser } from './net/networkAuth.js'
-import { attachWebSocket } from './net/wsTransport.js'
+import { acceptUpgrade, attachWebSocket } from './net/wsTransport.js'
+import { resolveClientAddress } from './net/clientAddress.js'
 import { ServerMetrics } from './observability/metrics.js'
 import { createReadiness } from './observability/readiness.js'
 import { buildRelease, releaseHandler } from './observability/release.js'
@@ -49,6 +51,7 @@ import {
   ensureRevocationSubscription,
 } from './platform/revocationEvents.js'
 import { createStaffAuthorizer } from './platform/staffAuth.js'
+import { createWsTicketStore } from './net/wsTicket.js'
 
 /**
  * Dedicated authoritative server entry point.
@@ -184,7 +187,6 @@ async function main(): Promise<void> {
   const authorizeStaff = createStaffAuthorizer({
     networkAuthUrl: config.networkAuthUrl,
     networkUrl: config.platform.networkUrl,
-    editorKey: config.editorKey,
   })
   const pruneTimer = setInterval(() => void outbox?.prune(), 6 * 3600 * 1000)
   pruneTimer.unref()
@@ -280,13 +282,17 @@ async function main(): Promise<void> {
     onLimited: (name, actor) => log.warn('rate limited', { limit: name, actor }),
     valkey,
   })
+  const ticketStore = createWsTicketStore({ valkey })
+  // One trusted-proxy-aware address resolution for the upgrade limit, the
+  // ticket limit and logs (config.TRUST_PROXY; the socket address otherwise).
+  const clientAddress = (req: IncomingMessage): string =>
+    resolveClientAddress(req, config.trustProxy)
   const http = createHttpServer(
     config.staticDir,
     metrics,
     log.child({ system: 'http' }),
     config.mapPath,
     {
-      key: config.editorKey,
       networkAuthUrl: config.networkAuthUrl,
     },
     // LIVE map apply. Receives the validated v2 DOCUMENT, not a JSON string
@@ -393,15 +399,22 @@ async function main(): Promise<void> {
       },
       onAssetStored: (asset) => mirror?.enqueue(asset),
       limits: actorLimits,
+      clientAddress,
     },
+    ticketStore,
   )
   const drainer = httpDrainer(http)
   world.reconcileMapNodes()
   world.reconcileMapProps()
-  const gameWss = attachWebSocket(http, game, log.child({ system: 'ws' }))
+  const gameWss = attachWebSocket(http, game, {
+    tickets: ticketStore,
+    upgradeLimits: actorLimits,
+    clientAddress,
+    log: log.child({ system: 'ws' }),
+  })
   const editors = attachEditorWs(
     http,
-    { key: config.editorKey, networkAuthUrl: config.networkAuthUrl },
+    { networkAuthUrl: config.networkAuthUrl },
     log.child({ system: 'editor-ws' }),
   )
   http.on('upgrade', (req, socket, head) => {
@@ -410,7 +423,26 @@ async function main(): Promise<void> {
       // Stopping: no new sessions (the client retries after the restart).
       socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nRetry-After: 5\r\n\r\n')
     } else if (path === '/ws') {
-      gameWss.handleUpgrade(req, socket, head, (ws) => gameWss.emit('connection', ws, req))
+      // Authenticate at the upgrade: validate-and-consume the ticket before
+      // ws.handleUpgrade runs (ADR-0007 netcode + decision 8).
+      void acceptUpgrade(
+        ticketStore,
+        actorLimits,
+        log.child({ system: 'ws-upgrade' }),
+        req,
+        socket,
+        clientAddress,
+      )
+        .then((ok) => {
+          if (!ok) return
+          gameWss.handleUpgrade(req, socket, head, (ws) => gameWss.emit('connection', ws, req))
+        })
+        .catch((err: unknown) => {
+          // A failure here must never become an unhandled rejection: refuse
+          // the upgrade and let the client retry.
+          log.warn('ws upgrade failed', { error: err instanceof Error ? err.message : String(err) })
+          socket.destroy()
+        })
     } else if (path === '/editor-ws') {
       editors.wss.handleUpgrade(req, socket, head, (ws) => editors.wss.emit('connection', ws, req))
     } else {

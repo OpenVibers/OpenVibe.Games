@@ -45,8 +45,8 @@ export const EDITOR_HEARTBEAT_MS = 12_000
 
 export interface EditorHello {
   t: 'hello'
-  /** Editor credential. Sent in the body, never in the URL. */
-  key: string
+  /** Network access token; the server validates `staff.games.manage`. */
+  auth: string
   name: string
 }
 
@@ -202,9 +202,12 @@ export function decodeEditorClientMessage(raw: string): EditorClientMessage | nu
   if (!isRecord(value)) return null
   switch (value['t']) {
     case 'hello': {
-      const key = str(value['key'], 512)
+      // Bearer token (Network session) — was `key` when a shared secret authorized the
+      // shared secret. The field is now a Network access token validated
+      // against `staff.games.manage`; the name survives.
+      const auth = str(value['auth'], 2048)
       const name = str(value['name'], EDITOR_MAX_NAME_LENGTH)
-      return key === null ? null : { t: 'hello', key, name: name ?? 'editor' }
+      return auth === null ? null : { t: 'hello', auth, name: name ?? 'editor' }
     }
     case 'camera': {
       const pos = vec3(value['pos'])

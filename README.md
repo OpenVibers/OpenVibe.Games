@@ -31,7 +31,7 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 
 - OpenVibe.Network (SSO, JWKS, client-credentials tokens, identity resolve, the `games.progress.summary`
   user module, mod grants), OpenVibe.Events (outbox relay, subscriptions), OpenVibe.Media (asset mirror)
-- `openvibe-contracts` v0.71.0, `openvibe-sdk` v0.22.0 and `openvibe-shared` v1.30.1 (pinned by release
+- `openvibe-contracts` v0.77.0, `openvibe-sdk` v0.22.0 and `openvibe-shared` v1.30.1 (pinned by release
   tarball in `apps/server/package.json`), Babylon.js, Havok, PostgreSQL (`pg`, or embedded PGlite in
   development), Valkey (`iovalkey`, optional)
 
@@ -113,7 +113,13 @@ DATABASE_URL=postgres://… DATABASE_DIRECT_URL=postgres://… STATIC_DIR=apps/c
 (the owner role, a direct session). With neither set and `NODE_ENV` not `production`, the server uses
 an embedded PGlite database under `DATABASE_DIR` (default `data/`) — development only, one process.
 `GAMES_PLACE_ID` (default `scraplandia`) is the place every world row belongs to; `VALKEY_URL`
-(optional) makes the per-actor limits shared across instances. See [.env.example](.env.example).
+(optional) makes the per-actor limits and the WebSocket upgrade tickets shared across instances
+(issue is `SET … PX … NX`, consume is `GETDEL`, so a ticket is single-use cluster-wide).
+`TRUST_PROXY` (optional) says which proxies may set the client-address headers: unset means the TCP
+peer is the client and `X-Forwarded-For`/`X-Real-IP`/`CF-Connecting-IP` are ignored (they are
+client-supplied and would otherwise let a caller mint fresh rate-limit buckets); `true` means the
+server is only reachable through the proxy; otherwise a comma-separated list of trusted proxy
+IPs/CIDRs (behind nginx, which sets `X-Real-IP` from `$remote_addr`). See [.env.example](.env.example).
 
 The server serves the built client, `/healthz` (liveness), `/api/ready`, `/metrics`, and the game
 WebSocket on one port. Pages are `/` (portal), `/play` and `/editor`; on play.openvibe.games `/` is
@@ -175,9 +181,9 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   a restart-safe queue (`media_mirrors`). There are no screenshots or blueprint
   files to upload: blueprints are per-player recipe unlocks.
 - **Mods** (ADR-013 in OpenVibe.Contracts). Manifests follow
-  `mods/mod-manifest.v1` (published in OpenVibe.Contracts v0.14.0; Games
-  validates with its own copy in `apps/server/src/mods/manifestSchema.ts`;
-  it pins openvibe-contracts v0.71.0). The only runtime today is `games-content@1`:
+  `mods.mod-manifest@1.1.0` (Games validates against the schema in the
+  installed `openvibe-contracts` package — pin drift is a defect, ADR-0007
+  decision 12 — currently v0.77.0). The only runtime today is `games-content@1`:
   declarative data packs checked against `@openvibe/content` (announcements;
   inert, mod-owned props). Each install stores the approved subset of its
   requested capabilities; every runtime binding checks it at call time, a
@@ -243,5 +249,5 @@ capability boundary (editor saves and uploads, the mods API) have per-actor limi
 Players are keyed by Network subjects; guest tokens that look like account keys are refused. Mods are
 declarative only, each install keeps only its approved capabilities, and executable mods are refused.
 nginx keeps `/api/ready` off the public vhosts and `/metrics` answers direct loopback callers only. `OV_OAUTH_CLIENT_SECRET`, `GAMES_EVENTS_SECRET` (signed
-Events deliveries) and `EDITOR_KEY` live in `/etc/openvibe/games.env`, by name only; there are no shared keys
+Events deliveries) and `OV_NETWORK_AUTH_URL` live in `/etc/openvibe/games.env`, by name only; there are no shared keys
 between services.

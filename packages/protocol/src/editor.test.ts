@@ -18,7 +18,7 @@ const server = (v: unknown): EditorServerMessage | null =>
 describe('client messages', () => {
   it('round-trips every kind', () => {
     const messages: EditorClientMessage[] = [
-      { t: 'hello', key: 'secret', name: 'Ada' },
+      { t: 'hello', auth: 'secret', name: 'Ada' },
       { t: 'camera', pos: [1, 2, 3], yaw: 0.5, pitch: -0.2 },
       { t: 'selection', ids: ['a', 'b'] },
       { t: 'lockRequest', ids: ['a'] },
@@ -38,15 +38,15 @@ describe('client messages', () => {
     expect(decodeEditorClientMessage('not json')).toBeNull()
   })
 
-  it('requires a key on hello and defaults the name', () => {
+  it('requires an auth token on hello and defaults the name', () => {
     expect(client({ t: 'hello' })).toBeNull()
-    expect(client({ t: 'hello', key: '' })).toBeNull()
-    expect(client({ t: 'hello', key: 'k' })).toEqual({ t: 'hello', key: 'k', name: 'editor' })
+    expect(client({ t: 'hello', auth: '' })).toBeNull()
+    expect(client({ t: 'hello', auth: 'k' })).toEqual({ t: 'hello', auth: 'k', name: 'editor' })
   })
 
   it('bounds the display name rather than trusting it', () => {
-    const long = client({ t: 'hello', key: 'k', name: 'x'.repeat(500) })
-    expect(long).toEqual({ t: 'hello', key: 'k', name: 'editor' })
+    const long = client({ t: 'hello', auth: 'k', name: 'x'.repeat(500) })
+    expect(long).toEqual({ t: 'hello', auth: 'k', name: 'editor' })
   })
 
   it('refuses a non-finite camera instead of poisoning presence', () => {
