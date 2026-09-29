@@ -34,44 +34,8 @@
       content="Play Scraplandia — multiplayer survival-building in your browser, no download."
     />
     <meta name="twitter:image" content="https://openvibe.games/og-image.png" />
-    <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@graph": [
-          {
-            "@type": "WebSite",
-            "@id": "https://openvibe.games/#website",
-            "name": "OpenVibe.Games",
-            "url": "https://openvibe.games/",
-            "description": "Browser games on the OpenVibe network — multiplayer, in your browser, no download.",
-            "publisher": {
-              "@type": "Organization",
-              "name": "OpenVibe",
-              "url": "https://openvibe.network/"
-            }
-          },
-          {
-            "@type": "VideoGame",
-            "@id": "https://play.openvibe.games/#game",
-            "name": "Scraplandia",
-            "url": "https://play.openvibe.games/",
-            "image": "https://openvibe.games/og-image.png",
-            "description": "Scrappy multiplayer survival-building in and around Scrap City: physgun anything, weld it to anything else, chase supply drops in the wilds and haul your salvage home.",
-            "genre": ["Survival", "Sandbox", "Building"],
-            "playMode": "MultiPlayer",
-            "gamePlatform": "Web browser",
-            "applicationCategory": "Game",
-            "operatingSystem": "Any",
-            "isPartOf": { "@id": "https://openvibe.games/#website" },
-            "publisher": {
-              "@type": "Organization",
-              "name": "OpenVibe",
-              "url": "https://openvibe.network/"
-            }
-          }
-        ]
-      }
-    </script>
+    <!-- JSON-LD (WebSite + the game as the site's primary type) is injected as this page is served,
+         built with openvibe-shared/seo so it stays in step with the other OpenVibe sites. -->
     <style>
       * {
         margin: 0;

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, extname, join, normalize, resolve } from 'node:path'
 import type { Logger } from '@openvibe/shared'
@@ -29,6 +29,22 @@ import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore
 import type { GamesActorLimits } from './actorLimits.js'
 import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
+import { discoveryHandler, homeJsonLdTags } from './discovery.js'
+
+/** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
+ *  per request (a new build changes the mtime and rebuilds it once). */
+let portalMemo: { path: string; mtimeMs: number; html: string } | null = null
+function portalHtml(filePath: string): string {
+  const mtimeMs = statSync(filePath).mtimeMs
+  if (portalMemo && portalMemo.path === filePath && portalMemo.mtimeMs === mtimeMs)
+    return portalMemo.html
+  const raw = readFileSync(filePath, 'utf8')
+  const html = raw.includes('</head>')
+    ? raw.replace('</head>', `${homeJsonLdTags()}\n  </head>`)
+    : raw
+  portalMemo = { path: filePath, mtimeMs, html }
+  return html
+}
 import { handleWsTicketRequest, type WsTicketStore } from './wsTicket.js'
 import type { MapFileV2 } from '@openvibe/content'
 
@@ -197,6 +213,8 @@ export function createHttpServer(
       return
     }
     if (platform?.handle?.(req, res)) return
+    // Crawl artifacts (plan T11): /robots.txt, /sitemap.xml and /llms.txt, built by openvibe-shared/seo.
+    if (discoveryHandler(req, res)) return
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
       // wire format.
@@ -725,6 +743,16 @@ export function createHttpServer(
       }
       // No route and no such file: a real 404, not the landing page.
       notFound()
+      return
+    }
+    // The portal is a static build, so its JSON-LD is injected as the page is served: the same
+    // openvibe-shared/seo builders every OpenVibe site uses, one response for every crawler.
+    if (pageAlias === 'index.html' || url === '/index.html') {
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-cache',
+      })
+      res.end(portalHtml(filePath))
       return
     }
     const type = MIME[extname(filePath)] ?? 'application/octet-stream'
