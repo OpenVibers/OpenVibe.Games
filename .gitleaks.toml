@@ -9,3 +9,9 @@ description = "Made-up player/session tokens in unit tests"
 condition = "AND"
 paths = ['''^packages/(persistence/src/pg/pgStore|protocol/src/codec)\.test\.ts$''']
 regexes = ['''^(tok_12345678|abcdefgh12345678)$''']
+
+[[allowlists]]
+description = "A made-up canonical subject id (usr_ + a ULID-shaped alphabet run) as a test default"
+condition = "AND"
+paths = ['''^apps/server/src/game/flusher\.test\.ts$''']
+regexes = ['''^usr_01JABCDEFGHJKMNPQRSTVWXYZ0$''']
