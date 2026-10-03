@@ -116,6 +116,10 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
 - **M1: same game, new foundation.** Deletions above; `gameServer.ts` split into systems; PostgreSQL + Valkey
   persistence with the write-behind flusher; Rapier; intent input; authenticated upgrade; pins current.
 - **M2: moddable content.** Pack loader, `games-content@2`, def-set handshake, Scraplandia as a pack, touch controls.
+  - **M2.1 pack format and loader (`games-content@2`).** A pack declares definitions (items, recipes, crops, NPCs, zones, maps), not only placements, and the runtime loader merges them into the content registry.
+  - **M2.2 def-set handshake.** Client and server agree on the loaded def set (and its content version) before play.
+  - **M2.3 Scraplandia as a pack.** Scraplandia (survival, crafting, farming, extraction) becomes the content pack the base loads by default, and its gameplay modules become systems the pack enables.
+  - **M2.4 touch controls.** Touch maps intents (move vector, look delta, named actions) to the same input stream as the keyboard.
 - **M3: scripted mods.** QuickJS runtime, capability API v2, budgets enforced, hot reload, escape tests.
 - **M4: instances and scale.** Several instances per place, registry and leases, transfer, region interest, load tests.
 - **M5: platform game services.** OpenVibe.Play with Games as first consumer; the second game on the same base.
