@@ -13,7 +13,7 @@
     "dev:server": "pnpm --filter @openvibe/server dev",
     "dev:client": "pnpm --filter @openvibe/client dev",
     "build": "pnpm -r build",
-    "test": "vitest run",
+    "test": "node test/run.js",
     "audit:editor": "vitest run --config vitest.audit.config.ts",
     "test:editor": "node --import tsx apps/client/e2e/editorCheck.ts",
     "test:collab": "node --import tsx apps/client/e2e/editorCollabCheck.ts",

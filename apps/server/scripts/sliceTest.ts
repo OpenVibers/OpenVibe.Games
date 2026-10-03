@@ -10,6 +10,7 @@
  * Run: tsx apps/server/scripts/sliceTest.ts
  */
 import { spawn, type ChildProcess } from 'node:child_process'
+import { createServer } from 'node:net'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,7 +31,16 @@ import {
 import { encodeHeights } from '@openvibe/content'
 import { quantiseAngle } from '@openvibe/shared'
 
-const PORT = 18123
+// A port the OS hands out, not a fixed one: the checks and the verify job can run the slice at the
+// same time on one machine. Chosen once, so the restart test comes back on the same address.
+const PORT = await new Promise<number>((resolvePort, reject) => {
+  const probe = createServer()
+  probe.once('error', reject)
+  probe.listen(0, '127.0.0.1', () => {
+    const address = probe.address()
+    probe.close(() => resolvePort(typeof address === 'object' && address ? address.port : 0))
+  })
+})
 const URL = `ws://127.0.0.1:${PORT}/ws`
 const dir = mkdtempSync(join(tmpdir(), 'openvibe-slice-'))
 
@@ -99,7 +109,8 @@ function startServer(): Promise<void> {
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
-    const timer = setTimeout(() => reject(new Error('server did not start')), 30000)
+    // Cold start compiles PGlite and Rapier (a few seconds idle); on a loaded machine 30 s was not enough.
+    const timer = setTimeout(() => reject(new Error('server did not start')), 120_000)
     server.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
       if (process.env.SLICE_DEBUG) process.stdout.write(`  [srv] ${text}`)
