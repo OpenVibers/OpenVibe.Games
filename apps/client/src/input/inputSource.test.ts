@@ -17,7 +17,7 @@ class FakeKeyboard implements KeyboardState {
   }
 }
 
-/** A synthetic touch pad: M2 ships the real one; this models the same stream. */
+/** A synthetic touch pad: M2 ships the real one; this models the same stream, the M2.4 acceptance target. */
 class TouchSource implements InputSource {
   yaw = 0
   pitch = 0
