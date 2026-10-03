@@ -1,4 +1,7 @@
-node_modules/
+# No trailing slash: pnpm can leave a project's node_modules a symlink, and git does not call a
+# symlink a directory, so `node_modules/` would not ignore it — `git add -A` then commits it and
+# CI checks it out dangling, where pnpm install dies before any test runs.
+node_modules
 dist/
 dist-types/
 *.tsbuildinfo
