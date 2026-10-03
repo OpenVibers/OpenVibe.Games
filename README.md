@@ -92,15 +92,15 @@ freeze. Props are protected: only you and players you trust can move them.
 
 ## Commands
 
-| Command                                 | Purpose                                                                                                      |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `pnpm dev`                              | Server + client dev processes in parallel                                                                    |
-| `pnpm test`                             | All unit tests (vitest)                                                                                      |
-| `pnpm typecheck`                        | Strict TypeScript across every package                                                                       |
-| `pnpm lint`                             | ESLint (typescript-eslint, no-explicit-any)                                                                  |
-| `pnpm format`                           | Prettier write                                                                                               |
-| `pnpm build`                            | Production build of all packages + client bundle                                                             |
-| `tsx apps/server/scripts/sliceTest.ts`  | End-to-end vertical-slice test (boots a real server, drives protocol clients, restarts, asserts persistence) |
+| Command                                | Purpose                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `pnpm dev`                             | Server + client dev processes in parallel                                                                    |
+| `pnpm test`                            | All unit tests (vitest, through `test/run.js`)                                                               |
+| `pnpm typecheck`                       | Strict TypeScript across every package                                                                       |
+| `pnpm lint`                            | ESLint (typescript-eslint, no-explicit-any)                                                                  |
+| `pnpm format`                          | Prettier write                                                                                               |
+| `pnpm build`                           | Production build of all packages + client bundle                                                             |
+| `tsx apps/server/scripts/sliceTest.ts` | End-to-end vertical-slice test (boots a real server, drives protocol clients, restarts, asserts persistence) |
 
 ## Production
 
@@ -238,6 +238,10 @@ revocation and mod-grant subscriptions), `media.object.upload`
 
 `pnpm test` runs every vitest file (unit tests of the packages and the server, including
 `apps/server/src/game/platformIntegration.test.ts`, which boots the real server twice on one database);
+it goes through `test/run.js`, which maps the flat `test/*.test.js` pointers back to the colocated
+TypeScript tests so `ov test` can select and shard them (vitest reads the real files, so their
+`@vitest-environment` docblocks and imports are untouched). After adding or moving a `*.test.ts`,
+run `node test/run.js --index` to regenerate the pointers — a missing or stale pointer fails the run.
 `pnpm typecheck` and `pnpm lint` keep strict TypeScript and no `any`;
 `tsx apps/server/scripts/sliceTest.ts` drives protocol clients against a real server across a restart.
 
