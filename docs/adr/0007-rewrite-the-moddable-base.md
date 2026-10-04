@@ -115,11 +115,11 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
 
 - **M1: same game, new foundation.** Deletions above; `gameServer.ts` split into systems; PostgreSQL + Valkey
   persistence with the write-behind flusher; Rapier; intent input; authenticated upgrade; pins current.
-- **M2: moddable content.** Pack loader, `games-content@2`, def-set handshake, Scraplandia as a pack, touch controls.
+- **M2: moddable content — done** (pack format and loader → handshake → Scraplandia → touch). Pack loader, `games-content@2`, def-set handshake, Scraplandia as a pack, touch controls.
   - **M2.1 pack format and loader (`games-content@2`) — done for items, recipes, crops and NPC archetypes (`packages/content/src/pack.ts`, `createContent(packs)`; the server merges enabled packs granted `games.def.define` at boot; the client still builds base content until M2.2; zones and maps are not pack defs yet).** A pack declares definitions (items, recipes, crops, NPCs, zones, maps), not only placements, and the runtime loader merges them into the content registry.
   - **M2.2 def-set handshake — done.** Client and server exchange the versioned definition digest in `hello` and `welcome`; a mismatch refuses the join before player state is created.
   - **M2.3 Scraplandia as a pack — default map done.** The base loads Scraplandia's blank-slate map through the built-in `games-content@2` pack. The released spawn, zone and empty seeded entity set are unchanged. Moving gameplay modules behind pack enablement remains future work.
-  - **M2.4 touch controls.** Touch maps intents (move vector, look delta, named actions) to the same input stream as the keyboard.
+  - **M2.4 touch controls — done.** `TouchInputSource` (`apps/client/src/input/touchInputSource.ts`) produces the same `InputSample` stream as the keyboard: an analog left stick (radial dead zone 0.15, length clamped to 1), right-half look drag with InputTracker's pitch clamp, and on-screen jump, sprint (tap latches, press holds), crouch and prone buttons on the existing `Intents` bits — no protocol change. Use, fire and menu buttons emit the same `InputAction`s as E, the left mouse button and Tab. Gesture state is DOM-free and unit-tested; `touchControls.ts` is the pointer-event overlay. The client starts on touch for a coarse pointer, switches to whichever device was used last, and never pointer-locks for touch.
 - **M3: scripted mods.** QuickJS runtime, capability API v2, budgets enforced, hot reload, escape tests.
 - **M4: instances and scale.** Several instances per place, registry and leases, transfer, region interest, load tests.
 - **M5: platform game services.** OpenVibe.Play with Games as first consumer; the second game on the same base.

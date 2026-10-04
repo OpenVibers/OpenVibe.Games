@@ -499,6 +499,53 @@ async function settle(c: TestClient, maxMs = 4000): Promise<void> {
   }
 }
 
+/** Distance from a client's player to an entity, or Infinity without a snapshot. */
+function playerDist(c: TestClient, e: WireEntity): number {
+  const me = c.me
+  return me ? Math.hypot(e.pos[0] - me.pos[0], e.pos[2] - me.pos[2]) : Infinity
+}
+
+/**
+ * Swings the equipped axe at the nearest Rustjaw thug in melee reach.
+ * The supply drops (content DROP_SITES) and the extraction sites
+ * (EXTRACTION_SITES) sit on thug camps; standing still to loot there without
+ * hitting back is a death sentence, and death drops the at-risk loot.
+ * Returns whether it attacked; never moves the player.
+ */
+function fightBack(c: TestClient): boolean {
+  const threat = [...c.entities.values()]
+    .filter((e) => e.kind === 'npc' && e.def === 'rustjaw_thug')
+    .map((e) => ({ e, d: playerDist(c, e) }))
+    .filter(({ d }) => d <= 4.5)
+    .sort((p, q) => p.d - q.d)[0]
+  if (!threat) return false
+  c.send({ t: 'attack', target: threat.e.id })
+  return true
+}
+
+/**
+ * Approaches and kills any thug within `radius` of the player, for up to
+ * `maxMs`. Used before a loot/interaction stop where leaving mid-way is
+ * acceptable; the player must already be armed. Returns promptly when no
+ * thug is near (the common, safe case).
+ */
+async function clearNearbyThugs(c: TestClient, radius = 20, maxMs = 20_000): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < maxMs) {
+    const threat = [...c.entities.values()]
+      .filter((e) => e.kind === 'npc' && e.def === 'rustjaw_thug')
+      .map((e) => ({ e, d: playerDist(c, e) }))
+      .filter(({ d }) => d <= radius)
+      .sort((p, q) => p.d - q.d)[0]
+    if (!threat) return
+    if (threat.d > 3.2) {
+      await walkTo(c, threat.e.pos[0], threat.e.pos[2], 3000).catch(() => undefined)
+    }
+    fightBack(c)
+    await sleep(350)
+  }
+}
+
 /** Stops, then aims precisely at an entity, recomputing from live position. */
 async function aimAt(c: TestClient, target: WireEntity): Promise<void> {
   await settle(c)
@@ -1709,6 +1756,12 @@ async function main(): Promise<void> {
       }
     }
     assert(crate, 'supply drop event spawned a crate')
+    // Two of the five drop sites sit on a Rustjaw camp (content DROP_SITES):
+    // arm up, walk in, and clear the guard before standing still to loot.
+    if (a.count('stone_axe') > 0) await a.equip('stone_axe')
+    await walkTo(a, crate.pos[0] + 1.2, crate.pos[2] + 1.2)
+    await settle(a)
+    await clearNearbyThugs(a)
     await walkTo(a, crate.pos[0] + 1.2, crate.pos[2] + 1.2)
     await settle(a)
     a.send({ t: 'container_open', target: crate.id })
@@ -1753,6 +1806,11 @@ async function main(): Promise<void> {
       }
     }
     assert(site, 'extraction event announced with a location')
+    // Rustjaw thugs patrol the extraction sites (content NPC_SPAWNS). The bird
+    // does not clear the circle, so a thug that reaches the hold would kill us
+    // and the unsecured core would drop with us — keep the axe out and swing
+    // back (see the hold loop) instead of standing still through the beating.
+    if (a.count('stone_axe') > 0) await a.equip('stone_axe')
     await walkTo(a, site[0], site[1], 60_000)
     // Hold the circle until the recall (25s hold + slack). The recall arrives as
     // three separate frames — an announce, the position update and the
@@ -1766,6 +1824,10 @@ async function main(): Promise<void> {
       while (Date.now() - start < 45_000) {
         const me = a.me
         if (me && Math.hypot(me.pos[0] - 0, me.pos[2] - 4) < 6 && secured()) break // both frames in
+        // Swing at anything in reach: leaving the circle resets the hold, so
+        // fleeing is pointless, and ignoring the beating is what was dropping
+        // the core. The axe kills a thug well inside the 25 s hold.
+        if (me && Math.hypot(me.pos[0] - 0, me.pos[2] - 4) >= 6) fightBack(a)
         // Nudge back toward the beacon in case physics drift pushed us out, but only while we are not already home
         // (after the recall the site is behind us), and only as a best effort: the recall is the server's and lands
         // wherever we stand, so a nudge that runs out of time must not end the run.

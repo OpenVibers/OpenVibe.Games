@@ -43,7 +43,9 @@ export class InputTracker {
     // Lock on button DOWN, not on click: click only fires on RELEASE, so a
     // click-and-hold (the physgun grab gesture) would spend the entire hold
     // unlocked — no look, no actions, "game frozen until I let go".
-    canvas.addEventListener('pointerdown', () => {
+    canvas.addEventListener('pointerdown', (e) => {
+      // Touch never locks the pointer: TouchControls owns touch pointers.
+      if (e.pointerType === 'touch') return
       if (!this.uiCapture && !this.locked) {
         canvas.requestPointerLock()
       }
@@ -61,6 +63,7 @@ export class InputTracker {
     // for the rest of that press — including mousemove. Holding a button
     // would freeze the view. Pointer events keep flowing regardless.
     document.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return
       // A mouse is ONE pointer: pressing a second button while another is
       // held fires NO pointerdown — the chorded press arrives as a
       // pointermove with an updated `buttons` bitmask (this is how RMB-
@@ -107,6 +110,7 @@ export class InputTracker {
       }
     })
     document.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch') return
       if (!this.locked || this.uiCapture) {
         this.buttonsState = e.buttons
         return
@@ -125,7 +129,8 @@ export class InputTracker {
       if (!this.uiCapture) e.preventDefault()
     })
     document.addEventListener('pointerup', (e) => {
-      this.diffButtons(e)
+      // A lifted finger is not a mouse button: it must not release a grab.
+      if (e.pointerType !== 'touch') this.diffButtons(e)
     })
     document.addEventListener(
       'wheel',
