@@ -28,6 +28,7 @@ import { ServerMetrics } from './observability/metrics.js'
 import { createReadiness } from './observability/readiness.js'
 import { buildRelease, releaseHandler } from './observability/release.js'
 import { sharedAssetsHandler } from './net/sharedAssets.js'
+import { loadDefinitionPacks } from './mods/contentPack.js'
 import { ModRegistry } from './mods/registry.js'
 import { createNetworkModGrants } from './mods/networkGrants.js'
 import { createGamesActorLimits } from './net/actorLimits.js'
@@ -54,8 +55,8 @@ import { createWsTicketStore } from './net/wsTicket.js'
 
 /**
  * Dedicated authoritative server entry point.
- * Boot order: config -> content validation (fail fast) -> physics -> database + migrations ->
- * persistence -> world restore -> network -> fixed-tick loop.
+ * Boot order: config -> database + migrations -> persistence -> content validation with enabled
+ * packs (fail fast) -> physics -> world restore -> network -> fixed-tick loop.
  */
 async function main(): Promise<void> {
   const log = createConsoleLogger(
@@ -65,8 +66,18 @@ async function main(): Promise<void> {
   const config = loadConfig(process.env)
   log.info('starting', { port: config.port, place: config.placeId })
 
-  // Content validates at construction — invalid definitions kill the boot.
-  const content = createContent()
+  // PostgreSQL (or embedded PGlite in development), migrated before anything writes. It opens
+  // before content because enabled mod packs add definitions to the content registry.
+  const db = await openDb(config.db, log)
+  const store = openPgStore(db, { placeId: config.placeId })
+  await store.ensurePlace()
+
+  // Content validates at construction — invalid definitions kill the boot. Packs are the enabled
+  // installs granted games.def.define; one that no longer builds is skipped and logged.
+  const packs = await loadDefinitionPacks(store.mods, (modId, reason) =>
+    log.warn('mod definitions skipped', { mod: modId, reason }),
+  )
+  const content = createContent(packs)
   // Edited map (from /editor): heightfield + extra statics replace the
   // procedural terrain for EVERYTHING (physics, spawns, clients fetch the
   // same file over /map.json).
@@ -96,14 +107,10 @@ async function main(): Promise<void> {
     items: content.allItems().length,
     recipes: content.allRecipes().length,
     world: content.world.id,
+    packs: packs.length,
   })
 
   const physics = createRapierWorld(await loadRapier())
-
-  // PostgreSQL (or embedded PGlite in development), migrated before anything writes.
-  const db = await openDb(config.db, log)
-  const store = openPgStore(db, { placeId: config.placeId })
-  await store.ensurePlace()
 
   const metrics = new ServerMetrics()
   const world = new GameWorld(content, physics, log.child({ system: 'world' }))

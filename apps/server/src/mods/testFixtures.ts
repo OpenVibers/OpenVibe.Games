@@ -11,10 +11,10 @@ export function sampleManifest(overrides: Partial<ModManifest> = {}): ModManifes
     description: 'A public workbench and a greeting.',
     publisher: { type: 'user', id: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0' },
     target: 'games.browser',
-    runtime: 'games-content@1',
+    runtime: 'games-content@2',
     permissions: { capabilities: ['games.world.announce', 'games.prop.place'] },
     resources: { cpuMs: 1, memoryMb: 0, storageMb: 0 },
-    compatibility: { runtime: '>=1.0.0 <2.0.0' },
+    compatibility: { runtime: '>=2.0.0 <3.0.0' },
     ...overrides,
   }
 }

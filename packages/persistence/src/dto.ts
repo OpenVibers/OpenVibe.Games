@@ -89,11 +89,11 @@ export interface ModInstallDto {
   version: string
   /** Runtime target, e.g. `games.browser`. */
   target: string
-  /** Runtime adapter, e.g. `games-content@1`. */
+  /** Runtime adapter, e.g. `games-content@2`. */
   runtime: string
   /** The full manifest as installed (mods/mod-manifest.v1). */
   manifest: Record<string, unknown>
-  /** The runtime-specific payload (a content data pack for `games-content@1`). */
+  /** The runtime-specific payload (a content data pack for `games-content@2`). */
   pack: Record<string, unknown>
   trustTier: ModTrustTier
   status: ModStatus

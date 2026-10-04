@@ -7,7 +7,7 @@
  * was not granted — or one revoked a moment ago — throws before anything
  * happens, so it cannot be reached from the mod side at all.
  *
- * `games-content@1` packs are interpreted here through that same API; an
+ * `games-content@2` packs are interpreted here through that same API; an
  * executable runtime (a script sandbox) would receive the same bindings.
  * Executable mods are not accepted yet: sandboxed execution with enforced
  * CPU, memory, storage and network budgets belongs to OpenVibe.Host

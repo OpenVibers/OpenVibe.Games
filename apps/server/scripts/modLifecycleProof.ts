@@ -82,10 +82,10 @@ async function main(): Promise<void> {
     // A publisher is a user or an app; the proof publishes as a synthetic app of its own.
     publisher: { type: 'app', id: `app_${ulid()}` },
     target: 'games.browser',
-    runtime: 'games-content@1',
+    runtime: 'games-content@2',
     permissions: { capabilities: [CAP] },
     resources: { cpuMs: 1, memoryMb: 0, storageMb: 0 },
-    compatibility: { runtime: '>=1.0.0 <2.0.0' },
+    compatibility: { runtime: '>=2.0.0 <3.0.0' },
   }
   const pack = { props: [{ key: 'proof-bench', item: 'workbench', pos: [3900, 0, 3900] }] }
 

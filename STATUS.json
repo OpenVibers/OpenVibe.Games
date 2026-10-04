@@ -11,7 +11,8 @@
     "games.mod.manage",
     "games.mod.read",
     "games.world.announce",
-    "games.prop.place"
+    "games.prop.place",
+    "games.def.define"
   ],
   "deployed": true,
   "deployment": "Public at https://openvibe.games and https://play.openvibe.games: deployed with `sudo ovhost deploy games` (OpenVibe.Host strategy pnpm-build since the 2026-09-27 cutover; deploy/scripts/deploy.sh is the wrapper), unit openvibe-games on 127.0.0.1:8000, env /etc/openvibe/games.env, principal games.",
@@ -20,7 +21,7 @@
     "Source-style movement, physgun building, gathering, crafting, skills",
     "persistent world, characters and props in PostgreSQL (write-behind flusher; the tick never awaits I/O)",
     "map editor with assets mirrored to OpenVibe.Media",
-    "declarative mods (games-content@1) with per-install grants and audit",
+    "declarative mods (games-content@2: definitions merged into the content registry at boot, placements, announcements) with per-install grants and audit",
     "players keyed by Network subjects",
     "games.* events through a transactional outbox",
     "games.progress.summary user module",

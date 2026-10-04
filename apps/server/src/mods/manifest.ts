@@ -55,9 +55,9 @@ export function validateManifest(value: unknown): Validation<ModManifest> {
 
 /** The browser game's only mod target and runtime today. */
 export const GAMES_TARGET = 'games.browser'
-export const CONTENT_RUNTIME = 'games-content@1'
+export const CONTENT_RUNTIME = 'games-content@2'
 /** Version of the content runtime, matched against compatibility.runtime. */
-export const CONTENT_RUNTIME_VERSION = '1.0.0'
+export const CONTENT_RUNTIME_VERSION = '2.0.0'
 
 /**
  * Whether this server can run the manifest at all. Executable runtimes
