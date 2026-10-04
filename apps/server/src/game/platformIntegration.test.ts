@@ -221,6 +221,15 @@ describe('Games on platform identity, events and mods (real server, restart)', (
       })
       expect(stale.inbox.some((m) => m.t === 'welcome')).toBe(false)
     }
+    // An older bundle sends neither the current version nor a digest; it must
+    // get protocol_mismatch, the only reason the client reloads itself on.
+    const oldBundle = connect(a.game)
+    oldBundle.conn.identity = { guestKeyHash: hashGuestKey('old-bundle') }
+    a.game.onMessage(oldBundle.conn, {
+      t: 'hello', v: PROTOCOL_VERSION - 1, slot: 0, name: 'Old', appearance: defaultAppearance(),
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(oldBundle.inbox).toContainEqual({ t: 'reject', reason: 'protocol_mismatch' })
 
     // The signed-in player is keyed by the canonical subject.
     const ana = connect(a.game)

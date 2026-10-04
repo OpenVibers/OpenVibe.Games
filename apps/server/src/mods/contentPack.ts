@@ -154,6 +154,8 @@ export function validateContentPack(
   }
   const pack = value as unknown as ContentPack
   const errors: string[] = []
+  // The built-in pack always supplies the map, so a mod's map would be skipped at boot as a duplicate.
+  if (pack.map) errors.push('map is defined by the built-in pack and cannot be replaced by a mod')
   if (pack.defs || pack.map) {
     // The content the pack would be merged onto; its own ids may not already exist.
     const merged = mergePackDefs(
