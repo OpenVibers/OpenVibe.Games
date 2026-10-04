@@ -68,3 +68,12 @@ describe('loadConfig scriptMods', () => {
     expect(loadConfig({ GAMES_SCRIPT_MODS: 'true' }).scriptMods).toBe(true)
   })
 })
+
+describe('loadConfig indexnowKey', () => {
+  it('is empty (IndexNow off) unless INDEXNOW_KEY is set, and never carries padding', () => {
+    expect(loadConfig({}).indexnowKey).toBe('')
+    expect(loadConfig({ INDEXNOW_KEY: '' }).indexnowKey).toBe('')
+    expect(loadConfig({ INDEXNOW_KEY: '   ' }).indexnowKey).toBe('')
+    expect(loadConfig({ INDEXNOW_KEY: '  testkey0testkey0 ' }).indexnowKey).toBe('testkey0testkey0')
+  })
+})

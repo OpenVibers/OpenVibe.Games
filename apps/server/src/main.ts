@@ -20,6 +20,7 @@ import {
   SOCKETS_MS,
   within,
 } from './net/gracefulStop.js'
+import { createGamesIndexNow } from './net/indexnow.js'
 import { createHttpServer } from './net/httpServer.js'
 import { resolveNetworkUser } from './net/networkAuth.js'
 import { acceptUpgrade, attachWebSocket } from './net/wsTransport.js'
@@ -422,6 +423,11 @@ async function main(): Promise<void> {
       clientAddress,
     },
     ticketStore,
+    createGamesIndexNow(
+      config.oauth?.selfUrl ?? 'https://openvibe.games',
+      config.indexnowKey,
+      log.child({ system: 'indexnow' }),
+    ),
   )
   const drainer = httpDrainer(http)
   world.reconcileMapNodes()

@@ -31,6 +31,7 @@ import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
 import { discoveryHandler, homeJsonLdTags } from './discovery.js'
 import { legalHandler } from './legalPages.js'
+import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
 
 /** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
  *  per request (a new build changes the mtime and rebuilds it once). */
@@ -165,6 +166,7 @@ export function createHttpServer(
   oauth?: OAuthConfig | null,
   platform?: HttpPlatformHooks,
   tickets?: WsTicketStore,
+  indexnow?: SharedIndexNow,
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
@@ -184,6 +186,9 @@ export function createHttpServer(
   ]
   // The site's own /terms, /privacy and /dmca (openvibe-shared/legal), built once for the process.
   const serveLegal = legalHandler()
+  // GET /<key>.txt — the IndexNow key file, before the static files so it is never shadowed by a
+  // build artifact of the same name. Absent when no key is configured.
+  const serveIndexNow = indexnow ? indexnowHandler(indexnow) : null
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = (req.url ?? '/').split('?')[0] ?? '/'
     // Host-based routing: play.openvibe.games serves the game at its root
@@ -216,7 +221,10 @@ export function createHttpServer(
       return
     }
     if (platform?.handle?.(req, res)) return
-    // Crawl artifacts (plan T11): /robots.txt, /sitemap.xml and /llms.txt, built by openvibe-shared/seo.
+    // The IndexNow key file (only when a key is configured) — before the static files below.
+    if (serveIndexNow?.(req, res)) return
+    // Crawl artifacts (plan T11): /robots.txt, /sitemap.xml, /llms.txt and /llms-full.txt, built by
+    // openvibe-shared/seo.
     if (discoveryHandler(req, res)) return
     // The site's own legal pages (plan T11 decision 6): /terms, /privacy, /dmca. Before the SPA and the
     // static fallback so they never resolve to a file or the landing page.
