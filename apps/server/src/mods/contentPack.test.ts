@@ -42,7 +42,7 @@ async function setup() {
 
 describe('games-content@2 definitions', () => {
   it('recognizes an authored map as a definition-capability section', () => {
-    const mapPack = { map: SCRAPLANDIA_PACK.map }
+    const mapPack = { map: SCRAPLANDIA_PACK.map! }
     expect(capabilitiesUsedBy(mapPack)).toEqual([CAP_DEFINE])
     expect(validateContentPack(mapPack, createContent()).ok).toBe(true)
     expect(validateContentPack({ map: { id: 'broken' } }, createContent()).ok).toBe(false)
