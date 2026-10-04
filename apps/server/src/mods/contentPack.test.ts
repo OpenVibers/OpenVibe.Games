@@ -46,7 +46,9 @@ describe('games-content@2 definitions', () => {
     expect(capabilitiesUsedBy(mapPack)).toEqual([CAP_DEFINE])
     const result = validateContentPack(mapPack, createContent())
     expect(result.ok).toBe(false)
-    expect(!result.ok && result.errors).toContain('map is defined by the built-in pack and cannot be replaced by a mod')
+    expect(!result.ok && result.errors).toContain(
+      'map is defined by the built-in pack and cannot be replaced by a mod',
+    )
     expect(validateContentPack({ map: { id: 'broken' } }, createContent()).ok).toBe(false)
   })
   it('needs games.def.define for any non-empty defs section', () => {

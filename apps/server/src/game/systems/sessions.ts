@@ -94,10 +94,14 @@ export class SessionsSystem implements System {
       return
     }
     if (msg.contentDigest !== serverDigest) {
-      conn.send(encodeServerMessage({
-        t: 'reject', reason: 'content_mismatch',
-        clientDigest: msg.contentDigest ?? null, serverDigest,
-      }))
+      conn.send(
+        encodeServerMessage({
+          t: 'reject',
+          reason: 'content_mismatch',
+          clientDigest: msg.contentDigest ?? null,
+          serverDigest,
+        }),
+      )
       conn.close(4013, 'content_mismatch')
       return
     }

@@ -565,7 +565,8 @@ const corpusTerrain = (): BodyDesc => ({
 const corpusIsland = (): BodyDesc[] => {
   const out: BodyDesc[] = []
   for (let x = -1; x <= 1; x++)
-    for (let z = -1; z <= 1; z++) out.push(corpusBox([0.8, 0.8, 0.8], vec3(x * 0.9, 0.4, 6 + z * 0.9)))
+    for (let z = -1; z <= 1; z++)
+      out.push(corpusBox([0.8, 0.8, 0.8], vec3(x * 0.9, 0.4, 6 + z * 0.9)))
   return out
 }
 
@@ -591,7 +592,12 @@ interface CorpusScene {
 }
 
 const CORPUS: CorpusScene[] = [
-  { name: 'flat ground', bodies: [corpusFloor()], script: corpusTicks(90, corpusWalk), mockExpressible: true },
+  {
+    name: 'flat ground',
+    bodies: [corpusFloor()],
+    script: corpusTicks(90, corpusWalk),
+    mockExpressible: true,
+  },
   {
     name: 'stairs',
     bodies: [corpusFloor(), ...corpusStairs()],

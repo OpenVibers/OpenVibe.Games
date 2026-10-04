@@ -25,7 +25,15 @@ import {
 } from '@openvibe/gameplay'
 import type { ItemDef } from '@openvibe/content'
 import { CollisionLayer } from '@openvibe/physics'
-import { asEntityId, qfromYaw, qrotateVecInv, quat, v3dist, vec3, type Vec3 } from '@openvibe/shared'
+import {
+  asEntityId,
+  qfromYaw,
+  qrotateVecInv,
+  quat,
+  v3dist,
+  vec3,
+  type Vec3,
+} from '@openvibe/shared'
 import { viewDirection } from './playerSession.js'
 import type { ConstraintRecord, GameWorld } from './gameWorld.js'
 import { eyePosition, type PlayerSession } from './playerSession.js'

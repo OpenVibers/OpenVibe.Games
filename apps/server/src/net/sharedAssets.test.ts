@@ -41,7 +41,12 @@ describe('/shared (D42)', () => {
   })
 
   it('serves only the browser files openvibe-shared lists', async () => {
-    for (const p of ['/shared/serve.js', '/shared/../package.json', '/shared/', '/other/navbar.js']) {
+    for (const p of [
+      '/shared/serve.js',
+      '/shared/../package.json',
+      '/shared/',
+      '/other/navbar.js',
+    ]) {
       expect((await fetch(base + p)).status).toBe(404)
     }
     expect((await fetch(`${base}/shared/navbar.js`, { method: 'POST' })).status).toBe(404)

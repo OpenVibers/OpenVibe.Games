@@ -211,13 +211,19 @@ describe('Games on platform identity, events and mods (real server, restart)', (
       const stale = connect(a.game)
       stale.conn.identity = { guestKeyHash: hashGuestKey(`stale-${offered ?? 'missing'}`) }
       a.game.onMessage(stale.conn, {
-        t: 'hello', v: PROTOCOL_VERSION, slot: 0, name: 'Stale',
-        appearance: defaultAppearance(), ...(offered ? { contentDigest: offered } : {}),
+        t: 'hello',
+        v: PROTOCOL_VERSION,
+        slot: 0,
+        name: 'Stale',
+        appearance: defaultAppearance(),
+        ...(offered ? { contentDigest: offered } : {}),
       })
       await new Promise((r) => setTimeout(r, 0))
       expect(stale.inbox).toContainEqual({
-        t: 'reject', reason: 'content_mismatch',
-        clientDigest: offered ?? null, serverDigest: a.world.content.digest,
+        t: 'reject',
+        reason: 'content_mismatch',
+        clientDigest: offered ?? null,
+        serverDigest: a.world.content.digest,
       })
       expect(stale.inbox.some((m) => m.t === 'welcome')).toBe(false)
     }
@@ -226,7 +232,11 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     const oldBundle = connect(a.game)
     oldBundle.conn.identity = { guestKeyHash: hashGuestKey('old-bundle') }
     a.game.onMessage(oldBundle.conn, {
-      t: 'hello', v: PROTOCOL_VERSION - 1, slot: 0, name: 'Old', appearance: defaultAppearance(),
+      t: 'hello',
+      v: PROTOCOL_VERSION - 1,
+      slot: 0,
+      name: 'Old',
+      appearance: defaultAppearance(),
     })
     await new Promise((r) => setTimeout(r, 0))
     expect(oldBundle.inbox).toContainEqual({ t: 'reject', reason: 'protocol_mismatch' })

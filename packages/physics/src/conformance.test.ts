@@ -1356,30 +1356,27 @@ function conformance(a: Adapter): void {
         close()
       })
 
-      it.skipIf(maybe('step advances'))(
-        'step advances exactly the dt it is given',
-        () => {
-          const probe = (dt: number, ticks: number) => {
-            const w = open()
-            const box = w.addBody(dynamicBoxDesc(vec3(0, 900, 0), 0.5, 10))
-            stepFor(w, ticks, dt)
-            const v = pos()
-            w.getLinearVelocity(box, v)
-            close()
-            return v.y
-          }
-          // Rapier honours the dt it is given: 30 steps of 1/30 s and 60 steps
-          // of 1/60 s are the same simulated second (the damping is applied per
-          // step, so they agree to within a few mm/s, not bit-exactly).
-          expect(probe(1 / 30, 30)).toBeCloseTo(probe(1 / 60, 60), 1)
-          // An extra simulated second is very nearly twice the velocity.
-          expect(probe(1 / 30, 60) / probe(1 / 30, 30)).toBeGreaterThan(1.9)
-          expect(probe(1 / 30, 60) / probe(1 / 30, 30)).toBeLessThan(2.1)
-          // One simulated second of this gravity: about -16.5 m/s.
-          expect(probe(1 / 30, 30)).toBeLessThan(-15)
-          expect(probe(1 / 30, 30)).toBeGreaterThan(-17)
-        },
-      )
+      it.skipIf(maybe('step advances'))('step advances exactly the dt it is given', () => {
+        const probe = (dt: number, ticks: number) => {
+          const w = open()
+          const box = w.addBody(dynamicBoxDesc(vec3(0, 900, 0), 0.5, 10))
+          stepFor(w, ticks, dt)
+          const v = pos()
+          w.getLinearVelocity(box, v)
+          close()
+          return v.y
+        }
+        // Rapier honours the dt it is given: 30 steps of 1/30 s and 60 steps
+        // of 1/60 s are the same simulated second (the damping is applied per
+        // step, so they agree to within a few mm/s, not bit-exactly).
+        expect(probe(1 / 30, 30)).toBeCloseTo(probe(1 / 60, 60), 1)
+        // An extra simulated second is very nearly twice the velocity.
+        expect(probe(1 / 30, 60) / probe(1 / 30, 30)).toBeGreaterThan(1.9)
+        expect(probe(1 / 30, 60) / probe(1 / 30, 30)).toBeLessThan(2.1)
+        // One simulated second of this gravity: about -16.5 m/s.
+        expect(probe(1 / 30, 30)).toBeLessThan(-15)
+        expect(probe(1 / 30, 30)).toBeGreaterThan(-17)
+      })
 
       it('a resting dynamic body on the ground settles', () => {
         const w = open()

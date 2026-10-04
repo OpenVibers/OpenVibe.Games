@@ -61,7 +61,10 @@ export function buildRelease(
   root: string,
   { env = process.env, now = () => new Date() }: { env?: NodeJS.ProcessEnv; now?: () => Date } = {},
 ): ReleaseManifest {
-  const sha = (env.RELEASE_SHA && /^[0-9a-f]{7,40}$/.test(env.RELEASE_SHA) ? env.RELEASE_SHA : gitCommit(root)) ?? 'unknown'
+  const sha =
+    (env.RELEASE_SHA && /^[0-9a-f]{7,40}$/.test(env.RELEASE_SHA)
+      ? env.RELEASE_SHA
+      : gitCommit(root)) ?? 'unknown'
   const release = sha.slice(0, 12)
   const req = createRequire(import.meta.url)
   const packages: Record<string, string> = {}
@@ -78,7 +81,10 @@ export function buildRelease(
     packages,
     min_client_release: env.MIN_CLIENT_RELEASE ?? null,
     mixed_version_window_hours: 24,
-    components: { client: { kind: 'script', version: release }, server: { kind: 'server', version: release } },
+    components: {
+      client: { kind: 'script', version: release },
+      server: { kind: 'server', version: release },
+    },
     schema_generation: null,
     schema_compatible_from: null,
     contract_ranges: {},
@@ -89,8 +95,16 @@ export function buildRelease(
 export function releaseHandler(manifest: ReleaseManifest) {
   const body = JSON.stringify(manifest)
   return (req: IncomingMessage, res: ServerResponse): boolean => {
-    if ((req.url ?? '').split('?')[0] !== '/release.json' || (req.method !== 'GET' && req.method !== 'HEAD')) return false
-    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' })
+    if (
+      (req.url ?? '').split('?')[0] !== '/release.json' ||
+      (req.method !== 'GET' && req.method !== 'HEAD')
+    )
+      return false
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'cache-control': 'no-cache',
+      'access-control-allow-origin': '*',
+    })
     res.end(req.method === 'HEAD' ? undefined : body)
     return true
   }
@@ -112,7 +126,10 @@ export function prometheusText(snapshot: Record<string, unknown>): string {
   const lines: string[] = []
   for (const [k, v] of Object.entries(snapshot)) {
     if (typeof v !== 'number' || !Number.isFinite(v)) continue
-    const name = `games_${k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/[^A-Za-z0-9_]/g, '_').toLowerCase()}`
+    const name = `games_${k
+      .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+      .replace(/[^A-Za-z0-9_]/g, '_')
+      .toLowerCase()}`
     lines.push(`# TYPE ${name} gauge`, `${name} ${v}`)
   }
   return `${lines.join('\n')}\n`
