@@ -22,7 +22,7 @@ export * from './defs/skills.js'
 export * from './defs/resources.js'
 export * from './packs/scraplandia.js'
 
-import { ContentRegistry } from './registry.js'
+import { ContentRegistry, type ContentDefs } from './registry.js'
 import { mergePackDefs, type ContentPackV2 } from './pack.js'
 import { SCRAPLANDIA_PACK } from './packs/scraplandia.js'
 import { CROPS } from './defs/crops.js'
@@ -42,7 +42,7 @@ import { SKILLS } from './defs/skills.js'
  * immutable: packs take effect when it is built, i.e. at the next start.
  */
 export function createContent(packs: ContentPackV2[] = []): ContentRegistry {
-  const { defs, errors } = mergePackDefs(
+  const { defs, errors } = mergePackDefs<ContentDefs>(
     {
       items: ITEMS,
       recipes: RECIPES,

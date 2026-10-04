@@ -48,7 +48,8 @@ describe('protocol codec', () => {
       t: 'hello', v: PROTOCOL_VERSION - 1, slot: 0, name: 'Old',
       appearance: defaultAppearance(),
     }))
-    expect(old).toMatchObject({ t: 'hello', contentDigest: undefined })
+    expect(old).toMatchObject({ t: 'hello' })
+    expect(old).not.toHaveProperty('contentDigest')
     expect(decodeClientMessage(JSON.stringify({
       t: 'hello', v: PROTOCOL_VERSION, contentDigest: 'garbage',
       slot: 0, name: 'Bad', appearance: defaultAppearance(),

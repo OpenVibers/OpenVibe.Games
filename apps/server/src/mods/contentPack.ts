@@ -56,7 +56,7 @@ export interface ContentProp {
 export interface ContentPack {
   /** Definitions, deep-validated by `mergePackDefs`; the schema only bounds them. */
   defs?: NonNullable<ContentPackV2['defs']>
-  map?: ContentPackV2['map']
+  map?: NonNullable<ContentPackV2['map']>
   announcements?: ContentAnnouncement[]
   props?: ContentProp[]
 }
