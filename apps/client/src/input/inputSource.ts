@@ -16,8 +16,8 @@ export interface InputSample {
 
 /**
  * Where movement input comes from. The protocol carries intents, not keys: a
- * keyboard/mouse source implements this today and M2's touch source plugs in
- * here, producing the same `InputSample`.
+ * keyboard/mouse source and a touch source (touchInputSource.ts) implement
+ * it, both producing the same `InputSample`.
  */
 export interface InputSource {
   /** Latest view yaw for the render camera (updates at frame rate). */
@@ -57,5 +57,26 @@ export class KeyboardInputSource implements InputSource {
     const moveX = (keys.keyDown('KeyD') ? 1 : 0) - (keys.keyDown('KeyA') ? 1 : 0)
     const moveZ = (keys.keyDown('KeyW') ? 1 : 0) - (keys.keyDown('KeyS') ? 1 : 0)
     return { moveX, moveZ, yaw: keys.yaw, pitch: keys.pitch, intents }
+  }
+}
+
+/**
+ * The source the player is using right now. A device with both a keyboard
+ * and a touch screen switches to whichever was used last; the simulation
+ * keeps one InputSource and never notices.
+ */
+export class SwitchableInputSource implements InputSource {
+  constructor(public current: InputSource) {}
+
+  get yaw(): number {
+    return this.current.yaw
+  }
+
+  get pitch(): number {
+    return this.current.pitch
+  }
+
+  sample(): InputSample {
+    return this.current.sample()
   }
 }

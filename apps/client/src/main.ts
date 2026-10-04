@@ -19,7 +19,9 @@ import { WATER_LEVEL } from '@openvibe/content'
 import { InteractionController } from './game/interactionController.js'
 import { LocalPlayer } from './game/localPlayer.js'
 import { InputTracker } from './input/inputTracker.js'
-import { KeyboardInputSource } from './input/inputSource.js'
+import { KeyboardInputSource, SwitchableInputSource } from './input/inputSource.js'
+import { TouchControls } from './input/touchControls.js'
+import { TouchInputSource, TouchPad } from './input/touchInputSource.js'
 import { Connection, gameSocketUrl, getIdentity, saveName } from './net/connection.js'
 import { BeamRenderer, type BeamState } from './render/beams.js'
 import { EntityView } from './render/entityView.js'
@@ -170,8 +172,41 @@ async function start(): Promise<void> {
   registerRiggingModule()
   const hud = new Hud(uiRoot, state, content, connection, icons, weaponSettings)
 
+  // Touch on a coarse pointer, keyboard otherwise; a device with both
+  // switches to whichever was used last, carrying the view angle across.
+  const keyboardSource = new KeyboardInputSource(input)
+  const touchPad = new TouchPad()
+  const touchSource = new TouchInputSource(touchPad)
+  const touchControls = new TouchControls(uiRoot, canvas, touchPad)
+  const inputSource = new SwitchableInputSource(keyboardSource)
+  const useTouch = (touch: boolean): void => {
+    const next = touch ? touchSource : keyboardSource
+    if (inputSource.current === next) return
+    if (touch) {
+      touchPad.yaw = input.yaw
+      touchPad.pitch = input.pitch
+      input.exitLock()
+    } else {
+      input.yaw = touchPad.yaw
+      input.pitch = touchPad.pitch
+    }
+    inputSource.current = next
+    touchControls.setActive(touch)
+  }
+  useTouch(matchMedia('(pointer: coarse)').matches)
+  // Capture phase: the switch happens before the press is handled.
+  document.addEventListener('pointerdown', (e) => useTouch(e.pointerType === 'touch'), true)
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+      if (!input.uiCapture && !typing) useTouch(false)
+    },
+    true,
+  )
+
   const world = content.world
-  const player = new LocalPlayer(scene, physics, new KeyboardInputSource(input), connection, state, {
+  const player = new LocalPlayer(scene, physics, inputSource, connection, state, {
     x: world.spawnPoint[0],
     y: world.spawnPoint[1],
     z: world.spawnPoint[2],
@@ -229,8 +264,10 @@ async function start(): Promise<void> {
 
   hud.onUiCaptureChange = (captured) => {
     input.uiCapture = captured
+    touchControls.setUiCapture(captured)
     if (captured) input.exitLock()
-    else input.requestLock() // straight back into the game when the menu closes
+    // Straight back into the game when the menu closes; touch never locks.
+    else if (inputSource.current === keyboardSource) input.requestLock()
   }
   input.onAction = (action) => {
     switch (action.kind) {
@@ -260,6 +297,9 @@ async function start(): Promise<void> {
         interact.handle(action)
     }
   }
+  // Touch buttons and look drags route exactly like their mouse/keyboard twins.
+  touchPad.onAction = (action) => input.onAction?.(action)
+  touchPad.captureLook = () => input.captureLook?.() ?? false
   interact.onShopOpen = (targetId) => hud.openShop(targetId)
   input.onWheel = (delta) => interact.onWheel(delta)
 
