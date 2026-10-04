@@ -20,11 +20,11 @@ export * from './defs/items.js'
 export * from './defs/recipes.js'
 export * from './defs/skills.js'
 export * from './defs/resources.js'
-export * from './defs/scrapcity.js'
+export * from './packs/scraplandia.js'
 
 import { ContentRegistry } from './registry.js'
 import { mergePackDefs, type ContentPackV2 } from './pack.js'
-import { SCRAP_CITY } from './defs/scrapcity.js'
+import { SCRAPLANDIA_PACK } from './packs/scraplandia.js'
 import { CROPS } from './defs/crops.js'
 import { FACTIONS, NPC_ARCHETYPES } from './defs/npcs.js'
 import { MARKETS } from './defs/markets.js'
@@ -53,9 +53,9 @@ export function createContent(packs: ContentPackV2[] = []): ContentRegistry {
       factions: FACTIONS,
       markets: MARKETS,
       jobs: JOBS,
-      world: SCRAP_CITY,
+      world: { id: 'base', name: 'Base', groundHalfExtent: 80, spawnPoint: [0, 1.2, 4], spawnYaw: 0, flatTerrain: true, statics: [], resourceNodes: [], initialProps: [], zones: [] },
     },
-    packs,
+    [SCRAPLANDIA_PACK, ...packs],
   )
   if (errors.length > 0) throw new Error(`content pack: ${errors.join('; ')}`)
   return new ContentRegistry(defs)

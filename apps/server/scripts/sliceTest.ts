@@ -28,7 +28,7 @@ import {
   type WirePlayerState,
   type WireSkill,
 } from '@openvibe/protocol'
-import { encodeHeights } from '@openvibe/content'
+import { createContent, encodeHeights } from '@openvibe/content'
 import { quantiseAngle } from '@openvibe/shared'
 
 // A port the OS hands out, not a fixed one: the checks and the verify job can run the slice at the
@@ -206,6 +206,7 @@ class TestClient {
     this.send({
       t: 'hello',
       v: PROTOCOL_VERSION,
+      contentDigest: createContent().digest,
       slot: 0,
       name,
       appearance: appearance ?? defaultAppearance(),

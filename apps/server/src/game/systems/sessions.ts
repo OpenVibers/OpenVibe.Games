@@ -86,6 +86,15 @@ export class SessionsSystem implements System {
 
   private async resolveHello(conn: GameConnection, msg: ClientHello): Promise<void> {
     const ctx = this.ctx
+    const serverDigest = ctx.world.content.digest
+    if (msg.contentDigest !== serverDigest) {
+      conn.send(encodeServerMessage({
+        t: 'reject', reason: 'content_mismatch',
+        clientDigest: msg.contentDigest ?? null, serverDigest,
+      }))
+      conn.close(4013, 'content_mismatch')
+      return
+    }
     if (msg.v !== PROTOCOL_VERSION) {
       conn.send(encodeServerMessage({ t: 'reject', reason: 'protocol_mismatch' }))
       conn.close(4002, 'protocol_mismatch')
@@ -238,6 +247,7 @@ export class SessionsSystem implements System {
     ctx.net.send(session, {
       t: 'welcome',
       v: PROTOCOL_VERSION,
+      contentDigest: serverDigest,
       rank,
       playerId: playerId as string,
       entityId: session.entityId as string,

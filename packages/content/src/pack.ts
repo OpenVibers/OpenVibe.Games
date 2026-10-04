@@ -21,6 +21,7 @@ import { NpcArchetypeSchema, type NpcArchetype } from './schema/npc.js'
 import { ItemDefSchema, type ItemDef } from './schema/item.js'
 import { RecipeSchema, type Recipe } from './schema/recipe.js'
 import type { ContentDefs } from './registry.js'
+import { WorldDefSchema, type WorldDef } from './schema/world.js'
 
 /** The pack format version both sides must agree on. */
 export const CONTENT_PACK_VERSION = 2
@@ -33,6 +34,8 @@ export type PackDefKind = keyof typeof MAX_PACK_DEFS
 
 export interface ContentPackV2 {
   defs?: { [K in PackDefKind]?: unknown[] }
+  /** One authored map; the built-in Scraplandia pack supplies the default. */
+  map?: WorldDef
   announcements?: { text: string; everySeconds: number }[]
   props?: { key: string; item: string; pos: [number, number, number]; yaw?: number }[]
 }
@@ -109,6 +112,8 @@ export function mergePackDefs<B extends PackBase>(
   const crops = [...base.crops]
   const npcs = [...base.npcs]
   const errors: string[] = []
+  let map = 'world' in base ? (base as B & { world: WorldDef }).world : undefined
+  let mapSeen = false
   const baseItems = new Set(base.items.map((d) => d.id))
   const baseRecipes = new Set(base.recipes.map((d) => d.id))
   const baseCrops = new Set(base.crops.map((d) => d.id))
@@ -117,6 +122,15 @@ export function mergePackDefs<B extends PackBase>(
   packs.forEach((p, n) => {
     const where = packs.length > 1 ? `pack ${n}: ` : ''
     const mine: string[] = []
+    if (p.map !== undefined) {
+      const parsed = WorldDefSchema.safeParse(p.map)
+      if (!parsed.success) mine.push(`map: ${parsed.error.message}`)
+      else if (mapSeen) mine.push('map is defined by more than one pack')
+      else {
+        map = parsed.data
+        mapSeen = true
+      }
+    }
     const i = parseDefs<ItemDef>('items', ItemDefSchema, p.defs?.items)
     const r = parseDefs<Recipe>('recipes', RecipeSchema, p.defs?.recipes)
     const c = parseDefs<CropDef>('crops', CropDefSchema, p.defs?.crops)
@@ -154,7 +168,7 @@ export function mergePackDefs<B extends PackBase>(
     }
     errors.push(...mine.map((e) => where + e))
   })
-  return { defs: { ...base, items, recipes, crops, npcs }, errors }
+  return { defs: { ...base, items, recipes, crops, npcs, ...(map ? { world: map } : {}) }, errors }
 }
 
 /** 32-bit FNV-1a over a string; plain integer maths, identical in every JS runtime. */

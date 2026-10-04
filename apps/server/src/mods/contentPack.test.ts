@@ -1,4 +1,4 @@
-import { createContent, ITEMS } from '@openvibe/content'
+import { createContent, ITEMS, SCRAPLANDIA_PACK } from '@openvibe/content'
 import { openTestStore } from '@openvibe/persistence/testing'
 import { describe, expect, it } from 'vitest'
 import {
@@ -41,6 +41,12 @@ async function setup() {
 }
 
 describe('games-content@2 definitions', () => {
+  it('recognizes an authored map as a definition-capability section', () => {
+    const mapPack = { map: SCRAPLANDIA_PACK.map }
+    expect(capabilitiesUsedBy(mapPack)).toEqual([CAP_DEFINE])
+    expect(validateContentPack(mapPack, createContent()).ok).toBe(true)
+    expect(validateContentPack({ map: { id: 'broken' } }, createContent()).ok).toBe(false)
+  })
   it('needs games.def.define for any non-empty defs section', () => {
     expect(capabilitiesUsedBy(itemPack('widget'))).toEqual([CAP_DEFINE])
     expect(capabilitiesUsedBy({ defs: { items: [] } })).toEqual([])

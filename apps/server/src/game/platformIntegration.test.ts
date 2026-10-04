@@ -145,6 +145,7 @@ function connect(game: GameServer) {
     const msg = {
       t: 'hello',
       v: PROTOCOL_VERSION,
+      contentDigest: createContent().digest,
       slot: 0,
       name: 'Ana',
       appearance: defaultAppearance(),
@@ -190,6 +191,10 @@ describe('Games on platform identity, events and mods (real server, restart)', (
 
   it('runs identity, mods and events against the live world', async () => {
     const a = await boot(platform)
+    // Main 545f6c1 seeded no entity ids/positions from SCRAP_CITY. The
+    // built-in pack must leave the fresh authoritative world identical.
+    expect([...a.world.entities.all()].map((e) => [e.id, e.transform.pos])).toEqual([])
+    expect(a.world.content.world.spawnPoint).toEqual([0, 1.2, 4])
 
     // The upgrade gate is the only identity source (ADR-0007 decision 8):
     // a hello that arrives on a connection the transport never stamped is
@@ -200,10 +205,28 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     expect(refused.welcome).toBeUndefined()
     expect(refused.closed).toEqual({ code: 4012, reason: 'no_identity' })
 
+    // Reject before loading a character or writing any world state. This also
+    // covers an older hello that has no digest at all.
+    for (const offered of [undefined, 'v2-00000000']) {
+      const stale = connect(a.game)
+      stale.conn.identity = { guestKeyHash: hashGuestKey(`stale-${offered ?? 'missing'}`) }
+      a.game.onMessage(stale.conn, {
+        t: 'hello', v: PROTOCOL_VERSION, slot: 0, name: 'Stale',
+        appearance: defaultAppearance(), ...(offered ? { contentDigest: offered } : {}),
+      })
+      await new Promise((r) => setTimeout(r, 0))
+      expect(stale.inbox).toContainEqual({
+        t: 'reject', reason: 'content_mismatch',
+        clientDigest: offered ?? null, serverDigest: a.world.content.digest,
+      })
+      expect(stale.inbox.some((m) => m.t === 'welcome')).toBe(false)
+    }
+
     // The signed-in player is keyed by the canonical subject.
     const ana = connect(a.game)
     const joined = await ana.hello('abcdefgh12', 'tok-ana')
     expect(joined.welcome).toBeDefined()
+    expect(joined.welcome).toMatchObject({ contentDigest: a.world.content.digest })
     signedInPlayerId = (joined.welcome as { playerId: string }).playerId
     // The tick never awaits I/O; shutdown queues the final checkpoint, drain waits for it.
     a.game.shutdown()

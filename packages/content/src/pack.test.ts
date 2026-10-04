@@ -13,6 +13,7 @@ import {
   RECIPES,
   RESOURCE_NODES,
   SCRAP_CITY,
+  SCRAPLANDIA_PACK,
   SKILLS,
   type ContentDefs,
   type ContentPackV2,
@@ -177,5 +178,35 @@ describe('contentDigest', () => {
       items: added.items.map((i) => (i.id === 'd_a' ? { ...i, name: 'Changed' } : i)),
     }
     expect(contentDigest(edited)).not.toBe(contentDigest(added))
+  })
+
+  it('matches the merged set on both sides and changes with a pack def', () => {
+    const client = createContent()
+    const server = createContent([])
+    expect(client.digest).toBe(server.digest)
+    expect(createContent([pack('extra')]).digest).not.toBe(client.digest)
+  })
+
+  it('changes when the pack map changes', () => {
+    const changed = { ...base, world: { ...base.world, spawnPoint: [1, 1.2, 4] as [number, number, number] } }
+    expect(contentDigest(changed)).not.toBe(contentDigest(base))
+  })
+})
+
+describe('Scraplandia default pack', () => {
+  it('loads the exact world and boot entity positions from main', () => {
+    // Recorded from main 545f6c1, packages/content/src/defs/scrapcity.ts.
+    // The released city is an editor-built blank slate: no seeded entity ids.
+    const expected = {
+      id: 'openvibeville_v2', name: 'Scrap City', flatTerrain: true,
+      groundHalfExtent: 80, spawnPoint: [0, 1.2, 4], spawnYaw: 0,
+      statics: [], resourceNodes: [], initialProps: [],
+      zones: [{ id: 'city', name: 'Scrap City', min: [-20.5, -1, -20.5],
+        max: [20.5, 8, 20.5], rules: { pvp: false, build: false, physgun: true } }],
+    }
+    expect(SCRAPLANDIA_PACK.map).toEqual(expected)
+    expect(createContent().world).toEqual(expected)
+    expect(createContent().world.initialProps.map((p) => [p.item, p.pos])).toEqual([])
+    expect(createContent().world.resourceNodes.map((n) => [n.node, n.pos])).toEqual([])
   })
 })

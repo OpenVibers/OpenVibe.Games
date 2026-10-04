@@ -391,7 +391,7 @@ async function start(): Promise<void> {
 
   hud.setStatus('connecting…')
   try {
-    await connection.connect(gameSocketUrl(), identity.token, name, appearance, slot, sso)
+    await connection.connect(gameSocketUrl(), identity.token, name, appearance, content.digest, slot, sso)
   } catch {
     // Refused or timed out (a page opened during a restart): wait for the server, then reload.
     hud.setStatus('could not reach the server — retrying automatically…')
