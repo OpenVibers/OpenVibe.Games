@@ -1773,7 +1773,15 @@ async function main(): Promise<void> {
       `extraction recalled the player to the city (at ${me.pos[0].toFixed(1)},${me.pos[2].toFixed(1)})`,
     )
     const coreStack = a.inventory?.slots.find((s) => s.stack.def === 'salvage_core')
-    assert(coreStack?.stack.meta?.secured === 1, 'looted valuables are SECURED after extraction')
+    // A death or rescue respawn also lands at the spawn point, so say which one happened.
+    const lastAnnounces = a.announces
+      .slice(-6)
+      .map((n) => n.text)
+      .join(' | ')
+    assert(
+      coreStack?.stack.meta?.secured === 1,
+      `looted valuables are SECURED after extraction (core stack ${JSON.stringify(coreStack?.stack ?? null)}; recent announces: ${lastAnnounces})`,
+    )
   }
 
   console.log('phase: persistence across restart (props, frozen state, skills, friends, depletion)')
