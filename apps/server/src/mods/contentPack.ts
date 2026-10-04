@@ -121,7 +121,8 @@ const validateSchema = ajv.compile(CONTENT_PACK_SCHEMA)
 /** Which capability each pack section needs. */
 export function capabilitiesUsedBy(pack: ContentPack): string[] {
   const used: string[] = []
-  if (pack.map || Object.values(pack.defs ?? {}).some((list) => (list ?? []).length > 0)) used.push(CAP_DEFINE)
+  if (pack.map || Object.values(pack.defs ?? {}).some((list) => (list ?? []).length > 0))
+    used.push(CAP_DEFINE)
   if ((pack.announcements ?? []).length > 0) used.push(CAP_ANNOUNCE)
   if ((pack.props ?? []).length > 0) used.push(CAP_PLACE_PROP)
   return used
@@ -195,7 +196,8 @@ export async function loadDefinitionPacks(
   for (const mod of await mods.list()) {
     if (mod.status !== 'enabled') continue
     const pack = mod.pack as unknown as ContentPackV2
-    if (!pack.map && Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0)) continue
+    if (!pack.map && Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0))
+      continue
     const granted = (await mods.grants(mod.id)).some(
       (g) => g.capability === CAP_DEFINE && g.revokedAt === null,
     )

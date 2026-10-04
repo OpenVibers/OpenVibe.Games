@@ -8,10 +8,10 @@ jobs:
   test:
     uses: OpenVibers/OpenVibe.Shared/.github/workflows/test.yml@66b76f868ea8228aad7811309eafef3726b036f3
     with:
-      package-manager: pnpm           # version from package.json "packageManager"
+      package-manager: pnpm # version from package.json "packageManager"
       install: pnpm install --frozen-lockfile
       test: pnpm typecheck && pnpm lint && pnpm test
-      syntax-dirs: ''                 # TypeScript: typecheck covers it
+      syntax-dirs: '' # TypeScript: typecheck covers it
       extra: cd apps/server && npx openvibe-contracts-check --service games --src src
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo.
   security:

@@ -193,6 +193,8 @@ for (const f of chosen) {
 }
 for (const tail of tails) console.log(`\n${tail}`)
 if (!bad && r.status !== 0) {
-  console.log(`\n── vitest exited ${r.status ?? r.signal} although every file passed ──\n${vitestOut.split('\n').slice(-30).join('\n')}`)
+  console.log(
+    `\n── vitest exited ${r.status ?? r.signal} although every file passed ──\n${vitestOut.split('\n').slice(-30).join('\n')}`,
+  )
 }
 process.exit(bad || r.status !== 0 ? 1 : 0)

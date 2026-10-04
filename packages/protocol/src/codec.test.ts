@@ -9,7 +9,14 @@ describe('protocol codec', () => {
     const messages: ClientMessage[] = [
       // hello carries no identity field: authentication happens at the
       // WebSocket upgrade (ADR-0007 decision 8).
-      { t: 'hello', v: PROTOCOL_VERSION, contentDigest: 'v2-1234abcd', slot: 0, name: 'Tester', appearance: defaultAppearance() },
+      {
+        t: 'hello',
+        v: PROTOCOL_VERSION,
+        contentDigest: 'v2-1234abcd',
+        slot: 0,
+        name: 'Tester',
+        appearance: defaultAppearance(),
+      },
       { t: 'input', seq: 42, moveX: 1, moveZ: -0.5, yawQ: 12345, pitchQ: -4096, intents: 5 },
       { t: 'use', target: 'abc123' },
       { t: 'craft', recipe: 'craft_wooden_crate' },
@@ -44,16 +51,29 @@ describe('protocol codec', () => {
   })
 
   it('decodes an older hello without a digest for a typed join rejection', () => {
-    const old = decodeClientMessage(JSON.stringify({
-      t: 'hello', v: PROTOCOL_VERSION - 1, slot: 0, name: 'Old',
-      appearance: defaultAppearance(),
-    }))
+    const old = decodeClientMessage(
+      JSON.stringify({
+        t: 'hello',
+        v: PROTOCOL_VERSION - 1,
+        slot: 0,
+        name: 'Old',
+        appearance: defaultAppearance(),
+      }),
+    )
     expect(old).toMatchObject({ t: 'hello' })
     expect(old).not.toHaveProperty('contentDigest')
-    expect(decodeClientMessage(JSON.stringify({
-      t: 'hello', v: PROTOCOL_VERSION, contentDigest: 'garbage',
-      slot: 0, name: 'Bad', appearance: defaultAppearance(),
-    }))).toBeNull()
+    expect(
+      decodeClientMessage(
+        JSON.stringify({
+          t: 'hello',
+          v: PROTOCOL_VERSION,
+          contentDigest: 'garbage',
+          slot: 0,
+          name: 'Bad',
+          appearance: defaultAppearance(),
+        }),
+      ),
+    ).toBeNull()
   })
 
   it('refuses unknown intent bits and out-of-range quantised angles', () => {

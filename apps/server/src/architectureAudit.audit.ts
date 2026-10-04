@@ -77,7 +77,7 @@ describe('architecture audit: the server is Babylon-free (ADR-0007)', () => {
   })
 
   it('imports no @babylonjs/* anywhere in the server', () => {
-    expect(report(activeHits(/@babylonjs\//))) .toBe('')
+    expect(report(activeHits(/@babylonjs\//))).toBe('')
   })
 
   it('drives Rapier (not Havok) and has no Havok loader', () => {

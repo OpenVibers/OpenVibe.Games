@@ -14,14 +14,18 @@ describe('client content handshake', () => {
 
   it('sends the local definition digest and protocol version in hello', () => {
     expect(helloForContent('Player', defaultAppearance(), 0, digest)).toMatchObject({
-      t: 'hello', v: PROTOCOL_VERSION, contentDigest: digest,
+      t: 'hello',
+      v: PROTOCOL_VERSION,
+      contentDigest: digest,
     })
   })
 
   it('turns a mismatched welcome into a typed reject before state applies', () => {
     expect(welcomeContentMismatch({ ...welcome, contentDigest: 'v2-00000000' }, digest)).toEqual({
-      t: 'reject', reason: 'content_mismatch',
-      clientDigest: digest, serverDigest: 'v2-00000000',
+      t: 'reject',
+      reason: 'content_mismatch',
+      clientDigest: digest,
+      serverDigest: 'v2-00000000',
     })
   })
 })

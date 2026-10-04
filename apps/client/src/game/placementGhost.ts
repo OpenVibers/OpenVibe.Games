@@ -4,7 +4,12 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import { CollisionLayer, type PhysicsWorld } from '@openvibe/physics'
 import { ZoneIndex, type ZoneRules } from '@openvibe/gameplay'
-import { getMapOverride, terrainHeight, type ContentRegistry, type WorldShape } from '@openvibe/content'
+import {
+  getMapOverride,
+  terrainHeight,
+  type ContentRegistry,
+  type WorldShape,
+} from '@openvibe/content'
 import { v3addScaled, vec3 } from '@openvibe/shared'
 import { meshForShape } from '../render/sceneSetup.js'
 

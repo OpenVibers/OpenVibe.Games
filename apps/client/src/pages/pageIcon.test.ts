@@ -19,6 +19,8 @@ describe('page icon', () => {
 
   it('public/favicon.svg exists and is an SVG', () => {
     expect(existsSync(client('public/favicon.svg'))).toBe(true)
-    expect(readFileSync(client('public/favicon.svg'), 'utf8')).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/)
+    expect(readFileSync(client('public/favicon.svg'), 'utf8')).toMatch(
+      /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/,
+    )
   })
 })

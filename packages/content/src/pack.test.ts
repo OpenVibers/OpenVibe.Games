@@ -188,7 +188,10 @@ describe('contentDigest', () => {
   })
 
   it('changes when the pack map changes', () => {
-    const changed = { ...base, world: { ...base.world, spawnPoint: [1, 1.2, 4] as [number, number, number] } }
+    const changed = {
+      ...base,
+      world: { ...base.world, spawnPoint: [1, 1.2, 4] as [number, number, number] },
+    }
     expect(contentDigest(changed)).not.toBe(contentDigest(base))
   })
 })
@@ -198,11 +201,24 @@ describe('Scraplandia default pack', () => {
     // Recorded from main 545f6c1, packages/content/src/defs/scrapcity.ts.
     // The released city is an editor-built blank slate: no seeded entity ids.
     const expected = {
-      id: 'openvibeville_v2', name: 'Scrap City', flatTerrain: true,
-      groundHalfExtent: 80, spawnPoint: [0, 1.2, 4], spawnYaw: 0,
-      statics: [], resourceNodes: [], initialProps: [],
-      zones: [{ id: 'city', name: 'Scrap City', min: [-20.5, -1, -20.5],
-        max: [20.5, 8, 20.5], rules: { pvp: false, build: false, physgun: true } }],
+      id: 'openvibeville_v2',
+      name: 'Scrap City',
+      flatTerrain: true,
+      groundHalfExtent: 80,
+      spawnPoint: [0, 1.2, 4],
+      spawnYaw: 0,
+      statics: [],
+      resourceNodes: [],
+      initialProps: [],
+      zones: [
+        {
+          id: 'city',
+          name: 'Scrap City',
+          min: [-20.5, -1, -20.5],
+          max: [20.5, 8, 20.5],
+          rules: { pvp: false, build: false, physgun: true },
+        },
+      ],
     }
     expect(SCRAPLANDIA_PACK.map).toEqual(expected)
     expect(createContent().world).toEqual(expected)
