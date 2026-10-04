@@ -3,9 +3,31 @@ import {
   decodeServerMessage,
   encodeClientMessage,
   type Appearance,
+  type ClientHello,
   type ClientMessage,
   type ServerMessage,
+  type ServerWelcome,
 } from '@openvibe/protocol'
+
+/** A stale server welcome must never start prediction with different definitions. */
+export function welcomeContentMismatch(
+  msg: ServerWelcome,
+  clientDigest: string,
+): ServerMessage | null {
+  return msg.contentDigest === clientDigest
+    ? null
+    : { t: 'reject', reason: 'content_mismatch', clientDigest, serverDigest: msg.contentDigest }
+}
+
+/** Build the versioned hello from the same content registry used for rendering. */
+export function helloForContent(
+  name: string,
+  appearance: Appearance,
+  slot: number,
+  contentDigest: string,
+): ClientHello {
+  return { t: 'hello', v: PROTOCOL_VERSION, contentDigest, slot, name, appearance }
+}
 
 /** How long the first WebSocket connect may take before the page falls back to waiting for the server. */
 export const CONNECT_TIMEOUT_MS = 10_000
@@ -69,6 +91,7 @@ export class Connection {
     token: string,
     name: string,
     appearance: Appearance,
+    contentDigest: string,
     slot = 0,
     /** Network access token; ignored if absent (the identity is the ticket). */
     networkToken?: string,
@@ -102,17 +125,20 @@ export class Connection {
     })
     ws.onmessage = (event) => {
       const msg = decodeServerMessage(String(event.data))
-      if (msg) this.onMessage?.(msg)
+      if (!msg) return
+      if (msg.t === 'welcome') {
+        const mismatch = welcomeContentMismatch(msg, contentDigest)
+        if (mismatch) {
+          this.onMessage?.(mismatch)
+          ws.close()
+          return
+        }
+      }
+      this.onMessage?.(msg)
     }
     ws.onclose = () => this.onClose?.()
-    this.send({
-      t: 'hello',
-      v: PROTOCOL_VERSION,
-      slot,
-      name,
-      appearance,
-      // Identity was resolved at the upgrade; hello carries no identity field.
-    })
+    // Identity was resolved at the upgrade; hello carries no identity field.
+    this.send(helloForContent(name, appearance, slot, contentDigest))
   }
 
   send(msg: ClientMessage): void {

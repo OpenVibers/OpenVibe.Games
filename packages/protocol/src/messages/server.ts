@@ -16,6 +16,7 @@ import type {
 export interface ServerWelcome {
   t: 'welcome'
   v: number
+  contentDigest: string
   /** openvibe.network rank of this account: owner/admin/moderator, null for players. */
   rank: 'owner' | 'admin' | 'moderator' | null
   playerId: string
@@ -30,12 +31,16 @@ export interface ServerReject {
   t: 'reject'
   reason:
     | 'protocol_mismatch'
+    | 'content_mismatch'
     | 'server_full'
     | 'invalid_hello'
     | 'guest_one_character'
     | 'auth_failed'
     /** The person signed out everywhere (or changed their password, or was banned) on the Network. */
     | 'signed_out'
+  /** Present when content_mismatch: the offered and required definition sets. */
+  clientDigest?: string | null
+  serverDigest?: string
 }
 
 /** Entities that became relevant to this client (full state). */

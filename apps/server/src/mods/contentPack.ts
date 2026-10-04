@@ -5,14 +5,14 @@
  *
  *   announcements  games.world.announce   periodic server announcements
  *   props          games.prop.place       inert props placed in the world
- *   defs           games.def.define       items, recipes, crops and npc archetypes
+ *   defs/map       games.def.define       definitions and an authored map
  *                                         merged into the content registry
  *
  * Definitions are validated here with the schemas the base content uses and
  * merged by `createContent(packs)` when the server boots, so a new pack's defs
  * exist after the next restart (the registry is immutable). The client does
- * not load packs yet: until the def-set handshake (M2.2) a pack's items render
- * server-side only.
+ * not load installed packs yet: the def-set handshake refuses clients whose
+ * local definitions differ from the server's loaded set.
  *
  * Mod props are owned by the mod, so prop protection keeps players from
  * picking them up, moving or welding them, and only items without health,
@@ -56,6 +56,7 @@ export interface ContentProp {
 export interface ContentPack {
   /** Definitions, deep-validated by `mergePackDefs`; the schema only bounds them. */
   defs?: NonNullable<ContentPackV2['defs']>
+  map?: NonNullable<ContentPackV2['map']>
   announcements?: ContentAnnouncement[]
   props?: ContentProp[]
 }
@@ -77,6 +78,7 @@ export const CONTENT_PACK_SCHEMA = {
         npcs: { type: 'array', maxItems: MAX_PACK_DEFS.npcs, items: { type: 'object' } },
       },
     },
+    map: { type: 'object', maxProperties: 12 },
     announcements: {
       type: 'array',
       maxItems: 10,
@@ -119,7 +121,7 @@ const validateSchema = ajv.compile(CONTENT_PACK_SCHEMA)
 /** Which capability each pack section needs. */
 export function capabilitiesUsedBy(pack: ContentPack): string[] {
   const used: string[] = []
-  if (Object.values(pack.defs ?? {}).some((list) => (list ?? []).length > 0)) used.push(CAP_DEFINE)
+  if (pack.map || Object.values(pack.defs ?? {}).some((list) => (list ?? []).length > 0)) used.push(CAP_DEFINE)
   if ((pack.announcements ?? []).length > 0) used.push(CAP_ANNOUNCE)
   if ((pack.props ?? []).length > 0) used.push(CAP_PLACE_PROP)
   return used
@@ -152,7 +154,9 @@ export function validateContentPack(
   }
   const pack = value as unknown as ContentPack
   const errors: string[] = []
-  if (pack.defs) {
+  // The built-in pack always supplies the map, so a mod's map would be skipped at boot as a duplicate.
+  if (pack.map) errors.push('map is defined by the built-in pack and cannot be replaced by a mod')
+  if (pack.defs || pack.map) {
     // The content the pack would be merged onto; its own ids may not already exist.
     const merged = mergePackDefs(
       {
@@ -191,7 +195,7 @@ export async function loadDefinitionPacks(
   for (const mod of await mods.list()) {
     if (mod.status !== 'enabled') continue
     const pack = mod.pack as unknown as ContentPackV2
-    if (Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0)) continue
+    if (!pack.map && Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0)) continue
     const granted = (await mods.grants(mod.id)).some(
       (g) => g.capability === CAP_DEFINE && g.revokedAt === null,
     )

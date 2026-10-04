@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { decodeClientMessage, encodeClientMessage } from './codec.js'
+import { PROTOCOL_VERSION } from './version.js'
 import type { ClientMessage } from './messages/client.js'
 import { defaultAppearance } from './appearance.js'
 
@@ -8,7 +9,7 @@ describe('protocol codec', () => {
     const messages: ClientMessage[] = [
       // hello carries no identity field: authentication happens at the
       // WebSocket upgrade (ADR-0007 decision 8).
-      { t: 'hello', v: 1, slot: 0, name: 'Tester', appearance: defaultAppearance() },
+      { t: 'hello', v: PROTOCOL_VERSION, contentDigest: 'v2-1234abcd', slot: 0, name: 'Tester', appearance: defaultAppearance() },
       { t: 'input', seq: 42, moveX: 1, moveZ: -0.5, yawQ: 12345, pitchQ: -4096, intents: 5 },
       { t: 'use', target: 'abc123' },
       { t: 'craft', recipe: 'craft_wooden_crate' },
@@ -42,6 +43,19 @@ describe('protocol codec', () => {
     ).toBeNull()
   })
 
+  it('decodes an older hello without a digest for a typed join rejection', () => {
+    const old = decodeClientMessage(JSON.stringify({
+      t: 'hello', v: PROTOCOL_VERSION - 1, slot: 0, name: 'Old',
+      appearance: defaultAppearance(),
+    }))
+    expect(old).toMatchObject({ t: 'hello' })
+    expect(old).not.toHaveProperty('contentDigest')
+    expect(decodeClientMessage(JSON.stringify({
+      t: 'hello', v: PROTOCOL_VERSION, contentDigest: 'garbage',
+      slot: 0, name: 'Bad', appearance: defaultAppearance(),
+    }))).toBeNull()
+  })
+
   it('refuses unknown intent bits and out-of-range quantised angles', () => {
     const decodeInput = (fields: string) =>
       decodeClientMessage(`{"t":"input","seq":1,"moveX":0,"moveZ":0,${fields}}`)
@@ -61,6 +75,7 @@ describe('protocol codec', () => {
       JSON.stringify({
         t: 'hello',
         v: 1,
+        contentDigest: 'v2-1234abcd',
         token: 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0',
         slot: 0,
         name: 'Tester',

@@ -187,7 +187,7 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   declarative data packs checked against `@openvibe/content` (announcements;
   inert, mod-owned props; definitions — items, recipes, crops, NPC archetypes —
   merged into the content registry at boot, so they take effect on the next
-  restart, and only on the server until the def-set handshake lands). Each install stores the approved subset of its
+  restart). The client sends its definition digest in `hello`; the server checks it before joining and echoes its digest in `welcome`. A mismatch is rejected so installed definitions cannot silently desync clients. Scraplandia's default blank-slate map is supplied by the built-in pack. Each install stores the approved subset of its
   requested capabilities; every runtime binding checks it at call time, a
   revoked install or capability stops affecting the world on the next tick,
   and install/grant/use/deny/revoke are audited (`mod_audit`). Trust tiers are

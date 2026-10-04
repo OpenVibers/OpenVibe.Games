@@ -12,6 +12,7 @@ import { RecipeSchema, type Recipe } from './schema/recipe.js'
 import { ResourceNodeTypeSchema, type ResourceNodeType } from './schema/resourceNode.js'
 import { SkillDefSchema, type SkillDef } from './schema/skill.js'
 import { WorldDefSchema, type WorldDef } from './schema/world.js'
+import { contentDigest } from './pack.js'
 
 export interface ContentDefs {
   items: ItemDef[]
@@ -33,6 +34,8 @@ export interface ContentDefs {
  * corrupt a live world.
  */
 export class ContentRegistry {
+  /** Identity of the exact validated definition set used by this world. */
+  readonly digest: string
   private readonly items = new Map<string, ItemDef>()
   private readonly recipes = new Map<string, Recipe>()
   private readonly skills = new Map<string, SkillDef>()
@@ -45,6 +48,7 @@ export class ContentRegistry {
   readonly world: WorldDef
 
   constructor(defs: ContentDefs) {
+    this.digest = contentDigest(defs)
     const errors: string[] = []
 
     for (const raw of defs.items) {
