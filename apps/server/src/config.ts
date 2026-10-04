@@ -68,6 +68,12 @@ export interface ServerConfig {
    * place. Off by default; the mods stay in the def set (and its digest) either way.
    */
   scriptMods: boolean
+  /**
+   * INDEXNOW_KEY: the IndexNow protocol key (8–128 hex or alphanumeric). When set, the key file is
+   * served at /<key>.txt so engines can verify it. Empty: off — nothing is mounted and nothing is
+   * sent.
+   */
+  indexnowKey: string
 }
 
 export interface PlatformConfig {
@@ -153,6 +159,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
         }
       : null,
     platform: loadPlatformConfig(env),
+    /** IndexNow is off until a key is configured; an empty key never mounts the key file. */
+    indexnowKey: String(env.INDEXNOW_KEY ?? '').trim(),
     tickRate: 30,
     snapshotEvery: 2,
     interestRadius: intEnv(env, 'INTEREST_RADIUS', 80),

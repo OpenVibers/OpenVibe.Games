@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url'
 
 /**
  * Crawl and machine-readability artifacts (plan T11; audit §4 items 1-2): GET /robots.txt,
- * GET /sitemap.xml and GET /llms.txt, plus the home page's JSON-LD. Every one is built with
- * openvibe-shared/seo — the toolkit the other OpenVibe sites run — so they say the same things
- * here as everywhere.
+ * GET /sitemap.xml, GET /llms.txt and GET /llms-full.txt, plus the home page's JSON-LD. Every one
+ * is built with openvibe-shared/seo — the toolkit the other OpenVibe sites run — so they say the
+ * same things here as everywhere.
  *
  * Public pages only, and never the viewer: the portal and the game are listed; sign-in, the
  * per-user API, operational metrics and the noindex editor app are absent and Disallowed in
@@ -38,8 +38,27 @@ interface SeoUrl {
   changefreq?: string
   priority?: number
 }
+interface LlmsFullPage {
+  title: string
+  url: string
+  /** The page's own text; here the site's own description of it, never scraped HTML. */
+  text?: string
+}
+interface LlmsFullSection {
+  title: string
+  pages: LlmsFullPage[]
+}
+interface LlmsFullOptions {
+  /** The site name and base URL: the document opens `# <name>`, and page URLs resolve against it. */
+  site: { name: string; url: string }
+  summary: string
+  sections?: LlmsFullSection[]
+  /** Hard byte ceiling: a page that would cross it is dropped, never truncated mid-word. */
+  maxBytes?: number
+}
 interface SeoToolkit {
   llmsTxt(o: LlmsOptions): string
+  llmsFull(o: LlmsFullOptions): string
   robotsTxt(o: { sitemaps?: string[]; disallow?: string[]; allow?: string[] }): string
   sitemapXml(urls: SeoUrl[]): string
   jsonLd: {
@@ -70,6 +89,12 @@ const DESCRIPTION =
   'Browser games on the OpenVibe network — multiplayer, in your browser, no download: Scraplandia is a persistent physics survival-building sandbox you can play as a guest.'
 const GAME_DESCRIPTION =
   'Scrappy multiplayer survival-building in and around Scrap City: physgun anything, weld it to anything else, chase supply drops in the wilds and haul your salvage home.'
+// The one summary and one detail paragraph /llms.txt and /llms-full.txt both open with: a model
+// reading the full document must meet the same description of the site as one reading the index.
+const SITE_SUMMARY =
+  'OpenVibe.Games: the games arm of the OpenVibe network — browser games you can start in a tab with no install, and the persistent multiplayer physics sandbox Scraplandia.'
+const SITE_DETAILS =
+  'Everything public can be played as a guest; a signed-in OpenVibe account only adds saved characters and one identity across the network. The portal and the game are plain HTML pages, and the world this game server runs is published as the canonical map document at /map.json. Sign-in, the per-user API, metrics and the editor are not crawler or model input and are listed nowhere here.'
 // Every path robots.txt keeps out of crawlers. None is a public page, so none is in the sitemap
 // or llms.txt either: sign-in, the per-user API, operational metrics and the noindex editor app.
 const DISALLOW = ['/auth/', '/api/', '/metrics', '/editor']
@@ -109,32 +134,51 @@ function publicPages(): SeoUrl[] {
     priority,
     ...(lastmod ? { lastmod } : {}),
   })
-  return [at(`${SITE}/`, 'weekly', 1.0), at(`${PLAY}/`, 'weekly', 0.9)]
+  return publicPageDocs().map((p) => at(p.url, 'weekly', p.priority))
+}
+
+/**
+ * The site's public pages, once, as the data both artifacts read: llms.txt lists them with a note,
+ * llms-full.txt carries the same pages with their text. One source, so the two can never disagree
+ * about what is public. There are no user-created public pages here — the world is a game document
+ * served at /map.json, not a page — so this list is fixed.
+ */
+interface PublicPageDoc {
+  title: string
+  url: string
+  note: string
+  text: string
+  priority: number
+}
+function publicPageDocs(): PublicPageDoc[] {
+  return [
+    {
+      title: 'OpenVibe.Games home',
+      url: `${SITE}/`,
+      note: 'the portal: what there is to play, and what signing in adds',
+      text: DESCRIPTION,
+      priority: 1.0,
+    },
+    {
+      title: 'Scraplandia',
+      url: `${PLAY}/`,
+      note: 'the live multiplayer game, playable as a guest in the browser',
+      text: GAME_DESCRIPTION,
+      priority: 0.9,
+    },
+  ]
 }
 
 /** The /llms.txt body: what the site is, its public pages and its machine-readable endpoints. */
 function llmsBody(): string {
   return seo.llmsTxt({
     name: SITE_NAME,
-    summary:
-      'OpenVibe.Games: the games arm of the OpenVibe network — browser games you can start in a tab with no install, and the persistent multiplayer physics sandbox Scraplandia.',
-    details:
-      'Everything public can be played as a guest; a signed-in OpenVibe account only adds saved characters and one identity across the network. The portal and the game are plain HTML pages, and the world this game server runs is published as the canonical map document at /map.json. Sign-in, the per-user API, metrics and the editor are not crawler or model input and are listed nowhere here.',
+    summary: SITE_SUMMARY,
+    details: SITE_DETAILS,
     sections: [
       {
         title: 'Public pages',
-        links: [
-          {
-            title: 'OpenVibe.Games home',
-            url: `${SITE}/`,
-            note: 'the portal: what there is to play, and what signing in adds',
-          },
-          {
-            title: 'Scraplandia',
-            url: `${PLAY}/`,
-            note: 'the live multiplayer game, playable as a guest in the browser',
-          },
-        ],
+        links: publicPageDocs().map((p) => ({ title: p.title, url: p.url, note: p.note })),
       },
       {
         title: 'Machine-readable',
@@ -150,6 +194,11 @@ function llmsBody(): string {
             note: 'search and AI crawlers are welcome on the public pages',
           },
           {
+            title: 'Full text (llms-full.txt)',
+            url: `${SITE}/llms-full.txt`,
+            note: 'this site’s public pages as one text document, for a model to read whole',
+          },
+          {
             title: 'World map (JSON)',
             url: `${SITE}/map.json`,
             note: 'the canonical world document this game server runs',
@@ -157,6 +206,28 @@ function llmsBody(): string {
         ],
       },
     ],
+  })
+}
+
+/**
+ * The /llms-full.txt body: the same site header and summary as /llms.txt, then every public page
+ * llms.txt lists with its own text — the two descriptions the site's JSON-LD already publishes,
+ * which are the site's own words for those pages rather than scraped markup. Public pages only, so
+ * nothing under robots' Disallow can reach a model, and a 512 KB ceiling keeps the answer a
+ * document rather than a payload.
+ */
+const LLMS_FULL_MAX_BYTES = 512 * 1024
+function llmsFullBody(): string {
+  return seo.llmsFull({
+    site: { name: SITE_NAME, url: SITE },
+    summary: SITE_SUMMARY,
+    sections: [
+      {
+        title: 'Public pages',
+        pages: publicPageDocs().map((p) => ({ title: p.title, url: p.url, text: p.text })),
+      },
+    ],
+    maxBytes: LLMS_FULL_MAX_BYTES,
   })
 }
 
@@ -206,7 +277,14 @@ function send(res: ServerResponse, type: string, body: string): void {
  */
 export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): boolean {
   const url = (rq.url ?? '/').split('?')[0] ?? '/'
-  if (url !== '/robots.txt' && url !== '/sitemap.xml' && url !== '/llms.txt') return false
+  if (
+    url !== '/robots.txt' &&
+    url !== '/sitemap.xml' &&
+    url !== '/llms.txt' &&
+    url !== '/llms-full.txt'
+  ) {
+    return false
+  }
   if (rq.method !== 'GET' && rq.method !== 'HEAD') {
     res.writeHead(405, { allow: 'GET, HEAD' })
     res.end()
@@ -226,6 +304,8 @@ export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): bool
     send(res, 'application/xml', seo.sitemapXml(publicPages()))
     return true
   }
-  send(res, 'text/plain', llmsBody())
+  // Same type, same cache lifetime as /llms.txt: the full document is a bigger body of the same
+  // site description, so it ages on the same clock.
+  send(res, 'text/plain', url === '/llms-full.txt' ? llmsFullBody() : llmsBody())
   return true
 }
