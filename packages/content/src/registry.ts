@@ -12,6 +12,7 @@ import { RecipeSchema, type Recipe } from './schema/recipe.js'
 import { ResourceNodeTypeSchema, type ResourceNodeType } from './schema/resourceNode.js'
 import { SkillDefSchema, type SkillDef } from './schema/skill.js'
 import { WorldDefSchema, type WorldDef } from './schema/world.js'
+import { ScriptModSchema, type ScriptMod } from './schema/scriptMod.js'
 import { contentDigest } from './pack.js'
 
 export interface ContentDefs {
@@ -25,6 +26,8 @@ export interface ContentDefs {
   markets: MarketDef[]
   jobs: JobDef[]
   world: WorldDef
+  /** `games-quickjs@1` server script mods; absent when no pack carries one. */
+  mods?: ScriptMod[]
 }
 
 /**
@@ -45,6 +48,7 @@ export class ContentRegistry {
   private readonly factions = new Map<string, FactionDef>()
   private readonly markets = new Map<string, MarketDef>()
   private readonly jobs = new Map<string, JobDef>()
+  private readonly mods = new Map<string, ScriptMod>()
   readonly world: WorldDef
 
   constructor(defs: ContentDefs) {
@@ -260,6 +264,13 @@ export class ContentRegistry {
       }
     }
 
+    for (const raw of defs.mods ?? []) {
+      const parsed = ScriptModSchema.safeParse(raw)
+      if (!parsed.success) errors.push(`mod '${raw.id}': ${parsed.error.message}`)
+      else if (this.mods.has(parsed.data.id)) errors.push(`duplicate mod id '${parsed.data.id}'`)
+      else this.mods.set(parsed.data.id, parsed.data)
+    }
+
     if (errors.length > 0) {
       throw new Error(`Content validation failed:\n  - ${errors.join('\n  - ')}`)
     }
@@ -337,6 +348,11 @@ export class ContentRegistry {
 
   allFactions(): readonly FactionDef[] {
     return [...this.factions.values()]
+  }
+
+  /** The `games-quickjs@1` script mods in the def set (run only where the place enables them). */
+  allMods(): readonly ScriptMod[] {
+    return [...this.mods.values()]
   }
 
   market(id: string): MarketDef | undefined {

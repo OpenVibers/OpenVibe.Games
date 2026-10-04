@@ -6,6 +6,7 @@ import type { EntityId, Logger, PlayerId } from '@openvibe/shared'
 import type { ServerConfig } from '../../config.js'
 import type { TicketIdentity } from '../../net/wsTicket.js'
 import type { ModRuntime } from '../../mods/runtime.js'
+import type { ScriptModHost } from '../../mods/script/host.js'
 import type { ServerMetrics } from '../../observability/metrics.js'
 import type { GameEventRecorder } from '../../platform/gameEvents.js'
 import type { ProgressSummaryWriter } from '../../platform/progressSummary.js'
@@ -64,6 +65,8 @@ export interface GameIntegrations {
   events?: GameEventRecorder
   /** Installed mods (content packs), reconciled every tick. */
   mods?: ModRuntime
+  /** games-quickjs@1 script mods; present only where the place enables them (GAMES_SCRIPT_MODS). */
+  scripts?: ScriptModHost
   /** The person's games.progress.summary user module on Network, written when a character leaves. */
   progressSummary?: ProgressSummaryWriter
 }

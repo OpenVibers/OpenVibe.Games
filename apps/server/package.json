@@ -7,7 +7,7 @@
     "dev": "tsx watch --env-file-if-exists=.env src/main.ts",
     "start": "tsx src/main.ts",
     "build": "tsc --build",
-    "bundle": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --external:pg --external:iovalkey --external:@electric-sql/pglite --outfile=dist/server.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
+    "bundle": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --external:pg --external:iovalkey --external:@electric-sql/pglite --external:quickjs-emscripten --outfile=dist/server.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@dimforge/rapier3d-deterministic-compat": "0.21.0",
@@ -24,6 +24,7 @@
     "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.23.1",
     "openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.2.0",
     "pg": "^8.23.0",
+    "quickjs-emscripten": "0.32.0",
     "tsx": "^4.19.3",
     "ws": "^8.18.1"
   },

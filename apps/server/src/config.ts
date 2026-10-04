@@ -63,6 +63,11 @@ export interface ServerConfig {
   metricsLogSeconds: number
   /** Multiplier on world-event cadences (tests shrink it). */
   eventIntervalScale: number
+  /**
+   * GAMES_SCRIPT_MODS=1: run the def set's games-quickjs@1 script mods on this
+   * place. Off by default; the mods stay in the def set (and its digest) either way.
+   */
+  scriptMods: boolean
 }
 
 export interface PlatformConfig {
@@ -155,6 +160,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     persistFlushSeconds: intEnv(env, 'PERSIST_FLUSH_SECONDS', 10),
     metricsLogSeconds: intEnv(env, 'METRICS_LOG_SECONDS', 30),
     eventIntervalScale: env.EVENT_INTERVAL_SCALE ? Number(env.EVENT_INTERVAL_SCALE) : 1,
+    scriptMods: env.GAMES_SCRIPT_MODS === '1' || env.GAMES_SCRIPT_MODS === 'true',
   }
 }
 

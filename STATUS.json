@@ -22,6 +22,7 @@
     "persistent world, characters and props in PostgreSQL (write-behind flusher; the tick never awaits I/O)",
     "map editor with assets mirrored to OpenVibe.Media",
     "declarative mods (games-content@2: definitions merged into the content registry at boot, placements, announcements) with per-install grants and audit",
+    "server script mods (games-quickjs@1 in packs, pinned by the def-set digest): one QuickJS WASM sandbox per mod, cpuMs/memoryMb/stack budgets, intents only; off unless GAMES_SCRIPT_MODS=1",
     "players keyed by Network subjects",
     "games.* events through a transactional outbox",
     "games.progress.summary user module",

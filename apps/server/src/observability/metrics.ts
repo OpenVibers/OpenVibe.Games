@@ -43,6 +43,10 @@ export class ServerMetrics {
   mapZones = 0
   /** Cumulative map-layer body rebuilds; identical saves must not move it. */
   mapRebuilds = 0
+  /** games-quickjs@1 script mods: running, disabled for this instance, and failed calls (all reasons). */
+  scriptModsRunning = 0
+  scriptModsDisabled = 0
+  scriptModFailures = 0
 
   private emaAlpha = 0.05
 
@@ -78,6 +82,9 @@ export class ServerMetrics {
       mapTerrains: this.mapTerrains,
       mapZones: this.mapZones,
       mapRebuilds: this.mapRebuilds,
+      scriptModsRunning: this.scriptModsRunning,
+      scriptModsDisabled: this.scriptModsDisabled,
+      scriptModFailures: this.scriptModFailures,
       memRssMb: round2(process.memoryUsage.rss() / 1024 / 1024),
     }
   }
