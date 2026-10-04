@@ -189,7 +189,7 @@ describe('mod repository', () => {
       name: 'Test',
       version: '1.0.0',
       target: 'games.browser',
-      runtime: 'games-content@1',
+      runtime: 'games-content@2',
       manifest: { a: 1 },
       pack: { props: [] },
       trustTier: 'unreviewed',

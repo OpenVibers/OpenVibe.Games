@@ -17,7 +17,7 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 - the game: the authoritative simulation, the world, characters, inventories, skills, blueprints and
   props, in PostgreSQL (ADR-0007 decision 5: schema from scratch, migrations under
   `packages/persistence/migrations`, a write-behind flusher — the tick never awaits I/O)
-- the map editor and its assets, the mod registry (`games-content@1` packs, grants, audit) and the
+- the map editor and its assets, the mod registry (`games-content@2` packs, grants, audit) and the
   `games.*` events
 - the game WebSocket protocol and the portal, `/play` and `/editor` pages
 
@@ -183,9 +183,11 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
 - **Mods** (ADR-013 in OpenVibe.Contracts). Manifests follow
   `mods.mod-manifest@1.1.0` (Games validates against the schema in the
   installed `openvibe-contracts` package — pin drift is a defect, ADR-0007
-  decision 12 — currently v0.77.0). The only runtime today is `games-content@1`:
+  decision 12 — currently v0.77.0). The only runtime today is `games-content@2`:
   declarative data packs checked against `@openvibe/content` (announcements;
-  inert, mod-owned props). Each install stores the approved subset of its
+  inert, mod-owned props; definitions — items, recipes, crops, NPC archetypes —
+  merged into the content registry at boot, so they take effect on the next
+  restart, and only on the server until the def-set handshake lands). Each install stores the approved subset of its
   requested capabilities; every runtime binding checks it at call time, a
   revoked install or capability stops affecting the world on the next tick,
   and install/grant/use/deny/revoke are audited (`mod_audit`). Trust tiers are
@@ -223,8 +225,8 @@ Platform environment (all optional; unset = off):
 ## Capabilities
 
 Implemented here (the service manifest's `capabilities`): `games.mod.manage` and `games.mod.read` (the
-mods API, for a principal token or an owner/admin session), and `games.world.announce` and
-`games.prop.place`, the capabilities a mod install may be granted and every runtime binding checks at
+mods API, for a principal token or an owner/admin session), and `games.world.announce`,
+`games.prop.place` and `games.def.define`, the capabilities a mod install may be granted and every runtime binding checks at
 call time.
 
 Grants the `games` principal needs in OpenVibe.Network:

@@ -1,26 +1,45 @@
 /**
- * `games-content@1`: the first mod kind — a declarative data pack, checked
- * against the live `@openvibe/content` registry. It adds no code and no new
- * definitions (the client ships the same registry, so a pack can only use
- * what both sides already know). Each section needs one capability:
+ * `games-content@2`: the first mod kind — a declarative data pack, checked
+ * against the live `@openvibe/content` registry. It adds no code. Each section
+ * needs one capability:
  *
  *   announcements  games.world.announce   periodic server announcements
  *   props          games.prop.place       inert props placed in the world
+ *   defs           games.def.define       items, recipes, crops and npc archetypes
+ *                                         merged into the content registry
+ *
+ * Definitions are validated here with the schemas the base content uses and
+ * merged by `createContent(packs)` when the server boots, so a new pack's defs
+ * exist after the next restart (the registry is immutable). The client does
+ * not load packs yet: until the def-set handshake (M2.2) a pack's items render
+ * server-side only.
  *
  * Mod props are owned by the mod, so prop protection keeps players from
  * picking them up, moving or welding them, and only items without health,
  * storage, shops, machines or vehicle parts may be placed: nothing a player
  * could destroy for loot or use to move items into or out of the world.
  */
-import type { ContentRegistry } from '@openvibe/content'
+import {
+  createContent,
+  MAX_PACK_DEFS,
+  mergePackDefs,
+  type ContentPackV2,
+  type ContentRegistry,
+} from '@openvibe/content'
+import type { ModRepository } from '@openvibe/persistence'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import type { Validation } from './manifest.js'
 
 export const CAP_ANNOUNCE = 'games.world.announce'
 export const CAP_PLACE_PROP = 'games.prop.place'
+export const CAP_DEFINE = 'games.def.define'
 
-/** Capabilities the games-content@1 runtime can bind. Anything else is never granted here. */
-export const CONTENT_RUNTIME_CAPABILITIES: readonly string[] = [CAP_ANNOUNCE, CAP_PLACE_PROP]
+/** Capabilities the games-content@2 runtime can bind. Anything else is never granted here. */
+export const CONTENT_RUNTIME_CAPABILITIES: readonly string[] = [
+  CAP_ANNOUNCE,
+  CAP_PLACE_PROP,
+  CAP_DEFINE,
+]
 
 export interface ContentAnnouncement {
   text: string
@@ -35,17 +54,29 @@ export interface ContentProp {
 }
 
 export interface ContentPack {
+  /** Definitions, deep-validated by `mergePackDefs`; the schema only bounds them. */
+  defs?: NonNullable<ContentPackV2['defs']>
   announcements?: ContentAnnouncement[]
   props?: ContentProp[]
 }
 
 export const CONTENT_PACK_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://openvibe.games/schemas/games-content-pack.v1.json',
+  $id: 'https://openvibe.games/schemas/games-content-pack.v2.json',
   title: 'GamesContentPack',
   type: 'object',
   additionalProperties: false,
   properties: {
+    defs: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        items: { type: 'array', maxItems: MAX_PACK_DEFS.items, items: { type: 'object' } },
+        recipes: { type: 'array', maxItems: MAX_PACK_DEFS.recipes, items: { type: 'object' } },
+        crops: { type: 'array', maxItems: MAX_PACK_DEFS.crops, items: { type: 'object' } },
+        npcs: { type: 'array', maxItems: MAX_PACK_DEFS.npcs, items: { type: 'object' } },
+      },
+    },
     announcements: {
       type: 'array',
       maxItems: 10,
@@ -88,6 +119,7 @@ const validateSchema = ajv.compile(CONTENT_PACK_SCHEMA)
 /** Which capability each pack section needs. */
 export function capabilitiesUsedBy(pack: ContentPack): string[] {
   const used: string[] = []
+  if (Object.values(pack.defs ?? {}).some((list) => (list ?? []).length > 0)) used.push(CAP_DEFINE)
   if ((pack.announcements ?? []).length > 0) used.push(CAP_ANNOUNCE)
   if ((pack.props ?? []).length > 0) used.push(CAP_PLACE_PROP)
   return used
@@ -120,6 +152,20 @@ export function validateContentPack(
   }
   const pack = value as unknown as ContentPack
   const errors: string[] = []
+  if (pack.defs) {
+    // The content the pack would be merged onto; its own ids may not already exist.
+    const merged = mergePackDefs(
+      {
+        items: [...content.allItems()],
+        recipes: [...content.allRecipes()],
+        crops: [...content.allCrops()],
+        npcs: [...content.allNpcs()],
+        factions: [...content.allFactions()],
+      },
+      [pack],
+    )
+    errors.push(...merged.errors)
+  }
   const keys = new Set<string>()
   for (const prop of pack.props ?? []) {
     if (keys.has(prop.key)) errors.push(`duplicate prop key '${prop.key}'`)
@@ -128,4 +174,34 @@ export function validateContentPack(
     if (problem) errors.push(problem)
   }
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: pack }
+}
+
+/**
+ * The packs whose definitions the server merges at boot: enabled installs
+ * with `games.def.define` actively granted. A pack is only taken if the
+ * content still builds with it, so one bad install (say two packs defining the
+ * same id, each valid when installed alone) is reported and skipped rather
+ * than keeping the server from starting.
+ */
+export async function loadDefinitionPacks(
+  mods: ModRepository,
+  onSkip: (modId: string, reason: string) => void = () => {},
+): Promise<ContentPackV2[]> {
+  const accepted: ContentPackV2[] = []
+  for (const mod of await mods.list()) {
+    if (mod.status !== 'enabled') continue
+    const pack = mod.pack as unknown as ContentPackV2
+    if (Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0)) continue
+    const granted = (await mods.grants(mod.id)).some(
+      (g) => g.capability === CAP_DEFINE && g.revokedAt === null,
+    )
+    if (!granted) continue
+    try {
+      createContent([...accepted, pack])
+      accepted.push(pack)
+    } catch (err) {
+      onSkip(mod.id, err instanceof Error ? err.message : String(err))
+    }
+  }
+  return accepted
 }

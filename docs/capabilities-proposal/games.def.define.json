@@ -1,0 +1,15 @@
+{
+  "id": "games.def.define",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Runtime binding for mods (games-content@2): add definitions (items, recipes, crops, npc archetypes) to the content registry. Definitions are validated by the schemas the base content uses, may reference only base ids and the pack's own ids, and may not replace an existing id. They are merged when the server boots, so a newly installed or enabled pack takes effect at the next restart; only enabled installs with this capability granted contribute.",
+  "permissions": ["games:content:define"],
+  "resourceConstraints": ["none"],
+  "quotaClass": "games-mod-runtime",
+  "events": [],
+  "implementedBy": [
+    "pack merge mergePackDefs / createContent(packs) (packages/content/src/pack.ts) and the boot loader loadDefinitionPacks (apps/server/src/mods/contentPack.ts)"
+  ]
+}

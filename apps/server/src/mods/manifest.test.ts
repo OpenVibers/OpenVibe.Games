@@ -152,10 +152,19 @@ describe('mod manifest schema', () => {
   it('only admits declarative content packs in Games (executable mods wait for Host)', () => {
     expect(checkForGames(sampleManifest())).toEqual([])
     expect(checkForGames(sampleManifest({ runtime: 'source-quickjs@1' }))[0]).toMatch(
-      /only games-content@1/,
+      /only games-content@2/,
     )
     expect(checkForGames(sampleManifest({ target: 'games.source' }))).toHaveLength(1)
-    expect(checkForGames(sampleManifest({ compatibility: { runtime: '>=2.0.0' } }))).toHaveLength(1)
+    // games-content@1 manifests are refused: packs are v2 now.
+    expect(
+      checkForGames(
+        sampleManifest({
+          runtime: 'games-content@1',
+          compatibility: { runtime: '>=1.0.0 <2.0.0' },
+        }),
+      )[0],
+    ).toMatch(/runtime games-content@1 is not available here: only games-content@2/)
+    expect(checkForGames(sampleManifest({ compatibility: { runtime: '>=3.0.0' } }))).toHaveLength(1)
     expect(
       checkForGames(
         sampleManifest({
@@ -166,7 +175,7 @@ describe('mod manifest schema', () => {
   })
 })
 
-describe('games-content@1 packs', () => {
+describe('games-content@2 packs', () => {
   const content = createContent()
 
   it('accept existing, inert items and announcements', () => {
@@ -178,6 +187,38 @@ describe('games-content@1 packs', () => {
       content,
     )
     expect(r.ok).toBe(true)
+  })
+
+  it('refuse definitions that collide, dangle or exceed the bounds', () => {
+    const item = (id: string, extra: Record<string, unknown> = {}) => ({
+      id,
+      name: id,
+      category: 'misc',
+      ...extra,
+    })
+    const first = content.allItems()[0]!
+    const reject = (pack: unknown) => validateContentPack(pack, content)
+    expect(reject({ defs: { items: [{ id: 5 }] } }).ok).toBe(false)
+    expect(reject({ defs: { items: [first] } }).ok).toBe(false)
+    expect(
+      reject({ defs: { items: Array.from({ length: 201 }, (_, i) => item(`x${i}`)) } }).ok,
+    ).toBe(false)
+    expect(
+      reject({
+        defs: {
+          recipes: [
+            {
+              id: 'r_dangling',
+              name: 'R',
+              category: 'misc',
+              inputs: [{ item: 'nope', count: 1 }],
+              outputs: [{ item: 'nope', count: 1 }],
+            },
+          ],
+        },
+      }).ok,
+    ).toBe(false)
+    expect(reject({ defs: { unknown: [] } }).ok).toBe(false)
   })
 
   it('refuse unknown items, loot-bearing or storage props, duplicates and bad shapes', () => {

@@ -11,6 +11,7 @@ export * from './surface.js'
 export * from './mapFileV2.js'
 export * from './mapDiff.js'
 export * from './registry.js'
+export * from './pack.js'
 export * from './defs/crops.js'
 export * from './defs/npcs.js'
 export * from './defs/markets.js'
@@ -22,6 +23,7 @@ export * from './defs/resources.js'
 export * from './defs/scrapcity.js'
 
 import { ContentRegistry } from './registry.js'
+import { mergePackDefs, type ContentPackV2 } from './pack.js'
 import { SCRAP_CITY } from './defs/scrapcity.js'
 import { CROPS } from './defs/crops.js'
 import { FACTIONS, NPC_ARCHETYPES } from './defs/npcs.js'
@@ -32,20 +34,31 @@ import { RECIPES } from './defs/recipes.js'
 import { RESOURCE_NODES } from './defs/resources.js'
 import { SKILLS } from './defs/skills.js'
 
-/** The game's full validated content set (server and client build the same one). */
-export function createContent(): ContentRegistry {
-  return new ContentRegistry({
-    items: ITEMS,
-    recipes: RECIPES,
-    skills: SKILLS,
-    nodeTypes: RESOURCE_NODES,
-    crops: CROPS,
-    npcs: NPC_ARCHETYPES,
-    factions: FACTIONS,
-    markets: MARKETS,
-    jobs: JOBS,
-    world: SCRAP_CITY,
-  })
+/**
+ * The game's full validated content set (server and client build the same one).
+ * `packs` are games-content@2 packs whose definitions merge onto the base
+ * defs before validation (see pack.ts); a merge or validation error throws, so
+ * a bad pack kills the boot instead of corrupting a world. The registry is
+ * immutable: packs take effect when it is built, i.e. at the next start.
+ */
+export function createContent(packs: ContentPackV2[] = []): ContentRegistry {
+  const { defs, errors } = mergePackDefs(
+    {
+      items: ITEMS,
+      recipes: RECIPES,
+      skills: SKILLS,
+      nodeTypes: RESOURCE_NODES,
+      crops: CROPS,
+      npcs: NPC_ARCHETYPES,
+      factions: FACTIONS,
+      markets: MARKETS,
+      jobs: JOBS,
+      world: SCRAP_CITY,
+    },
+    packs,
+  )
+  if (errors.length > 0) throw new Error(`content pack: ${errors.join('; ')}`)
+  return new ContentRegistry(defs)
 }
 export * from './terrain.js'
 export * from './defs/economy.js'

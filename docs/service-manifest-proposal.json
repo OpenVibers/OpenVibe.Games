@@ -14,7 +14,8 @@
     "games.mod.manage",
     "games.mod.read",
     "games.world.announce",
-    "games.prop.place"
+    "games.prop.place",
+    "games.def.define"
   ],
   "eventsProduced": [
     "games.player.joined",
@@ -31,5 +32,5 @@
   ],
   "eventsConsumed": [],
   "namespacesOwned": ["games.*"],
-  "notes": "Scraplandia (browser runtime). Players are keyed by canonical Network subjects (ADR-0006 in the repo). Calls Events (events.event.publish), Media (media.object.upload, namespace games: map-editor assets) and Network identity (identity.subject.resolve, batch legacy adoption) with the games client-credentials principal. Mods: games-content@1 declarative packs only; executable mods wait for OpenVibe.Host Stage C. No achievement system exists, so there are no games.achievement.* events."
+  "notes": "Scraplandia (browser runtime). Players are keyed by canonical Network subjects (ADR-0006 in the repo). Calls Events (events.event.publish), Media (media.object.upload, namespace games: map-editor assets) and Network identity (identity.subject.resolve, batch legacy adoption) with the games client-credentials principal. Mods: games-content@2 declarative packs only (definitions plus placements); executable mods wait for OpenVibe.Host Stage C. No achievement system exists, so there are no games.achievement.* events."
 }
