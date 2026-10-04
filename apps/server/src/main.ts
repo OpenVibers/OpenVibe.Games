@@ -34,6 +34,7 @@ import { createNetworkModGrants } from './mods/networkGrants.js'
 import { createGamesActorLimits } from './net/actorLimits.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
+import { ScriptModHost } from './mods/script/host.js'
 import { isGuestToken } from './platform/accounts.js'
 import { ProgressSummaryWriter } from './platform/progressSummary.js'
 import {
@@ -201,13 +202,25 @@ async function main(): Promise<void> {
   const progressSummary = platform
     ? new ProgressSummaryWriter(platform.client, platformLog.child({ system: 'progress-summary' }))
     : null
+  // games-quickjs@1 script mods run only where the place enables them; the engine (WASM) is not
+  // even loaded otherwise. They stay in the def set, so the handshake digest is the same either way.
+  const scriptLog = log.child({ system: 'script-mods' })
+  let scripts: ScriptModHost | undefined
+  if (config.scriptMods && content.allMods().length > 0) {
+    const { createQuickJsSandboxFactory } = await import('./mods/script/quickjs.js')
+    scripts = new ScriptModHost(content.allMods(), createQuickJsSandboxFactory(), scriptLog)
+  } else if (content.allMods().length > 0) {
+    scriptLog.info('script mods off for this place', { mods: content.allMods().length })
+  }
   const game = new GameServer(config, world, store, metrics, log.child({ system: 'game' }), {
     ...(recorder ? { events: recorder } : {}),
     mods: modRuntime,
+    ...(scripts ? { scripts } : {}),
     ...(progressSummary ? { progressSummary } : {}),
   })
   // Async boot: env, markets and the NPC population load before the tick loop starts.
   await game.load()
+  await scripts?.start()
 
   const accountData = platform
     ? createAccountData({
@@ -373,6 +386,7 @@ async function main(): Promise<void> {
                 mods: {
                   installed: mods.list().length,
                   active: mods.list().filter((m) => mods.isActive(m.mod.id)).length,
+                  scripts: { enabled: scripts !== undefined, mods: scripts?.status() ?? [] },
                 },
               }),
             )
@@ -514,6 +528,7 @@ async function main(): Promise<void> {
       // (that checkpoint plus every disconnect save queued before it) drain.
       game.shutdown()
       const drained = await game.drain()
+      scripts?.dispose()
       const cut = await httpDone
       await within(2000, mirrorDone)
       await within(1000, progressSummary?.settle())

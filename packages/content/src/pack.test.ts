@@ -210,3 +210,55 @@ describe('Scraplandia default pack', () => {
     expect(createContent().world.resourceNodes.map((n) => [n.node, n.pos])).toEqual([])
   })
 })
+
+describe('games-quickjs@1 mods in a pack', () => {
+  const mod = {
+    format: 'games-quickjs@1',
+    id: 'greeter',
+    version: '1.0.0',
+    entry: 'greeter.js',
+    source:
+      'function onPlayerJoin(e) { game.emit({ kind: "announce", text: "hi " + e.player.name }) }',
+    hooks: ['onPlayerJoin'],
+    budgets: { cpuMs: 1 },
+  }
+
+  it('validates the manifest and carries the mod into the registry', () => {
+    const content = createContent([{ mods: [mod] }])
+    expect(content.allMods()).toEqual([mod])
+    expect(createContent().allMods()).toEqual([])
+    const bad = mergePackDefs(base, [
+      {
+        mods: [
+          { ...mod, hooks: ['onEverything'] },
+          { ...mod, id: 'b', budgets: { cpuMs: 50 } },
+        ],
+      },
+      {
+        mods: [
+          { ...mod, extra: true },
+          { ...mod, format: 'games-quickjs@2' },
+        ],
+      },
+    ])
+    expect(bad.errors).toHaveLength(4)
+    expect(bad.defs.mods).toBeUndefined()
+  })
+
+  it('refuses a mod id defined twice, even with allowOverride', () => {
+    const r = mergePackDefs(base, [{ mods: [mod] }, { mods: [mod] }], { allowOverride: true })
+    expect(r.errors).toEqual(["pack 1: mod 'greeter' already exists"])
+  })
+
+  it('pins the source and manifest in the def-set digest', () => {
+    const plain = createContent().digest
+    const withMod = createContent([{ mods: [mod] }]).digest
+    const edited = createContent([{ mods: [{ ...mod, source: mod.source + ' ' }] }]).digest
+    const rebudgeted = createContent([{ mods: [{ ...mod, budgets: { cpuMs: 2 } }] }]).digest
+    expect(new Set([plain, withMod, edited, rebudgeted]).size).toBe(4)
+    // A def set without mods keeps the digest it had before mods existed.
+    expect(contentDigest(base)).toBe(
+      contentDigest({ ...base, mods: undefined } as unknown as ContentDefs),
+    )
+  })
+})

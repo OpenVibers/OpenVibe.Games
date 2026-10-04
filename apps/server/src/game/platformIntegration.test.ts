@@ -11,12 +11,14 @@
  *  - lifecycle events commit with the state they describe and reach
  *    OpenVibe.Events (mock) with the games service token;
  *  - a restart restores the authoritative state: characters, world props,
- *    the world clock and the mod registry — without duplicating mod props.
+ *    the world clock and the mod registry — without duplicating mod props;
+ *  - a games-quickjs@1 script mod changes the world only through the intents
+ *    the gameplay modules apply.
  */
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createContent } from '@openvibe/content'
+import { createContent, type ContentRegistry } from '@openvibe/content'
 import { openPgStore, type PgPersistenceStore } from '@openvibe/persistence'
 import { openTestDb } from '@openvibe/persistence/testing'
 import { createRapierWorld, loadRapier, type RapierModule } from '@openvibe/physics/rapier'
@@ -36,6 +38,8 @@ import { hashGuestKey } from '../net/guestIdentity.js'
 import { CAP_ANNOUNCE, CAP_PLACE_PROP } from '../mods/contentPack.js'
 import { ModRegistry, type ModActor } from '../mods/registry.js'
 import { ModRuntime } from '../mods/runtime.js'
+import { ScriptModHost } from '../mods/script/host.js'
+import { createQuickJsSandboxFactory } from '../mods/script/quickjs.js'
 import { sampleManifest } from '../mods/testFixtures.js'
 import { ServerMetrics } from '../observability/metrics.js'
 import { GameEventRecorder, outboxSink } from '../platform/gameEvents.js'
@@ -82,8 +86,11 @@ interface Boot {
   dispose(): void
 }
 
-async function boot(platform: ReturnType<typeof createMockPlatform>): Promise<Boot> {
-  const content = createContent()
+async function boot(
+  platform: ReturnType<typeof createMockPlatform>,
+  opts: { content?: ContentRegistry; scripts?: ScriptModHost } = {},
+): Promise<Boot> {
+  const content = opts.content ?? createContent()
   const physics = createRapierWorld(rapier)
   // The store rides on the shared database; close() is never called (the instance is shared).
   const store = openPgStore(db, { placeId: config.placeId })
@@ -112,6 +119,7 @@ async function boot(platform: ReturnType<typeof createMockPlatform>): Promise<Bo
   const game = new GameServer(config, world, store, new ServerMetrics(), log, {
     events: recorder,
     mods: runtime,
+    ...(opts.scripts ? { scripts: opts.scripts } : {}),
   })
   await game.load()
   return {
@@ -126,7 +134,7 @@ async function boot(platform: ReturnType<typeof createMockPlatform>): Promise<Bo
   }
 }
 
-function connect(game: GameServer) {
+function connect(game: GameServer, contentDigest = createContent().digest) {
   const inbox: ServerMessage[] = []
   let closed: { code: number; reason: string } | null = null
   // The session system now requires an identity stamped on the connection
@@ -145,7 +153,7 @@ function connect(game: GameServer) {
     const msg = {
       t: 'hello',
       v: PROTOCOL_VERSION,
-      contentDigest: createContent().digest,
+      contentDigest,
       slot: 0,
       name: 'Ana',
       appearance: defaultAppearance(),
@@ -206,8 +214,24 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     expect(refused.closed).toEqual({ code: 4012, reason: 'no_identity' })
 
     // Reject before loading a character or writing any world state. This also
-    // covers an older hello that has no digest at all.
-    for (const offered of [undefined, 'v2-00000000']) {
+    // covers an older hello that has no digest at all, and a client whose def
+    // set carries a games-quickjs@1 mod the server does not (the digest pins
+    // mod manifests and sources like every other definition).
+    const withMod = createContent([
+      {
+        mods: [
+          {
+            format: 'games-quickjs@1',
+            id: 'extra',
+            version: '1.0.0',
+            entry: 'extra.js',
+            source: 'function onTick() {}',
+            hooks: ['onTick'],
+          },
+        ],
+      },
+    ]).digest
+    for (const offered of [undefined, 'v2-00000000', withMod]) {
       const stale = connect(a.game)
       stale.conn.identity = { guestKeyHash: hashGuestKey(`stale-${offered ?? 'missing'}`) }
       a.game.onMessage(stale.conn, {
@@ -381,4 +405,54 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     await c.outbox.stop()
     c.dispose()
   }, 60_000)
+})
+
+describe('games-quickjs@1 script mods on the real server', () => {
+  const platform = createMockPlatform({ clients: { games: { secret: 's3cret', grants: [] } } })
+
+  it('a mod changes game state only through intents the gameplay modules apply', async () => {
+    const content = createContent([
+      {
+        mods: [
+          {
+            format: 'games-quickjs@1',
+            id: 'welcome-gift',
+            version: '1.0.0',
+            entry: 'welcome-gift.js',
+            hooks: ['onPlayerJoin'],
+            source: `function onPlayerJoin(e) {
+              e.player.name = 'not a rename';
+              game.emit({ kind: 'giveItem', playerId: e.player.id, item: 'scrap_metal', count: 3 });
+              game.emit({ kind: 'giveItem', playerId: e.player.id, item: 'no_such_item', count: 1 });
+              game.emit({ kind: 'announce', text: 'welcome ' + e.player.name });
+            }`,
+          },
+        ],
+      },
+    ])
+    const scripts = new ScriptModHost(content.allMods(), createQuickJsSandboxFactory(), log)
+    const b = await boot(platform, { content, scripts })
+    await scripts.start()
+    const p = connect(b.game, content.digest)
+    const { welcome } = await p.hello('guest-script-mod')
+    expect(welcome).toBeDefined()
+
+    const scrap = (m: ServerMessage) =>
+      m.t === 'inventory'
+        ? m.inv.slots.reduce((n, s) => n + (s.stack.def === 'scrap_metal' ? s.stack.count : 0), 0)
+        : 0
+    // A fresh character carries no scrap: all of it is the gift, through the game's inventory.
+    const inventories = p.inbox.filter((m) => m.t === 'inventory')
+    expect(inventories.length).toBeGreaterThan(0)
+    expect(scrap(inventories.at(-1)!)).toBe(3)
+    expect(p.inbox).toContainEqual({ t: 'announce', text: 'welcome not a rename' })
+    // The unknown item was refused by the game, not by trusting the mod.
+    expect(scripts.status()[0]).toMatchObject({
+      state: 'running',
+      intentsApplied: 2,
+      intentsRejected: 1,
+    })
+    scripts.dispose()
+    b.dispose()
+  })
 })

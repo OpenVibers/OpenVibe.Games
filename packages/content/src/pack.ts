@@ -22,12 +22,16 @@ import { ItemDefSchema, type ItemDef } from './schema/item.js'
 import { RecipeSchema, type Recipe } from './schema/recipe.js'
 import type { ContentDefs } from './registry.js'
 import { WorldDefSchema, type WorldDef } from './schema/world.js'
+import { ScriptModSchema, type ScriptMod } from './schema/scriptMod.js'
 
 /** The pack format version both sides must agree on. */
 export const CONTENT_PACK_VERSION = 2
 
 /** Most defs of each kind one pack may carry (the manifest schema uses the same bounds). */
 export const MAX_PACK_DEFS = { items: 200, recipes: 200, crops: 100, npcs: 100 } as const
+
+/** Most `games-quickjs@1` script mods one pack may carry. */
+export const MAX_PACK_MODS = 8
 
 /** The def sections a pack may carry. */
 export type PackDefKind = keyof typeof MAX_PACK_DEFS
@@ -38,10 +42,13 @@ export interface ContentPackV2 {
   map?: WorldDef
   announcements?: { text: string; everySeconds: number }[]
   props?: { key: string; item: string; pos: [number, number, number]; yaw?: number }[]
+  /** `games-quickjs@1` server script mods (schema/scriptMod.ts); they are part of the def set. */
+  mods?: unknown[]
 }
 
 /** What a merge reads from the base: the four def lists a pack extends and the factions npcs may join. */
-export type PackBase = Pick<ContentDefs, 'items' | 'recipes' | 'crops' | 'npcs' | 'factions'>
+export type PackBase = Pick<ContentDefs, 'items' | 'recipes' | 'crops' | 'npcs' | 'factions'> &
+  Pick<Partial<ContentDefs>, 'mods'>
 
 export interface MergeOptions {
   /** Let a pack def replace a base or earlier-pack def with the same id (default: refused). */
@@ -111,6 +118,7 @@ export function mergePackDefs<B extends PackBase>(
   const recipes = [...base.recipes]
   const crops = [...base.crops]
   const npcs = [...base.npcs]
+  const mods: ScriptMod[] = [...(base.mods ?? [])]
   const errors: string[] = []
   let map = 'world' in base ? (base as B & { world: WorldDef }).world : undefined
   let mapSeen = false
@@ -136,6 +144,18 @@ export function mergePackDefs<B extends PackBase>(
     const c = parseDefs<CropDef>('crops', CropDefSchema, p.defs?.crops)
     const v = parseDefs<NpcArchetype>('npcs', NpcArchetypeSchema, p.defs?.npcs)
     mine.push(...i.errors, ...r.errors, ...c.errors, ...v.errors)
+    // A mod id is its identity in logs and budgets: never overridden, whatever `allowOverride` says.
+    if (p.mods !== undefined && (!Array.isArray(p.mods) || p.mods.length > MAX_PACK_MODS)) {
+      mine.push(`mods: must be an array of at most ${MAX_PACK_MODS}`)
+    } else {
+      ;(p.mods ?? []).forEach((raw, k) => {
+        const m = ScriptModSchema.safeParse(raw)
+        if (!m.success) mine.push(`mods[${k}]: ${m.error.message}`)
+        else if (mods.some((d) => d.id === m.data.id))
+          mine.push(`mod '${m.data.id}' already exists`)
+        else mods.push(m.data)
+      })
+    }
 
     const ownItems = addDefs('item', items, i.out, allowOverride, mine)
     const ownRecipes = addDefs('recipe', recipes, r.out, allowOverride, mine)
@@ -168,7 +188,19 @@ export function mergePackDefs<B extends PackBase>(
     }
     errors.push(...mine.map((e) => where + e))
   })
-  return { defs: { ...base, items, recipes, crops, npcs, ...(map ? { world: map } : {}) }, errors }
+  return {
+    defs: {
+      ...base,
+      items,
+      recipes,
+      crops,
+      npcs,
+      ...(map ? { world: map } : {}),
+      // Absent rather than empty, so a def set without mods keeps the digest it always had.
+      ...(mods.length > 0 ? { mods } : {}),
+    },
+    errors,
+  }
 }
 
 /** 32-bit FNV-1a over a string; plain integer maths, identical in every JS runtime. */

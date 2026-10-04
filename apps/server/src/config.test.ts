@@ -59,3 +59,12 @@ describe('loadConfig migrationsDir', () => {
     expect(existsSync(join(migrationsDir, '0001_initial.sql'))).toBe(true)
   })
 })
+
+describe('loadConfig scriptMods', () => {
+  it('is off unless the place enables it', () => {
+    expect(loadConfig({}).scriptMods).toBe(false)
+    expect(loadConfig({ GAMES_SCRIPT_MODS: '0' }).scriptMods).toBe(false)
+    expect(loadConfig({ GAMES_SCRIPT_MODS: '1' }).scriptMods).toBe(true)
+    expect(loadConfig({ GAMES_SCRIPT_MODS: 'true' }).scriptMods).toBe(true)
+  })
+})

@@ -17,16 +17,16 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 - the game: the authoritative simulation, the world, characters, inventories, skills, blueprints and
   props, in PostgreSQL (ADR-0007 decision 5: schema from scratch, migrations under
   `packages/persistence/migrations`, a write-behind flusher — the tick never awaits I/O)
-- the map editor and its assets, the mod registry (`games-content@2` packs, grants, audit) and the
-  `games.*` events
+- the map editor and its assets, the mod registry (`games-content@2` packs, grants, audit), the
+  `games-quickjs@1` server script mods (docs/mods.md) and the `games.*` events
 - the game WebSocket protocol and the portal, `/play` and `/editor` pages
 
 ## Does not own
 
 - identity (OpenVibe.Network: players are keyed by Network subjects), file storage beyond the local
   copy (OpenVibe.Media mirrors map-editor assets), events delivery (OpenVibe.Events)
-- mod grants' authority (Network keeps them, `mods.grant.manage`) and executable mods (they wait for
-  OpenVibe.Host Stage C)
+- mod grants' authority (Network keeps them, `mods.grant.manage`) and installable executable mods
+  (they wait for OpenVibe.Host Stage C; script mods ship in the place's own packs)
 
 ## Depends on
 
@@ -191,8 +191,12 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   requested capabilities; every runtime binding checks it at call time, a
   revoked install or capability stops affecting the world on the next tick,
   and install/grant/use/deny/revoke are audited (`mod_audit`). Trust tiers are
-  metadata only. Executable mods (scripts) are refused until sandboxed
-  execution exists in OpenVibe.Host (Stage C). API: `GET /api/v1/mods`,
+  metadata only. Executable mods are refused by the mods API until sandboxed
+  execution exists in OpenVibe.Host (Stage C); `games-quickjs@1` script mods
+  ship in the place's own packs instead, pinned by the def-set digest, and run
+  in a per-mod QuickJS sandbox only where `GAMES_SCRIPT_MODS=1` (budgets
+  `cpuMs` 2 per tick, `memoryMb` 8, `stackKb` 128 by default; over budget
+  disables the mod for the instance; host API and limits in docs/mods.md). API: `GET /api/v1/mods`,
   `GET /api/v1/mods/:id` (public); `POST /api/v1/mods`,
   `POST /api/v1/mods/:id/enable|disable|revoke|grants`,
   `DELETE /api/v1/mods/:id/grants/:capability`, `GET /api/v1/mods/:id/audit`
