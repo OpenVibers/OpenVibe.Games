@@ -1529,13 +1529,20 @@ async function main(): Promise<void> {
   b.send({ t: 'physgun', a: 'release' })
 
   console.log('phase: melee PvP (outside the safe city)')
+  // Bob stopped up to 1.4 m short of a spot ~2.8 m from Alice and the crate
+  // grabs may have nudged him: close in so the axe (3.5 m) reaches.
+  await walkTo(a, (b.me as WirePlayerState).pos[0], (b.me as WirePlayerState).pos[2])
+  await settle(a)
   await a.equip('stone_axe')
   await sleep(300)
   a.results.length = 0
   a.send({ t: 'use', target: b.entityId })
   await a.waitFor((m) => m.t === 'result' && m.action === 'use')
   const hit = a.results.at(-1)
-  assert(hit?.ok === true, `melee hit accepted (${hit?.error ?? 'ok'})`)
+  assert(
+    hit?.ok === true,
+    `melee hit accepted (${hit?.error ?? 'ok'}; alice ${JSON.stringify(a.me?.pos)} bob ${JSON.stringify(b.me?.pos)})`,
+  )
   await b.waitFor((m) => m.t === 'stats' && m.hp < 100, 5000)
   assert((b.stats?.hp ?? 100) < 100, 'victim lost health')
 
