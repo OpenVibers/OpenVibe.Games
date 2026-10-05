@@ -32,6 +32,12 @@ import {
   type SurfaceMaterialData,
   type StaticObjectV2,
 } from '@openvibe/content'
+import {
+  applyEngineQuality,
+  applySceneQuality,
+  resolveStartupQuality,
+  type QualitySettings,
+} from './quality.js'
 import { Water } from './water.js'
 import {
   applyPatchTexture,
@@ -46,13 +52,26 @@ import {
  * which one is active.
  */
 
+/**
+ * The quality profile an engine was booted with. Shadow maps live on Scene,
+ * not on the engine, so createScene needs the profile without re-reading the
+ * device (which could disagree with the engine's antialiasing decision).
+ */
+const engineQuality = new WeakMap<AbstractEngine, QualitySettings>()
+
 export async function createEngine(canvas: HTMLCanvasElement): Promise<AbstractEngine> {
+  const quality = resolveStartupQuality()
+  let engine: AbstractEngine
   if (await WebGPUEngine.IsSupportedAsync) {
-    const engine = new WebGPUEngine(canvas, { antialias: true })
-    await engine.initAsync()
-    return engine
+    const webgpu = new WebGPUEngine(canvas, { antialias: quality.antialias })
+    await webgpu.initAsync()
+    engine = webgpu
+  } else {
+    engine = new Engine(canvas, quality.antialias)
   }
-  return new Engine(canvas, true)
+  applyEngineQuality(engine, quality)
+  engineQuality.set(engine, quality)
+  return engine
 }
 
 export function createScene(engine: AbstractEngine): Scene {
@@ -60,6 +79,8 @@ export function createScene(engine: AbstractEngine): Scene {
   // Fallback sky color for engines without the atmosphere addon; the
   // Environment module owns all lights.
   scene.clearColor = new Color4(0.45, 0.62, 0.82, 1)
+  const quality = engineQuality.get(engine)
+  if (quality) applySceneQuality(scene, quality)
   return scene
 }
 

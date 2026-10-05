@@ -559,7 +559,7 @@ body.ovg-frame-hidden #ov-footer {
   left: 50%;
   bottom: 92px;
   transform: translateX(-50%);
-  width: 460px;
+  width: min(460px, calc(100vw - 16px));
   max-height: 62vh;
   display: none;
   flex-direction: column;
@@ -573,16 +573,19 @@ body.ovg-frame-hidden #ov-footer {
 
 .menu-tabs {
   display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
   border-bottom: 1px solid #2a333d;
   background: rgba(16, 21, 27, 0.9);
 }
 
 .menu-tab {
-  flex: 1;
+  flex: 1 0 auto;
   background: none;
   border: 0;
   color: #8fa0b0;
-  padding: 11px 0;
+  padding: 11px 10px;
+  white-space: nowrap;
   font-size: 13px;
   letter-spacing: 0.05em;
   cursor: pointer;
@@ -687,6 +690,52 @@ body.ovg-frame-hidden #ov-footer {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* A segmented choice in the menu's own palette: the selected option takes the tab accent. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin: 6px 0 8px;
+  background: #1d242c;
+  border: 1px solid #2a333d;
+  border-radius: 8px;
+}
+
+.segmented-option {
+  flex: 1;
+  min-height: 40px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: #8fa0b0;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+
+.segmented-option:hover {
+  color: #cfd8e0;
+}
+
+.segmented-option.active {
+  background: #2a333d;
+  color: #f0b040;
+}
+
+.segmented-option:focus-visible {
+  outline: 2px solid #f0b040;
+  outline-offset: 1px;
 }
 
 .weapon-title {
