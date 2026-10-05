@@ -7,8 +7,11 @@ import type {
   WirePlayerState,
 } from '@openvibe/protocol'
 import { v3distSq, type EntityId } from '@openvibe/shared'
+import { INTEREST_HYSTERESIS } from '../config.js'
 import type { GameWorld } from './gameWorld.js'
 import type { PlayerSession } from './playerSession.js'
+
+export { INTEREST_HYSTERESIS }
 
 /**
  * Interest management + snapshot building.
@@ -85,23 +88,36 @@ export interface InterestDiff {
   left: EntityId[]
 }
 
-/** Updates session.known in place and returns what changed. */
+/**
+ * Updates session.known in place and returns what changed.
+ *
+ * `radius` is the ENTER radius. A body must come inside it to be replicated,
+ * but an already-known body is retained out to exitRadius = radius * (1 + H).
+ * The gap is hysteresis: without it a body sitting on the boundary flips
+ * in/out every snapshot, churning spawn/despawn on the wire.
+ */
 export function updateInterest(
   session: PlayerSession,
   world: GameWorld,
   radius: number,
+  hysteresis: number = INTEREST_HYSTERESIS,
 ): InterestDiff {
   const radiusSq = radius * radius
+  const exitRadius = radius * (1 + hysteresis)
+  const exitRadiusSq = exitRadius * exitRadius
   const entered: GameEntity[] = []
   const current = new Set<EntityId>()
-  // Spatial hash prunes candidates; the exact 3D distance test decides.
-  world.spatial.forEachInRadius(session.move.pos.x, session.move.pos.z, radius, (id) => {
+  // Candidates out to the exit radius; the exact 3D distance test decides.
+  world.spatial.forEachInRadius(session.move.pos.x, session.move.pos.z, exitRadius, (id) => {
     if (id === session.entityId) return
     const entity = world.entities.get(id)
     if (!entity) return
-    if (v3distSq(entity.transform.pos, session.move.pos) > radiusSq) return
+    const known = session.known.has(entity.id)
+    const d2 = v3distSq(entity.transform.pos, session.move.pos)
+    // Enter inside the enter radius; stay while inside the exit radius.
+    if (d2 > (known ? exitRadiusSq : radiusSq)) return
     current.add(entity.id)
-    if (!session.known.has(entity.id)) entered.push(entity)
+    if (!known) entered.push(entity)
   })
   const left: EntityId[] = []
   for (const id of session.known) {

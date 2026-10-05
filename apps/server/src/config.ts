@@ -58,6 +58,8 @@ export interface ServerConfig {
   snapshotEvery: number
   /** Entities beyond this distance from a player are not replicated to them. */
   interestRadius: number
+  /** Fraction the interest exit radius exceeds the enter radius (spawn/despawn hysteresis). */
+  interestHysteresis: number
   maxPlayers: number
   persistFlushSeconds: number
   metricsLogSeconds: number
@@ -104,6 +106,14 @@ export interface PlatformConfig {
 function trimSlash(v: string): string {
   return v.replace(/\/+$/, '')
 }
+
+/**
+ * Fraction the interest exit radius exceeds the enter radius. A client keeps
+ * an entity it already knows while it stays inside `interestRadius * (1 + H)`,
+ * so an entity loitering on the interest boundary cannot churn spawn/despawn
+ * every snapshot; only a fresh entity must come inside `interestRadius`.
+ */
+export const INTEREST_HYSTERESIS = 0.1
 
 export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
   const secret = env.OV_OAUTH_CLIENT_SECRET ?? null
@@ -164,6 +174,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     tickRate: 30,
     snapshotEvery: 2,
     interestRadius: intEnv(env, 'INTEREST_RADIUS', 80),
+    interestHysteresis: INTEREST_HYSTERESIS,
     maxPlayers: intEnv(env, 'MAX_PLAYERS', 64),
     persistFlushSeconds: intEnv(env, 'PERSIST_FLUSH_SECONDS', 10),
     metricsLogSeconds: intEnv(env, 'METRICS_LOG_SECONDS', 30),
