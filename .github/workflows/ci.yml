@@ -12,7 +12,14 @@ jobs:
       install: pnpm install --frozen-lockfile
       test: pnpm typecheck && pnpm lint && pnpm test
       syntax-dirs: '' # TypeScript: typecheck covers it
-      extra: cd apps/server && npx openvibe-contracts-check --service games --src src
+      # One command per line. The client build is what the budget check reads:
+      # without it dist/ is absent and bundleBudget.ts fails (by design).
+      extra: |
+        (cd apps/server && npx openvibe-contracts-check --service games --src src)
+        pnpm --filter @openvibe/client build
+        # Initial JS is enforced; the 400 KB chunk limit is reported until instancedMesh.pure (2.08 MB) and rapier
+        # (4.37 MB, lazy) are split. Drop --chunks=report then.
+        node --import tsx apps/client/scripts/bundleBudget.ts --chunks=report
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo.
   security:
     uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@66b76f868ea8228aad7811309eafef3726b036f3
