@@ -123,6 +123,14 @@ export class Environment {
     }
   }
 
+  /** Edge smoothing (FXAA in the post pipeline): follows the graphics quality tier, kept across camera rebuilds. */
+  private fxaa = true
+
+  setAntialias(on: boolean): void {
+    this.fxaa = on
+    if (this.pipeline) this.pipeline.fxaaEnabled = on
+  }
+
   /** Attach the HDR tonemapping pipeline to the active gameplay camera. */
   attachCamera(camera: Camera): void {
     this.pipeline?.dispose()
@@ -131,7 +139,7 @@ export class Environment {
     this.pipeline.imageProcessing.toneMappingEnabled = true
     this.pipeline.imageProcessing.ditheringEnabled = true
     this.pipeline.imageProcessing.exposure = 1.1
-    this.pipeline.fxaaEnabled = true
+    this.pipeline.fxaaEnabled = this.fxaa
   }
 
   /** Sync toward the server's shared day fraction (smoothed, no sun jumps). */

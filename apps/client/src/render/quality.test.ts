@@ -155,6 +155,13 @@ describe('quality persistence', () => {
     expect(getQualityOverride(hostile)).toBe('auto')
     expect(() => setQualityOverride('low', hostile)).not.toThrow()
   })
+  it('keeps the choice for the session when the default storage cannot hold it', () => {
+    // No localStorage here (Node), as in a browser that blocks it: the choice still sticks until reload.
+    setQualityOverride('medium')
+    expect(getQualityOverride()).toBe('medium')
+    setQualityOverride('auto')
+    expect(getQualityOverride()).toBe('auto')
+  })
 })
 
 describe('resolveStartupQuality', () => {

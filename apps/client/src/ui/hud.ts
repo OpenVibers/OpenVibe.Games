@@ -580,8 +580,6 @@ export class Hud {
   /** Settings: graphics quality (Auto follows the device; resolution and shadows apply at once). */
   private renderSettings(): void {
     const tierLabel: Record<QualityTier, string> = { high: 'High', medium: 'Medium', low: 'Low' }
-    const override = getQualityOverride()
-    const effective = resolveQualityTier(override, readDeviceSignals())
     const wrap = document.createElement('div')
     wrap.className = 'settings-list'
     const row = document.createElement('div')
@@ -593,38 +591,49 @@ export class Hud {
     title.textContent = 'Graphics quality'
     const now = document.createElement('span')
     now.className = 'skill-level'
-    now.textContent = tierLabel[effective]
     head.append(title, now)
+    // A button group (Tab + Enter/Space), not a radiogroup: each option is its own stop and says whether it is pressed.
     const seg = document.createElement('div')
     seg.className = 'segmented'
-    seg.setAttribute('role', 'radiogroup')
+    seg.setAttribute('role', 'group')
     seg.setAttribute('aria-labelledby', 'quality-label')
+    const hint = document.createElement('div')
+    hint.className = 'hint-line'
     const options: [QualityOverride, string][] = [
       ['auto', 'Auto'],
       ['high', 'High'],
       ['medium', 'Medium'],
       ['low', 'Low'],
     ]
+    const buttons: [QualityOverride, HTMLButtonElement][] = []
+    // Updated in place, so the pressed button keeps keyboard focus.
+    const sync = (): void => {
+      const override = getQualityOverride()
+      const effective = resolveQualityTier(override, readDeviceSignals())
+      now.textContent = tierLabel[effective]
+      for (const [value, b] of buttons) {
+        const on = value === override
+        b.className = on ? 'segmented-option active' : 'segmented-option'
+        b.setAttribute('aria-pressed', String(on))
+      }
+      hint.textContent =
+        (override === 'auto' ? `Auto picks ${tierLabel[effective]} for this device. ` : '') +
+        'Changes apply right away.'
+    }
     for (const [value, label] of options) {
       const b = document.createElement('button')
-      const on = value === override
-      b.className = on ? 'segmented-option active' : 'segmented-option'
-      b.setAttribute('role', 'radio')
-      b.setAttribute('aria-checked', String(on))
+      b.type = 'button'
       b.textContent = label
       b.addEventListener('click', () => {
         if (value === getQualityOverride()) return
         setQualityOverride(value)
         this.onQualityChange?.(value)
-        this.renderMenu()
+        sync()
       })
+      buttons.push([value, b])
       seg.appendChild(b)
     }
-    const hint = document.createElement('div')
-    hint.className = 'hint-line'
-    hint.textContent =
-      (override === 'auto' ? `Auto picks ${tierLabel[effective]} for this device. ` : '') +
-      'Resolution and shadows change right away; edge smoothing follows your next reload.'
+    sync()
     row.append(head, seg, hint)
     wrap.appendChild(row)
     this.menuBodyEl.appendChild(wrap)

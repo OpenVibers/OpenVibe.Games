@@ -123,8 +123,15 @@ export function parseQualityOverride(raw: string | null): QualityOverride {
   return raw === 'high' || raw === 'medium' || raw === 'low' || raw === 'auto' ? raw : 'auto'
 }
 
+/**
+ * The choice made this session (default storage only): it wins over what storage says, so a browser that cannot
+ * store it (private mode, a blocked localStorage) still shows and applies the player's choice until reload.
+ */
+let sessionOverride: QualityOverride | null = null
+
 /** The persisted player override; 'auto' when unset, corrupt or unreadable. */
 export function getQualityOverride(storage?: QualityStorage): QualityOverride {
+  if (!storage && sessionOverride) return sessionOverride
   try {
     return parseQualityOverride((storage ?? localStorage).getItem(QUALITY_STORAGE_KEY))
   } catch {
@@ -134,6 +141,7 @@ export function getQualityOverride(storage?: QualityStorage): QualityOverride {
 
 /** Persist the player's choice; 'auto' clears it, returning to the heuristic. */
 export function setQualityOverride(override: QualityOverride, storage?: QualityStorage): void {
+  if (!storage) sessionOverride = override
   try {
     const store = storage ?? localStorage
     if (override === 'auto') store.removeItem(QUALITY_STORAGE_KEY)

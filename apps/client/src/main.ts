@@ -43,6 +43,7 @@ import {
   qualityForTier,
   readDeviceSignals,
   resolveQualityTier,
+  resolveStartupQuality,
 } from './render/quality.js'
 import { Viewmodel } from './render/viewmodel.js'
 import { ClientState } from './state/clientState.js'
@@ -102,6 +103,7 @@ async function start(): Promise<void> {
   const rapierPromise = loadRapier()
 
   const environment = new Environment(scene, engine)
+  environment.setAntialias(resolveStartupQuality().antialias)
 
   // Render immediately so the customization preview is live.
   let gameLoop: (() => void) | null = null
@@ -182,6 +184,7 @@ async function start(): Promise<void> {
     const quality = qualityForTier(resolveQualityTier(override, readDeviceSignals()))
     applyEngineQuality(engine, quality)
     applySceneQuality(scene, quality)
+    environment.setAntialias(quality.antialias)
   }
 
   // Touch on a coarse pointer, keyboard otherwise; a device with both

@@ -559,7 +559,7 @@ body.ovg-frame-hidden #ov-footer {
   left: 50%;
   bottom: 92px;
   transform: translateX(-50%);
-  width: 460px;
+  width: min(460px, calc(100vw - 16px));
   max-height: 62vh;
   display: none;
   flex-direction: column;
@@ -573,16 +573,19 @@ body.ovg-frame-hidden #ov-footer {
 
 .menu-tabs {
   display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
   border-bottom: 1px solid #2a333d;
   background: rgba(16, 21, 27, 0.9);
 }
 
 .menu-tab {
-  flex: 1;
+  flex: 1 0 auto;
   background: none;
   border: 0;
   color: #8fa0b0;
-  padding: 11px 0;
+  padding: 11px 10px;
+  white-space: nowrap;
   font-size: 13px;
   letter-spacing: 0.05em;
   cursor: pointer;
