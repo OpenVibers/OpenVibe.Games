@@ -4,6 +4,14 @@ import type { Connection } from '../net/connection.js'
 import type { ClientState } from '../state/clientState.js'
 import type { IconFactory } from './iconFactory.js'
 import { weaponModuleFor, type WeaponSettings } from '../weapons/registry.js'
+import {
+  getQualityOverride,
+  readDeviceSignals,
+  resolveQualityTier,
+  setQualityOverride,
+  type QualityOverride,
+  type QualityTier,
+} from '../render/quality.js'
 
 /**
  * HUD: crosshair/prompt/toasts, the always-visible hotbar, and a single
@@ -15,7 +23,8 @@ import { weaponModuleFor, type WeaponSettings } from '../weapons/registry.js'
  * 3D models. All mutations round-trip through the server.
  */
 
-type MenuTab = 'inventory' | 'crafting' | 'equipment' | 'skills' | 'standing' | 'players'
+type MenuTab =
+  'inventory' | 'crafting' | 'equipment' | 'skills' | 'standing' | 'players' | 'settings'
 
 export class Hud {
   private root: HTMLElement
@@ -30,6 +39,8 @@ export class Hud {
   private activeTab: MenuTab = 'inventory'
   private dragFrom: number | null = null
   onUiCaptureChange: ((captured: boolean) => void) | null = null
+  /** Applies a new graphics quality to the running engine and scene (wired in main.ts). */
+  onQualityChange: ((override: QualityOverride) => void) | null = null
 
   constructor(
     root: HTMLElement,
@@ -523,6 +534,7 @@ export class Hud {
       ['equipment', 'Equipment'],
       ['skills', 'Skills'],
       ['players', 'Players'],
+      ['settings', 'Settings'],
     ]
     for (const [tab, label] of defs) {
       const b = document.createElement('button')
@@ -561,7 +573,61 @@ export class Hud {
     else if (this.activeTab === 'equipment') this.renderEquipment()
     else if (this.activeTab === 'skills') this.renderSkills()
     else if (this.activeTab === 'standing') this.renderStanding()
+    else if (this.activeTab === 'settings') this.renderSettings()
     else this.renderPlayers()
+  }
+
+  /** Settings: graphics quality (Auto follows the device; resolution and shadows apply at once). */
+  private renderSettings(): void {
+    const tierLabel: Record<QualityTier, string> = { high: 'High', medium: 'Medium', low: 'Low' }
+    const override = getQualityOverride()
+    const effective = resolveQualityTier(override, readDeviceSignals())
+    const wrap = document.createElement('div')
+    wrap.className = 'settings-list'
+    const row = document.createElement('div')
+    row.className = 'skill-row'
+    const head = document.createElement('div')
+    head.className = 'skill-head'
+    const title = document.createElement('span')
+    title.id = 'quality-label'
+    title.textContent = 'Graphics quality'
+    const now = document.createElement('span')
+    now.className = 'skill-level'
+    now.textContent = tierLabel[effective]
+    head.append(title, now)
+    const seg = document.createElement('div')
+    seg.className = 'segmented'
+    seg.setAttribute('role', 'radiogroup')
+    seg.setAttribute('aria-labelledby', 'quality-label')
+    const options: [QualityOverride, string][] = [
+      ['auto', 'Auto'],
+      ['high', 'High'],
+      ['medium', 'Medium'],
+      ['low', 'Low'],
+    ]
+    for (const [value, label] of options) {
+      const b = document.createElement('button')
+      const on = value === override
+      b.className = on ? 'segmented-option active' : 'segmented-option'
+      b.setAttribute('role', 'radio')
+      b.setAttribute('aria-checked', String(on))
+      b.textContent = label
+      b.addEventListener('click', () => {
+        if (value === getQualityOverride()) return
+        setQualityOverride(value)
+        this.onQualityChange?.(value)
+        this.renderMenu()
+      })
+      seg.appendChild(b)
+    }
+    const hint = document.createElement('div')
+    hint.className = 'hint-line'
+    hint.textContent =
+      (override === 'auto' ? `Auto picks ${tierLabel[effective]} for this device. ` : '') +
+      'Resolution and shadows change right away; edge smoothing follows your next reload.'
+    row.append(head, seg, hint)
+    wrap.appendChild(row)
+    this.menuBodyEl.appendChild(wrap)
   }
 
   /** Faction standings: who likes you, who wants you dead. */

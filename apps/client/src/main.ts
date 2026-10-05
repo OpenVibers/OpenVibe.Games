@@ -37,6 +37,13 @@ import {
   registerMapAssets,
   rebuildTerrainVisual,
 } from './render/sceneSetup.js'
+import {
+  applyEngineQuality,
+  applySceneQuality,
+  qualityForTier,
+  readDeviceSignals,
+  resolveQualityTier,
+} from './render/quality.js'
 import { Viewmodel } from './render/viewmodel.js'
 import { ClientState } from './state/clientState.js'
 import { characterSelect, type CharacterInfo } from './ui/characterSelect.js'
@@ -171,6 +178,11 @@ async function start(): Promise<void> {
   registerPhysgunModule()
   registerRiggingModule()
   const hud = new Hud(uiRoot, state, content, connection, icons, weaponSettings)
+  hud.onQualityChange = (override) => {
+    const quality = qualityForTier(resolveQualityTier(override, readDeviceSignals()))
+    applyEngineQuality(engine, quality)
+    applySceneQuality(scene, quality)
+  }
 
   // Touch on a coarse pointer, keyboard otherwise; a device with both
   // switches to whichever was used last, carrying the view angle across.
