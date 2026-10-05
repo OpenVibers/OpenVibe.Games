@@ -108,16 +108,18 @@ export class ReplicationSystem implements System, Net {
 
   broadcastSpawn(entity: GameEntity): void {
     // Deliver immediately to sessions in range; interest diff would send it
-    // next snapshot anyway, but placement feedback should be instant.
+    // next snapshot anyway, but placement feedback should be instant. Use the
+    // ENTER radius (not the wider exit band) so this matches what
+    // updateInterest will admit on the next tick.
     const wire = wireEntityFor(this.ctx.world, entity)
     const encoded = encodeServerMessage({ t: 'spawn', entities: [wire] })
-    const radiusSq = this.ctx.config.interestRadius ** 2
+    const enterRadiusSq = this.ctx.config.interestRadius ** 2
     for (const session of this.ctx.sessions.values()) {
       const d2 =
         (entity.transform.pos.x - session.move.pos.x) ** 2 +
         (entity.transform.pos.y - session.move.pos.y) ** 2 +
         (entity.transform.pos.z - session.move.pos.z) ** 2
-      if (d2 <= radiusSq) {
+      if (d2 <= enterRadiusSq) {
         session.known.add(entity.id)
         this.sendRaw(session, encoded)
       }
@@ -155,7 +157,12 @@ export class ReplicationSystem implements System, Net {
   replicate(): void {
     const ctx = this.ctx
     for (const session of ctx.sessions.values()) {
-      const diff = updateInterest(session, ctx.world, ctx.config.interestRadius)
+      const diff = updateInterest(
+        session,
+        ctx.world,
+        ctx.config.interestRadius,
+        ctx.config.interestHysteresis,
+      )
       if (diff.entered.length > 0) {
         this.send(session, {
           t: 'spawn',
