@@ -8,7 +8,10 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"]
+    // "node" is for the test and audit files colocated under src/, which read
+    // fixtures from disk. Vitest 3 pulled it in transitively (vite-node →
+    // vite/node); vitest 4 does not, so it has to be declared here.
+    "types": ["vite/client", "node"]
   },
   "include": ["src"],
   "references": [
