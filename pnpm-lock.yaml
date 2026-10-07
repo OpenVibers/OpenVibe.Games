@@ -118,8 +118,8 @@ importers:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.23.1
         version: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.23.1(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
       openvibe-shared:
-        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.6.0
-        version: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.6.0
+        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.0
+        version: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.0
       pg:
         specifier: ^8.23.0
         version: 8.23.0
@@ -1081,6 +1081,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
@@ -1344,9 +1345,9 @@ packages:
       pg:
         optional: true
 
-  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.6.0:
-    resolution: {tarball: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.6.0}
-    version: 2.6.0
+  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.0:
+    resolution: {tarball: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.0}
+    version: 2.13.0
     hasBin: true
 
   optionator@0.9.4:
@@ -2751,7 +2752,7 @@ snapshots:
       iovalkey: 0.4.0
       pg: 8.23.0
 
-  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.6.0:
+  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v2.13.0:
     dependencies:
       jsonwebtoken: 9.0.3
 

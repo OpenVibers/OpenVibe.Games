@@ -6,7 +6,7 @@
   "runtime": "node 22, TypeScript (tsx), pnpm workspace; Babylon.js (client) + deterministic Rapier physics; PostgreSQL 18 via openvibe-sdk/db (pg, or embedded PGlite in development); Valkey optional",
   "port": 8000,
   "domain": "openvibe.games, play.openvibe.games",
-  "contracts": "openvibe-contracts v0.78.0, openvibe-sdk v0.23.1, openvibe-shared v2.6.0 (apps/server/package.json)",
+  "contracts": "openvibe-contracts v0.78.0, openvibe-sdk v0.23.1, openvibe-shared v2.13.0 (apps/server/package.json)",
   "capabilities": [
     "games.mod.manage",
     "games.mod.read",
