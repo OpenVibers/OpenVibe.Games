@@ -32,7 +32,7 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 
 - OpenVibe.Network (SSO, JWKS, client-credentials tokens, identity resolve, the `games.progress.summary`
   user module, mod grants), OpenVibe.Events (outbox relay, subscriptions), OpenVibe.Media (asset mirror)
-- `openvibe-contracts` v0.77.0, `openvibe-sdk` v0.22.0 and `openvibe-shared` v2.13.2 (pinned by release
+- `openvibe-contracts` v0.77.0, `openvibe-sdk` v0.22.0 and `openvibe-shared` v2.15.0 (pinned by release
   tarball in `apps/server/package.json`), Babylon.js, Rapier, PostgreSQL (`pg`, or embedded PGlite in
   development), Valkey (`iovalkey`, optional)
 
