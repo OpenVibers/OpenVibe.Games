@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,9 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 
 /**
  * deploy/scripts/deploy.sh is a thin wrapper around `ovhost deploy games` (OpenVibe.Host, strategy
- * pnpm-build; roadmap WS-N task 11), with deploy-legacy.sh (the production procedure as it was run by
- * hand) as its fallback. A fake ovhost records what the wrapper asks for; a fake legacy script records
- * the fallback.
+ * pnpm-build; roadmap WS-N task 11). A fake ovhost records what the wrapper asks for.
  */
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
@@ -20,20 +18,11 @@ const ovhost = join(tmp, 'ovhost')
 writeFileSync(
   ovhost,
   `#!/usr/bin/env bash
-if [ "$1" = capabilities ]; then
-  [ -n "$FAKE_OLD" ] && exit 1
-  printf '%b\\n' "\${FAKE_CAPS:-ovhost=0.3.0\\ndeploy-api=1\\nservice=games\\nstrategy=pnpm-build\\nmanaged=yes\\nlayout=git}"
-  exit 0
-fi
 echo "ovhost $*" >> "${log}"
 exit "\${FAKE_EXIT:-0}"
 `,
 )
 chmodSync(ovhost, 0o755)
-const legacy = join(tmp, 'legacy.sh')
-writeFileSync(legacy, `#!/usr/bin/env bash\necho "legacy" >> "${log}"\n`)
-chmodSync(legacy, 0o755)
-
 interface Run {
   code: number | null
   out: string
@@ -47,7 +36,6 @@ function run(args: string[] = [], env: Record<string, string> = {}): Run {
       PATH: process.env.PATH ?? '',
       OVHOST: ovhost,
       OVHOST_SUDO: '',
-      DEPLOY_LEGACY: legacy,
       ...env,
     },
     encoding: 'utf8',
@@ -74,32 +62,18 @@ describe('deploy/scripts/deploy.sh', () => {
     expect(run(['--nope']).code).toBe(1)
   })
 
-  it('falls back to deploy-legacy.sh when ovhost is missing, too old or not deploying games with pnpm-build', () => {
-    let r = run([], { FAKE_OLD: '1' })
-    expect(r.calls).toEqual(['legacy'])
-    expect(r.out).toMatch(/too old/)
-    r = run([], { FAKE_CAPS: 'deploy-api=1\\nstrategy=none\\nmanaged=no' })
-    expect(r.calls).toEqual(['legacy'])
-    expect(r.out).toMatch(/does not deploy games with strategy pnpm-build \(none\)/)
-    expect(run([], { OVHOST: join(tmp, 'missing') }).calls).toEqual(['legacy'])
-    // The legacy procedure cannot roll back, wait for idle or plan: nothing runs rather than something else.
-    for (const args of [['--rollback'], ['--wait-idle']]) {
-      r = run(args, { OVHOST_LEGACY: '1' })
+  it('exits with a clear error when ovhost is missing', () => {
+    for (const args of [[], ['--rollback'], ['--wait-idle']]) {
+      const r = run(args, { OVHOST: join(tmp, 'missing') })
       expect(r.code).toBe(1)
       expect(r.calls).toEqual([])
+      expect(r.out).toMatch(/ovhost not found/)
     }
   })
 
-  it('keeps the production procedure as the fallback', () => {
-    const text = readFileSync(join(ROOT, 'deploy', 'scripts', 'deploy-legacy.sh'), 'utf8')
-    for (const step of [
-      'sudo git -c safe.directory="$REPO" pull',
-      'pnpm install --frozen-lockfile',
-      'pnpm build',
-      'sudo systemctl restart openvibe-games',
-    ]) {
-      expect(text).toContain(step)
-    }
+  it('has no legacy deploy path', () => {
+    expect(existsSync(join(ROOT, 'deploy', 'scripts', 'deploy-legacy.sh'))).toBe(false)
     expect(readFileSync(WRAPPER, 'utf8')).toMatch(/^set -euo pipefail$/m)
+    expect(readFileSync(WRAPPER, 'utf8')).not.toMatch(/legacy|capabilities/i)
   })
 })
