@@ -143,10 +143,7 @@ the restart (the SDK migrator applies any new migration as the owner before serv
 restored, reinstalled and rebuilt and the server restarted again. Players online are reported and
 reconnect; `--wait-idle` holds the restart until nobody plays, `--rollback` runs `ovhost rollback games`,
 `DRY_RUN=1` prints `ovhost plan games`. Do not pull by hand first (ovhost would find nothing new; pass
-`--restart` if you did). When ovhost is missing, too old or does not deploy Games with that strategy, the
-wrapper runs `deploy/scripts/deploy-legacy.sh`: the procedure as it was run by hand
-(`sudo git -c safe.directory=/opt/openvibe.games pull`, `pnpm install --frozen-lockfile`, `pnpm build`,
-`sudo systemctl restart openvibe-games`).
+`--restart` if you did). The wrapper exits with an error if ovhost is missing.
 
 Rollback: `sudo deploy/scripts/deploy.sh --rollback` (`ovhost rollback games`), which rebuilds the previous
 commit. Migrations are additive and applied at boot, so an older build starts on the newer schema; the SDK
