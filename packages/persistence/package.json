@@ -15,6 +15,6 @@
     "@openvibe/gameplay": "workspace:*",
     "@openvibe/protocol": "workspace:*",
     "@openvibe/shared": "workspace:*",
-    "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.35.0"
+    "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.37.2"
   }
 }
