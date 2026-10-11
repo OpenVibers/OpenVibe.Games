@@ -220,11 +220,6 @@
         color: #0e1512;
         background: linear-gradient(120deg, #2ecc71, #6ee7a0);
       }
-      .badge.soon {
-        color: var(--accent-light);
-        background: rgba(var(--accent-rgb, 59, 130, 246), 0.14);
-        border: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.35);
-      }
       .game-body h2 {
         font-size: clamp(26px, 3.4vw, 38px);
         font-weight: 900;
@@ -282,17 +277,6 @@
           box-shadow: 0 8px 48px rgba(var(--accent-rgb, 59, 130, 246), 0.7);
         }
       }
-      .game-card.soon {
-        opacity: 0.85;
-      }
-      .game-card.soon .shot {
-        min-height: 150px;
-        filter: saturate(0.5);
-      }
-      .game-card.soon .shot span {
-        font-size: 40px;
-      }
-
       /* ── accounts ────────────────────────────────────────────────── */
       .account {
         max-width: 820px;
@@ -400,7 +384,7 @@
     <section class="games">
       <!-- ── Featured: Scraplandia ── -->
       <div class="game-card featured">
-        <div class="shot" role="img" aria-label="Scraplandia screenshot placeholder">
+        <div class="shot" role="img" aria-label="Scraplandia">
           <span>🔧🏙️</span>
         </div>
         <div class="game-body">
@@ -421,33 +405,6 @@
         </div>
       </div>
 
-      <!-- ── Coming soon ── -->
-      <div class="game-card soon">
-        <div class="shot"><span>🃏</span></div>
-        <div class="game-body">
-          <span class="badge soon">COMING SOON</span>
-          <h3>Vibe Tables</h3>
-          <p>
-            Casual card and board nights with your stream chat — join from a link, no account walls.
-          </p>
-        </div>
-      </div>
-      <div class="game-card soon">
-        <div class="shot"><span>🚀</span></div>
-        <div class="game-body">
-          <span class="badge soon">COMING SOON</span>
-          <h3>Orbit Rally</h3>
-          <p>Zero-G time-trial racing with ghost replays shared across the OpenVibe network.</p>
-        </div>
-      </div>
-      <div class="game-card soon">
-        <div class="shot"><span>🗼</span></div>
-        <div class="game-body">
-          <span class="badge soon">COMING SOON</span>
-          <h3>Signal Tower</h3>
-          <p>Co-op tower defense where every wave is scripted live by the community.</p>
-        </div>
-      </div>
     </section>
 
     <section class="account">
