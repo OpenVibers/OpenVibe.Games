@@ -68,6 +68,12 @@ export class ModSystem implements System {
         case 'announce':
           this.ctx.net.broadcastAll({ t: 'announce', text: intent.text })
           return null
+        case 'message': {
+          const session = this.ctx.sessions.get(intent.playerId)
+          if (!session) return 'no such player'
+          this.ctx.net.send(session, { t: 'announce', text: intent.text })
+          return null
+        }
         case 'giveItem': {
           const session = this.ctx.sessions.get(intent.playerId)
           if (!session) return 'no such player'

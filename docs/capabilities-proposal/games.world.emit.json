@@ -1,0 +1,21 @@
+{
+  "id": "games.world.emit",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Script binding for mods (games-quickjs@1): game.emit, which queues world intents that the server validates like any player intent before applying them; a mod never mutates state directly. Absent unless granted.",
+  "permissions": [
+    "games:world:emit"
+  ],
+  "resourceConstraints": [
+    "none"
+  ],
+  "quotaClass": "games-mod-runtime",
+  "events": [],
+  "implementedBy": [
+    "mod runtime binding game.emit (apps/server/src/mods/script/host.ts)"
+  ],
+  "inputSchema": "games.script-intent@1",
+  "outputSchema": "common.no-body@1"
+}

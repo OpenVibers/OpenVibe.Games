@@ -46,6 +46,50 @@ const installBody = {
 }
 
 describe('mods HTTP API', () => {
+  it('requires staff for a validated script install and records its grants', async () => {
+    const { base, registry } = await start(async (req) =>
+      req.headers.authorization === 'Bearer staff' ? STAFF : null,
+    )
+    const body = {
+      manifest: sampleManifest({
+        runtime: 'games-quickjs@1',
+        compatibility: { runtime: '>=1.0.0 <2.0.0' },
+        permissions: { capabilities: ['games.script.run', 'games.players.read'] },
+        resources: { cpuMs: 2, memoryMb: 8, storageMb: 1 },
+      }),
+      pack: {
+        mods: [
+          {
+            format: 'games-quickjs@1',
+            id: 'greeter',
+            version: '1.0.0',
+            entry: 'greeter.js',
+            source: 'function onTick() {}',
+            hooks: ['onTick'],
+            capabilities: ['players.read'],
+          },
+        ],
+      },
+      approve: ['games.script.run', 'games.players.read'],
+      enable: true,
+    }
+    const post = (auth: string) =>
+      fetch(base, {
+        method: 'POST',
+        headers: {
+          authorization: auth,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+    expect((await post('Bearer player')).status).toBe(403)
+    const installed = await post('Bearer staff')
+    expect(installed.status).toBe(201)
+    expect(registry.get(MOD_ID)?.granted).toEqual(
+      new Set(['games.script.run', 'games.players.read']),
+    )
+    expect((await registry.auditLog(MOD_ID)).map((entry) => entry.action)).toContain('install')
+  })
   it('lets staff install, grant and revoke, and anyone read', async () => {
     const { base } = await start(async (req) =>
       req.headers.authorization === 'Bearer staff' ? STAFF : null,

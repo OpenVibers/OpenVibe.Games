@@ -7,8 +7,10 @@ import { performance } from 'node:perf_hooks'
 import { describe, expect, it } from 'vitest'
 import type { ScriptMod } from '@openvibe/content'
 import type { Logger } from '@openvibe/shared'
+import { openTestStore } from '@openvibe/persistence/testing'
 import { ScriptModHost, type ScriptIntent, type ScriptPlayer, type ScriptWorld } from './host.js'
 import { createQuickJsSandboxFactory } from './quickjs.js'
+import { PgScriptStorage } from './storage.js'
 import type { Json, ModSandbox, SandboxHostFunctions, SandboxSpec } from './sandbox.js'
 
 const factory = createQuickJsSandboxFactory()
@@ -214,6 +216,120 @@ describe('ScriptModHost on QuickJS', () => {
     entry: `${id}.js`,
     source,
     ...extra,
+  })
+
+  it('omits ungranted bindings and replaces Math.random with seeded game.random', async () => {
+    const answers: Json[] = []
+    const make = (seed: string) =>
+      new ScriptModHost(
+        [
+          scriptMod(
+            'caps',
+            `function onTick() {
+        game.log(typeof game.players, typeof game.emit, typeof game.storage,
+          game.random(), Math.random());
+      }`,
+            { capabilities: ['players.read', 'world.emit', 'storage.kv'] },
+          ),
+        ],
+        factory,
+        {
+          ...quiet,
+          info: (_message, fields) => {
+            if (fields && typeof fields === 'object' && 'text' in fields)
+              answers.push(String(fields.text))
+          },
+        },
+        undefined,
+        { placeSeed: seed, grants: { caps: ['players.read'] } },
+      )
+    const a = make('place-a')
+    await a.start()
+    a.tick(1, 1 / 30)
+    a.dispose()
+    const b = make('place-a')
+    await b.start()
+    b.tick(1, 1 / 30)
+    b.dispose()
+    const c = make('place-b')
+    await c.start()
+    c.tick(1, 1 / 30)
+    c.dispose()
+    expect(answers[0]).toBe(answers[1])
+    expect(answers[2]).not.toBe(answers[0])
+    expect(String(answers[0])).toMatch(/^function undefined undefined /)
+    const numbers = String(answers[0]).split(' ').slice(-2)
+    expect(numbers[0]).not.toBe(numbers[1])
+  })
+
+  it('loads a relative module import and calls an exported hook', async () => {
+    const seen: Json[] = []
+    const made = await factory.create({
+      id: 'modules',
+      filename: 'main.js',
+      source: 'import { value } from "./lib.js"; export function onTick() { game.report(value) }',
+      files: {
+        'main.js':
+          'import { value } from "./lib.js"; export function onTick() { game.report(value) }',
+        'lib.js': 'export const value = 17',
+      },
+      hooks: ['onTick'],
+      host: {
+        report: (value) => {
+          seen.push(value ?? null)
+          return undefined
+        },
+      },
+      limits: { memoryBytes: 8 * MB, stackBytes: 128 * 1024 },
+      loadCpuMs: 200,
+    })
+    expect(made.ok).toBe(true)
+    if (!made.ok) return
+    expect(made.sandbox.call('onTick', null, 100)).toEqual({ ok: true })
+    expect(seen).toEqual([17])
+    made.sandbox.dispose()
+  })
+
+  it('keeps storage through reload and a new host on the same database; failed reload keeps old code', async () => {
+    const store = await openTestStore()
+    const storage = new PgScriptStorage(store.mods, store.placeId, quiet)
+    const code = (step: number) => `function onTick() {
+      game.storage.set('count', (game.storage.get('count') || 0) + ${step});
+    }`
+    const make = (source: string, backing = storage) =>
+      new ScriptModHost(
+        [scriptMod('persist', source, { capabilities: ['storage.kv'] })],
+        factory,
+        quiet,
+        undefined,
+        { placeSeed: 'place', grants: { persist: ['storage.kv'] }, storage: backing },
+      )
+    const host = make(code(1))
+    await host.start()
+    host.tick(1, 1 / 30)
+    const failed = await host.reload(
+      scriptMod('persist', 'function onTick( {', { capabilities: ['storage.kv'] }),
+      ['storage.kv'],
+    )
+    expect(failed.ok).toBe(false)
+    host.tick(2, 1 / 30)
+    expect(
+      (
+        await host.reload(scriptMod('persist', code(3), { capabilities: ['storage.kv'] }), [
+          'storage.kv',
+        ])
+      ).ok,
+    ).toBe(true)
+    host.tick(3, 1 / 30)
+    await host.flushWrites()
+    host.dispose()
+    expect(await store.mods.storage('persist', store.placeId)).toEqual({ count: 5 })
+    const restarted = make(code(1), new PgScriptStorage(store.mods, store.placeId, quiet))
+    await restarted.start()
+    restarted.tick(1, 1 / 30)
+    await restarted.flushWrites()
+    restarted.dispose()
+    expect(await store.mods.storage('persist', store.placeId)).toEqual({ count: 6 })
   })
 
   function world(): ScriptWorld & { applied: ScriptIntent[]; ana: ScriptPlayer } {

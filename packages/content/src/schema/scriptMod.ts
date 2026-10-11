@@ -30,17 +30,61 @@ export const SCRIPT_MOD_BUDGETS = {
 
 /** Longest source a mod may carry, in UTF-16 code units. */
 export const MAX_SCRIPT_SOURCE = 64 * 1024
+export const SCRIPT_CAPABILITIES = [
+  'players.read',
+  'player.message',
+  'world.emit',
+  'storage.kv',
+] as const
+export type ScriptCapability = (typeof SCRIPT_CAPABILITIES)[number]
 
 const slug = /^[a-z0-9][a-z0-9_-]{0,39}$/
+const modulePath = /^(?:[a-z0-9][a-z0-9_-]{0,39}\/)*[a-z0-9][a-z0-9_-]{0,39}\.js$/
+
+/** Checks static imports before install; the runtime loader repeats the containment check. */
+export function moduleImportErrors(files: Record<string, string>): string[] {
+  const errors: string[] = []
+  for (const [file, source] of Object.entries(files)) {
+    if (/\bimport\s*\(/.test(source)) errors.push(`${file}: dynamic imports are not supported`)
+    const refs = source.matchAll(/\b(?:import|export)\s+(?:[^;'"\n]*?\s+from\s+)?['"]([^'"]+)['"]/g)
+    for (const [, ref] of refs) {
+      if (!ref?.startsWith('./') && !ref?.startsWith('../')) {
+        errors.push(`${file}: only relative imports are allowed: ${ref}`)
+        continue
+      }
+      const parts: string[] = []
+      let escaped = false
+      for (const part of `${file.slice(0, file.lastIndexOf('/') + 1)}${ref}`.split('/')) {
+        if (part === '..') {
+          if (parts.length === 0) escaped = true
+          else parts.pop()
+        } else if (part !== '.' && part !== '') parts.push(part)
+      }
+      const resolved = parts.join('/')
+      if (escaped) errors.push(`${file}: import leaves pack: ${ref}`)
+      else if (!(resolved in files)) errors.push(`${file}: missing module: ${resolved}`)
+    }
+  }
+  return errors
+}
 
 export const ScriptModSchema = z
   .object({
     format: z.literal(SCRIPT_MOD_FORMAT),
     id: z.string().regex(slug),
     version: z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/),
-    /** The script's file name, used in stack traces; v1 mods are one script (no module loader). */
-    entry: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,39}\.js$/),
-    source: z.string().min(1).max(MAX_SCRIPT_SOURCE),
+    /** Entry and module paths are pack-relative. Legacy single-source entries remain valid. */
+    entry: z.string().regex(modulePath),
+    source: z.string().min(1).max(MAX_SCRIPT_SOURCE).optional(),
+    files: z.record(z.string()).optional(),
+    /** Absent means the legacy bindings; an explicit list opts in to per-binding grants. */
+    capabilities: z
+      .array(z.enum(SCRIPT_CAPABILITIES))
+      .max(SCRIPT_CAPABILITIES.length)
+      .refine((c) => new Set(c).size === c.length, 'capabilities must be unique')
+      .optional(),
+    /** Server-approved subset, pinned by the definition digest. Populated by the pack loader. */
+    granted: z.array(z.enum(SCRIPT_CAPABILITIES)).optional(),
     hooks: z
       .array(z.enum(SCRIPT_MOD_HOOKS))
       .min(1)
@@ -57,5 +101,24 @@ export const ScriptModSchema = z
       .optional(),
   })
   .strict()
+  .superRefine((mod, ctx) => {
+    if (!mod.source && !mod.files)
+      ctx.addIssue({ code: 'custom', message: 'source or files is required' })
+    if (mod.files) {
+      if (mod.source) ctx.addIssue({ code: 'custom', message: 'source and files are exclusive' })
+      if (Object.keys(mod.files).length > 32)
+        ctx.addIssue({ code: 'custom', message: 'at most 32 mod files' })
+      if (!(mod.entry in mod.files))
+        ctx.addIssue({ code: 'custom', message: 'entry is missing from files' })
+      const bytes = Object.entries(mod.files).reduce((n, [path, body]) => {
+        if (!modulePath.test(path))
+          ctx.addIssue({ code: 'custom', message: `invalid module path ${path}` })
+        return n + new TextEncoder().encode(path).length + new TextEncoder().encode(body).length
+      }, 0)
+      if (bytes > MAX_SCRIPT_SOURCE)
+        ctx.addIssue({ code: 'custom', message: 'mod files exceed 64 KiB' })
+      for (const message of moduleImportErrors(mod.files)) ctx.addIssue({ code: 'custom', message })
+    }
+  })
 
 export type ScriptMod = z.infer<typeof ScriptModSchema>

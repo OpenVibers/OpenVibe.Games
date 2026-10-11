@@ -3,7 +3,7 @@
  * sandbox each, from the tick and the join/leave hooks.
  *
  * A mod reads the world and asks for changes; it never makes them. What it
- * can reach is the frozen global `game` (see docs/mods.md):
+ * can reach is its granted subset of the frozen global `game` (see docs/mods.md):
  *
  *   game.players()        every player in the world: { id, name, pos, yaw }
  *   game.player(id)       one player, or null
@@ -22,7 +22,12 @@
  * caller as an exception.
  */
 import { performance } from 'node:perf_hooks'
-import { SCRIPT_MOD_BUDGETS, type ScriptMod, type ScriptModHook } from '@openvibe/content'
+import {
+  SCRIPT_MOD_BUDGETS,
+  type ScriptCapability,
+  type ScriptMod,
+  type ScriptModHook,
+} from '@openvibe/content'
 import type { Logger } from '@openvibe/shared'
 import type {
   Json,
@@ -38,6 +43,17 @@ export const LOAD_CPU_FACTOR = 25
 export const ERROR_STRIKES = 5
 export const MAX_INTENTS_PER_CALL = 16
 export const MAX_LOGS_PER_TICK = 4
+export const STORAGE_MAX_KEYS = 1000
+export const STORAGE_MAX_BYTES = 1024 * 1024
+export const STORAGE_MAX_VALUE_BYTES = 8 * 1024
+export const STORAGE_MAX_KEY_BYTES = 128
+
+export interface ScriptStorage {
+  load(modId: string): Promise<Record<string, Json>>
+  set(modId: string, key: string, value: Json): void
+  delete(modId: string, key: string): void
+  flushWrites(): Promise<void>
+}
 
 export interface ScriptPlayer {
   id: string
@@ -49,6 +65,7 @@ export interface ScriptPlayer {
 /** Everything a mod may ask for. Each is applied by the gameplay modules, never by the mod. */
 export type ScriptIntent =
   | { kind: 'announce'; text: string }
+  | { kind: 'message'; playerId: string; text: string }
   | { kind: 'giveItem'; playerId: string; item: string; count: number }
 
 /** What the game lends the host: reads, and one door for changes. */
@@ -115,6 +132,11 @@ export function parseIntent(raw: Json): ScriptIntent | string {
         return 'giveItem: count must be an integer 1-100'
       return { kind: 'giveItem', playerId, item, count }
     }
+    case 'message': {
+      if (!shortString(raw.playerId, 64) || !shortString(raw.text, 200))
+        return 'message: playerId and text are required'
+      return { kind: 'message', playerId: raw.playerId, text: raw.text }
+    }
     default:
       return `unknown intent kind ${JSON.stringify(raw.kind ?? null)}`
   }
@@ -135,6 +157,16 @@ interface ModSlot {
   failures: Record<SandboxFailureReason, number>
   intentsApplied: number
   intentsRejected: number
+  grants: ReadonlySet<ScriptCapability>
+  storage: Map<string, Json>
+  randomState: number
+  loadError: string | null
+}
+
+function seedRandom(placeSeed: string, modId: string): number {
+  let h = 0x811c9dc5
+  for (const c of `${placeSeed}:${modId}`) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0
+  return h || 1
 }
 
 export class ScriptModHost {
@@ -148,6 +180,11 @@ export class ScriptModHost {
     private readonly factory: ModSandboxFactory,
     private readonly log: Logger,
     private readonly now: () => number = () => performance.now(),
+    private readonly options: {
+      placeSeed?: string
+      grants?: Readonly<Record<string, readonly ScriptCapability[]>>
+      storage?: ScriptStorage
+    } = {},
   ) {
     this.slots = mods.map((mod) => ({
       mod,
@@ -163,6 +200,14 @@ export class ScriptModHost {
       failures: { cpu: 0, memory: 0, stack: 0, error: 0 },
       intentsApplied: 0,
       intentsRejected: 0,
+      grants: new Set(
+        this.options.grants?.[mod.id] ??
+          mod.granted ??
+          (mod.capabilities ? [] : ['players.read', 'world.emit']),
+      ),
+      storage: new Map(),
+      randomState: seedRandom(this.options.placeSeed ?? 'scraplandia', mod.id),
+      loadError: null,
     }))
   }
 
@@ -174,40 +219,148 @@ export class ScriptModHost {
   /** Creates every sandbox and evaluates each mod once. A mod that fails to load is disabled. */
   async start(): Promise<void> {
     for (const slot of this.slots) {
-      const { mod, budget } = slot
-      let created: Awaited<ReturnType<ModSandboxFactory['create']>>
-      try {
-        created = await this.factory.create({
-          id: mod.id,
-          filename: mod.entry,
-          source: mod.source,
-          limits: { memoryBytes: budget.memoryMb * 1024 * 1024, stackBytes: budget.stackKb * 1024 },
-          loadCpuMs: budget.cpuMs * LOAD_CPU_FACTOR,
-          host: this.hostFunctions(slot),
-        })
-      } catch (err) {
-        created = {
-          ok: false,
-          reason: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        }
+      if (this.options.storage) {
+        const saved = await this.options.storage.load(slot.mod.id)
+        slot.storage = new Map(Object.entries(saved))
       }
-      if (!created.ok) {
-        slot.failures[created.reason]++
-        this.disable(slot, created.reason, `load: ${created.message}`)
-        continue
-      }
-      slot.sandbox = created.sandbox
-      this.log.info('script mod loaded', {
-        mod: mod.id,
-        version: mod.version,
-        engine: this.factory.engine,
-        hooks: mod.hooks.join(','),
-        cpuMs: budget.cpuMs,
-        memoryMb: budget.memoryMb,
-        stackKb: budget.stackKb,
-      })
+      await this.startSlot(slot)
     }
+  }
+
+  private async startSlot(slot: ModSlot): Promise<void> {
+    const { mod, budget } = slot
+    let created: Awaited<ReturnType<ModSandboxFactory['create']>>
+    try {
+      created = await this.factory.create({
+        id: mod.id,
+        filename: mod.entry,
+        source: mod.source ?? mod.files?.[mod.entry] ?? '',
+        ...(mod.files ? { files: mod.files, hooks: mod.hooks } : {}),
+        limits: { memoryBytes: budget.memoryMb * 1024 * 1024, stackBytes: budget.stackKb * 1024 },
+        loadCpuMs: budget.cpuMs * LOAD_CPU_FACTOR,
+        host: this.hostFunctions(slot),
+      })
+    } catch (err) {
+      created = {
+        ok: false,
+        reason: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      }
+    }
+    if (!created.ok) {
+      slot.loadError = created.message
+      slot.failures[created.reason]++
+      this.disable(slot, created.reason, `load: ${created.message}`)
+      return
+    }
+    slot.sandbox = created.sandbox
+    this.log.info('script mod loaded', {
+      mod: mod.id,
+      version: mod.version,
+      engine: this.factory.engine,
+      hooks: mod.hooks.join(','),
+      cpuMs: budget.cpuMs,
+      memoryMb: budget.memoryMb,
+      stackKb: budget.stackKb,
+    })
+  }
+
+  /** Prepare the replacement first. A failed load leaves the old sandbox running. */
+  async reload(
+    mod: ScriptMod,
+    grants?: readonly ScriptCapability[],
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const prepared = await this.prepareReload(mod, grants)
+    if (!prepared.ok) return prepared
+    prepared.commit()
+    return { ok: true }
+  }
+
+  async prepareReload(
+    mod: ScriptMod,
+    grants?: readonly ScriptCapability[],
+  ): Promise<{ ok: true; commit(): void; cancel(): void } | { ok: false; error: string }> {
+    const old = this.slots.find((s) => s.mod.id === mod.id)
+    if (!old) return { ok: false, error: `unknown mod ${mod.id}` }
+    const candidate: ModSlot = {
+      ...old,
+      mod,
+      budget: resolveBudget(mod),
+      hooks: new Set(mod.hooks),
+      sandbox: null,
+      state: 'running',
+      reason: null,
+      strikes: 0,
+      spentMs: 0,
+      logsThisTick: 0,
+      loadError: null,
+      storage: new Map(old.storage),
+      grants: new Set(
+        grants ??
+          this.options.grants?.[mod.id] ??
+          mod.granted ??
+          (mod.capabilities ? [] : ['players.read', 'world.emit']),
+      ),
+    }
+    await this.startSlot(candidate)
+    if (!candidate.sandbox)
+      return { ok: false, error: candidate.loadError ?? `failed to start ${mod.id}` }
+    return {
+      ok: true,
+      commit: () => {
+        old.sandbox?.dispose()
+        this.slots[this.slots.indexOf(old)] = candidate
+      },
+      cancel: () => candidate.sandbox?.dispose(),
+    }
+  }
+
+  async add(
+    mod: ScriptMod,
+    grants?: readonly ScriptCapability[],
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (this.slots.some((s) => s.mod.id === mod.id))
+      return { ok: false, error: `mod ${mod.id} already runs` }
+    const slot: ModSlot = {
+      mod,
+      budget: resolveBudget(mod),
+      hooks: new Set(mod.hooks),
+      sandbox: null,
+      state: 'running',
+      reason: null,
+      spentMs: 0,
+      logsThisTick: 0,
+      strikes: 0,
+      calls: 0,
+      failures: { cpu: 0, memory: 0, stack: 0, error: 0 },
+      intentsApplied: 0,
+      intentsRejected: 0,
+      grants: new Set(
+        grants ?? mod.granted ?? (mod.capabilities ? [] : ['players.read', 'world.emit']),
+      ),
+      storage: new Map(Object.entries((await this.options.storage?.load(mod.id)) ?? {})),
+      randomState: seedRandom(this.options.placeSeed ?? 'scraplandia', mod.id),
+      loadError: null,
+    }
+    await this.startSlot(slot)
+    if (!slot.sandbox) return { ok: false, error: slot.loadError ?? `failed to start ${mod.id}` }
+    this.slots.push(slot)
+    return { ok: true }
+  }
+
+  has(id: string): boolean {
+    return this.slots.some((slot) => slot.mod.id === id)
+  }
+
+  remove(id: string): void {
+    const at = this.slots.findIndex((slot) => slot.mod.id === id)
+    if (at < 0) return
+    this.slots[at]?.sandbox?.dispose()
+    this.slots.splice(at, 1)
+  }
+
+  flushWrites(): Promise<void> {
+    return this.options.storage?.flushWrites() ?? Promise.resolve()
   }
 
   tick(tick: number, dtSeconds: number): void {
@@ -322,22 +475,14 @@ export class ScriptModHost {
 
   /** The functions behind `game`; each knows its mod, so no mod can act as another. */
   private hostFunctions(slot: ModSlot): SandboxHostFunctions {
-    return {
-      players: () => (this.world?.players() ?? []) as unknown as Json,
-      player: (id) => {
-        if (typeof id !== 'string') throw new Error('game.player(id): id must be a string')
-        return (this.world?.player(id) ?? null) as unknown as Json
-      },
-      emit: (raw) => {
-        const call = this.current
-        if (!call || call.slot !== slot)
-          throw new Error('game.emit is only available inside a hook')
-        if (call.intents.length >= MAX_INTENTS_PER_CALL)
-          throw new Error(`at most ${MAX_INTENTS_PER_CALL} intents per call`)
-        const intent = parseIntent(raw ?? null)
-        if (typeof intent === 'string') throw new Error(intent)
-        call.intents.push(intent)
-        return undefined
+    const host: Record<string, (...args: Json[]) => Json | undefined> = {
+      random: () => {
+        let x = slot.randomState
+        x ^= x << 13
+        x ^= x >>> 17
+        x ^= x << 5
+        slot.randomState = x >>> 0
+        return slot.randomState / 0x1_0000_0000
       },
       log: (...values) => {
         if (slot.logsThisTick >= MAX_LOGS_PER_TICK) return undefined
@@ -347,5 +492,87 @@ export class ScriptModHost {
         return undefined
       },
     }
+    if (slot.grants.has('players.read'))
+      Object.assign(host, {
+        players: () => (this.world?.players() ?? []) as unknown as Json,
+        player: (id: Json) => {
+          if (typeof id !== 'string') throw new Error('game.player(id): id must be a string')
+          return (this.world?.player(id) ?? null) as unknown as Json
+        },
+      })
+    if (slot.grants.has('world.emit'))
+      host.emit = (raw) => {
+        const call = this.current
+        if (!call || call.slot !== slot)
+          throw new Error('game.emit is only available inside a hook')
+        if (call.intents.length >= MAX_INTENTS_PER_CALL)
+          throw new Error(`at most ${MAX_INTENTS_PER_CALL} intents per call`)
+        const intent = parseIntent(raw ?? null)
+        if (typeof intent === 'string') throw new Error(intent)
+        if (intent.kind === 'message') throw new Error('message requires game.message')
+        call.intents.push(intent)
+        return undefined
+      }
+    if (slot.grants.has('player.message'))
+      host.message = (playerId, text) => {
+        const call = this.current
+        if (!call || call.slot !== slot)
+          throw new Error('game.message is only available inside a hook')
+        if (call.intents.length >= MAX_INTENTS_PER_CALL)
+          throw new Error(`at most ${MAX_INTENTS_PER_CALL} intents per call`)
+        const intent = parseIntent({
+          kind: 'message',
+          playerId: playerId ?? null,
+          text: text ?? null,
+        })
+        if (typeof intent === 'string') throw new Error(intent)
+        call.intents.push(intent)
+        return undefined
+      }
+    if (slot.grants.has('storage.kv')) {
+      const checkedKey = (key: Json | undefined): string => {
+        if (typeof key !== 'string' || new TextEncoder().encode(key).length > STORAGE_MAX_KEY_BYTES)
+          throw new Error('storage key must be at most 128 UTF-8 bytes')
+        return key
+      }
+      host['storage.get'] = (key) => slot.storage.get(checkedKey(key)) ?? null
+      host['storage.keys'] = (prefix) => {
+        if (prefix !== undefined && typeof prefix !== 'string')
+          throw new Error('storage prefix must be a string')
+        return [...slot.storage.keys()].filter((k) => k.startsWith(prefix ?? '')).sort()
+      }
+      host['storage.set'] = (key, value) => {
+        if (this.current?.slot !== slot)
+          throw new Error('storage writes are only available inside a hook')
+        const k = checkedKey(key)
+        if (value === undefined) throw new Error('storage value must be JSON')
+        const bytes = new TextEncoder().encode(JSON.stringify(value)).length
+        if (bytes > STORAGE_MAX_VALUE_BYTES) throw new Error('storage value exceeds 8 KiB')
+        if (!slot.storage.has(k) && slot.storage.size >= STORAGE_MAX_KEYS)
+          throw new Error('storage exceeds 1000 keys')
+        const total = [...slot.storage].reduce(
+          (n, [name, item]) =>
+            n +
+            (name === k
+              ? 0
+              : new TextEncoder().encode(name).length +
+                new TextEncoder().encode(JSON.stringify(item)).length),
+          bytes + new TextEncoder().encode(k).length,
+        )
+        if (total > STORAGE_MAX_BYTES) throw new Error('storage exceeds 1 MiB')
+        slot.storage.set(k, value)
+        this.options.storage?.set(slot.mod.id, k, value)
+        return undefined
+      }
+      host['storage.delete'] = (key) => {
+        if (this.current?.slot !== slot)
+          throw new Error('storage writes are only available inside a hook')
+        const k = checkedKey(key)
+        const existed = slot.storage.delete(k)
+        if (existed) this.options.storage?.delete(slot.mod.id, k)
+        return existed
+      }
+    }
+    return host
   }
 }

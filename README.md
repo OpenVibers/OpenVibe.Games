@@ -25,8 +25,8 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 
 - identity (OpenVibe.Network: players are keyed by Network subjects), file storage beyond the local
   copy (OpenVibe.Media mirrors map-editor assets), events delivery (OpenVibe.Events)
-- mod grants' authority (Network keeps them, `mods.grant.manage`) and installable executable mods
-  (they wait for OpenVibe.Host Stage C; script mods ship in the place's own packs)
+- mod grants' authority (Network keeps them, `mods.grant.manage`) and general-purpose executable
+  mods (OpenVibe.Host Stage C); Games runs its own bounded `games-quickjs@1` scripts
 
 ## Depends on
 
@@ -180,7 +180,7 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
 - **Mods** (ADR-013 in OpenVibe.Contracts). Manifests follow
   `mods.mod-manifest@1.1.0` (Games validates against the schema in the
   installed `openvibe-contracts` package — pin drift is a defect, ADR-0007
-  decision 12 — currently v0.77.0). The only runtime today is `games-content@2`:
+  decision 12). The content runtime is `games-content@2`:
   declarative data packs checked against `@openvibe/content` (announcements;
   inert, mod-owned props; definitions — items, recipes, crops, NPC archetypes —
   merged into the content registry at boot, so they take effect on the next
@@ -188,16 +188,16 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   requested capabilities; every runtime binding checks it at call time, a
   revoked install or capability stops affecting the world on the next tick,
   and install/grant/use/deny/revoke are audited (`mod_audit`). Trust tiers are
-  metadata only. Executable mods are refused by the mods API until sandboxed
-  execution exists in OpenVibe.Host (Stage C); `games-quickjs@1` script mods
-  ship in the place's own packs instead, pinned by the def-set digest, and run
+  metadata only. Staff can install `games-quickjs@1` script packs through the mods API;
+  built-in packs can carry scripts too. Scripts are pinned by the def-set digest and run
   in a per-mod QuickJS sandbox only where `GAMES_SCRIPT_MODS=1` (budgets
   `cpuMs` 2 per tick, `memoryMb` 8, `stackKb` 128 by default; over budget
   disables the mod for the instance; host API and limits in docs/mods.md). API: `GET /api/v1/mods`,
   `GET /api/v1/mods/:id` (public); `POST /api/v1/mods`,
-  `POST /api/v1/mods/:id/enable|disable|revoke|grants`,
+  `POST /api/v1/mods/:id/enable|disable|revoke|grants|reload`,
   `DELETE /api/v1/mods/:id/grants/:capability`, `GET /api/v1/mods/:id/audit`
-  (owner/admin session, or a principal token with `games.mod.manage`).
+  (owner/admin session, or a principal token with `games.mod.manage`). Fresh clients fetch
+  `GET /api/v1/content` before the digest handshake so live script changes can be joined.
 - **Status:** `GET /api/v1/platform` reports whether events and the Media
   mirror are on, the outbox backlog and mirror counts (no secrets).
 - **In production (2026-09-23, release `f11e21c`):** events and the Media
@@ -226,9 +226,11 @@ Platform environment (all optional; unset = off):
 ## Capabilities
 
 Implemented here (the service manifest's `capabilities`): `games.mod.manage` and `games.mod.read` (the
-mods API, for a principal token or an owner/admin session), and `games.world.announce`,
-`games.prop.place` and `games.def.define`, the capabilities a mod install may be granted and every runtime binding checks at
-call time.
+mods API, for a principal token or an owner/admin session); `games.world.announce`,
+`games.prop.place`, and `games.def.define` for declarative packs; and
+`games.script.run`, `games.players.read`, `games.player.message`,
+`games.world.emit`, and `games.storage.kv` for script packs. Script bindings
+are absent unless approved for that install.
 
 Grants the `games` principal needs in OpenVibe.Network:
 `events.event.publish` and `events.subscription.manage` (openvibe.events: the outbox, and the account,
@@ -253,8 +255,8 @@ run `node test/run.js --index` to regenerate the pointers — a missing or stale
 Reporting a vulnerability: [SECURITY.md](SECURITY.md). The server is authoritative: inbound protocol
 messages are validated (zod), the WebSocket has per-socket flood control, and HTTP writes that cross a
 capability boundary (editor saves and uploads, the mods API) have per-actor limits (openvibe-sdk/limits).
-Players are keyed by Network subjects; guest tokens that look like account keys are refused. Mods are
-declarative only, each install keeps only its approved capabilities, and executable mods are refused.
+Players are keyed by Network subjects; guest tokens that look like account keys are refused.
+Script mods run in isolated QuickJS sandboxes with only their approved bindings.
 nginx keeps `/api/ready` off the public vhosts and `/metrics` answers direct loopback callers only. `OV_OAUTH_CLIENT_SECRET`, `GAMES_EVENTS_SECRET` (signed
 Events deliveries) and `OV_NETWORK_AUTH_URL` live in `/etc/openvibe/games.env`, by name only; there are no shared keys
 between services.

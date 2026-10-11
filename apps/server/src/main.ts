@@ -3,7 +3,13 @@ import type { IncomingMessage } from 'node:http'
 import { dirname, join } from 'node:path'
 import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/events'
 import { createValkey } from 'openvibe-sdk/valkey'
-import { compileMapFileV2, createContent, parseMapFile, setMapOverride } from '@openvibe/content'
+import {
+  compileMapFileV2,
+  createContent,
+  parseMapFile,
+  SCRAPLANDIA_PACK,
+  setMapOverride,
+} from '@openvibe/content'
 import { openPgStore } from '@openvibe/persistence'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { createConsoleLogger } from '@openvibe/shared'
@@ -29,13 +35,15 @@ import { ServerMetrics } from './observability/metrics.js'
 import { createReadiness } from './observability/readiness.js'
 import { buildRelease, releaseHandler } from './observability/release.js'
 import { sharedAssetsHandler } from './net/sharedAssets.js'
-import { loadDefinitionPacks } from './mods/contentPack.js'
-import { ModRegistry } from './mods/registry.js'
+import { loadDefinitionPacks, scriptGrant } from './mods/contentPack.js'
+import { ModError, ModRegistry, type ModView } from './mods/registry.js'
 import { createNetworkModGrants } from './mods/networkGrants.js'
 import { createGamesActorLimits } from './net/actorLimits.js'
 import { handleModsRequest } from './mods/routes.js'
 import { ModRuntime } from './mods/runtime.js'
 import { ScriptModHost } from './mods/script/host.js'
+import { PgScriptStorage } from './mods/script/storage.js'
+import { ScriptModSchema, type ScriptCapability } from '@openvibe/content'
 import { isGuestToken } from './platform/accounts.js'
 import { ProgressSummaryWriter } from './platform/progressSummary.js'
 import {
@@ -80,6 +88,9 @@ async function main(): Promise<void> {
     log.warn('mod definitions skipped', { mod: modId, reason }),
   )
   const content = createContent(packs)
+  const builtInModIds = new Set(
+    (SCRAPLANDIA_PACK.mods ?? []).map((raw) => ScriptModSchema.parse(raw).id),
+  )
   // Edited map (from /editor): heightfield + extra statics replace the
   // procedural terrain for EVERYTHING (physics, spawns, clients fetch the
   // same file over /map.json).
@@ -207,9 +218,35 @@ async function main(): Promise<void> {
   // even loaded otherwise. They stay in the def set, so the handshake digest is the same either way.
   const scriptLog = log.child({ system: 'script-mods' })
   let scripts: ScriptModHost | undefined
-  if (config.scriptMods && content.allMods().length > 0) {
+  if (config.scriptMods) {
     const { createQuickJsSandboxFactory } = await import('./mods/script/quickjs.js')
-    scripts = new ScriptModHost(content.allMods(), createQuickJsSandboxFactory(), scriptLog)
+    // Built-in pack code is reviewed with the place; installed packs use only the approved subset.
+    const grants: Record<string, string[]> = Object.fromEntries(
+      content
+        .allMods()
+        .filter((mod) => mod.granted === undefined)
+        .map((mod) => [mod.id, mod.capabilities ?? ['players.read', 'world.emit']]),
+    )
+    for (const view of mods.list()) {
+      if (view.mod.status !== 'enabled' || !view.granted.has('games.script.run')) continue
+      for (const script of view.pack.mods ?? []) {
+        if (script && typeof script === 'object' && 'id' in script && typeof script.id === 'string')
+          grants[script.id] = [...view.granted]
+            .filter((cap) => cap.startsWith('games.'))
+            .map((cap) => cap.slice(6))
+      }
+    }
+    scripts = new ScriptModHost(
+      content.allMods(),
+      createQuickJsSandboxFactory(),
+      scriptLog,
+      undefined,
+      {
+        placeSeed: config.placeId,
+        grants: grants as Record<string, ScriptCapability[]>,
+        storage: new PgScriptStorage(store.mods, config.placeId, scriptLog),
+      },
+    )
   } else if (content.allMods().length > 0) {
     scriptLog.info('script mods off for this place', { mods: content.allMods().length })
   }
@@ -222,6 +259,36 @@ async function main(): Promise<void> {
   // Async boot: env, markets and the NPC population load before the tick loop starts.
   await game.load()
   await scripts?.start()
+
+  const syncScriptView = async (view: ModView): Promise<void> => {
+    if (view.mod.runtime !== 'games-quickjs@1') return
+    for (const raw of view.pack.mods ?? []) {
+      const script = ScriptModSchema.parse(raw)
+      const active = view.mod.status === 'enabled' && view.granted.has('games.script.run')
+      scripts?.remove(script.id)
+      if (!active) {
+        content.removeScriptMod(script.id)
+        continue
+      }
+      const granted = (script.capabilities ?? (['players.read', 'world.emit'] as const)).filter(
+        (cap) => view.granted.has(scriptGrant(cap)),
+      )
+      const pinned = { ...script, granted }
+      if (content.allMods().some((mod) => mod.id === script.id)) content.replaceScriptMod(pinned)
+      else content.addScriptMod(pinned)
+      if (scripts) {
+        const result = await scripts.add(pinned, granted)
+        if (!result.ok)
+          log.warn('script failed to start after grant change', {
+            mod: script.id,
+            error: result.error,
+          })
+      }
+    }
+    game.announce(
+      'Script mod definitions changed. New connections must use the updated content set.',
+    )
+  }
 
   const accountData = platform
     ? createAccountData({
@@ -255,6 +322,7 @@ async function main(): Promise<void> {
     // Mod principals (ADR-013): an install's grants follow its principal in Network (a change staff made there).
     onModGrants: async (p) => {
       const view = await mods.applyNetwork(p)
+      if (view) await syncScriptView(view)
       return view ? `mod:${view.mod.status}` : 'ignored:unknown_mod'
     },
     log: platformLog,
@@ -356,6 +424,22 @@ async function main(): Promise<void> {
     config.oauth,
     {
       handle: (req, res) => {
+        if (req.method === 'GET' && req.url?.split('?')[0] === '/api/v1/content') {
+          const staticPacks = packs.map(({ mods: _mods, ...pack }) => pack)
+          res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+          res.end(
+            JSON.stringify({
+              digest: content.digest,
+              packs: [
+                ...staticPacks,
+                {
+                  mods: content.allMods().filter((mod) => !builtInModIds.has(mod.id)),
+                },
+              ],
+            }),
+          )
+          return true
+        }
         if (revocations.handle(req, res)) return true
         if (readiness.handle(req, res)) return true
         if (serveRelease(req, res)) return true
@@ -413,6 +497,47 @@ async function main(): Promise<void> {
         return handleModsRequest(req, res, {
           registry: mods,
           authorize: authorizeStaff,
+          onInstalled: syncScriptView,
+          onChanged: syncScriptView,
+          reload: async (id, request, actor) => {
+            const prior = mods.get(id)
+            if (!prior) throw new ModError('mod.not_found', `no mod ${id}`, 404)
+            const checked = await mods.checkInstall(request, id)
+            if (
+              checked.manifest.runtime !== 'games-quickjs@1' ||
+              checked.pack.mods?.length !== 1 ||
+              prior.pack.mods?.length !== 1
+            )
+              throw new ModError('mod.pack_invalid', 'reload requires one script mod', 422)
+            const script = ScriptModSchema.parse(checked.pack.mods[0])
+            const old = ScriptModSchema.parse(prior.pack.mods[0])
+            if (script.id !== old.id)
+              throw new ModError('mod.pack_invalid', 'script id cannot change on reload', 422)
+            if (!content.allMods().some((mod) => mod.id === script.id) || !scripts?.has(script.id))
+              throw new ModError(
+                'mod.reload_unavailable',
+                'script is not running on this instance',
+                409,
+              )
+            const grants = (
+              script.capabilities ?? (['players.read', 'world.emit'] as const)
+            ).filter((cap) => prior.granted.has(scriptGrant(cap)))
+            const pinned = { ...script, granted: grants }
+            const prepared = await scripts.prepareReload(pinned, grants)
+            if (!prepared.ok) throw new ModError('mod.reload_failed', prepared.error, 422)
+            try {
+              const view = await mods.replace(id, request, actor)
+              content.replaceScriptMod(pinned)
+              prepared.commit()
+              game.announce(
+                `Script mod ${script.id} reloaded. New connections must use the updated content set.`,
+              )
+              return view
+            } catch (error) {
+              prepared.cancel()
+              throw error
+            }
+          },
           ...(modGrants ? { grants: modGrants } : {}),
           limits: actorLimits,
           log: log.child({ system: 'mods-api' }),
@@ -534,6 +659,7 @@ async function main(): Promise<void> {
       // (that checkpoint plus every disconnect save queued before it) drain.
       game.shutdown()
       const drained = await game.drain()
+      await scripts?.flushWrites()
       scripts?.dispose()
       const cut = await httpDone
       await within(2000, mirrorDone)

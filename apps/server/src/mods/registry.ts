@@ -27,6 +27,7 @@
  * staff made in Network). The approved subset here is the hot path's copy.
  */
 import type { ContentRegistry } from '@openvibe/content'
+import { SCRIPT_CAPABILITIES, ScriptModSchema } from '@openvibe/content'
 import type {
   ModAuditDto,
   ModGrantDto,
@@ -48,6 +49,8 @@ import {
 import {
   capabilitiesUsedBy,
   CONTENT_RUNTIME_CAPABILITIES,
+  CAP_SCRIPT_RUN,
+  scriptGrant,
   validateContentPack,
   type ContentPack,
 } from './contentPack.js'
@@ -263,7 +266,10 @@ export class ModRegistry {
   }
 
   /** Everything install checks before it writes: the manifest, the pack, the approved subset and the options. */
-  async checkInstall(req: InstallRequest): Promise<{
+  async checkInstall(
+    req: InstallRequest,
+    replacing?: string,
+  ): Promise<{
     manifest: ModManifest
     pack: ContentPack
     approve: string[]
@@ -284,6 +290,22 @@ export class ModRegistry {
       throw new ModError('mod.pack_invalid', 'content pack is invalid', 422, packCheck.errors)
     }
     const pack = packCheck.value
+    const ownIds = new Set<string>()
+    for (const raw of pack.mods ?? []) {
+      const script = ScriptModSchema.parse(raw)
+      if (ownIds.has(script.id))
+        throw new ModError('mod.pack_invalid', `script id ${script.id} occurs twice`, 422)
+      ownIds.add(script.id)
+      const owner = [...this.views.values()].find(
+        (view) =>
+          view.mod.id !== replacing &&
+          (view.pack.mods ?? []).some(
+            (candidate) => ScriptModSchema.safeParse(candidate).data?.id === script.id,
+          ),
+      )
+      if (owner || (!replacing && this.content.allMods().some((mod) => mod.id === script.id)))
+        throw new ModError('mod.pack_invalid', `script id ${script.id} already exists`, 422)
+    }
     const requested = new Set(manifest.permissions.capabilities)
     const unrequested = capabilitiesUsedBy(pack).filter((c) => !requested.has(c))
     if (unrequested.length > 0) {
@@ -298,7 +320,10 @@ export class ModRegistry {
     for (const cap of approve) this.assertGrantable(manifest, cap)
     const trustTier = parseTrustTier(req.trustTier ?? 'unreviewed')
     const enable = req.enable === true
-    if (this.views.has(manifest.id) || (await this.store.mods.get(manifest.id))) {
+    if (
+      manifest.id !== replacing &&
+      (this.views.has(manifest.id) || (await this.store.mods.get(manifest.id)))
+    ) {
       throw new ModError('mod.exists', `mod ${manifest.id} is already installed`, 409)
     }
     return { manifest, pack, approve, trustTier, enable }
@@ -342,6 +367,56 @@ export class ModRegistry {
       })
     })
     return this.refresh(mod.id)
+  }
+
+  /** Revalidate and atomically replace the persisted code and provenance of one script install. */
+  async replace(id: string, req: InstallRequest, actor: ModActor): Promise<ModView> {
+    const old = this.require(id)
+    if (old.mod.status === 'revoked')
+      throw new ModError('mod.revoked', 'revoked installs cannot reload', 409)
+    if (old.mod.runtime !== 'games-quickjs@1')
+      throw new ModError('mod.runtime_unsupported', 'only script mods reload', 422)
+    const { manifest, pack } = await this.checkInstall(req, id)
+    if (manifest.runtime !== old.mod.runtime)
+      throw new ModError('mod.runtime_unsupported', 'runtime cannot change on reload', 422)
+    const newlyRequested = manifest.permissions.capabilities.filter(
+      (cap) => !old.manifest.permissions.capabilities.includes(cap),
+    )
+    if (newlyRequested.length)
+      throw new ModError(
+        'mod.grant_not_requested',
+        'new capabilities require a new install',
+        422,
+        newlyRequested,
+      )
+    const at = this.now()
+    const updated: ModInstallDto = {
+      ...old.mod,
+      name: manifest.name,
+      version: manifest.version,
+      manifest: manifest as unknown as Record<string, unknown>,
+      pack: pack as unknown as Record<string, unknown>,
+      updatedAt: at,
+    }
+    await this.store.transaction(async (t) => {
+      await this.store.mods.replace(updated)
+      for (const cap of old.granted) {
+        if (manifest.permissions.capabilities.includes(cap)) continue
+        await this.store.mods.revokeGrant(id, cap, actor.audit, at)
+        await this.writeAudit(id, 'revoke_grant', cap, actor, {
+          reason: 'not requested by reloaded manifest',
+        })
+      }
+      await this.writeAudit(id, 'reload', null, actor, {
+        from: old.mod.version,
+        to: manifest.version,
+      })
+      await this.emit(t, 'grants_changed', updated, actor, {
+        reload: true,
+        version: manifest.version,
+      })
+    })
+    return this.refresh(id)
   }
 
   enable(id: string, actor: ModActor): Promise<ModView> {
@@ -493,7 +568,7 @@ export class ModRegistry {
     if (!manifest.permissions.capabilities.includes(capability)) {
       throw new ModError('mod.grant_not_requested', `${capability} was not requested`, 422)
     }
-    if (!CONTENT_RUNTIME_CAPABILITIES.includes(capability)) {
+    if (!viewRuntimeCaps(manifest.runtime).includes(capability)) {
       throw new ModError(
         'mod.grant_unsupported',
         `${capability} has no binding in ${manifest.runtime}`,
@@ -583,6 +658,12 @@ export class ModRegistry {
     this.revision++
     return view
   }
+}
+
+function viewRuntimeCaps(runtime: string): readonly string[] {
+  return runtime === 'games-quickjs@1'
+    ? [CAP_SCRIPT_RUN, ...SCRIPT_CAPABILITIES.map(scriptGrant)]
+    : CONTENT_RUNTIME_CAPABILITIES.filter((c) => c !== CAP_SCRIPT_RUN)
 }
 
 function grantRow(modId: string, capability: string, actor: ModActor, at: number): ModGrantDto {

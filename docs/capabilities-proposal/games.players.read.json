@@ -1,0 +1,21 @@
+{
+  "id": "games.players.read",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Script binding for mods (games-quickjs@1): game.players and game.player, read-only views of the players in the mod's current place. Absent from the script's game object unless the install was granted it; checked against the install's approved capabilities, which travel in the def-set digest.",
+  "permissions": [
+    "games:players:read"
+  ],
+  "resourceConstraints": [
+    "none"
+  ],
+  "quotaClass": "games-mod-runtime",
+  "events": [],
+  "implementedBy": [
+    "mod runtime binding game.players / game.player (apps/server/src/mods/script/host.ts)"
+  ],
+  "inputSchema": "common.no-body@1",
+  "outputSchema": "games.script-players@1"
+}

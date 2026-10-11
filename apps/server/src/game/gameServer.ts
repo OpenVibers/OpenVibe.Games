@@ -196,6 +196,10 @@ export class GameServer {
     this.systems.editor.broadcastMapReload()
   }
 
+  announce(text: string): void {
+    this.ctx.net.broadcastAll({ t: 'announce', text })
+  }
+
   /**
    * Network moved this person's token cutoff (sign out everywhere, password changed, banned): close
    * every session they opened with an older Network sign-in. Returns how many closed.

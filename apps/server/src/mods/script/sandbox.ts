@@ -9,8 +9,8 @@
  *  - only JSON crosses the boundary, in both directions: a host function gets
  *    JSON arguments and returns JSON, a hook gets a JSON payload. No host
  *    object, function or prototype is ever reachable from the script;
- *  - nothing but the lent functions: no require/import, fs, net, process,
- *    timers or clock beyond what the engine's language intrinsics provide;
+ *  - nothing but the lent functions: no require, fs, net, process or timers;
+ *    module imports, when enabled, resolve only inside the mod's pack;
  *  - the host functions appear in the script as the frozen global `game`;
  *  - limits are enforced by the engine, not by trusting the script: `cpuMs`
  *    per call (wall clock on the single-threaded tick), a heap of
@@ -59,6 +59,9 @@ export interface SandboxSpec {
   /** File name shown in the script's stack traces. */
   filename: string
   source: string
+  /** Pack-contained ES modules; absent for legacy global scripts. */
+  files?: Readonly<Record<string, string>>
+  hooks?: readonly string[]
   limits: SandboxLimits
   /** CPU budget for evaluating the source once (top-level code). */
   loadCpuMs: number

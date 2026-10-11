@@ -83,6 +83,41 @@ async function boot(scripts: Record<string, FakeScript>, mods: ScriptMod[]) {
 }
 
 describe('ScriptModHost', () => {
+  it('enforces key, value, count and total storage limits inside the mod', async () => {
+    const errors: string[] = []
+    const { host } = await boot(
+      {
+        limited: (game) => {
+          const set = game['storage.set']!
+          const run = (fn: () => unknown) => {
+            try {
+              fn()
+            } catch (error) {
+              errors.push(String(error))
+            }
+          }
+          run(() => set('é'.repeat(65), 1))
+          run(() => set('large', 'x'.repeat(8192)))
+          for (let i = 0; i < 1000; i++) set(`k${i}`, null)
+          run(() => set('overflow', 1))
+          for (let i = 0; i < 128; i++) set(`k${i}`, 'x'.repeat(8100))
+          run(() => set('k128', 'x'.repeat(8100)))
+          expect(game['storage.keys']!()).toHaveLength(1000)
+          game['storage.delete']!('k0')
+          expect(game['storage.get']!('k0')).toBeNull()
+          return { ok: true }
+        },
+      },
+      [{ ...mod('limited'), capabilities: ['storage.kv'] }],
+    )
+    // Explicit grants are supplied by policy, never taken from the request list.
+    await host.reload({ ...mod('limited'), capabilities: ['storage.kv'] }, ['storage.kv'])
+    host.tick(1, 1 / 30)
+    expect(errors.join(' ')).toMatch(/128 UTF-8 bytes/)
+    expect(errors.join(' ')).toMatch(/8 KiB/)
+    expect(errors.join(' ')).toMatch(/1000 keys/)
+    expect(errors.join(' ')).toMatch(/1 MiB/)
+  })
   it('applies intents only after the call completes; a failed call changes nothing', async () => {
     const { host, world } = await boot(
       {

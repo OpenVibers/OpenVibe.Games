@@ -48,6 +48,13 @@ export interface ModsApi {
   /** Per-actor limits on writes (../net/actorLimits.ts). */
   limits?: GamesActorLimits
   log: Logger
+  onInstalled?: (view: ModView) => Promise<void>
+  onChanged?: (view: ModView) => Promise<void>
+  reload?: (
+    id: string,
+    request: { manifest: unknown; pack: unknown },
+    actor: ModActor,
+  ) => Promise<ModView>
 }
 
 export function publicView(v: ModView): Record<string, unknown> {
@@ -179,7 +186,9 @@ export function handleModsRequest(
         const principal = await api.grants.change(id, cap, 'revoke', actor.audit)
         api.registry.noteNetworkRevision(id, principal.revision)
       }
-      json(res, 200, publicView(await api.registry.revokeGrant(id, cap, actor)))
+      const view = await api.registry.revokeGrant(id, cap, actor)
+      await api.onChanged?.(view)
+      json(res, 200, publicView(view))
       return
     }
     if (method !== 'POST') return problem(res, 405, 'request.method_not_allowed', method)
@@ -203,6 +212,7 @@ export function handleModsRequest(
         revision = principal.revision
       }
       const view = await api.registry.install(request, actor)
+      await api.onInstalled?.(view)
       if (revision) api.registry.noteNetworkRevision(view.mod.id, revision)
       api.log.info('mod installed', { mod: view.mod.id, by: actor.audit, status: view.mod.status })
       json(res, 201, publicView(view))
@@ -213,7 +223,15 @@ export function handleModsRequest(
         parts[1] === 'enable'
           ? await api.registry.enable(id, actor)
           : await api.registry.disable(id, actor)
+      await api.onChanged?.(view)
       api.log.info(`mod ${parts[1]}d`, { mod: id, by: actor.audit })
+      json(res, 200, publicView(view))
+      return
+    }
+    if (parts.length === 2 && parts[1] === 'reload') {
+      if (!api.reload)
+        return problem(res, 501, 'mod.reload_unavailable', 'live script reload is unavailable')
+      const view = await api.reload(id, { manifest: b.manifest, pack: b.pack }, actor)
       json(res, 200, publicView(view))
       return
     }
@@ -226,6 +244,7 @@ export function handleModsRequest(
         )
       }
       const view = await api.registry.revoke(id, actor, reason)
+      await api.onChanged?.(view)
       api.log.info('mod revoked', { mod: id, by: actor.audit })
       json(res, 200, publicView(view))
       return
@@ -239,7 +258,9 @@ export function handleModsRequest(
         const principal = await api.grants.change(id, b.capability, 'approve', actor.audit)
         api.registry.noteNetworkRevision(id, principal.revision)
       }
-      json(res, 200, publicView(await api.registry.grant(id, b.capability, actor)))
+      const view = await api.registry.grant(id, b.capability, actor)
+      await api.onChanged?.(view)
+      json(res, 200, publicView(view))
       return
     }
     problem(res, 404, 'request.not_found', 'no such mods route')

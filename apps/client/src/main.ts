@@ -67,7 +67,24 @@ async function start(): Promise<void> {
   const uiRoot = document.getElementById('ui') as HTMLElement
 
   const identity = getIdentity()
-  const content = createContent()
+  // Fetch the active definition set before constructing game systems or sending hello.
+  // A fresh client can join after a staff script install or reload changed the digest.
+  let content = createContent()
+  try {
+    const response = await fetch('/api/v1/content', { cache: 'no-store' })
+    if (response.ok) {
+      const data = (await response.json()) as {
+        digest?: string
+        packs?: Parameters<typeof createContent>[0]
+      }
+      if (Array.isArray(data.packs)) {
+        const active = createContent(data.packs)
+        if (active.digest === data.digest) content = active
+      }
+    }
+  } catch {
+    // The hello digest still refuses a mismatched join if content is unavailable.
+  }
   // Edited map (must match the server's copy for prediction parity).
   // The map as the runtime currently has it, so a reload can diff against
   // it rather than rebuilding every category.

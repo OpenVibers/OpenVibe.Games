@@ -9,6 +9,7 @@ import {
   JOBS,
   MARKETS,
   MAX_PACK_DEFS,
+  ScriptModSchema,
   NPC_ARCHETYPES,
   RECIPES,
   RESOURCE_NODES,
@@ -18,6 +19,69 @@ import {
   type ContentDefs,
   type ContentPackV2,
 } from './index.js'
+
+describe('script mod definitions', () => {
+  const baseMod = {
+    format: 'games-quickjs@1',
+    id: 'example',
+    version: '1.0.0',
+    entry: 'main.js',
+    hooks: ['onTick'],
+  }
+  it('pins approved grants in the digest', () => {
+    const pack = (granted: string[]) => ({
+      mods: [
+        { ...baseMod, source: 'function onTick() {}', capabilities: ['players.read'], granted },
+      ],
+    })
+    expect(createContent([pack([])]).digest).not.toBe(
+      createContent([pack(['players.read'])]).digest,
+    )
+    const server = createContent([pack(['players.read'])])
+    const snapshot = JSON.parse(
+      JSON.stringify({ digest: server.digest, packs: [{ mods: server.allMods() }] }),
+    ) as {
+      digest: string
+      packs: ContentPackV2[]
+    }
+    expect(createContent(snapshot.packs).digest).toBe(snapshot.digest)
+  })
+  it('accepts a pack-contained module and rejects missing or escaping imports', () => {
+    expect(
+      ScriptModSchema.safeParse({
+        ...baseMod,
+        files: {
+          'main.js': 'import { x } from "./lib.js"; export function onTick() { return x }',
+          'lib.js': 'export const x = 1',
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      ScriptModSchema.safeParse({
+        ...baseMod,
+        files: {
+          'main.js': 'import "../escape.js"; export function onTick() {}',
+        },
+      }).error?.message,
+    ).toMatch(/leaves pack/)
+    expect(
+      ScriptModSchema.safeParse({
+        ...baseMod,
+        files: {
+          'main.js': 'import "./missing.js"; export function onTick() {}',
+        },
+      }).error?.message,
+    ).toMatch(/missing module/)
+    expect(
+      ScriptModSchema.safeParse({
+        ...baseMod,
+        files: {
+          'main.js': 'import("../outside.js"); export function onTick() {}',
+        },
+      }).error?.message,
+    ).toMatch(/dynamic imports are not supported/)
+  })
+})
 
 const base: ContentDefs = {
   items: ITEMS,

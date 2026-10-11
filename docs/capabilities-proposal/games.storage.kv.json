@@ -1,0 +1,21 @@
+{
+  "id": "games.storage.kv",
+  "version": "1.0",
+  "owner": "games",
+  "status": "active",
+  "visibility": "public",
+  "description": "Script binding for mods (games-quickjs@1): game.storage get/set/delete/keys, key/value storage per mod per place on the Games database: keys up to 128 bytes, values up to 8 KB of JSON, at most 1000 keys and 1 MB per mod per place, writes counted against the mod's CPU budget; a refusal is an error inside the mod. Absent unless granted.",
+  "permissions": [
+    "games:storage:kv"
+  ],
+  "resourceConstraints": [
+    "none"
+  ],
+  "quotaClass": "games-mod-runtime",
+  "events": [],
+  "implementedBy": [
+    "mod runtime binding game.storage (apps/server/src/mods/script/host.ts, storage.ts)"
+  ],
+  "inputSchema": "games.script-storage-request@1",
+  "outputSchema": "games.script-storage-result@1"
+}
