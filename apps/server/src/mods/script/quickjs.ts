@@ -24,6 +24,7 @@
  *    instance is treated as dead.
  */
 import { performance } from 'node:perf_hooks'
+import path from 'node:path'
 import {
   newQuickJSWASMModule,
   newVariant,
@@ -69,14 +70,18 @@ const PRELUDE = `(function (bridge, namesJson) {
   const names = parse(namesJson);
   for (let i = 0; i < names.length; i++) {
     const name = names[i];
-    game[name] = function () {
+    const target = name.startsWith('storage.') ? (game.storage || (game.storage = {})) : game;
+    const member = name.startsWith('storage.') ? name.slice(8) : name;
+    target[member] = function () {
       const args = [];
       for (let k = 0; k < arguments.length; k++) args[k] = arguments[k];
       const out = bridge(name, stringify(args));
       return out === undefined ? undefined : parse(out);
     };
-    freeze(game[name]);
+    freeze(target[member]);
   }
+  if (game.storage) freeze(game.storage);
+  if (game.random) Object.defineProperty(Math, 'random', { value: game.random, writable: false, configurable: false });
   freeze(game);
   Object.defineProperty(globalThis, 'game', { value: game, writable: false, enumerable: false, configurable: false });
   return function dispatch(hook, payload) {
@@ -204,8 +209,37 @@ class QuickJsSandbox implements ModSandbox {
       names.dispose()
       if (made.error) return made.error
       this.dispatch = made.value
-      const evaluated = ctx.evalCode(spec.source, spec.filename)
+      if (spec.files) {
+        this.runtime.setModuleLoader(
+          (name) => {
+            const source = spec.files?.[name]
+            if (source === undefined) throw new Error('missing mod module: ' + name)
+            return source
+          },
+          (base, requested) => {
+            if (!requested.startsWith('./') && !requested.startsWith('../'))
+              throw new Error('only relative mod imports are allowed: ' + requested)
+            const name = path.posix.normalize(path.posix.join(path.posix.dirname(base), requested))
+            if (name.startsWith('../') || name.startsWith('/') || name === '..')
+              throw new Error('mod import leaves pack: ' + requested)
+            if (spec.files?.[name] === undefined) throw new Error('missing mod module: ' + name)
+            return name
+          },
+        )
+      }
+      const evaluated = ctx.evalCode(
+        spec.source,
+        spec.filename,
+        spec.files ? { type: 'module' } : { type: 'global' },
+      )
       if (evaluated.error) return evaluated.error
+      if (spec.files) {
+        for (const hook of spec.hooks ?? []) {
+          const fn = ctx.getProp(evaluated.value, hook)
+          ctx.setProp(ctx.global, hook, fn)
+          fn.dispose()
+        }
+      }
       evaluated.value.dispose()
       return null
     })

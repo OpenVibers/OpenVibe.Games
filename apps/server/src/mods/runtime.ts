@@ -7,12 +7,9 @@
  * was not granted — or one revoked a moment ago — throws before anything
  * happens, so it cannot be reached from the mod side at all.
  *
- * `games-content@2` packs are interpreted here through that same API; an
- * executable runtime (a script sandbox) would receive the same bindings.
- * Executable mods are not accepted yet: sandboxed execution with enforced
- * CPU, memory, storage and network budgets belongs to OpenVibe.Host
- * (Stage C). Until then the runtime enforces what it can see (roadmap WS-M
- * task 4), and only on the offending mod:
+ * `games-content@2` packs are interpreted here through that API. The bounded
+ * `games-quickjs@1` runtime is separate (script/host.ts). This content runtime
+ * enforces what it can see (roadmap WS-M task 4), and only on the offending mod:
  *   - CPU: each reconcile is timed against the manifest's cpuMs; a mod over
  *     its budget on CPU_STRIKES reconciles in a row is disabled.
  *   - Event flood: every host effect (an announcement, a prop placed or

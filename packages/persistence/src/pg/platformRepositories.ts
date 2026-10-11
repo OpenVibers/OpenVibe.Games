@@ -243,6 +243,12 @@ export function createModRepository(db: Db): ModRepository {
           ${mod.installedBy}, ${mod.installedAt}, ${mod.updatedAt})
       `)
     },
+    async replace(mod) {
+      await db.exec(sql`
+        UPDATE mods SET name = ${mod.name}, version = ${mod.version}, manifest = ${sql.json(mod.manifest)},
+          pack = ${sql.json(mod.pack)}, updated_at = ${mod.updatedAt} WHERE id = ${mod.id}
+      `)
+    },
     async setStatus(id, status, at) {
       await db.exec(sql`UPDATE mods SET status = ${status}, updated_at = ${at} WHERE id = ${id}`)
     },
@@ -310,6 +316,24 @@ export function createModRepository(db: Db): ModRepository {
     async deletePlacement(modId, key) {
       await db.exec(
         sql`DELETE FROM mod_placements WHERE mod_id = ${modId} AND placement_key = ${key}`,
+      )
+    },
+    async storage(modId, placeId) {
+      const rows = await db.many<{ key: string; value: unknown }>(sql`
+        SELECT key, value FROM mod_storage WHERE place_id = ${placeId} AND mod_id = ${modId} ORDER BY key
+      `)
+      return Object.fromEntries(rows.map((r) => [r.key, r.value]))
+    },
+    async setStorage(modId, placeId, key, value) {
+      await db.exec(sql`
+        INSERT INTO mod_storage (place_id, mod_id, key, value)
+        VALUES (${placeId}, ${modId}, ${key}, ${sql.json(value)})
+        ON CONFLICT (place_id, mod_id, key) DO UPDATE SET value = excluded.value
+      `)
+    },
+    async deleteStorage(modId, placeId, key) {
+      await db.exec(
+        sql`DELETE FROM mod_storage WHERE place_id = ${placeId} AND mod_id = ${modId} AND key = ${key}`,
       )
     },
   }

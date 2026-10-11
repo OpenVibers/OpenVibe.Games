@@ -41,6 +41,93 @@ async function setup() {
 }
 
 describe('games-content@2 definitions', () => {
+  it('installs an approved script pack and pins only its grants at boot', async () => {
+    const { store, registry } = await setup()
+    const manifest = sampleManifest({
+      id: A,
+      runtime: 'games-quickjs@1',
+      compatibility: { runtime: '>=1.0.0 <2.0.0' },
+      permissions: { capabilities: ['games.script.run', 'games.players.read', 'games.world.emit'] },
+      resources: { cpuMs: 2, memoryMb: 8, storageMb: 1 },
+    })
+    await registry.install(
+      {
+        manifest,
+        pack: {
+          mods: [
+            {
+              format: 'games-quickjs@1',
+              id: 'sample',
+              version: '1.0.0',
+              entry: 'sample.js',
+              source: 'function onTick() {}',
+              hooks: ['onTick'],
+              capabilities: ['players.read', 'world.emit'],
+            },
+          ],
+        },
+        approve: ['games.script.run', 'games.players.read'],
+        enable: true,
+      },
+      STAFF,
+    )
+    const packs = await loadDefinitionPacks(store.mods)
+    expect(packs[0]?.mods).toMatchObject([{ granted: ['players.read'] }])
+    expect(createContent(packs).allMods()).toHaveLength(1)
+    const nextManifest = { ...manifest, version: '1.0.1' }
+    const nextPack = {
+      mods: [
+        {
+          format: 'games-quickjs@1',
+          id: 'sample',
+          version: '1.0.1',
+          entry: 'sample.js',
+          source: 'function onTick() { game.random() }',
+          hooks: ['onTick'],
+          capabilities: ['players.read', 'world.emit'],
+        },
+      ],
+    }
+    const before = createContent(packs).digest
+    await registry.replace(A, { manifest: nextManifest, pack: nextPack }, STAFF)
+    expect((await registry.auditLog(A)).map((entry) => entry.action)).toContain('reload')
+    expect(createContent(await loadDefinitionPacks(store.mods)).digest).not.toBe(before)
+  })
+  it('refuses a script install whose module import leaves its pack', async () => {
+    const { registry } = await setup()
+    const manifest = sampleManifest({
+      id: A,
+      runtime: 'games-quickjs@1',
+      compatibility: { runtime: '>=1.0.0 <2.0.0' },
+      permissions: { capabilities: ['games.script.run'] },
+      resources: { cpuMs: 2, memoryMb: 8, storageMb: 1 },
+    })
+    await expect(
+      registry.install(
+        {
+          manifest,
+          pack: {
+            mods: [
+              {
+                format: 'games-quickjs@1',
+                id: 'escape',
+                version: '1.0.0',
+                entry: 'main.js',
+                files: { 'main.js': 'import "../outside.js"; export function onTick() {}' },
+                hooks: ['onTick'],
+              },
+            ],
+          },
+          approve: ['games.script.run'],
+          enable: true,
+        },
+        STAFF,
+      ),
+    ).rejects.toMatchObject({
+      code: 'mod.pack_invalid',
+      errors: expect.arrayContaining([expect.stringMatching(/import leaves pack/)]),
+    })
+  })
   it('recognizes an authored map as a definition-capability section', () => {
     const mapPack = { map: SCRAPLANDIA_PACK.map! }
     expect(capabilitiesUsedBy(mapPack)).toEqual([CAP_DEFINE])

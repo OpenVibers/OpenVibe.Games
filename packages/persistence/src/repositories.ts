@@ -102,6 +102,7 @@ export interface ModRepository {
   list(): Promise<ModInstallDto[]>
   get(id: string): Promise<ModInstallDto | null>
   insert(mod: ModInstallDto): Promise<void>
+  replace(mod: ModInstallDto): Promise<void>
   setStatus(id: string, status: ModStatus, at: number): Promise<void>
   grants(modId: string): Promise<ModGrantDto[]>
   /** Grants (or re-grants) a capability. */
@@ -113,6 +114,9 @@ export interface ModRepository {
   placements(modId: string): Promise<ModPlacementDto[]>
   setPlacement(placement: ModPlacementDto): Promise<void>
   deletePlacement(modId: string, key: string): Promise<void>
+  storage(modId: string, placeId: string): Promise<Record<string, unknown>>
+  setStorage(modId: string, placeId: string, key: string, value: unknown): Promise<void>
+  deleteStorage(modId: string, placeId: string, key: string): Promise<void>
 }
 
 /** Queue of local assets to copy into OpenVibe.Media. */

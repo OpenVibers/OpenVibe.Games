@@ -12,7 +12,12 @@
     "games.mod.read",
     "games.world.announce",
     "games.prop.place",
-    "games.def.define"
+    "games.def.define",
+    "games.script.run",
+    "games.players.read",
+    "games.player.message",
+    "games.world.emit",
+    "games.storage.kv"
   ],
   "deployed": true,
   "deployment": "Public at https://openvibe.games and https://play.openvibe.games: deployed with `sudo ovhost deploy games` (OpenVibe.Host strategy pnpm-build since the 2026-09-27 cutover; deploy/scripts/deploy.sh is the wrapper), unit openvibe-games on 127.0.0.1:8000, env /etc/openvibe/games.env, principal games.",
@@ -22,12 +27,12 @@
     "persistent world, characters and props in PostgreSQL (write-behind flusher; the tick never awaits I/O)",
     "map editor with assets mirrored to OpenVibe.Media",
     "declarative mods (games-content@2: definitions merged into the content registry at boot, placements, announcements) with per-install grants and audit",
-    "server script mods (games-quickjs@1 in packs, pinned by the def-set digest): one QuickJS WASM sandbox per mod, cpuMs/memoryMb/stack budgets, intents only; off unless GAMES_SCRIPT_MODS=1",
+    "server script mods (games-quickjs@1): isolated QuickJS sandboxes, per-binding grants, per-mod/place PostgreSQL storage, seeded randomness, multi-file imports, staff installs and reload, active definition delivery to new clients; off unless GAMES_SCRIPT_MODS=1",
     "players keyed by Network subjects",
     "games.* events through a transactional outbox",
     "games.progress.summary user module",
     "the OpenVibe Frame from its own pinned copy",
     "per-actor limits on capability-boundary writes (openvibe-sdk/limits)"
   ],
-  "updated": "2026-10-10"
+  "updated": "2026-10-11"
 }

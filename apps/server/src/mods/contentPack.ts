@@ -1,6 +1,6 @@
 /**
- * `games-content@2`: the first mod kind — a declarative data pack, checked
- * against the live `@openvibe/content` registry. It adds no code. Each section
+ * `games-content@2` data and `games-quickjs@1` scripts, checked against the
+ * live `@openvibe/content` registry. Each section
  * needs one capability:
  *
  *   announcements  games.world.announce   periodic server announcements
@@ -25,6 +25,9 @@ import {
   mergePackDefs,
   type ContentPackV2,
   type ContentRegistry,
+  ScriptModSchema,
+  MAX_PACK_MODS,
+  type ScriptCapability,
 } from '@openvibe/content'
 import type { ModRepository } from '@openvibe/persistence'
 import { Ajv2020 } from 'ajv/dist/2020.js'
@@ -33,12 +36,15 @@ import type { Validation } from './manifest.js'
 export const CAP_ANNOUNCE = 'games.world.announce'
 export const CAP_PLACE_PROP = 'games.prop.place'
 export const CAP_DEFINE = 'games.def.define'
+export const CAP_SCRIPT_RUN = 'games.script.run'
+export const scriptGrant = (capability: ScriptCapability): string => `games.${capability}`
 
 /** Capabilities the games-content@2 runtime can bind. Anything else is never granted here. */
 export const CONTENT_RUNTIME_CAPABILITIES: readonly string[] = [
   CAP_ANNOUNCE,
   CAP_PLACE_PROP,
   CAP_DEFINE,
+  CAP_SCRIPT_RUN,
 ]
 
 export interface ContentAnnouncement {
@@ -59,6 +65,7 @@ export interface ContentPack {
   map?: NonNullable<ContentPackV2['map']>
   announcements?: ContentAnnouncement[]
   props?: ContentProp[]
+  mods?: NonNullable<ContentPackV2['mods']>
 }
 
 export const CONTENT_PACK_SCHEMA = {
@@ -112,6 +119,7 @@ export const CONTENT_PACK_SCHEMA = {
         },
       },
     },
+    mods: { type: 'array', maxItems: MAX_PACK_MODS, items: { type: 'object' } },
   },
 } as const
 
@@ -125,6 +133,15 @@ export function capabilitiesUsedBy(pack: ContentPack): string[] {
     used.push(CAP_DEFINE)
   if ((pack.announcements ?? []).length > 0) used.push(CAP_ANNOUNCE)
   if ((pack.props ?? []).length > 0) used.push(CAP_PLACE_PROP)
+  if ((pack.mods ?? []).length > 0) used.push(CAP_SCRIPT_RUN)
+  for (const raw of pack.mods ?? []) {
+    const parsed = ScriptModSchema.safeParse(raw)
+    if (parsed.success)
+      for (const cap of parsed.data.capabilities ?? ['players.read', 'world.emit']) {
+        const grant = scriptGrant(cap)
+        if (!used.includes(grant)) used.push(grant)
+      }
+  }
   return used
 }
 
@@ -155,6 +172,11 @@ export function validateContentPack(
   }
   const pack = value as unknown as ContentPack
   const errors: string[] = []
+  for (const [index, raw] of (pack.mods ?? []).entries()) {
+    const parsed = ScriptModSchema.safeParse(raw)
+    if (!parsed.success) errors.push(`mods[${index}]: ${parsed.error.message}`)
+    else if (parsed.data.granted) errors.push(`mods[${index}]: granted is server-owned`)
+  }
   // The built-in pack always supplies the map, so a mod's map would be skipped at boot as a duplicate.
   if (pack.map) errors.push('map is defined by the built-in pack and cannot be replaced by a mod')
   if (pack.defs || pack.map) {
@@ -196,15 +218,39 @@ export async function loadDefinitionPacks(
   for (const mod of await mods.list()) {
     if (mod.status !== 'enabled') continue
     const pack = mod.pack as unknown as ContentPackV2
-    if (!pack.map && Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0))
-      continue
-    const granted = (await mods.grants(mod.id)).some(
-      (g) => g.capability === CAP_DEFINE && g.revokedAt === null,
+    if (
+      !pack.map &&
+      !pack.mods?.length &&
+      Object.values(pack.defs ?? {}).every((list) => (list ?? []).length === 0)
     )
-    if (!granted) continue
+      continue
+    const grants = new Set(
+      (await mods.grants(mod.id)).filter((g) => g.revokedAt === null).map((g) => g.capability),
+    )
+    const hasDefs =
+      !!pack.map || Object.values(pack.defs ?? {}).some((list) => (list ?? []).length > 0)
+    const hasScripts = !!pack.mods?.length
+    if ((hasDefs && !grants.has(CAP_DEFINE)) || (hasScripts && !grants.has(CAP_SCRIPT_RUN)))
+      continue
     try {
-      createContent([...accepted, pack])
-      accepted.push(pack)
+      const approved: ContentPackV2 = {
+        ...pack,
+        ...(pack.mods
+          ? {
+              mods: pack.mods.map((raw) => {
+                const parsed = ScriptModSchema.parse(raw)
+                return {
+                  ...parsed,
+                  granted: (parsed.capabilities ?? ['players.read', 'world.emit'])
+                    .filter((cap) => grants.has(scriptGrant(cap)))
+                    .sort(),
+                }
+              }),
+            }
+          : {}),
+      }
+      createContent([...accepted, approved])
+      accepted.push(approved)
     } catch (err) {
       onSkip(mod.id, err instanceof Error ? err.message : String(err))
     }

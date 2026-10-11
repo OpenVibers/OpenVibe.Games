@@ -16,18 +16,22 @@ A pack carries script mods in `mods: [...]`. Each entry is a manifest and its
 source together (`packages/content/src/schema/scriptMod.ts`, strict, so an
 unknown field is refused):
 
-| field     | rule                                                                     |
-| --------- | ------------------------------------------------------------------------ |
-| `format`  | `"games-quickjs@1"`                                                      |
-| `id`      | `^[a-z0-9][a-z0-9_-]{0,39}$`, unique across all packs (never overridden) |
-| `version` | `major.minor.patch`                                                      |
-| `entry`   | the script's file name (`*.js`), shown in stack traces                   |
-| `source`  | the script, at most 64 Ki characters                                     |
-| `hooks`   | one or more of `onTick`, `onPlayerJoin`, `onPlayerLeave`                 |
-| `budgets` | optional `{ cpuMs, memoryMb, stackKb }`, each up to its ceiling          |
+| field          | rule                                                                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `format`       | `"games-quickjs@1"`                                                                                                                    |
+| `id`           | `^[a-z0-9][a-z0-9_-]{0,39}$`, unique across all packs (never overridden)                                                               |
+| `version`      | `major.minor.patch`                                                                                                                    |
+| `entry`        | the entry file (`*.js`, optionally in a pack subdirectory)                                                                             |
+| `source`       | legacy single-file script, at most 64 Ki characters                                                                                    |
+| `files`        | optional map of pack-relative `.js` paths to module source, at most 32 files and 64 KiB total including paths; exclusive with `source` |
+| `capabilities` | optional requested bindings; absent on old manifests keeps the original `players`, `player`, `emit` API                                |
+| `hooks`        | one or more of `onTick`, `onPlayerJoin`, `onPlayerLeave`                                                                               |
+| `budgets`      | optional `{ cpuMs, memoryMb, stackKb }`, each up to its ceiling                                                                        |
 
-A pack may carry up to 8 mods. v1 mods are a single script: there is no module
-loader, so `import` and `require` do not exist.
+A pack may carry up to 8 mods. A `files` mod uses ES modules and exports its
+declared hooks. Static imports must be relative, resolve inside `files`, and
+cannot leave the pack. `require`, Node built-ins and network imports remain
+unavailable. The same 64 KiB source budget covers the whole mod.
 
 **Pinned by the digest.** Manifests and sources are merged into `ContentDefs.mods`
 and hashed by `contentDigest` with every other definition. A client whose copy of
@@ -35,9 +39,22 @@ a mod differs by one byte (or that lacks it) is refused with `content_mismatch`
 before any player state is created. A def set without mods keeps the digest it
 had before mods existed.
 
-**Where mods come from.** Packs passed to `createContent` (the built-in packs in
-`packages/content/src/packs`). The mods API still refuses executable installs: a
-script mod ships with the code of the place, reviewed like code.
+**Where mods come from.** Built-in packs passed to `createContent` and
+staff-installed packs through `POST /api/v1/mods`. An API install uses the
+Contracts manifest with runtime `games-quickjs@1`, requests `games.script.run`
+and the qualified capabilities below, and receives only its approved subset.
+The install and its grants are audited. The staff-only `POST
+/api/v1/mods/:id/reload` takes a new `{ manifest, pack }` with the same install
+and script ids. It validates and starts the replacement before disposing the old
+sandbox; a load error leaves the old code running. Storage survives reload.
+New capability requests require a new install, because Network's mod principal
+keeps the original requested set.
+The five new `games.*` capability definitions are proposed under
+`docs/capabilities-proposal/`; Network must register them before it can approve
+script grants in a deployed place.
+Connected clients receive an announcement, and the changed definition digest
+is checked on later joins. A fresh browser fetches `GET /api/v1/content` before
+building its registry, so it uses the current validated packs and digest.
 
 **Off unless the place enables it.** `GAMES_SCRIPT_MODS=1` (or `true`) runs the
 def set's script mods on this instance. Without it the engine is never loaded
@@ -70,12 +87,47 @@ The only thing the host adds to a fresh QuickJS context is the frozen global
 `game`. Everything else is the language's own intrinsics: no `require`,
 `process`, `fs`, network, timers, `console` or QuickJS `std`/`os`.
 
-| call                  | does                                                             |
-| --------------------- | ---------------------------------------------------------------- |
-| `game.players()`      | every player: `[{ id, name, pos: [x, y, z], yaw }]` (a copy)     |
-| `game.player(id)`     | one player, or `null`                                            |
-| `game.emit(intent)`   | queues an intent; a malformed one throws inside the script       |
-| `game.log(...values)` | one `script mod log` line in the server log (4 per tick at most) |
+| call                           | does                                                                                               |
+| ------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `game.players()`               | every player: `[{ id, name, pos: [x, y, z], yaw }]` (a copy)                                       |
+| `game.player(id)`              | one player, or `null`                                                                              |
+| `game.emit(intent)`            | queues an intent; a malformed one throws inside the script                                         |
+| `game.log(...values)`          | one `script mod log` line in the server log (4 per tick at most)                                   |
+| `game.random()`                | deterministic value in `[0, 1)` from the place id and mod id; `Math.random()` uses the same stream |
+| `game.message(playerId, text)` | queue a private announcement to one player (requires `player.message`)                             |
+| `game.storage.get(key)`        | read JSON, or `null` if absent                                                                     |
+| `game.storage.set(key, value)` | queue a persisted JSON value; writes are allowed during hooks                                      |
+| `game.storage.delete(key)`     | remove a key, returning whether it existed                                                         |
+| `game.storage.keys(prefix?)`   | sorted keys with an optional prefix                                                                |
+
+`game.players` and `game.player` require `players.read`; `game.emit` requires
+`world.emit`; `game.message` requires `player.message`; the storage object
+requires `storage.kv`. A binding without its grant is absent from the frozen
+`game` object. `game.log` and `game.random` are always available. The Contracts
+install manifest uses `games.players.read`, `games.world.emit`,
+`games.player.message`, and `games.storage.kv` for these script requests.
+For example:
+
+```json
+{
+  "format": "games-quickjs@1",
+  "id": "greeter",
+  "version": "1.0.0",
+  "entry": "main.js",
+  "files": {
+    "main.js": "import { greeting } from './words.js'; export function onPlayerJoin(e) { game.message(e.player.id, greeting) }",
+    "words.js": "export const greeting = 'Welcome!'"
+  },
+  "hooks": ["onPlayerJoin"],
+  "capabilities": ["player.message"]
+}
+```
+
+Storage is isolated by place and mod in PostgreSQL. Keys are at most 128 UTF-8
+bytes, JSON values at most 8 KiB, and each mod in a place may use at most 1000
+keys and 1 MiB for keys and JSON values together. A refusal throws inside the
+script. Writes use a serialized write-behind queue, drained on shutdown; host
+call time counts toward the mod's CPU deadline.
 
 Intents (at most 16 per call):
 
@@ -146,8 +198,7 @@ same interface later (ADR-036) without the host changing. QuickJS
 (`quickjs-emscripten`, exact version pinned in `apps/server/package.json`) is the
 first implementation.
 
-### Not yet
+### Persistence note
 
-Capability API v2 (per-mod grants for script bindings, key/value storage),
-seeded randomness, hot reload, multi-file mods, and installing script mods
-through the mods API.
+Script storage writes are durable after the write-behind queue drains; a
+database failure is logged and retried twice.

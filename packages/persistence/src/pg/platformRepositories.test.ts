@@ -181,6 +181,18 @@ describe('player subject_id', () => {
 })
 
 describe('mod repository', () => {
+  it('keeps script storage separate by mod and place', async () => {
+    const store = await openTestStore()
+    await store.mods.setStorage('alpha', store.placeId, 'score', { n: 1 })
+    await store.mods.setStorage('beta', store.placeId, 'score', { n: 2 })
+    expect(await store.mods.storage('alpha', store.placeId)).toEqual({ score: { n: 1 } })
+    expect(await store.mods.storage('beta', store.placeId)).toEqual({ score: { n: 2 } })
+    await store.db.exec(sql`INSERT INTO places (id, name) VALUES ('other', 'Other')`)
+    await store.mods.setStorage('alpha', 'other', 'score', { n: 3 })
+    expect(await store.mods.storage('alpha', 'other')).toEqual({ score: { n: 3 } })
+    await store.mods.deleteStorage('alpha', store.placeId, 'score')
+    expect(await store.mods.storage('alpha', store.placeId)).toEqual({})
+  })
   it('stores installs, grants, placements and an append-only audit log', async () => {
     const store = await openTestStore()
     const id = 'mod_01JABCDEFGHJKMNPQRSTVWXYZ0'

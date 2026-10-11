@@ -20,6 +20,7 @@ const TABLES = [
   'mods',
   'mod_grants',
   'mod_placements',
+  'mod_storage',
   'mod_audit',
   'media_mirrors',
   'identity_adoptions',

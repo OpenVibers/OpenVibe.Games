@@ -58,22 +58,28 @@ export const GAMES_TARGET = 'games.browser'
 export const CONTENT_RUNTIME = 'games-content@2'
 /** Version of the content runtime, matched against compatibility.runtime. */
 export const CONTENT_RUNTIME_VERSION = '2.0.0'
+export const SCRIPT_RUNTIME = 'games-quickjs@1'
+export const SCRIPT_RUNTIME_VERSION = '1.0.0'
 
 /**
- * Whether this server can run the manifest at all. Executable runtimes
- * (scripts) are refused here: they wait for OpenVibe.Host's sandbox
- * (Stage C). Only declarative content packs run in Games today.
+ * Whether this server can run the manifest at all. Games accepts its
+ * declarative and bounded QuickJS runtimes; general executables wait for Host.
  */
 export function checkForGames(m: ModManifest): string[] {
   const errors: string[] = []
   if (m.target !== GAMES_TARGET) errors.push(`target ${m.target} is not ${GAMES_TARGET}`)
-  if (m.runtime !== CONTENT_RUNTIME) {
+  if (m.runtime !== CONTENT_RUNTIME && m.runtime !== SCRIPT_RUNTIME) {
     errors.push(
       `runtime ${m.runtime} is not available here: only ${CONTENT_RUNTIME} (declarative data packs) runs in Games until sandboxed execution exists`,
     )
-  } else if (!safeSatisfies(CONTENT_RUNTIME_VERSION, m.compatibility.runtime)) {
+  } else if (
+    !safeSatisfies(
+      m.runtime === SCRIPT_RUNTIME ? SCRIPT_RUNTIME_VERSION : CONTENT_RUNTIME_VERSION,
+      m.compatibility.runtime,
+    )
+  ) {
     errors.push(
-      `compatibility.runtime ${m.compatibility.runtime} does not include ${CONTENT_RUNTIME_VERSION}`,
+      `compatibility.runtime ${m.compatibility.runtime} does not include ${m.runtime === SCRIPT_RUNTIME ? SCRIPT_RUNTIME_VERSION : CONTENT_RUNTIME_VERSION}`,
     )
   }
   if (m.publisher.type !== 'user' && m.publisher.type !== 'app') {

@@ -38,7 +38,8 @@ export interface ContentDefs {
  */
 export class ContentRegistry {
   /** Identity of the exact validated definition set used by this world. */
-  readonly digest: string
+  digest: string
+  private readonly digestDefs: ContentDefs
   private readonly items = new Map<string, ItemDef>()
   private readonly recipes = new Map<string, Recipe>()
   private readonly skills = new Map<string, SkillDef>()
@@ -52,6 +53,7 @@ export class ContentRegistry {
   readonly world: WorldDef
 
   constructor(defs: ContentDefs) {
+    this.digestDefs = defs
     this.digest = contentDigest(defs)
     const errors: string[] = []
 
@@ -353,6 +355,28 @@ export class ContentRegistry {
   /** The `games-quickjs@1` script mods in the def set (run only where the place enables them). */
   allMods(): readonly ScriptMod[] {
     return [...this.mods.values()]
+  }
+
+  /** Changes only the script portion of the handshake after a validated live reload. */
+  replaceScriptMod(mod: ScriptMod): void {
+    if (!this.mods.has(mod.id)) throw new Error(`unknown script mod ${mod.id}`)
+    this.mods.set(mod.id, mod)
+    this.digestDefs.mods = [...this.mods.values()]
+    this.digest = contentDigest(this.digestDefs)
+  }
+
+  addScriptMod(mod: ScriptMod): void {
+    if (this.mods.has(mod.id)) throw new Error(`script mod ${mod.id} already exists`)
+    this.mods.set(mod.id, mod)
+    this.digestDefs.mods = [...this.mods.values()]
+    this.digest = contentDigest(this.digestDefs)
+  }
+
+  removeScriptMod(id: string): void {
+    if (!this.mods.delete(id)) return
+    if (this.mods.size) this.digestDefs.mods = [...this.mods.values()]
+    else delete this.digestDefs.mods
+    this.digest = contentDigest(this.digestDefs)
   }
 
   market(id: string): MarketDef | undefined {
