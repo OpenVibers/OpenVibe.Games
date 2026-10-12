@@ -31,6 +31,8 @@ import {
 import type { MessageHandler, System } from './systems/system.js'
 import type { ServerMetrics } from '../observability/metrics.js'
 import type { GameWorld } from './gameWorld.js'
+import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
+import { SalvageRushRound } from './salvageRush.js'
 
 export type { GameConnection, GameIntegrations }
 
@@ -47,6 +49,10 @@ export class GameServer {
   /** The systems in construction order: the handler table and the join/leave hooks both use it. */
   private readonly ordered: System[]
   private readonly handlers: Map<string, MessageHandler<never>>
+  private readonly rush: SalvageRushRound | null
+  private lastRushBroadcast = 0
+  private readonly roundFinished?: GameIntegrations['roundFinished']
+  private readonly playerJoined?: GameIntegrations['playerJoined']
 
   constructor(
     config: ServerConfig,
@@ -56,6 +62,12 @@ export class GameServer {
     log: Logger,
     integrations: GameIntegrations = {},
   ) {
+    this.rush =
+      config.placeId === 'salvage-rush' && SALVAGE_RUSH_PACK.game
+        ? new SalvageRushRound(SALVAGE_RUSH_PACK.game, Date.now())
+        : null
+    this.roundFinished = integrations.roundFinished
+    this.playerJoined = integrations.playerJoined
     // The world clock and weather survive restarts (a rainy dusk stays a rainy dusk); they are
     // loaded asynchronously in load(), before the tick loop starts.
     this.ctx = new ServerContext(
@@ -135,6 +147,8 @@ export class GameServer {
     ctx.lifecycle = {
       joined: (session) => {
         for (const system of this.ordered) system.onJoin?.(session)
+        this.playerJoined?.(session.subjectId ?? session.token)
+        if (this.rush) ctx.net.send(session, { t: 'salvage_round', ...this.rush.view() })
       },
       left: (session) => {
         for (const system of this.ordered) system.onLeave?.(session)
@@ -259,6 +273,22 @@ export class GameServer {
 
     // 1. Movement from queued inputs (server-simulated, never client positions).
     s.movement.tick(ctx, dt)
+    if (this.rush) {
+      const now = Date.now()
+      const results = this.rush.tick(
+        now,
+        ctx.sessions.all().map((session) => ({
+          key: session.subjectId ?? session.token,
+          name: session.name,
+          pos: [session.move.pos.x, session.move.pos.y, session.move.pos.z],
+        })),
+      )
+      if (results) this.roundFinished?.(this.rush.view().roundId, results)
+      if (results || now - this.lastRushBroadcast >= 1000) {
+        ctx.net.broadcastAll({ t: 'salvage_round', ...this.rush.view() })
+        this.lastRushBroadcast = now
+      }
+    }
 
     // 2. Physgun: retry unlatched beams (sweep-to-grab), drive held bodies.
     s.manipulation.tick(ctx, dt)

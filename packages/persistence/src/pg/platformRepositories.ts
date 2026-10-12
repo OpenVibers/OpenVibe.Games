@@ -44,6 +44,33 @@ export function createIdentityRepository(db: Db): IdentityRepository {
     db.exec(
       sql`UPDATE characters SET account_key = ${account}, subject_id = ${subject}, slot = ${slot} WHERE id = ${id}`,
     )
+  async function moveProgress(from: string, into: string): Promise<void> {
+    await db.exec(sql`
+      INSERT INTO game_round_results (game_id, round_id, account_key, player_name, score, rank, finished_at)
+      SELECT game_id, round_id, ${into}, player_name, score, rank, finished_at
+      FROM game_round_results WHERE account_key = ${from}
+      ON CONFLICT (game_id, round_id, account_key) DO NOTHING
+    `)
+    await db.exec(sql`DELETE FROM game_round_results WHERE account_key = ${from}`)
+    await db.exec(sql`
+      INSERT INTO game_best_scores (game_id, account_key, player_name, score, finished_at)
+      SELECT game_id, ${into}, player_name, score, finished_at
+      FROM game_best_scores WHERE account_key = ${from}
+      ON CONFLICT (game_id, account_key) DO UPDATE SET
+        player_name = excluded.player_name, score = excluded.score, finished_at = excluded.finished_at
+      WHERE excluded.score > game_best_scores.score OR
+        (excluded.score = game_best_scores.score AND excluded.finished_at < game_best_scores.finished_at)
+    `)
+    await db.exec(sql`DELETE FROM game_best_scores WHERE account_key = ${from}`)
+    await db.exec(sql`
+      INSERT INTO game_achievements (game_id, achievement_id, account_key, unlocked_at)
+      SELECT game_id, achievement_id, ${into}, unlocked_at
+      FROM game_achievements WHERE account_key = ${from}
+      ON CONFLICT (game_id, achievement_id, account_key) DO UPDATE SET
+        unlocked_at = LEAST(game_achievements.unlocked_at, excluded.unlocked_at)
+    `)
+    await db.exec(sql`DELETE FROM game_achievements WHERE account_key = ${from}`)
+  }
   const recordAdoption = (
     key: string,
     subject: string,
@@ -81,6 +108,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
           moved++
         }
         if (moved === 0) return { moved: 0, slot: null, full: true }
+        await moveProgress(key, subjectId)
         await recordAdoption(key, subjectId, 'guest', moved, rows.length - moved, now)
         return { moved, slot, full: false }
       })
@@ -115,6 +143,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
           taken.add(slot)
           moved++
         }
+        await moveProgress(from, into)
         await recordAdoption(key, into, 'merge', moved, kept, now)
         return { moved, kept, already: false }
       })
@@ -130,9 +159,21 @@ export function createIdentityRepository(db: Db): IdentityRepository {
             sql`SELECT * FROM world_entities WHERE owner_id IN (${idList(ids)})`,
           )
         : []
+      const gameResults = await db.many<Record<string, unknown>>(
+        sql`SELECT game_id, round_id, player_name, score, rank, finished_at FROM game_round_results WHERE account_key = ${subject} ORDER BY finished_at`,
+      )
+      const gameBestScores = await db.many<Record<string, unknown>>(
+        sql`SELECT game_id, player_name, score, finished_at FROM game_best_scores WHERE account_key = ${subject} ORDER BY game_id`,
+      )
+      const gameAchievements = await db.many<Record<string, unknown>>(
+        sql`SELECT game_id, achievement_id, unlocked_at FROM game_achievements WHERE account_key = ${subject} ORDER BY game_id, achievement_id`,
+      )
       return {
         characters: characters.map(withoutAccountKey),
         structures,
+        gameResults,
+        gameBestScores,
+        gameAchievements,
       }
     },
 
@@ -153,6 +194,12 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         }
         out.identity_rows = await db.exec(
           sql`DELETE FROM identity_adoptions WHERE subject_id IN (${idList(subjects)})`,
+        )
+        // Game progression uses the same canonical account keys as characters.
+        await db.exec(sql`DELETE FROM game_achievements WHERE account_key IN (${idList(subjects)})`)
+        await db.exec(sql`DELETE FROM game_best_scores WHERE account_key IN (${idList(subjects)})`)
+        await db.exec(
+          sql`DELETE FROM game_round_results WHERE account_key IN (${idList(subjects)})`,
         )
         return out
       })

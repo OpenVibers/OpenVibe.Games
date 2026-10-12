@@ -7,6 +7,14 @@ import type { ContentPackV2 } from '../pack.js'
  * SCRAP_CITY definition.
  */
 export const SCRAPLANDIA_PACK: ContentPackV2 = {
+  achievements: [
+    {
+      id: 'first-visit',
+      name: 'First Visit',
+      description: 'Join Scraplandia.',
+      criterion: { event: 'player_joined' },
+    },
+  ],
   map: {
     id: 'openvibeville_v2',
     flatTerrain: true,

@@ -55,7 +55,8 @@ no mobile path, and pins that lag the platform.
    sanity checks, signed asset manifests, replay telemetry: detection and revocation, no competitive-integrity claim.
 10. **Platform game services live in a new service, OpenVibe.Play**: achievements, stats and leaderboards, player
     inventories across games, presence and lobbies. Each game is a Play title with its own principal and `play.*`
-    grants scoped to that title. Games is the first consumer (M5); it never keeps its own copy.
+    grants scoped to that title. Games is the first consumer (M5). The M5 first part keeps a local seed schema
+    until Play exists, then moves those records and APIs to Play.
 11. **Terrain stays heightfield patches** (the editor and `mapFileV2` keep them).
 12. **Pin drift is a defect.** Contracts and SDK pins move to current; CI fails when the installed contracts package
     rejects a manifest Games accepts, or the other way round.
@@ -124,7 +125,20 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
   - **M3.1 runtime, budgets, escape tests — done (docs/mods.md).** One QuickJS WASM instance per mod behind `sandbox.ts`; validated intents, CPU/memory/stack enforcement and escape tests. Off unless `GAMES_SCRIPT_MODS=1`.
   - **M3.2 script capabilities and lifecycle — done.** Optional requested bindings on `games-quickjs@1`, approved grants pinned in the digest, per-mod/place PostgreSQL storage, deterministic random, contained ES modules, staff install/reload with audit and announcement, and a public validated pack snapshot fetched before browser bootstrap.
 - **M4: instances and scale — done for one process.** Several isolated room simulations per place, a PostgreSQL registry and renewable fenced leases, validated same-process transfer with per-room positions and shared character inventory, configurable spatial cells/radius with spawn/despawn hysteresis, and a socketless join/move/transfer/leave load probe. The default is still one room; protocol v21 clients remain supported alongside v22 transfer. See `docs/instances.md`. Cross-process and multi-host routing, signed handoff tokens over Events, and region routing across hosts remain future work; PostgreSQL leases replace the originally proposed Valkey leases for this scope.
-- **M5: platform game services.** OpenVibe.Play with Games as first consumer; the second game on the same base.
+- **M5: second game and local progression — first part built.** Salvage Rush uses the base's movement, physics,
+  content registry, WebSocket intents, place and room instances. Its `games-content@2` built-in pack owns a small
+  primitive arena, pickup locations, round duration and achievement criteria. A server-only round module scores
+  proximity to pickups from simulated player positions. PostgreSQL stores completed results and unlocks; public
+  paginated leaderboards and a player's achievements are exposed by Games. Scraplandia's pack adds a first-visit
+  achievement from the server join event, while its leaderboard remains empty without a scored mode. This is a compact on-foot game because
+  movement and authoritative positions already exist, while vehicle racing would require checkpoint and vehicle
+  rules the current base does not have. One Games process now hosts both places with separate world rows,
+  instance registries, fenced leases and game systems. `hello.place` selects Salvage Rush on the same
+  WebSocket endpoint; missing or unknown places use `GAMES_PLACE_ID` as the default. Room transfer
+  stays within each place. Separate processes remain possible for scale.
+  **Still to build:** OpenVibe.Play as a separate service, Games as its first consumer, score/achievement migration
+  to Play. This local schema is the seed for Play's per-title results and unlocks;
+  the title-scoped principal/grant design in decision 10 remains the target.
 - **M6: client floor.** Quality tiers, KTX2 and atlases, baked icons, bundle budget, editor E2E in CI.
 
 Each milestone is playable end to end and keeps the slice harness green.

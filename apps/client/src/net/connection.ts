@@ -25,8 +25,17 @@ export function helloForContent(
   appearance: Appearance,
   slot: number,
   contentDigest: string,
+  place?: string,
 ): ClientHello {
-  return { t: 'hello', v: PROTOCOL_VERSION, contentDigest, slot, name, appearance }
+  return {
+    t: 'hello',
+    v: PROTOCOL_VERSION,
+    contentDigest,
+    slot,
+    name,
+    appearance,
+    ...(place ? { place } : {}),
+  }
 }
 
 /** How long the first WebSocket connect may take before the page falls back to waiting for the server. */
@@ -95,6 +104,7 @@ export class Connection {
     slot = 0,
     /** Network access token; ignored if absent (the identity is the ticket). */
     networkToken?: string,
+    place?: string,
   ): Promise<void> {
     const ticket = await fetchWsTicket({
       ...(networkToken ? { networkToken } : {}),
@@ -138,7 +148,7 @@ export class Connection {
     }
     ws.onclose = () => this.onClose?.()
     // Identity was resolved at the upgrade; hello carries no identity field.
-    this.send(helloForContent(name, appearance, slot, contentDigest))
+    this.send(helloForContent(name, appearance, slot, contentDigest, place))
   }
 
   send(msg: ClientMessage): void {

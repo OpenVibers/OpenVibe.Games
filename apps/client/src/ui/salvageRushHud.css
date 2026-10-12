@@ -1,0 +1,126 @@
+.rush-hud {
+  position: fixed;
+  z-index: 12;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  width: min(17rem, calc(100vw - 2rem));
+  max-height: 55vh;
+  overflow: auto;
+  padding: 0.75rem 0.9rem 0.8rem;
+  border: 1px solid #1f2d47;
+  border-radius: 0.9rem;
+  background: rgba(10, 15, 28, 0.88);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  color: #e6edf7;
+  font:
+    500 0.88rem/1.35 system-ui,
+    sans-serif;
+}
+.rush-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.rush-head strong {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #22d3ee;
+}
+.rush-phase {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #96a7c2;
+}
+.rush-hud.is-active .rush-phase {
+  color: #6ee7a0;
+}
+.rush-time {
+  margin: 0.15rem 0 0.45rem;
+  font-size: 2rem;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+.rush-hud.is-ending .rush-time {
+  color: #fbbf24;
+}
+.rush-scores {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #1f2d47;
+}
+.rush-scores li {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.32rem 0;
+  border-bottom: 1px solid rgba(31, 45, 71, 0.6);
+}
+.rush-scores li:last-child {
+  border-bottom: 0;
+}
+.rush-rank {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  border: 1px solid #2c3d5c;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.rush-top-1 .rush-rank {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #1a1405;
+}
+.rush-top-2 .rush-rank {
+  background: #cbd5e1;
+  border-color: #cbd5e1;
+  color: #111827;
+}
+.rush-top-3 .rush-rank {
+  background: #ea580c;
+  border-color: #ea580c;
+  color: #1c0d04;
+}
+.rush-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rush-score {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.rush-scores li.rush-empty {
+  display: block;
+  color: #96a7c2;
+  font-size: 0.8rem;
+}
+@media (max-width: 600px) {
+  .rush-hud {
+    top: auto;
+    bottom: max(5rem, env(safe-area-inset-bottom));
+    right: 0.5rem;
+    width: min(12.5rem, 50vw);
+    max-height: 34vh;
+    padding: 0.55rem 0.65rem;
+    font-size: 0.74rem;
+  }
+  .rush-time {
+    font-size: 1.5rem;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .rush-hud {
+    background: #0a0f1c;
+    backdrop-filter: none;
+  }
+}

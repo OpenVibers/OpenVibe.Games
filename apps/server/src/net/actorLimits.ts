@@ -48,6 +48,7 @@ export function createGamesActorLimits(
   // WebSocket upgrades, counted per address BEFORE the ticket is consumed: a
   // flood must not get to spend tickets or hold sockets (ADR-0007 decision 8).
   const upgrade = limiter('games.ws.upgrade', { minute: 90, hour: 1800 })
+  const publicRead = limiter('games.public.read', { minute: 60, hour: 1200 })
   const run =
     (mw: ReturnType<typeof limiter>) =>
     (req: IncomingMessage, res: ServerResponse, actor: string): Promise<boolean> =>
@@ -66,6 +67,7 @@ export function createGamesActorLimits(
     modWrite: run(modWrite),
     ticket: run(ticket),
     upgrade: run(upgrade),
+    publicRead: run(publicRead),
   }
 }
 

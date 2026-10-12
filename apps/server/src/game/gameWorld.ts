@@ -123,7 +123,7 @@ export class GameWorld {
     // Heightfield terrain — the SAME grid the client builds for prediction
     // and rendering (see @openvibe/content buildTerrainGrid).
     this.terrainBody = this.buildTerrainBody()
-    this.mapTerrain.reconcile(getMapOverride()?.terrains ?? [])
+    this.mapTerrain.reconcile(getMapOverride(this.content.world)?.terrains ?? [])
     // Invisible boundary walls: past the terrain edge there is only ocean
     // and an endless fall — the island's edge is the end of the world.
     const b = world.groundHalfExtent + 0.5
@@ -159,7 +159,7 @@ export class GameWorld {
 
   /** Live map save: bring map-authored static collision up to date. */
   reconcileMapStatics(): void {
-    this.mapStatics.reconcile(getMapOverride()?.statics ?? [])
+    this.mapStatics.reconcile(getMapOverride(this.content.world)?.statics ?? [])
   }
 
   private terrainBody: BodyId | null = null
@@ -168,7 +168,7 @@ export class GameWorld {
 
   /** Trimesh bodies for the map's extra terrain patches (world-space verts). */
   private buildTerrainBody(): BodyId | null {
-    if (getMapOverride()) return null
+    if (getMapOverride(this.content.world)) return null
     const grid = buildTerrainGrid(this.content.world)
     return this.physics.addBody({
       shape: { type: 'trimesh', positions: grid.positions, indices: grid.indices },
@@ -191,14 +191,14 @@ export class GameWorld {
   reconcileMapTerrain(): void {
     // The base world's procedural collider exists only when there is no map;
     // whether one is loaded can change between saves.
-    const wantBase = getMapOverride() === null
+    const wantBase = getMapOverride(this.content.world) === null
     if (!wantBase && this.terrainBody !== null) {
       this.physics.removeBody(this.terrainBody)
       this.terrainBody = null
     } else if (wantBase && this.terrainBody === null) {
       this.terrainBody = this.buildTerrainBody()
     }
-    this.mapTerrain.reconcile(getMapOverride()?.terrains ?? [])
+    this.mapTerrain.reconcile(getMapOverride(this.content.world)?.terrains ?? [])
   }
 
   /** Live-apply diagnostics and tests: what the map layers currently hold. */
@@ -646,7 +646,7 @@ export class GameWorld {
 
   private seedProps(_store: PersistenceStore): void {
     const world = this.content.world
-    for (const prop of [...world.initialProps, ...(getMapOverride()?.props ?? [])]) {
+    for (const prop of [...world.initialProps, ...(getMapOverride(world)?.props ?? [])]) {
       this.spawnProp({
         defId: prop.item,
         pos: vec3(
@@ -683,7 +683,7 @@ export class GameWorld {
   reconcileMapNodes(): void {
     const world = this.content.world
     const plan = planMapProvenance(
-      getMapOverride()?.nodes ?? [],
+      getMapOverride(this.content.world)?.nodes ?? [],
       [...this.entities.ofKind('resource')],
       {
         spec: (n: MapNodeSpawn) => ({ id: n.id, defId: n.node, pos: n.pos }),
@@ -734,7 +734,7 @@ export class GameWorld {
    * never lift one the world def declared.
    */
   reconcileMapZones(): void {
-    this.zones.setMapZones(getMapOverride()?.zones ?? [])
+    this.zones.setMapZones(getMapOverride(this.content.world)?.zones ?? [])
   }
 
   /**
@@ -747,7 +747,7 @@ export class GameWorld {
    */
   reconcileMapProps(): void {
     const plan = planMapProvenance(
-      getMapOverride()?.props ?? [],
+      getMapOverride(this.content.world)?.props ?? [],
       [...this.entities.ofKind('prop')],
       {
         spec: (p: MapPropSpawn) => ({ id: p.id, defId: p.item, pos: p.pos }),
@@ -798,7 +798,7 @@ export class GameWorld {
         remaining: nodeType.amount,
       })
     }
-    for (const node of getMapOverride()?.nodes ?? []) {
+    for (const node of getMapOverride(world)?.nodes ?? []) {
       const nodeType = this.content.nodeTypeOrThrow(node.node)
       const entity = this.spawnResource({
         nodeTypeId: node.node,

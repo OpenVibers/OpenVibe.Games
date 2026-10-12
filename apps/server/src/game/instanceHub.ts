@@ -121,6 +121,11 @@ export class InstanceHub {
     this.connections.delete(conn)
   }
 
+  /** Wait for an in-flight join before another place supersedes this character. */
+  async waitForConnection(conn: GameConnection): Promise<void> {
+    await this.pending.get(conn)
+  }
+
   step(): void {
     for (const room of this.rooms.values()) room.game.step()
   }

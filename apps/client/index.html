@@ -268,6 +268,39 @@
       .play-cta:hover {
         transform: translateY(-3px) scale(1.02);
       }
+      /* A second game: full width like the featured card, with a shorter shot. */
+      .game-card.wide {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: minmax(220px, 4fr) minmax(260px, 5fr);
+      }
+      .game-card.wide .shot {
+        min-height: 200px;
+      }
+      @media (max-width: 760px) {
+        .game-card.wide {
+          grid-template-columns: 1fr;
+        }
+      }
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 22px;
+        margin-top: 6px;
+      }
+      .cta-row .play-cta {
+        margin-top: 0;
+      }
+      .card-link {
+        color: var(--accent-light);
+        font-weight: 700;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(96, 165, 250, 0.35);
+      }
+      .card-link:hover {
+        border-bottom-color: var(--accent-light);
+      }
       @keyframes pulse {
         0%,
         100% {
@@ -419,6 +452,24 @@
           <a class="play-cta" href="https://play.openvibe.games" data-dev-href="/play"
             >▶ PLAY — NO DOWNLOAD</a
           >
+        </div>
+      </div>
+      <div class="game-card wide">
+        <div class="shot" role="img" aria-label="Salvage Rush arena"><span>⚙️⏱️</span></div>
+        <div class="game-body">
+          <span class="badge live">● LIVE NOW</span>
+          <h3>SALVAGE RUSH</h3>
+          <p>
+            Collect scrap around a compact arena in 90-second on-foot rounds. The server scores each
+            pickup; rounds have a public leaderboard and three achievements.
+          </p>
+          <div class="tags">
+            <span>timed rounds</span><span>on-foot</span><span>leaderboard</span>
+          </div>
+          <div class="cta-row">
+            <a class="play-cta" href="/play?game=salvage-rush">▶ PLAY A ROUND</a>
+            <a class="card-link" href="/leaderboard.html">Leaderboard →</a>
+          </div>
         </div>
       </div>
     </section>

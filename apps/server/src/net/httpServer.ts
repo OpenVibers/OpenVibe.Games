@@ -36,7 +36,7 @@ import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
 /** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
  *  per request (a new build changes the mtime and rebuilds it once). */
 let portalMemo: { path: string; mtimeMs: number; html: string } | null = null
-function portalHtml(filePath: string): string {
+export function portalHtml(filePath: string): string {
   const mtimeMs = statSync(filePath).mtimeMs
   if (portalMemo && portalMemo.path === filePath && portalMemo.mtimeMs === mtimeMs)
     return portalMemo.html
@@ -167,6 +167,7 @@ export function createHttpServer(
   platform?: HttpPlatformHooks,
   tickets?: WsTicketStore,
   indexnow?: SharedIndexNow,
+  defaultPlaceId = 'scraplandia',
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
@@ -229,6 +230,12 @@ export function createHttpServer(
     // The site's own legal pages (plan T11 decision 6): /terms, /privacy, /dmca. Before the SPA and the
     // static fallback so they never resolve to a file or the landing page.
     if (serveLegal(req, res)) return
+    const requestedMapPlace = new URL(req.url ?? '/', 'http://games.local').searchParams.get('game')
+    if (url === '/map.json' && requestedMapPlace && requestedMapPlace !== defaultPlaceId) {
+      res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      res.end('{"error":"no_editor_map"}')
+      return
+    }
     if (url === '/map.json' && mapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
       // wire format.

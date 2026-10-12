@@ -42,7 +42,10 @@ import { SKILLS } from './defs/skills.js'
  * a bad pack kills the boot instead of corrupting a world. The registry is
  * immutable: packs take effect when it is built, i.e. at the next start.
  */
-export function createContent(packs: ContentPackV2[] = []): ContentRegistry {
+export function createContent(
+  packs: ContentPackV2[] = [],
+  builtIn: ContentPackV2 = SCRAPLANDIA_PACK,
+): ContentRegistry {
   const { defs, errors } = mergePackDefs<ContentDefs>(
     {
       items: ITEMS,
@@ -67,7 +70,7 @@ export function createContent(packs: ContentPackV2[] = []): ContentRegistry {
         zones: [],
       },
     },
-    [SCRAPLANDIA_PACK, ...packs],
+    [builtIn, ...packs],
   )
   if (errors.length > 0) throw new Error(`content pack: ${errors.join('; ')}`)
   return new ContentRegistry(defs)

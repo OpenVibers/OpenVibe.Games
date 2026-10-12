@@ -24,7 +24,14 @@ import {
  */
 
 type MenuTab =
-  'inventory' | 'crafting' | 'equipment' | 'skills' | 'standing' | 'players' | 'settings'
+  | 'inventory'
+  | 'crafting'
+  | 'equipment'
+  | 'skills'
+  | 'achievements'
+  | 'standing'
+  | 'players'
+  | 'settings'
 
 export class Hud {
   private root: HTMLElement
@@ -49,6 +56,7 @@ export class Hud {
     private readonly connection: Connection,
     private readonly icons: IconFactory,
     private readonly weaponSettings: WeaponSettings,
+    private readonly achievementIdentity?: { guest: string; bearer?: string },
   ) {
     this.root = root
     this.build()
@@ -536,6 +544,7 @@ export class Hud {
       ['crafting', 'Crafting'],
       ['equipment', 'Equipment'],
       ['skills', 'Skills'],
+      ['achievements', 'Achievements'],
       ['players', 'Players'],
       ['settings', 'Settings'],
     ]
@@ -575,9 +584,42 @@ export class Hud {
     else if (this.activeTab === 'crafting') this.renderCrafting()
     else if (this.activeTab === 'equipment') this.renderEquipment()
     else if (this.activeTab === 'skills') this.renderSkills()
+    else if (this.activeTab === 'achievements') void this.renderAchievements()
     else if (this.activeTab === 'standing') this.renderStanding()
     else if (this.activeTab === 'settings') this.renderSettings()
     else this.renderPlayers()
+  }
+
+  private async renderAchievements(): Promise<void> {
+    const body = this.menuBodyEl
+    body.textContent = 'Loading achievements…'
+    if (!this.achievementIdentity) return
+    const headers = this.achievementIdentity.bearer
+      ? { authorization: `Bearer ${this.achievementIdentity.bearer}` }
+      : { 'x-guest-token': this.achievementIdentity.guest }
+    try {
+      const response = await fetch('/api/v1/players/me/achievements', { headers })
+      if (!response.ok) throw new Error('unavailable')
+      const data = (await response.json()) as {
+        games: {
+          game: string
+          achievements: { name: string; description: string; unlockedAt: number | null }[]
+        }[]
+      }
+      if (this.activeTab !== 'achievements') return
+      body.replaceChildren()
+      const gameId = this.content.world.id === 'salvage_rush_arena' ? 'salvage-rush' : 'scraplandia'
+      for (const achievement of data.games.find((game) => game.game === gameId)?.achievements ??
+        []) {
+        const line = document.createElement('p')
+        line.className = 'skill-row'
+        line.textContent = `${achievement.unlockedAt ? '✓' : '○'} ${achievement.name} — ${achievement.description}`
+        body.append(line)
+      }
+      if (!body.children.length) body.textContent = 'No achievements for this game yet.'
+    } catch {
+      if (this.activeTab === 'achievements') body.textContent = 'Achievements unavailable.'
+    }
   }
 
   /** Settings: graphics quality (Auto follows the device; resolution and shadows apply at once). */

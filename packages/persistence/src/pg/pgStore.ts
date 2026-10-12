@@ -49,6 +49,7 @@ interface WorldEntityRow {
 
 interface CharacterRow {
   id: string
+  place_id: string | null
   account_key: string
   slot: number
   subject_id: string | null
@@ -268,6 +269,7 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
       )
       if (!row) return null
       const player = rowToPlayer(row)
+      player.positionInPlace = row.place_id === placeId
       if (opts.instanceSlot !== undefined) {
         const position = await db.maybe<{
           pos_x: number
@@ -281,6 +283,7 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
         if (position) {
           player.pos = [position.pos_x, position.pos_y, position.pos_z]
           player.yaw = position.yaw
+          player.positionInPlace = true
         }
       }
       return player
@@ -305,11 +308,14 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
       })
     },
     async resetAllPositions(pos: [number, number, number], yaw: number): Promise<void> {
-      await writeGameState(() =>
-        db.exec(
-          sql`UPDATE characters SET pos_x = ${pos[0]}, pos_y = ${pos[1]}, pos_z = ${pos[2]}, yaw = ${yaw}`,
-        ),
-      )
+      await writeGameState(async () => {
+        await db.exec(
+          sql`UPDATE character_instance_positions SET pos_x = ${pos[0]}, pos_y = ${pos[1]}, pos_z = ${pos[2]}, yaw = ${yaw} WHERE instance_id = ${`${placeId}:${opts.instanceSlot ?? 0}`}`,
+        )
+        await db.exec(
+          sql`UPDATE characters SET pos_x = ${pos[0]}, pos_y = ${pos[1]}, pos_z = ${pos[2]}, yaw = ${yaw} WHERE place_id = ${placeId}`,
+        )
+      })
     },
   }
 

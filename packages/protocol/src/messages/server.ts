@@ -271,6 +271,14 @@ export interface ServerContainer {
 }
 
 export type ServerMessage =
+  | {
+      t: 'salvage_round'
+      roundId: string
+      phase: 'intermission' | 'active'
+      endsAt: number
+      pickups: { x: number; z: number; available: boolean }[]
+      scores: { name: string; score: number; rank: number }[]
+    }
   | ServerWelcome
   | ServerTransferResult
   | ServerReject
