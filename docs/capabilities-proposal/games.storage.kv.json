@@ -5,12 +5,8 @@
   "status": "active",
   "visibility": "public",
   "description": "Script binding for mods (games-quickjs@1): game.storage get/set/delete/keys, key/value storage per mod per place on the Games database: keys up to 128 bytes, values up to 8 KB of JSON, at most 1000 keys and 1 MB per mod per place, writes counted against the mod's CPU budget; a refusal is an error inside the mod. Absent unless granted.",
-  "permissions": [
-    "games:storage:kv"
-  ],
-  "resourceConstraints": [
-    "none"
-  ],
+  "permissions": ["games:storage:kv"],
+  "resourceConstraints": ["none"],
   "quotaClass": "games-mod-runtime",
   "events": [],
   "implementedBy": [

@@ -86,6 +86,8 @@ export function wirePlayerFor(session: PlayerSession): WirePlayerState {
 export interface InterestDiff {
   entered: GameEntity[]
   left: EntityId[]
+  enteredCells: number[]
+  leftCells: number[]
 }
 
 /**
@@ -107,8 +109,13 @@ export function updateInterest(
   const exitRadiusSq = exitRadius * exitRadius
   const entered: GameEntity[] = []
   const current = new Set<EntityId>()
-  // Candidates out to the exit radius; the exact 3D distance test decides.
-  world.spatial.forEachInRadius(session.move.pos.x, session.move.pos.z, exitRadius, (id) => {
+  const cells = world.spatial.cellsInRadius(session.move.pos.x, session.move.pos.z, exitRadius)
+  const previousCells = session.interestCells ?? new Set<number>()
+  const enteredCells = [...cells].filter((key) => !previousCells.has(key))
+  const leftCells = [...previousCells].filter((key) => !cells.has(key))
+  session.interestCells = cells
+  // Candidates in subscribed cells; the exact 3D distance test decides.
+  world.spatial.forEachInCells(cells, (id) => {
     if (id === session.entityId) return
     const entity = world.entities.get(id)
     if (!entity) return
@@ -124,7 +131,7 @@ export function updateInterest(
     if (!current.has(id)) left.push(id)
   }
   session.known = current
-  return { entered, left }
+  return { entered, left, enteredCells, leftCells }
 }
 
 /** Snapshot for one session: relevant players + awake relevant prop bodies. */

@@ -87,23 +87,24 @@ The only thing the host adds to a fresh QuickJS context is the frozen global
 `game`. Everything else is the language's own intrinsics: no `require`,
 `process`, `fs`, network, timers, `console` or QuickJS `std`/`os`.
 
-| call                           | does                                                                                               |
-| ------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `game.players()`               | every player: `[{ id, name, pos: [x, y, z], yaw }]` (a copy)                                       |
-| `game.player(id)`              | one player, or `null`                                                                              |
-| `game.emit(intent)`            | queues an intent; a malformed one throws inside the script                                         |
-| `game.log(...values)`          | one `script mod log` line in the server log (4 per tick at most)                                   |
-| `game.random()`                | deterministic value in `[0, 1)` from the place id and mod id; `Math.random()` uses the same stream |
-| `game.message(playerId, text)` | queue a private announcement to one player (requires `player.message`)                             |
-| `game.storage.get(key)`        | read JSON, or `null` if absent                                                                     |
-| `game.storage.set(key, value)` | queue a persisted JSON value; writes are allowed during hooks                                      |
-| `game.storage.delete(key)`     | remove a key, returning whether it existed                                                         |
-| `game.storage.keys(prefix?)`   | sorted keys with an optional prefix                                                                |
+| call                           | does                                                                                                      |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| `game.players()`               | every player: `[{ id, name, pos: [x, y, z], yaw }]` (a copy)                                              |
+| `game.player(id)`              | one player, or `null`                                                                                     |
+| `game.emit(intent)`            | queues an intent; a malformed one throws inside the script                                                |
+| `game.log(...values)`          | one `script mod log` line in the server log (4 per tick at most)                                          |
+| `game.random()`                | deterministic value in `[0, 1)` from the place/room seed and mod id; `Math.random()` uses the same stream |
+| `game.message(playerId, text)` | queue a private announcement to one player (requires `player.message`)                                    |
+| `game.storage.get(key)`        | read JSON, or `null` if absent                                                                            |
+| `game.storage.set(key, value)` | queue a persisted JSON value; writes are allowed during hooks                                             |
+| `game.storage.delete(key)`     | remove a key, returning whether it existed                                                                |
+| `game.storage.keys(prefix?)`   | sorted keys with an optional prefix                                                                       |
 
 `game.players` and `game.player` require `players.read`; `game.emit` requires
 `world.emit`; `game.message` requires `player.message`; the storage object
 requires `storage.kv`. A binding without its grant is absent from the frozen
-`game` object. `game.log` and `game.random` are always available. The Contracts
+`game` object. `game.log` and `game.random` are always available. Extra M4 rooms
+include their slot in the random seed; the first room keeps the old seed. The Contracts
 install manifest uses `games.players.read`, `games.world.emit`,
 `games.player.message`, and `games.storage.kv` for these script requests.
 For example:

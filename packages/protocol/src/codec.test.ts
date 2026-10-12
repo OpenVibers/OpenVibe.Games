@@ -19,6 +19,7 @@ describe('protocol codec', () => {
       },
       { t: 'input', seq: 42, moveX: 1, moveZ: -0.5, yawQ: 12345, pitchQ: -4096, intents: 5 },
       { t: 'use', target: 'abc123' },
+      { t: 'transfer', instanceId: 'scraplandia:1' },
       { t: 'craft', recipe: 'craft_wooden_crate' },
       { t: 'drop', slot: 3, count: 5 },
       { t: 'inv_move', from: 0, to: 5, count: 3 },
@@ -36,6 +37,7 @@ describe('protocol codec', () => {
     expect(decodeClientMessage('not json')).toBeNull()
     expect(decodeClientMessage('{"t":"nope"}')).toBeNull()
     expect(decodeClientMessage('{"t":"input","seq":-1}')).toBeNull()
+    expect(decodeClientMessage('{"t":"transfer","instanceId":""}')).toBeNull()
     // NaN/Infinity smuggling
     expect(
       decodeClientMessage(

@@ -257,7 +257,7 @@ describe('Games on platform identity, events and mods (real server, restart)', (
     oldBundle.conn.identity = { guestKeyHash: hashGuestKey('old-bundle') }
     a.game.onMessage(oldBundle.conn, {
       t: 'hello',
-      v: PROTOCOL_VERSION - 1,
+      v: PROTOCOL_VERSION - 2,
       slot: 0,
       name: 'Old',
       appearance: defaultAppearance(),

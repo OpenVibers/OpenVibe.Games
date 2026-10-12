@@ -91,13 +91,17 @@ export class GameWorld {
    * power coupling, and NPC perception all consume this one structure.
    * GameWorld maintains props/resources; the server maintains players.
    */
-  readonly spatial = new SpatialHash<EntityId>(16)
+  readonly spatial: SpatialHash<EntityId>
 
   constructor(
     readonly content: ContentRegistry,
     readonly physics: PhysicsWorld,
     private readonly log: Logger,
+    interestCell = 16,
   ) {
+    if (!Number.isFinite(interestCell) || interestCell <= 0)
+      throw new Error('invalid interest cell')
+    this.spatial = new SpatialHash<EntityId>(interestCell)
     this.zones = new ZoneIndex(content.world.zones)
     this.mapStatics = new MapStaticLayer(physics)
     this.mapTerrain = new MapTerrainLayer(physics)

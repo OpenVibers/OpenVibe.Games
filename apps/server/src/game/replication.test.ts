@@ -9,10 +9,11 @@
  */
 import { EntityStore, SpatialHash, type GameEntity } from '@openvibe/gameplay'
 import { quat, vec3, type EntityId } from '@openvibe/shared'
+import { encodeServerMessage } from '@openvibe/protocol'
 import { describe, expect, it } from 'vitest'
 import type { GameWorld } from './gameWorld.js'
 import type { PlayerSession } from './playerSession.js'
-import { INTEREST_HYSTERESIS, updateInterest } from './replication.js'
+import { INTEREST_HYSTERESIS, updateInterest, wireEntityFor } from './replication.js'
 
 const RADIUS = 80
 const EXIT = RADIUS * (1 + INTEREST_HYSTERESIS)
@@ -55,6 +56,41 @@ function addBody(world: GameWorld, x: number): { id: EntityId; moveTo: (x: numbe
 }
 
 describe('interest hysteresis', () => {
+  it('sends only nearby grid cells, reducing spawn bytes across a spread world', () => {
+    const world = makeWorld()
+    const session = makeSession()
+    const all: GameEntity[] = []
+    for (let i = 0; i < 1000; i++) {
+      const id = `spread-${i}` as EntityId
+      const x = ((i % 40) - 20) * 45
+      const z = (Math.floor(i / 40) - 12) * 45
+      const entity: GameEntity = {
+        id,
+        kind: 'prop',
+        transform: { pos: vec3(x, 0, z), rot: quat() },
+        prop: { defId: 'scrap', motion: 'static', lootCount: 1 },
+        persistent: false,
+        dirty: false,
+      }
+      world.entities.add(entity)
+      world.spatial.insert(id, x, z)
+      all.push(entity)
+    }
+    const nearby = updateInterest(session, world, RADIUS).entered
+    const bytes = (entities: GameEntity[]) =>
+      encodeServerMessage({
+        t: 'spawn',
+        entities: entities.map((entity) => wireEntityFor(world, entity)),
+      }).length
+    expect(nearby.length).toBeGreaterThan(0)
+    expect(bytes(nearby)).toBeLessThan(bytes(all) / 10)
+    session.move.pos.x = 500
+    const next = updateInterest(session, world, RADIUS)
+    expect(next.enteredCells.length).toBeGreaterThan(0)
+    expect(next.leftCells.length).toBeGreaterThan(0)
+    expect(next.left).toHaveLength(nearby.length)
+    expect(next.entered.length).toBeGreaterThan(0)
+  })
   it('enters inside the radius and is retained past it up to the exit radius', () => {
     const world = makeWorld()
     const session = makeSession()

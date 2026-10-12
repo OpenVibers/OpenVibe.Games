@@ -6,12 +6,8 @@
   "visibility": "first-party",
   "description": "Manage mod installs in the browser game's registry (ADR-013): install a mods/mod-manifest.v1 manifest with its games-content@1 pack, approve or revoke individual capabilities of an install, enable, disable, and revoke an install for good (its effects end on the next server tick). Every action is audited and published as a games.mod.* event. Trust tiers are metadata and never grant anything. Also accepted from an openvibe.network owner/admin session. Reload replaces a running script mod's code (games-quickjs@1) and keeps its storage; a reload that fails to start keeps the previous version.",
   "inputSchema": "games.mod-manage-request@1",
-  "permissions": [
-    "games:mods:admin"
-  ],
-  "resourceConstraints": [
-    "none"
-  ],
+  "permissions": ["games:mods:admin"],
+  "resourceConstraints": ["none"],
   "quotaClass": "games-admin",
   "events": [
     "games.mod.installed",

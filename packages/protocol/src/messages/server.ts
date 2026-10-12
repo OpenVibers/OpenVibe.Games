@@ -25,6 +25,16 @@ export interface ServerWelcome {
   tick: number
   tickRate: number
   snapshotRate: number
+  /** Present when multi-instance mode is enabled. */
+  instanceId?: string
+  instanceCount?: number
+}
+
+export interface ServerTransferResult {
+  t: 'transfer_result'
+  accepted: boolean
+  instanceId: string
+  reason?: 'same_instance' | 'unknown_instance' | 'instance_full' | 'unavailable'
 }
 
 export interface ServerReject {
@@ -262,6 +272,7 @@ export interface ServerContainer {
 
 export type ServerMessage =
   | ServerWelcome
+  | ServerTransferResult
   | ServerReject
   | ServerSpawn
   | ServerDespawn

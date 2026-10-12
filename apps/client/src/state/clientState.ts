@@ -61,6 +61,8 @@ export class ClientState {
   /** OpenVibe rank from welcome (owner/admin/moderator, null = player). */
   myRank: 'owner' | 'admin' | 'moderator' | null = null
   myPlayerId = ''
+  instanceId: string | null = null
+  instanceCount = 1
   /** Player ids I trust with my props. */
   friends: { id: string; name: string }[] = []
   tickRate = 30
@@ -101,6 +103,15 @@ export class ClientState {
   apply(msg: ServerMessage): void {
     switch (msg.t) {
       case 'welcome':
+        if (this.myEntityId && msg.instanceId && msg.instanceId !== this.instanceId) {
+          for (const id of this.entities.keys()) this.events.emit('entityRemoved', id)
+          this.entities.clear()
+          this.constraints.clear()
+          this.heldBy.clear()
+          this.heldGrab.clear()
+        }
+        this.instanceId = msg.instanceId ?? null
+        this.instanceCount = msg.instanceCount ?? 1
         this.myEntityId = msg.entityId
         this.myPlayerId = msg.playerId
         this.myRank = msg.rank
@@ -108,6 +119,8 @@ export class ClientState {
         this.snapshotRate = msg.snapshotRate
         this.serverTick = msg.tick
         this.events.emit('welcome', { entityId: msg.entityId, tickRate: msg.tickRate })
+        break
+      case 'transfer_result':
         break
       case 'reject':
         break

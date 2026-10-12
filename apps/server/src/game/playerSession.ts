@@ -107,6 +107,8 @@ export interface PlayerSession {
   lastProcessedSeq: number
   /** Entity ids this client currently knows about (interest management). */
   known: Set<EntityId>
+  /** Ground-plane cells this client subscribed to on the last snapshot. */
+  interestCells: Set<number>
   /** Player state changed since last persistence flush. */
   dirty: boolean
   send(text: string): void
@@ -178,6 +180,7 @@ export function createSession(init: SessionInit): PlayerSession {
     starvedTicks: 0,
     lastProcessedSeq: 0,
     known: new Set(),
+    interestCells: new Set(),
     dirty: true,
     send: init.send,
     closeConnection: init.closeConnection,

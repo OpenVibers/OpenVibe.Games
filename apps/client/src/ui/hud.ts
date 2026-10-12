@@ -63,6 +63,9 @@ export class Hud {
     state.events.on('craftJobs', () => this.renderMenu())
     state.events.on('skills', () => this.renderMenu())
     state.events.on('friendsChanged', () => this.renderMenu())
+    state.events.on('welcome', () => {
+      if (this.activeTab === 'players') this.renderMenu()
+    })
     state.events.on('entityAdded', () => {
       if (this.activeTab === 'players') this.renderMenu()
     })
@@ -941,6 +944,24 @@ export class Hud {
 
   private renderPlayers(): void {
     const wrap = document.createElement('div')
+    if (this.state.instanceId && this.state.instanceCount > 1) {
+      const title = document.createElement('div')
+      title.className = 'hint-line'
+      title.textContent = `Current room: ${this.state.instanceId}`
+      wrap.appendChild(title)
+      const prefix = this.state.instanceId.slice(0, this.state.instanceId.lastIndexOf(':'))
+      for (let slot = 0; slot < this.state.instanceCount; slot++) {
+        const id = `${prefix}:${slot}`
+        const button = document.createElement('button')
+        button.className = 'trust-btn'
+        button.textContent = `Room ${slot + 1}`
+        button.disabled = id === this.state.instanceId
+        button.addEventListener('click', () =>
+          this.connection.send({ t: 'transfer', instanceId: id }),
+        )
+        wrap.appendChild(button)
+      }
+    }
     const hint = document.createElement('div')
     hint.className = 'hint-line'
     hint.textContent = 'Trusted players can move and unfreeze your props.'

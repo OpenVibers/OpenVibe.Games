@@ -24,6 +24,15 @@ export class SessionsSystem implements System {
 
   constructor(private readonly ctx: ServerContext) {
     this.handlers = {
+      transfer: (session, msg) => {
+        if (session)
+          this.ctx.net.send(session, {
+            t: 'transfer_result',
+            accepted: false,
+            instanceId: (msg as { instanceId: string }).instanceId,
+            reason: 'unavailable',
+          })
+      },
       hello: (session, msg, conn) => {
         // A session already exists: a duplicate hello is silently ignored.
         if (session) return
@@ -39,7 +48,7 @@ export class SessionsSystem implements System {
           conn.close(4012, 'no_identity')
           return
         }
-        void this.handleHello(conn, msg as ClientHello)
+        void this.join(conn, msg as ClientHello)
       },
     }
   }
@@ -47,6 +56,13 @@ export class SessionsSystem implements System {
   /** Players connected now (the readiness `sessions` check; a restart would disconnect them). */
   onlineCount(): number {
     return this.ctx.sessions.size
+  }
+
+  async join(conn: GameConnection, msg: ClientHello): Promise<boolean> {
+    if (this.hellosInFlight.has(conn) || !conn.identity || this.ctx.sessions.getByConn(conn))
+      return false
+    await this.handleHello(conn, msg)
+    return this.ctx.sessions.getByConn(conn) !== undefined
   }
 
   onDisconnect(conn: GameConnection): void {
@@ -88,7 +104,7 @@ export class SessionsSystem implements System {
     const ctx = this.ctx
     const serverDigest = ctx.world.content.digest
     // Protocol first: a stale bundle predates the digest and only reloads itself on protocol_mismatch.
-    if (msg.v !== PROTOCOL_VERSION) {
+    if (msg.v !== PROTOCOL_VERSION && msg.v !== PROTOCOL_VERSION - 1) {
       conn.send(encodeServerMessage({ t: 'reject', reason: 'protocol_mismatch' }))
       conn.close(4002, 'protocol_mismatch')
       return
@@ -251,7 +267,7 @@ export class SessionsSystem implements System {
 
     ctx.net.send(session, {
       t: 'welcome',
-      v: PROTOCOL_VERSION,
+      v: msg.v,
       contentDigest: serverDigest,
       rank,
       playerId: playerId as string,
@@ -259,6 +275,12 @@ export class SessionsSystem implements System {
       tick: ctx.clock.tick,
       tickRate: ctx.config.tickRate,
       snapshotRate: ctx.config.tickRate / ctx.config.snapshotEvery,
+      ...(ctx.config.instancesPerPlace > 1
+        ? {
+            instanceId: `${ctx.config.placeId}:${ctx.config.instanceSlot ?? 0}`,
+            instanceCount: ctx.config.instancesPerPlace,
+          }
+        : {}),
     })
     ctx.net.sendInventory(session)
     ctx.net.sendSkills(session)

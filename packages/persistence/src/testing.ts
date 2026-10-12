@@ -13,6 +13,8 @@ export { MIGRATIONS_DIR }
 
 const TABLES = [
   'places',
+  'game_instances',
+  'character_instance_positions',
   'world_meta',
   'world_entities',
   'world_constraints',

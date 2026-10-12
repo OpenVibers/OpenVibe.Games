@@ -135,6 +135,10 @@ with live world reconciliation.
 
 ## Phase 11 — Scale 🔜 next (Stage 12)
 
+ADR-0007 M4 now covers several rooms of one place in one process, PostgreSQL
+leases, in-process transfer, cell interest and a socketless load probe. This
+phase still covers streaming, multi-host routing and larger load profiles.
+
 - Region persistence/streaming when the authored world justifies it
 - Network measurement first (bytes/client, snapshot sizes, entity counts);
   binary snapshot codec only when measurements demand it

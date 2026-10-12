@@ -52,6 +52,14 @@ export class LocalPlayer {
    * EYES glide (Source's smoothed stair climb). */
   private stepOffset = 0
 
+  /** New room: old prediction commands belong to the previous simulation. */
+  onTransfer(): void {
+    this.pending = []
+    this.seq = 0
+    this.corr.setAll(0)
+    this.stepOffset = 0
+  }
+
   constructor(
     scene: Scene,
     private readonly physics: PhysicsWorld,

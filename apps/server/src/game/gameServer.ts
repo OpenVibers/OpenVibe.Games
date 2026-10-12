@@ -1,6 +1,6 @@
 import { createEnvironment } from '@openvibe/gameplay'
 import type { PersistenceStore } from '@openvibe/persistence'
-import type { ClientMessage } from '@openvibe/protocol'
+import type { ClientHello, ClientMessage } from '@openvibe/protocol'
 import type { Logger } from '@openvibe/shared'
 import type { ServerConfig } from '../config.js'
 import { nearbyWorkstationKinds } from './interactions.js'
@@ -157,9 +157,18 @@ export class GameServer {
     return this.ctx.clock.tick
   }
 
+  get contentDigest(): string {
+    return this.ctx.world.content.digest
+  }
+
   /** Players connected now (the readiness `sessions` check; a restart would disconnect them). */
   onlineCount(): number {
     return this.systems.sessions.onlineCount()
+  }
+
+  /** Await a socketless join, including its persistence read and def-set check. */
+  join(conn: GameConnection, hello: ClientHello): Promise<boolean> {
+    return this.systems.sessions.join(conn, hello)
   }
 
   /**
@@ -225,6 +234,11 @@ export class GameServer {
   /** Resolves when the write-behind queue is empty (shutdown). */
   async drain(timeoutMs = 25_000): Promise<boolean> {
     return this.systems.persistence.drain(timeoutMs)
+  }
+
+  /** Queue an immediate write-behind checkpoint before a room handoff. */
+  checkpoint(): void {
+    this.systems.persistence.checkpoint()
   }
 
   /** Exposes crafting context for the client-facing recipe availability (welcome-time). */

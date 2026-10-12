@@ -84,6 +84,27 @@ export class SpatialHash<T> {
     }
   }
 
+  /** Grid cells intersecting a square around a player; stable keys for subscriptions. */
+  cellsInRadius(x: number, z: number, radius: number): Set<number> {
+    const keys = new Set<number>()
+    const minX = Math.floor((x - radius) / this.cellSize) + OFFSET
+    const maxX = Math.floor((x + radius) / this.cellSize) + OFFSET
+    const minZ = Math.floor((z - radius) / this.cellSize) + OFFSET
+    const maxZ = Math.floor((z + radius) / this.cellSize) + OFFSET
+    for (let cx = minX; cx <= maxX; cx++) {
+      for (let cz = minZ; cz <= maxZ; cz++) keys.add(cx * (OFFSET * 2) + cz)
+    }
+    return keys
+  }
+
+  forEachInCells(keys: Iterable<number>, visit: (item: T) => void): void {
+    for (const key of keys) {
+      const cell = this.cells.get(key)
+      if (!cell) continue
+      for (const item of cell) visit(item)
+    }
+  }
+
   /** Radius candidates as an array (convenience for call sites that filter). */
   queryRadius(x: number, z: number, radius: number): T[] {
     const out: T[] = []

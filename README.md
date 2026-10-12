@@ -115,6 +115,10 @@ an embedded PGlite database under `DATABASE_DIR` (default `data/`) — developme
 `GAMES_PLACE_ID` (default `scraplandia`) is the place every world row belongs to; `VALKEY_URL`
 (optional) makes the per-actor limits and the WebSocket upgrade tickets shared across instances
 (issue is `SET … PX … NX`, consume is `GETDEL`, so a ticket is single-use cluster-wide).
+`GAMES_INSTANCES_PER_PLACE` (default `1`) enables several room simulations for a place in this process;
+`MAX_PLAYERS` is per-room capacity. PostgreSQL records each room and its renewable fenced lease.
+`GAMES_INTEREST_CELL` (default `16`) and `GAMES_INTEREST_RADIUS` (default `80`) tune spatial replication.
+See [docs/instances.md](docs/instances.md) for transfer, lease expiry and the one-process limit.
 `TRUST_PROXY` (optional) says which proxies may set the client-address headers: unset means the TCP
 peer is the client and `X-Forwarded-For`/`X-Real-IP`/`CF-Connecting-IP` are ignored (they are
 client-supplied and would otherwise let a caller mint fresh rate-limit buckets); `true` means the

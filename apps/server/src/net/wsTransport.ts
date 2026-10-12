@@ -128,7 +128,7 @@ export async function acceptUpgrade(
 
 export function attachWebSocket(
   http: Server,
-  game: GameServer,
+  game: Pick<GameServer, 'onMessage' | 'onDisconnect'>,
   opts: WsTransportOptions,
 ): WebSocketServer {
   const { log } = opts
