@@ -95,6 +95,9 @@ export interface PlatformConfig {
   eventsUrl: string | null
   /** OpenVibe.Media base; null = map assets stay local only. */
   mediaUrl: string | null
+  /** OpenVibe.Inventory base and item reward switch. */
+  inventoryUrl: string
+  items: boolean
   /** Media namespace (tenant app id) Games writes objects into. */
   mediaNamespace: string
   /** At most one `games.world.saved` checkpoint event per this many minutes. */
@@ -131,6 +134,8 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     ),
     eventsUrl: env.EVENTS_URL && env.EVENTS_PUBLISH !== 'off' ? trimSlash(env.EVENTS_URL) : null,
     mediaUrl: env.MEDIA_URL && env.MEDIA_MIRROR !== 'off' ? trimSlash(env.MEDIA_URL) : null,
+    inventoryUrl: trimSlash(env.GAMES_INVENTORY_URL ?? 'https://inventory.openvibe.network'),
+    items: env.GAMES_ITEMS !== 'off' && !!secret,
     mediaNamespace: env.MEDIA_NAMESPACE ?? 'games',
     worldSavedEventMinutes: intEnv(env, 'WORLD_SAVED_EVENT_MINUTES', 15),
     eventsSecrets: (env.GAMES_EVENTS_SECRET ?? '')

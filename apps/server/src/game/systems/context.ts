@@ -63,6 +63,8 @@ export type ResolvedConnectionIdentity = TicketIdentity
 export interface GameIntegrations {
   /** A server-confirmed authenticated join, for place-scoped achievements. */
   playerJoined?: (key: string) => void
+  /** Revisit item rewards after a guest account is adopted. */
+  guestAdopted?: (subject: string) => void
   /** Called only for completed server-simulated rounds. Never accepts a client message. */
   roundFinished?: (
     roundId: string,

@@ -59,6 +59,7 @@ import {
 import { createAccountData, networkSender, type AccountEvent } from './platform/accountData.js'
 import { MediaMirror } from './platform/mediaMirror.js'
 import { createPlatformClient } from './platform/serviceClient.js'
+import { InventoryRewards } from './platform/inventoryRewards.js'
 import {
   createRevocationEvents,
   ensureRevocationSubscription,
@@ -110,8 +111,18 @@ async function main(): Promise<void> {
   )
   const builtInPack = config.placeId === 'salvage-rush' ? SALVAGE_RUSH_PACK : SCRAPLANDIA_PACK
   const content = createContent(packs, builtInPack)
-  const progressWriter = new GameProgressWriter(db, (error) =>
-    log.warn('game progression write failed', { error: String(error) }),
+  let inventoryRewards: InventoryRewards | null = null
+  const settleRewards = (subject: string): void => {
+    void inventoryRewards
+      ?.settleSubject(subject)
+      .catch((error: unknown) =>
+        log.warn('inventory reward lookup failed', { error: String(error) }),
+      )
+  }
+  const progressWriter = new GameProgressWriter(
+    db,
+    (error) => log.warn('game progression write failed', { error: String(error) }),
+    settleRewards,
   )
   const builtInModIds = new Set(
     (SCRAPLANDIA_PACK.mods ?? []).map((raw) => ScriptModSchema.parse(raw).id),
@@ -159,6 +170,14 @@ async function main(): Promise<void> {
   // Every service call carries the `games` principal's client-credentials
   // token; with no client secret configured none of this talks to anything.
   const platform = createPlatformClient(config.platform)
+  inventoryRewards = new InventoryRewards({
+    db,
+    url: config.platform.inventoryUrl,
+    enabled: config.platform.items && !!platform,
+    tokens: platform?.tokens ?? null,
+    warn: (message) => log.warn(message),
+  })
+  inventoryRewards.start()
   const platformLog = log.child({ system: 'platform' })
   const valkey = createValkey({ url: config.db.valkeyUrl ?? '', prefix: config.db.valkeyPrefix })
   let outbox: PgOutbox | null = null
@@ -297,6 +316,7 @@ async function main(): Promise<void> {
       mods: modRuntime,
       ...(scripts ? { scripts } : {}),
       ...(progressSummary ? { progressSummary } : {}),
+      guestAdopted: settleRewards,
       ...(config.placeId === 'scraplandia'
         ? {
             playerJoined: (key: string) => progressWriter.submitJoined(key),
@@ -366,6 +386,7 @@ async function main(): Promise<void> {
           }),
           ...(roomScripts ? { scripts: roomScripts } : {}),
           ...(progressSummary ? { progressSummary } : {}),
+          guestAdopted: settleRewards,
           ...(config.placeId === 'scraplandia'
             ? {
                 playerJoined: (key: string) => progressWriter.submitJoined(key),
@@ -466,6 +487,7 @@ async function main(): Promise<void> {
         ),
         ...(roomScripts ? { scripts: roomScripts } : {}),
         ...(progressSummary ? { progressSummary } : {}),
+        guestAdopted: settleRewards,
         ...(secondaryPlace === 'scraplandia'
           ? {
               playerJoined: (key: string) => progressWriter.submitJoined(key),
@@ -588,7 +610,11 @@ async function main(): Promise<void> {
         0,
       ),
     // Account merge (ADR-029): the folded-in account's characters join the survivor's free slots.
-    onMerged: (from, into, mergeId) => store.identity.mergeSubject(from, into, mergeId, Date.now()),
+    onMerged: async (from, into, mergeId) => {
+      const result = await store.identity.mergeSubject(from, into, mergeId, Date.now())
+      settleRewards(into)
+      return result
+    },
     // Account export and deletion (ADR-033): the part goes to Network; a deleted account's sessions close (each
     // close saves its character) before its characters are erased.
     ...(accountData ? { onAccountEvent: (event) => accountData.apply(event as AccountEvent) } : {}),
@@ -968,6 +994,7 @@ async function main(): Promise<void> {
       await within(2000, outbox?.stop())
       await mods.flushWrites()
       await progressWriter.stop()
+      inventoryRewards?.stop()
       await store.close()
       await valkey?.close()
       log.info('stopped', {

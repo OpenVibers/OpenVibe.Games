@@ -45,6 +45,7 @@ export interface ContentPackV2 {
     id: string
     name: string
     description: string
+    reward?: { item: string; name: string }
     criterion:
       | { event: 'player_joined' }
       | { event: 'haul_recorded'; minScore?: number }
@@ -60,6 +61,7 @@ export interface ContentPackV2 {
       id: string
       name: string
       description: string
+      reward?: { item: string; name: string }
       criterion: { event: 'round_finished'; minScore?: number; minRank?: number }
     }[]
   }

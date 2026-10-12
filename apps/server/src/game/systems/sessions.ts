@@ -157,9 +157,10 @@ export class SessionsSystem implements System {
           subjectId,
           Date.now(),
         )
-        if (g.moved > 0)
+        if (g.moved > 0) {
           ctx.log.info('guest character adopted', { subject: subjectId, slot: g.slot ?? -1 })
-        else if (g.full)
+          ctx.integrations.guestAdopted?.(subjectId)
+        } else if (g.full)
           ctx.log.info('guest character kept: account slots full', { subject: subjectId })
       }
     } else {
