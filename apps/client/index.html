@@ -372,15 +372,21 @@
         margin: 0 auto;
       }
       /* Navigation that works without openvibe.network (roadmap WS-P task 5): shown until the shared
-         navbar mounts, which fills #navbar-mount and hides this. */
+         navbar mounts, which fills #navbar-mount and hides this. One row exactly the navbar's 52px
+         (scrolling sideways on a phone), so the swap moves nothing below it. */
       .ov-nav-fallback {
         position: relative;
         z-index: 5;
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: center;
         gap: 6px 16px;
-        padding: 12px 20px;
+        box-sizing: border-box;
+        height: 52px;
+        padding: 0 20px;
+        overflow-x: auto;
+        scrollbar-width: none;
+        white-space: nowrap;
         border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         font:
           500 14px/1.4 system-ui,
