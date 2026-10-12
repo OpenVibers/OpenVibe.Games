@@ -163,9 +163,14 @@ export const ItemDefSchema = z.object({
   /**
    * Present iff the item is AT-RISK loot: it drops in a loot bag on death
    * unless secured by an extraction (stack meta `secured`). The
-   * risk/reward heart of expedition play.
+   * risk/reward heart of expedition play. `points` is the haul score a
+   * secured item is worth; omitted it defaults to 10.
    */
-  valuable: z.object({}).optional(),
+  valuable: z
+    .object({
+      points: z.number().int().positive().default(10),
+    })
+    .optional(),
 
   /** Present iff consuming this item permanently unlocks a recipe. */
   blueprint: z.object({ recipe: z.string() }).optional(),

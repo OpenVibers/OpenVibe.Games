@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createContent } from '@openvibe/content'
-import { Inventory } from './inventory.js'
+import { haulPoints, Inventory } from './inventory.js'
 
 const content = createContent()
 
@@ -112,5 +112,48 @@ describe('Inventory', () => {
     expect(inv.secureValuables(isValuable)).toBe(1)
     expect(inv.secureValuables(isValuable)).toBe(0)
     expect(inv.takeUnsecuredValuables(isValuable)).toEqual([])
+  })
+
+  it('computes haul points per secured stack and ignores non-valuables', () => {
+    const stacks = [
+      { defId: 'salvage_core', count: 3 }, // 20 each
+      { defId: 'pepper_tonic', count: 2 }, // 30 each
+      { defId: 'wood_plank', count: 10 }, // not valuable
+    ]
+    expect(haulPoints(stacks, content)).toBe(3 * 20 + 2 * 30)
+  })
+
+  it('defaults valuable points to 10', () => {
+    const withDefault = createContent([
+      {
+        defs: {
+          items: [
+            {
+              id: 'test_valuable',
+              name: 'Test Valuable',
+              description: '',
+              category: 'misc',
+              maxStack: 5,
+              valuable: {},
+            },
+          ],
+        },
+      },
+    ])
+    expect(withDefault.item('test_valuable')?.valuable?.points).toBe(10)
+    expect(haulPoints([{ defId: 'test_valuable', count: 2 }], withDefault)).toBe(20)
+  })
+
+  it('reports what it secures so the extraction path can score it', () => {
+    const inv = new Inventory(6, 2, content)
+    inv.addStack({ defId: 'salvage_core', count: 2 })
+    inv.addStack({ defId: 'pepper_tonic', count: 3 })
+    inv.addStack({ defId: 'wood_plank', count: 5 })
+    const isValuable = (id: string) => content.item(id)?.valuable !== undefined
+    expect(inv.secureValuablesReport(isValuable)).toEqual([
+      { defId: 'salvage_core', count: 2 },
+      { defId: 'pepper_tonic', count: 3 },
+    ])
+    expect(inv.secureValuables(isValuable)).toBe(0)
   })
 })

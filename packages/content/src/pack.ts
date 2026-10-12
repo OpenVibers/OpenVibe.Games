@@ -45,7 +45,10 @@ export interface ContentPackV2 {
     id: string
     name: string
     description: string
-    criterion: { event: 'player_joined' }
+    criterion:
+      | { event: 'player_joined' }
+      | { event: 'haul_recorded'; minScore?: number }
+      | { event: 'haul_week'; minScore: number }
   }[]
   /** Built-in game rules. Executable rule evaluation remains server-owned. */
   game?: {

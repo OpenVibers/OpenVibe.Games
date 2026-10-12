@@ -164,7 +164,8 @@ export const ITEMS: ItemDef[] = [
       'Dense pre-collapse tech. The merchant pays a fortune — IF you get it home. Drops when you die; extract to secure it.',
     category: 'misc',
     maxStack: 5,
-    valuable: {},
+    // Supply-drop staple (1-2 per crate), the baseline haul item.
+    valuable: { points: 20 },
     world: {
       shape: { type: 'box', size: [0.24, 0.24, 0.24] },
       massKg: 8,
@@ -265,7 +266,8 @@ export const ITEMS: ItemDef[] = [
     description: 'Greasy hand-drawn plans. Use (LMB) to learn the recipe for good.',
     category: 'misc',
     maxStack: 1,
-    valuable: {},
+    // Rare crate-only drop that permanently unlocks a recipe.
+    valuable: { points: 40 },
     blueprint: { recipe: 'craft_scrap_pistol' },
   },
   {
@@ -274,7 +276,8 @@ export const ITEMS: ItemDef[] = [
     description: "Somebody's prized still schematics. Use (LMB) to learn the recipe.",
     category: 'misc',
     maxStack: 1,
-    valuable: {},
+    // Merchant-only (40 caps, stock 1) — the rarest valuable.
+    valuable: { points: 60 },
     blueprint: { recipe: 'craft_still' },
   },
 
@@ -575,7 +578,8 @@ export const ITEMS: ItemDef[] = [
       'Ember pepper and flour mash run through a still. Burns twice. The Goose pays absurdly well and asks no questions. At-risk until extracted.',
     category: 'food',
     maxStack: 10,
-    valuable: {},
+    // Craftable but gated behind pepper farming plus a powered still.
+    valuable: { points: 30 },
     food: { hunger: 6, thirst: 10, health: 8 },
   },
   {

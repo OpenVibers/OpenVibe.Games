@@ -14,6 +14,24 @@ export const SCRAPLANDIA_PACK: ContentPackV2 = {
       description: 'Join Scraplandia.',
       criterion: { event: 'player_joined' },
     },
+    {
+      id: 'first-haul',
+      name: 'First Haul',
+      description: 'Extract valuables to Scrap City.',
+      criterion: { event: 'haul_recorded' },
+    },
+    {
+      id: 'big-haul',
+      name: 'Big Haul',
+      description: 'Score at least 500 haul points in one extraction.',
+      criterion: { event: 'haul_recorded', minScore: 500 },
+    },
+    {
+      id: 'haul-week',
+      name: 'Haul Week',
+      description: 'Score at least 2,000 haul points in one week.',
+      criterion: { event: 'haul_week', minScore: 2000 },
+    },
   ],
   map: {
     id: 'openvibeville_v2',

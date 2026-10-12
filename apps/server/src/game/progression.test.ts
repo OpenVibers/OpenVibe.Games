@@ -3,8 +3,10 @@ import { openTestDb, openTestStore } from '@openvibe/persistence/testing'
 import { accountKey } from '@openvibe/persistence'
 import {
   earnedAchievements,
+  earnedHaulAchievements,
   leaderboard,
   playerAchievements,
+  recordHaul,
   recordJoined,
   recordRound,
 } from './progression.js'
@@ -15,9 +17,9 @@ describe('game progression', () => {
     const subject = 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0'
     await recordJoined(db, subject, 100)
     await recordJoined(db, subject, 200)
-    expect((await playerAchievements(db, subject))[0]?.achievements).toMatchObject([
-      { id: 'first-visit', unlockedAt: 100 },
-    ])
+    expect(
+      (await playerAchievements(db, subject))[0]?.achievements.filter((a) => a.unlockedAt),
+    ).toMatchObject([{ id: 'first-visit', unlockedAt: 100 }])
   })
 
   it('erases a signed-in subject from game progression with account data', async () => {
@@ -142,5 +144,39 @@ describe('game progression', () => {
       (await leaderboard(db, 'salvage-rush', 'week', 1, now)).entries.map((e) => e.score),
     ).toEqual([5, 2])
     expect((await leaderboard(db, 'salvage-rush', 'all', 2, now)).entries).toEqual([])
+  })
+
+  it('unlocks Scraplandia haul achievements at their thresholds', () => {
+    expect(earnedHaulAchievements(1, 1)).toEqual(['first-haul'])
+    expect(earnedHaulAchievements(499, 499)).toEqual(['first-haul'])
+    expect(earnedHaulAchievements(500, 500)).toEqual(['first-haul', 'big-haul'])
+    expect(earnedHaulAchievements(500, 2000)).toEqual(['first-haul', 'big-haul', 'haul-week'])
+  })
+
+  it('records hauls once per extraction and sums them on the Scraplandia leaderboard', async () => {
+    const db = await openTestDb()
+    const now = Date.UTC(2026, 9, 11, 12) // Sunday
+    await recordHaul(db, 'a', 'e1', 'A', 100, now)
+    await recordHaul(db, 'a', 'e2', 'A', 50, now)
+    await recordHaul(db, 'a', 'e2', 'A', 999, now) // duplicate extraction id, ignored
+    await recordHaul(db, 'b', 'e3', 'B', 10, Date.UTC(2026, 9, 4, 23, 59)) // previous week
+    await recordHaul(db, 'c', 'e4', 'C', 0, now) // zero-value, not recorded
+    expect((await leaderboard(db, 'scraplandia', 'all', 1, now)).entries.map((e) => e.score)).toEqual(
+      [150, 10],
+    )
+    expect((await leaderboard(db, 'scraplandia', 'week', 1, now)).entries.map((e) => e.score)).toEqual(
+      [150],
+    )
+  })
+
+  it('unlocks haul achievements after a recorded haul', async () => {
+    const db = await openTestDb()
+    const now = Date.UTC(2026, 9, 11, 12)
+    await recordHaul(db, 'guest-test-key', 'e1', 'Guest', 500, now)
+    await recordHaul(db, 'guest-test-key', 'e2', 'Guest', 2000, now)
+    const unlocks = (await playerAchievements(db, 'guest-test-key'))[0]?.achievements.filter(
+      (a) => a.unlockedAt,
+    )
+    expect(unlocks?.map((a) => a.id)).toEqual(['first-haul', 'big-haul', 'haul-week'])
   })
 })

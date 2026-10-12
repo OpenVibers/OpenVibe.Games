@@ -16,6 +16,7 @@ const TABLES = [
   'game_round_results',
   'game_best_scores',
   'game_achievements',
+  'game_hauls',
   'game_instances',
   'character_instance_positions',
   'world_meta',

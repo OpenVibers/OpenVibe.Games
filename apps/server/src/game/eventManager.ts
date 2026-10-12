@@ -39,7 +39,7 @@ export interface EventHooks {
   /** Players currently inside a circle: [entityId, distance][] */
   playersIn(x: number, z: number, radius: number): { entityId: string; alive: boolean }[]
   /** Secure a player's carried valuables + recall them to the city. */
-  extractPlayer(entityId: string): void
+  extractPlayer(entityId: string, extractionId: string): void
   broadcastSpawn(entity: GameEntity): void
   broadcastDespawn(id: string): void
 }
@@ -234,7 +234,7 @@ export class EventManager {
             this.hooks.announceTo(id, `⏱ Hold ${EXTRACTION_HOLD_SECONDS}s to extract…`)
           } else if (nowMs >= holders[id]) {
             delete holders[id]
-            this.hooks.extractPlayer(id)
+            this.hooks.extractPlayer(id, ev.id)
           }
         }
         return false // runs until endsAt

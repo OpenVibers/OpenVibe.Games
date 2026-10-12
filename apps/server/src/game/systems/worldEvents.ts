@@ -1,4 +1,5 @@
 import { worldSpawn } from '@openvibe/content'
+import { haulPoints } from '@openvibe/gameplay'
 import type { EntityId } from '@openvibe/shared'
 import { EventManager } from '../eventManager.js'
 import type { ServerContext } from './context.js'
@@ -30,7 +31,7 @@ export class WorldEventSystem implements System {
           }
           return out
         },
-        extractPlayer: (entityId) => this.extractPlayer(entityId),
+        extractPlayer: (entityId, extractionId) => this.extractPlayer(entityId, extractionId),
         broadcastSpawn: (entity) => ctx.net.broadcastSpawn(entity),
         broadcastDespawn: (id) => ctx.net.broadcastDespawn(id),
       },
@@ -48,12 +49,13 @@ export class WorldEventSystem implements System {
    * Extraction success: carried valuables become SECURED (they no longer
    * drop on death) and the player is recalled to the safe city.
    */
-  private extractPlayer(entityId: string): void {
+  extractPlayer(entityId: string, extractionId: string): void {
     const session = this.ctx.sessions.getByEntity(entityId as EntityId)
     if (!session) return
-    const secured = session.inventory.secureValuables(
+    const secured = session.inventory.secureValuablesReport(
       (defId) => this.ctx.world.content.item(defId)?.valuable !== undefined,
     )
+    const points = haulPoints(secured, this.ctx.world.content)
     const spawn = worldSpawn(this.ctx.world.content.world).pos
     session.move.pos.x = spawn[0]
     session.move.pos.y = spawn[1]
@@ -65,11 +67,23 @@ export class WorldEventSystem implements System {
     this.ctx.net.send(session, {
       t: 'announce',
       text:
-        secured > 0
-          ? `🚁 Extracted! ${secured} stack${secured === 1 ? '' : 's'} of loot secured.`
+        secured.length > 0
+          ? `🚁 Extracted! ${secured.length} stack${secured.length === 1 ? '' : 's'} secured · ${points} haul points.`
           : '🚁 Extracted safely back to Scrap City.',
     })
     this.ctx.net.sendInventory(session)
-    this.ctx.log.info('player extracted', { playerId: session.playerId, secured })
+    if (points > 0) {
+      this.ctx.integrations.haulExtracted?.(
+        session.subjectId ?? session.token,
+        extractionId,
+        session.name,
+        points,
+      )
+    }
+    this.ctx.log.info('player extracted', {
+      playerId: session.playerId,
+      stacks: secured.length,
+      points,
+    })
   }
 }

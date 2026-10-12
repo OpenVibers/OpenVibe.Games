@@ -26,6 +26,30 @@ export function earnedAchievements(game: GameId, result: RoundResult): string[] 
     .map((def) => def.id)
 }
 
+/** Scraplandia haul achievements, evaluated after a haul is recorded. */
+export function earnedHaulAchievements(score: number, weeklyScore: number): string[] {
+  return definitions.scraplandia
+    .filter((def) => {
+      if (def.criterion.event === 'haul_recorded') {
+        return def.criterion.minScore === undefined || score >= def.criterion.minScore
+      }
+      if (def.criterion.event === 'haul_week') {
+        return weeklyScore >= def.criterion.minScore
+      }
+      return false
+    })
+    .map((def) => def.id)
+}
+
+function weekStartMs(now: number): number {
+  const date = new Date(now)
+  return Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() - ((date.getUTCDay() + 6) % 7),
+  )
+}
+
 /** Server join event: once per account, regardless of how many characters or sessions join. */
 export async function recordJoined(db: Db, key: string, now: number): Promise<void> {
   const account = accountKey(key)
@@ -73,10 +97,47 @@ export async function recordRound(
   })
 }
 
+/** Record one successful extraction haul (Scraplandia); zero-value extractions are not recorded. */
+export async function recordHaul(
+  db: Db,
+  key: string,
+  extractionId: string,
+  name: string,
+  score: number,
+  now: number,
+): Promise<void> {
+  if (score <= 0) return
+  await db.tx(async () => {
+    const account = accountKey(key)
+    await db.exec(sql`
+      INSERT INTO game_hauls (account_key, extraction_id, player_name, score, finished_at)
+      VALUES (${account}, ${extractionId}, ${name}, ${score}, ${now})
+      ON CONFLICT (account_key, extraction_id) DO NOTHING
+    `)
+    const weekStart = weekStartMs(now)
+    const rows = await db.many<{ total: number }>(sql`
+      SELECT COALESCE(SUM(score), 0)::bigint AS total FROM game_hauls
+      WHERE account_key = ${account} AND finished_at >= ${weekStart}
+    `)
+    const weeklyScore = Number(rows[0]?.total ?? 0)
+    for (const achievement of earnedHaulAchievements(score, weeklyScore)) {
+      await db.exec(sql`
+        INSERT INTO game_achievements (game_id, achievement_id, account_key, unlocked_at)
+        VALUES ('scraplandia', ${achievement}, ${account}, ${now})
+        ON CONFLICT (game_id, achievement_id, account_key) DO NOTHING
+      `)
+    }
+  })
+}
+
 /** Write-behind for completed rounds. Failed writes stay queued for retry and shutdown drain. */
 export class GameProgressWriter {
   private readonly pending = new Map<string, { results: RoundResult[]; finishedAt: number }>()
   private readonly joined = new Map<string, number>()
+  private readonly hauls = new Map<
+    string,
+    { key: string; name: string; score: number; extractionId: string; finishedAt: number }
+  >()
   private inFlight: Promise<void> | null = null
   private readonly timer: ReturnType<typeof setInterval>
 
@@ -98,13 +159,36 @@ export class GameProgressWriter {
     void this.flush().catch(this.onError)
   }
 
+  submitHaul(extractionId: string, key: string, name: string, score: number): void {
+    if (score <= 0) return
+    this.hauls.set(`${accountKey(key)}\u0000${extractionId}`, {
+      key,
+      name,
+      score,
+      extractionId,
+      finishedAt: Date.now(),
+    })
+    void this.flush().catch(this.onError)
+  }
+
   async flush(): Promise<void> {
     if (this.inFlight) return this.inFlight
     this.inFlight = (async () => {
-      while (this.pending.size > 0 || this.joined.size > 0) {
+      while (this.pending.size > 0 || this.joined.size > 0 || this.hauls.size > 0) {
         for (const [roundId, entry] of this.pending) {
           await recordRound(this.db, 'salvage-rush', roundId, entry.results, entry.finishedAt)
           this.pending.delete(roundId)
+        }
+        for (const [id, haul] of this.hauls) {
+          await recordHaul(
+            this.db,
+            haul.key,
+            haul.extractionId,
+            haul.name,
+            haul.score,
+            haul.finishedAt,
+          )
+          this.hauls.delete(id)
         }
         for (const [key, at] of this.joined) {
           await recordJoined(this.db, key, at)
@@ -138,15 +222,29 @@ export async function leaderboard(
   page: number,
   now: number,
 ) {
-  const date = new Date(now)
-  const weekStart = Date.UTC(
-    date.getUTCFullYear(),
-    date.getUTCMonth(),
-    date.getUTCDate() - ((date.getUTCDay() + 6) % 7),
-  )
-  const since = period === 'week' ? weekStart : 0
+  const since = period === 'week' ? weekStartMs(now) : 0
   const limit = 20
   const offset = (page - 1) * limit
+  const entries = (rows: BoardRow[]) =>
+    rows.map((row, i) => ({
+      rank: offset + i + 1,
+      name: row.player_name,
+      score: Number(row.score),
+      finishedAt: Number(row.finished_at),
+    }))
+
+  if (game === 'scraplandia') {
+    const rows = await db.many<BoardRow>(sql`
+      SELECT account_key, player_name, SUM(score) AS score, MAX(finished_at) AS finished_at
+      FROM game_hauls
+      WHERE finished_at >= ${since}
+      GROUP BY account_key, player_name
+      ORDER BY score DESC, finished_at ASC, account_key ASC
+      LIMIT ${limit} OFFSET ${offset}
+    `)
+    return { game, period, page, pageSize: limit, entries: entries(rows) }
+  }
+
   const rows =
     period === 'all'
       ? await db.many<BoardRow>(sql`
@@ -169,12 +267,7 @@ export async function leaderboard(
     period,
     page,
     pageSize: limit,
-    entries: rows.map((row, i) => ({
-      rank: offset + i + 1,
-      name: row.player_name,
-      score: Number(row.score),
-      finishedAt: Number(row.finished_at),
-    })),
+    entries: entries(rows),
   }
 }
 

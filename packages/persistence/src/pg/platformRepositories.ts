@@ -70,6 +70,13 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         unlocked_at = LEAST(game_achievements.unlocked_at, excluded.unlocked_at)
     `)
     await db.exec(sql`DELETE FROM game_achievements WHERE account_key = ${from}`)
+    await db.exec(sql`
+      INSERT INTO game_hauls (account_key, extraction_id, player_name, score, finished_at)
+      SELECT ${into}, extraction_id, player_name, score, finished_at
+      FROM game_hauls WHERE account_key = ${from}
+      ON CONFLICT (account_key, extraction_id) DO NOTHING
+    `)
+    await db.exec(sql`DELETE FROM game_hauls WHERE account_key = ${from}`)
   }
   const recordAdoption = (
     key: string,
@@ -168,12 +175,16 @@ export function createIdentityRepository(db: Db): IdentityRepository {
       const gameAchievements = await db.many<Record<string, unknown>>(
         sql`SELECT game_id, achievement_id, unlocked_at FROM game_achievements WHERE account_key = ${subject} ORDER BY game_id, achievement_id`,
       )
+      const gameHauls = await db.many<Record<string, unknown>>(
+        sql`SELECT extraction_id, player_name, score, finished_at FROM game_hauls WHERE account_key = ${subject} ORDER BY finished_at`,
+      )
       return {
         characters: characters.map(withoutAccountKey),
         structures,
         gameResults,
         gameBestScores,
         gameAchievements,
+        gameHauls,
       }
     },
 
@@ -201,6 +212,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         await db.exec(
           sql`DELETE FROM game_round_results WHERE account_key IN (${idList(subjects)})`,
         )
+        await db.exec(sql`DELETE FROM game_hauls WHERE account_key IN (${idList(subjects)})`)
         return out
       })
     },

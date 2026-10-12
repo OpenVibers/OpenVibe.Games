@@ -68,6 +68,8 @@ export interface GameIntegrations {
     roundId: string,
     results: { key: string; name: string; score: number; rank: number }[],
   ) => void
+  /** Called for a server-confirmed extraction haul (Scraplandia). Never accepts a client message. */
+  haulExtracted?: (key: string, extractionId: string, name: string, score: number) => void
   /** Durable lifecycle/progression events through the outbox. */
   events?: GameEventRecorder
   /** Installed mods (content packs), reconciled every tick. */

@@ -15,6 +15,26 @@ export interface InventoryDto {
   slots: { i: number; stack: ItemStack }[]
 }
 
+/** A secured valuable stack reported by an extraction. */
+export interface SecuredStack {
+  defId: string
+  count: number
+}
+
+/**
+ * Haul points for secured stacks: Σ count × the item's `valuable.points`.
+ * Non-valuable defs contribute nothing, so callers may pass the whole
+ * extracted set and let this filter by capability.
+ */
+export function haulPoints(stacks: readonly SecuredStack[], content: ContentRegistry): number {
+  let total = 0
+  for (const stack of stacks) {
+    const points = content.item(stack.defId)?.valuable?.points
+    if (points !== undefined) total += stack.count * points
+  }
+  return total
+}
+
 export class Inventory {
   private slots: (ItemStack | null)[]
 
@@ -182,12 +202,18 @@ export class Inventory {
   /** Marks every valuable stack secured (extraction completed). Returns
    * how many stacks were newly secured. */
   secureValuables(isValuable: (defId: string) => boolean): number {
-    let secured = 0
+    return this.secureValuablesReport(isValuable).length
+  }
+
+  /** Like `secureValuables`, but reports each newly secured stack's defId
+   * and count so the caller can score the haul. */
+  secureValuablesReport(isValuable: (defId: string) => boolean): SecuredStack[] {
+    const secured: SecuredStack[] = []
     for (const s of this.slots) {
       if (!s || !isValuable(s.defId)) continue
       if (s.meta?.secured === 1) continue
       s.meta = { ...s.meta, secured: 1 }
-      secured++
+      secured.push({ defId: s.defId, count: s.count })
     }
     return secured
   }

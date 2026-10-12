@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Salvage Rush leaderboard · OpenVibe.Games</title>
+    <title>Leaderboard · OpenVibe.Games</title>
     <meta
       name="description"
-      content="The best Salvage Rush round scores on OpenVibe.Games, all time and this week. Scores come only from rounds the server played out."
+      content="OpenVibe.Games leaderboards: Salvage Rush best rounds and Scraplandia haul points, all time and this week. Scores come only from what the server played out."
     />
     <style>
       :root {
@@ -212,16 +212,21 @@
   <body>
     <main>
       <nav class="crumbs" aria-label="Breadcrumb">
-        <a href="/">OpenVibe.Games</a><a href="/play?game=salvage-rush">Play Salvage Rush</a>
+        <a href="/">OpenVibe.Games</a><a href="/play">Play Scraplandia</a
+        ><a href="/play?game=salvage-rush">Play Salvage Rush</a>
       </nav>
       <p class="eyebrow">LEADERBOARD</p>
-      <h1>Salvage Rush</h1>
-      <p class="lede">
+      <h1 id="title">Salvage Rush</h1>
+      <p class="lede" id="lede">
         Each player's best round score. Rounds last 90 seconds; every point comes from a pickup the
         server counted.
       </p>
       <section class="board" aria-labelledby="board-title">
         <h2 id="board-title" hidden>Best scores</h2>
+        <div class="tabs" role="group" aria-label="Game">
+          <button type="button" data-game="salvage-rush" aria-pressed="true">Salvage Rush</button>
+          <button type="button" data-game="scraplandia" aria-pressed="false">Scraplandia haul</button>
+        </div>
         <div class="tabs" role="group" aria-label="Period">
           <button type="button" data-period="all" aria-pressed="true">All time</button>
           <button type="button" data-period="week" aria-pressed="false">This week</button>
@@ -231,7 +236,7 @@
             <tr>
               <th scope="col">Rank</th>
               <th scope="col">Player</th>
-              <th scope="col">Best score</th>
+              <th scope="col" id="score-header">Best score</th>
             </tr>
           </thead>
           <tbody id="entries"></tbody>
@@ -242,7 +247,7 @@
           ><button id="next" type="button">Next</button>
         </div>
       </section>
-      <a class="play" href="/play?game=salvage-rush">▶ Play a round</a>
+      <a class="play" id="play-link" href="/play?game=salvage-rush">▶ Play a round</a>
       <p class="note">"This week" starts on Monday, 00:00 UTC.</p>
     </main>
   </body>
