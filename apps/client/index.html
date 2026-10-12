@@ -196,11 +196,13 @@
         mask-image: radial-gradient(closest-side, #000, transparent);
         -webkit-mask-image: radial-gradient(closest-side, #000, transparent);
       }
-      .shot span {
-        position: relative;
+      .shot .shot-art {
+        position: absolute;
+        inset: 0;
         z-index: 1;
-        font-size: 56px;
-        filter: drop-shadow(0 8px 26px rgba(0, 0, 0, 0.5));
+        width: 100%;
+        height: 100%;
+        display: block;
       }
       .game-body {
         padding: 26px;
@@ -434,8 +436,104 @@
     <section class="games">
       <!-- ── Featured: Scraplandia ── -->
       <div class="game-card featured">
-        <div class="shot" role="img" aria-label="Scraplandia">
-          <span>🔧🏙️</span>
+        <div
+          class="shot"
+          role="img"
+          aria-label="Scraplandia: scrap towers at dusk, a burn barrel and the recovery bird over the extraction circle"
+        >
+          <svg
+            class="shot-art"
+            viewBox="0 0 480 300"
+            preserveAspectRatio="xMidYMid slice"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient id="sl-sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#1e2a4a" stop-opacity="0" />
+                <stop offset="1" stop-color="#f97316" stop-opacity=".16" />
+              </linearGradient>
+              <radialGradient id="sl-fire" cx=".5" cy=".5" r=".5">
+                <stop offset="0" stop-color="#fbbf24" stop-opacity=".9" />
+                <stop offset=".45" stop-color="#f97316" stop-opacity=".45" />
+                <stop offset="1" stop-color="#f97316" stop-opacity="0" />
+              </radialGradient>
+              <linearGradient id="sl-beam" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#67e8f9" stop-opacity=".35" />
+                <stop offset="1" stop-color="#67e8f9" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <rect width="480" height="300" fill="url(#sl-sky)" />
+            <!-- far scrap towers -->
+            <g fill="#16223d">
+              <path d="M18 230V150h22v-14h18v30h14v64z" />
+              <path d="M84 230V120l12-10 12 10v20h16v90z" />
+              <path d="M138 230V160h30v-26h10v26h16v70z" />
+              <path d="M300 230V138h18v-22h26v36h12v78z" />
+              <path d="M372 230v-84l20-16 20 16v20h22v64z" />
+              <path d="M440 230v-58h30v58z" />
+            </g>
+            <!-- crane -->
+            <g stroke="#22314f" stroke-width="5" fill="none" stroke-linecap="round">
+              <path d="M226 230V86" />
+              <path d="M226 92h112" />
+              <path d="M226 92l-34 22" />
+              <path d="M332 92v56" />
+            </g>
+            <rect x="320" y="146" width="26" height="16" rx="2" fill="#2b3d63" />
+            <!-- near scrap heap and plates, on continuous ground -->
+            <path d="M0 300V256h480v44z" fill="#0e1830" />
+            <g fill="#0e1830">
+              <path d="M0 300V244l40-12 34 8 30-18 44 14 30-6 26 20v50z" />
+              <path d="M250 300v-40l46-22 40 10 34-16 50 18 60-8v58z" />
+            </g>
+            <g fill="none" stroke="#3b82f6" stroke-opacity=".45" stroke-width="2">
+              <path d="M40 232l34 8 30-18 44 14" />
+              <path d="M296 238l40 10 34-16 50 18" />
+            </g>
+            <!-- recovery bird and its beam onto the extraction circle -->
+            <path d="M326 70 L292 214 L392 214 L360 70z" fill="url(#sl-beam)" />
+            <g fill="#0b1324" stroke="#67e8f9" stroke-opacity=".7" stroke-width="1.5">
+              <path d="M318 52h58l12 8-10 10h-52l-12-8z" />
+              <path d="M300 46h96" stroke-width="2.5" />
+              <path d="M386 60l26-6" />
+            </g>
+            <ellipse
+              cx="342"
+              cy="232"
+              rx="58"
+              ry="13"
+              fill="none"
+              stroke="#22d3ee"
+              stroke-width="2.5"
+              stroke-dasharray="9 7"
+            />
+            <ellipse cx="342" cy="232" rx="40" ry="8" fill="#22d3ee" fill-opacity=".12" />
+            <!-- burn barrel -->
+            <circle cx="150" cy="226" r="56" fill="url(#sl-fire)" />
+            <rect
+              x="136"
+              y="228"
+              width="28"
+              height="36"
+              rx="3"
+              fill="#1b2438"
+              stroke="#f97316"
+              stroke-opacity=".5"
+            />
+            <path d="M139 238h22M139 252h22" stroke="#2c3a58" stroke-width="2" />
+            <path d="M142 228c2-12 8-10 6-22 8 8 12 14 10 22z" fill="#fbbf24" />
+            <!-- a welded wrench and gear floating in the glow -->
+            <g fill="none" stroke="#93c5fd" stroke-width="3" stroke-linecap="round" opacity=".9">
+              <path d="M206 170l26-26" />
+              <circle cx="238" cy="138" r="7" />
+            </g>
+            <g transform="translate(92 176)" fill="#60a5fa" opacity=".85">
+              <circle r="9" />
+              <circle r="4" fill="#0e1830" />
+              <path d="M-2-14h4v6h-4zM-2 8h4v6h-4zM-14-2h6v4h-6zM8-2h6v4h-6z" />
+            </g>
+          </svg>
         </div>
         <div class="game-body">
           <span class="badge live">● LIVE NOW</span>
@@ -460,7 +558,89 @@
         </div>
       </div>
       <div class="game-card wide">
-        <div class="shot" role="img" aria-label="Salvage Rush arena"><span>⚙️⏱️</span></div>
+        <div
+          class="shot"
+          role="img"
+          aria-label="Salvage Rush: the arena from above, scrap pickups and the round timer"
+        >
+          <svg
+            class="shot-art"
+            viewBox="0 0 400 260"
+            preserveAspectRatio="xMidYMid meet"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <radialGradient id="sr-floor" cx=".5" cy=".55" r=".55">
+                <stop offset="0" stop-color="#1d2b4a" />
+                <stop offset="1" stop-color="#0b1324" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <!-- the arena, seen from above -->
+            <ellipse cx="190" cy="140" rx="150" ry="96" fill="url(#sr-floor)" />
+            <path
+              d="M120 60h140l60 46v68l-60 46H120l-60-46v-68z"
+              fill="none"
+              stroke="#3b82f6"
+              stroke-opacity=".55"
+              stroke-width="2.5"
+            />
+            <path
+              d="M140 84h100l40 30v52l-40 30H140l-40-30v-52z"
+              fill="none"
+              stroke="#3b82f6"
+              stroke-opacity=".22"
+              stroke-width="1.5"
+              stroke-dasharray="6 6"
+            />
+            <!-- scrap pickups -->
+            <g fill="#fbbf24">
+              <circle cx="132" cy="112" r="6" />
+              <circle cx="246" cy="98" r="6" />
+              <circle cx="270" cy="160" r="6" />
+              <circle cx="160" cy="182" r="6" />
+              <circle cx="214" cy="136" r="5" />
+            </g>
+            <g fill="none" stroke="#fbbf24" stroke-opacity=".35" stroke-width="2">
+              <circle cx="132" cy="112" r="11" />
+              <circle cx="270" cy="160" r="11" />
+            </g>
+            <!-- the runner and its path through the last pickups -->
+            <path
+              d="M98 196c30-6 40-34 62-14s40-20 54-46"
+              fill="none"
+              stroke="#67e8f9"
+              stroke-width="2.5"
+              stroke-dasharray="2 7"
+              stroke-linecap="round"
+            />
+            <circle cx="214" cy="136" r="10" fill="#22d3ee" />
+            <circle cx="214" cy="136" r="4" fill="#0b1324" />
+            <!-- round timer -->
+            <g transform="translate(338 52)">
+              <circle r="26" fill="#0b1324" stroke="#22314f" stroke-width="5" />
+              <circle
+                r="26"
+                fill="none"
+                stroke="#22d3ee"
+                stroke-width="5"
+                stroke-linecap="round"
+                stroke-dasharray="122 164"
+                transform="rotate(-90)"
+              />
+              <text
+                y="6"
+                text-anchor="middle"
+                font-size="17"
+                font-weight="800"
+                fill="#e6edf7"
+                font-family="system-ui, sans-serif"
+              >
+                67
+              </text>
+            </g>
+          </svg>
+        </div>
         <div class="game-body">
           <span class="badge live">● LIVE NOW</span>
           <h3>SALVAGE RUSH</h3>
