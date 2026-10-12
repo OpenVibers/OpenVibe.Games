@@ -60,6 +60,12 @@ export interface ServerConfig {
   interestRadius: number
   /** Fraction the interest exit radius exceeds the enter radius (spawn/despawn hysteresis). */
   interestHysteresis: number
+  /** Ground-plane spatial index cell width (metres). */
+  interestCell: number
+  /** Maximum simultaneous instances of one place in this process. */
+  instancesPerPlace: number
+  /** Internal runtime slot; never read from the public environment. */
+  instanceSlot?: number
   maxPlayers: number
   persistFlushSeconds: number
   metricsLogSeconds: number
@@ -173,8 +179,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     indexnowKey: String(env.INDEXNOW_KEY ?? '').trim(),
     tickRate: 30,
     snapshotEvery: 2,
-    interestRadius: intEnv(env, 'INTEREST_RADIUS', 80),
+    interestRadius: positiveIntEnv(
+      env,
+      'GAMES_INTEREST_RADIUS',
+      positiveIntEnv(env, 'INTEREST_RADIUS', 80),
+    ),
     interestHysteresis: INTEREST_HYSTERESIS,
+    interestCell: positiveIntEnv(env, 'GAMES_INTEREST_CELL', 16),
+    instancesPerPlace: positiveIntEnv(env, 'GAMES_INSTANCES_PER_PLACE', 1),
     maxPlayers: intEnv(env, 'MAX_PLAYERS', 64),
     persistFlushSeconds: intEnv(env, 'PERSIST_FLUSH_SECONDS', 10),
     metricsLogSeconds: intEnv(env, 'METRICS_LOG_SECONDS', 30),
@@ -188,5 +200,11 @@ function intEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
   if (raw === undefined) return fallback
   const value = Number.parseInt(raw, 10)
   if (Number.isNaN(value)) throw new Error(`invalid ${key}: ${raw}`)
+  return value
+}
+
+function positiveIntEnv(env: NodeJS.ProcessEnv, key: string, fallback: number): number {
+  const value = intEnv(env, key, fallback)
+  if (value < 1) throw new Error(`invalid ${key}: ${env[key]}`)
   return value
 }

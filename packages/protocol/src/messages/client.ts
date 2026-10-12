@@ -22,6 +22,12 @@ export const ClientHelloSchema = z.object({
   appearance: AppearanceSchema,
 })
 
+/** Move to another running room of the same place. The server verifies the target. */
+export const ClientTransferSchema = z.object({
+  t: z.literal('transfer'),
+  instanceId: z.string().min(1).max(128),
+})
+
 /**
  * One input command per simulation tick. The client sends these at tick rate;
  * `seq` is echoed in snapshots for prediction reconciliation. The server
@@ -285,6 +291,7 @@ export const ClientContainerSortSchema = z.object({
 })
 
 export const ClientMessageSchema = z.union([
+  ClientTransferSchema,
   ClientEditModeSchema,
   ClientHelloSchema,
   ClientInputSchema,
@@ -315,6 +322,7 @@ export const ClientMessageSchema = z.union([
 ])
 
 export type ClientHello = z.infer<typeof ClientHelloSchema>
+export type ClientTransfer = z.infer<typeof ClientTransferSchema>
 export type ClientEditMode = z.infer<typeof ClientEditModeSchema>
 export type ClientInput = z.infer<typeof ClientInputSchema>
 export type ClientUse = z.infer<typeof ClientUseSchema>

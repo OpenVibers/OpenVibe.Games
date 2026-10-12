@@ -343,7 +343,18 @@ async function start(): Promise<void> {
   })
   let rejected = false
   connection.onMessage = (msg) => {
+    if (msg.t === 'welcome' && state.myEntityId && msg.instanceId !== state.instanceId) {
+      player.onTransfer()
+    }
     state.apply(msg)
+    if (msg.t === 'transfer_result') {
+      hud.toast(
+        msg.accepted
+          ? `Moved to ${msg.instanceId}`
+          : `Transfer refused: ${msg.reason ?? 'unavailable'}`,
+        !msg.accepted,
+      )
+    }
     if (msg.t === 'map_reload') {
       void (async () => {
         try {

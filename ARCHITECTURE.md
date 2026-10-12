@@ -69,10 +69,10 @@ scene or engine, so there is no Node-only path to keep separate.
   zod-validated (range-clamped axes, size caps) and malformed traffic
   disconnects. JSON encoding today behind an encode/decode boundary sized for
   a binary codec swap.
-- **Interest management:** per-session known-entity sets built from a radius
-  query (the query is one function — the future spatial region index replaces
-  its internals, not its callers). Spawn/despawn diffs flow from interest
-  changes; snapshots contain only relevant players + _awake_ relevant bodies.
+- **Interest management:** per-session cell subscriptions and known-entity
+  sets built from the spatial hash. A precise radius check filters each cell's
+  candidates; crossing cells sends spawn/despawn differences with exit-radius
+  hysteresis. Snapshots contain only relevant players + _awake_ relevant bodies.
 - **Sleep networking:** when a prop settles, one final `entity` pin is
   broadcast and it drops out of snapshots; on wake it re-enters. Settled
   props also mark themselves dirty exactly once for the persistence flush.
@@ -110,6 +110,12 @@ restores the snapshot's dirtiness and is retried, and shutdown drains the queue 
 closes. Batch writes are multi-row `INSERT … ON CONFLICT` in chunks of at most 500 rows. First boot
 seeds from the world definition; afterwards the database is the world's source of truth. The
 simulation never reads the platform tables.
+
+M4 runs several isolated simulations of the same place in one process. A PostgreSQL
+`game_instances` claim has a renewable lease version; state writes lock and verify
+that claim in their transaction. Later rooms keep separate world rows while
+characters and their inventory remain shared. Each character keeps a last
+position per room. See `docs/instances.md` for transfer and the process limit.
 
 ## Platform boundary
 

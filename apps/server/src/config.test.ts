@@ -69,6 +69,27 @@ describe('loadConfig scriptMods', () => {
   })
 })
 
+describe('instance and interest configuration', () => {
+  it('keeps one room and the existing grid and radius by default', () => {
+    expect(loadConfig({})).toMatchObject({
+      instancesPerPlace: 1,
+      interestCell: 16,
+      interestRadius: 80,
+    })
+  })
+  it('accepts positive overrides and refuses invalid sizes', () => {
+    expect(
+      loadConfig({
+        GAMES_INSTANCES_PER_PLACE: '3',
+        GAMES_INTEREST_CELL: '32',
+        GAMES_INTEREST_RADIUS: '96',
+      }),
+    ).toMatchObject({ instancesPerPlace: 3, interestCell: 32, interestRadius: 96 })
+    expect(() => loadConfig({ GAMES_INSTANCES_PER_PLACE: '0' })).toThrow()
+    expect(() => loadConfig({ GAMES_INTEREST_CELL: '-1' })).toThrow()
+  })
+})
+
 describe('loadConfig indexnowKey', () => {
   it('is empty (IndexNow off) unless INDEXNOW_KEY is set, and never carries padding', () => {
     expect(loadConfig({}).indexnowKey).toBe('')

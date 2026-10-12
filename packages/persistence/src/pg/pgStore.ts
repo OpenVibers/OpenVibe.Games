@@ -19,6 +19,10 @@ import { BATCH_CHUNK, chunks, idList } from './sqlUtils.js'
 export interface PgStoreOptions {
   /** GAMES_PLACE_ID (default 'scraplandia'): the place every world row belongs to on this instance. */
   placeId?: string
+  /** A non-primary in-process room gets its own persistent world rows. */
+  instanceSlot?: number
+  /** Runs inside each game-state transaction, holding the lease row lock until commit. */
+  leaseGuard?: () => Promise<void>
 }
 
 export interface PgPersistenceStore extends PersistenceStore {
@@ -77,12 +81,23 @@ interface ConstraintRow {
 
 export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceStore {
   const placeId = opts.placeId ?? process.env.GAMES_PLACE_ID ?? 'scraplandia'
+  const statePlaceId =
+    opts.instanceSlot && opts.instanceSlot > 0
+      ? `${placeId}:instance:${opts.instanceSlot}`
+      : placeId
+  const writeGameState = <T>(run: () => Promise<T>): Promise<T> =>
+    opts.leaseGuard
+      ? db.tx(async () => {
+          await opts.leaseGuard?.()
+          return run()
+        })
+      : run()
 
   const worldEntities: WorldEntityRepository = {
     async loadAll(): Promise<WorldEntityDto[]> {
       const rows = await db.many<WorldEntityRow>(
         sql`SELECT id, kind, def_id, owner_id, pos_x, pos_y, pos_z, rot_x, rot_y, rot_z, rot_w, motion, state, updated_at
-            FROM world_entities WHERE place_id = ${placeId}`,
+            FROM world_entities WHERE place_id = ${statePlaceId}`,
       )
       return rows.map((row) => ({
         id: row.id,
@@ -97,25 +112,26 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
       }))
     },
     async upsertMany(entities: readonly WorldEntityDto[]): Promise<void> {
-      for (const chunk of chunks(entities, BATCH_CHUNK)) {
-        const rows = chunk.map((e) => ({
-          place_id: placeId,
-          id: e.id,
-          kind: e.kind,
-          def_id: e.defId,
-          owner_id: e.ownerId,
-          pos_x: e.pos[0],
-          pos_y: e.pos[1],
-          pos_z: e.pos[2],
-          rot_x: e.rot[0],
-          rot_y: e.rot[1],
-          rot_z: e.rot[2],
-          rot_w: e.rot[3],
-          motion: e.motion,
-          state: e.state === null ? null : sql.json(e.state),
-          updated_at: e.updatedAt,
-        }))
-        await db.query(sql`
+      return writeGameState(async () => {
+        for (const chunk of chunks(entities, BATCH_CHUNK)) {
+          const rows = chunk.map((e) => ({
+            place_id: statePlaceId,
+            id: e.id,
+            kind: e.kind,
+            def_id: e.defId,
+            owner_id: e.ownerId,
+            pos_x: e.pos[0],
+            pos_y: e.pos[1],
+            pos_z: e.pos[2],
+            rot_x: e.rot[0],
+            rot_y: e.rot[1],
+            rot_z: e.rot[2],
+            rot_w: e.rot[3],
+            motion: e.motion,
+            state: e.state === null ? null : sql.json(e.state),
+            updated_at: e.updatedAt,
+          }))
+          await db.query(sql`
           INSERT INTO world_entities
           ${sql.insert(rows, [
             'place_id',
@@ -139,18 +155,25 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
             rot_x=excluded.rot_x, rot_y=excluded.rot_y, rot_z=excluded.rot_z, rot_w=excluded.rot_w,
             motion=excluded.motion, state=excluded.state, owner_id=excluded.owner_id, updated_at=excluded.updated_at
         `)
-      }
+        }
+      })
     },
     async deleteMany(ids: readonly string[]): Promise<void> {
-      for (const chunk of chunks(ids, BATCH_CHUNK)) {
-        if (chunk.length === 0) continue
-        await db.exec(
-          sql`DELETE FROM world_entities WHERE place_id = ${placeId} AND id IN (${idList(chunk)})`,
-        )
-      }
+      return writeGameState(async () => {
+        for (const chunk of chunks(ids, BATCH_CHUNK)) {
+          if (chunk.length === 0) continue
+          await db.exec(
+            sql`DELETE FROM world_entities WHERE place_id = ${statePlaceId} AND id IN (${idList(chunk)})`,
+          )
+        }
+      })
     },
     async deleteByKind(kind: string): Promise<void> {
-      await db.exec(sql`DELETE FROM world_entities WHERE place_id = ${placeId} AND kind = ${kind}`)
+      await writeGameState(() =>
+        db.exec(
+          sql`DELETE FROM world_entities WHERE place_id = ${statePlaceId} AND kind = ${kind}`,
+        ),
+      )
     },
   }
 
@@ -243,26 +266,65 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
       const row = await db.maybe<CharacterRow>(
         sql`${characters} WHERE account_key = ${accountKey(token)} AND slot = ${slot}`,
       )
-      return row ? rowToPlayer(row) : null
+      if (!row) return null
+      const player = rowToPlayer(row)
+      if (opts.instanceSlot !== undefined) {
+        const position = await db.maybe<{
+          pos_x: number
+          pos_y: number
+          pos_z: number
+          yaw: number
+        }>(sql`
+          SELECT pos_x, pos_y, pos_z, yaw FROM character_instance_positions
+          WHERE character_id = ${player.id} AND instance_id = ${`${placeId}:${opts.instanceSlot}`}
+        `)
+        if (position) {
+          player.pos = [position.pos_x, position.pos_y, position.pos_z]
+          player.yaw = position.yaw
+        }
+      }
+      return player
     },
     async findById(id: string): Promise<PlayerDto | null> {
       const row = await db.maybe<CharacterRow>(sql`${characters} WHERE id = ${id}`)
       return row ? rowToPlayer(row) : null
     },
     async upsert(player: PlayerDto): Promise<void> {
-      await db.query(upsertCharacter([player]))
+      await writeGameState(async () => {
+        await db.query(upsertCharacter([player]))
+        await savePositions([player])
+      })
     },
     async upsertMany(list: readonly PlayerDto[]): Promise<void> {
-      for (const chunk of chunks(list, BATCH_CHUNK)) {
-        if (chunk.length === 0) continue
-        await db.query(upsertCharacter(chunk))
-      }
+      await writeGameState(async () => {
+        for (const chunk of chunks(list, BATCH_CHUNK)) {
+          if (chunk.length === 0) continue
+          await db.query(upsertCharacter(chunk))
+          await savePositions(chunk)
+        }
+      })
     },
     async resetAllPositions(pos: [number, number, number], yaw: number): Promise<void> {
-      await db.exec(
-        sql`UPDATE characters SET pos_x = ${pos[0]}, pos_y = ${pos[1]}, pos_z = ${pos[2]}, yaw = ${yaw}`,
+      await writeGameState(() =>
+        db.exec(
+          sql`UPDATE characters SET pos_x = ${pos[0]}, pos_y = ${pos[1]}, pos_z = ${pos[2]}, yaw = ${yaw}`,
+        ),
       )
     },
+  }
+
+  async function savePositions(list: readonly PlayerDto[]): Promise<void> {
+    if (opts.instanceSlot === undefined) return
+    const instanceId = `${placeId}:${opts.instanceSlot}`
+    for (const player of list) {
+      await db.exec(sql`
+        INSERT INTO character_instance_positions (character_id, instance_id, pos_x, pos_y, pos_z, yaw, updated_at)
+        VALUES (${player.id}, ${instanceId}, ${player.pos[0]}, ${player.pos[1]}, ${player.pos[2]}, ${player.yaw}, ${player.updatedAt})
+        ON CONFLICT (character_id, instance_id) DO UPDATE SET
+          pos_x = excluded.pos_x, pos_y = excluded.pos_y, pos_z = excluded.pos_z,
+          yaw = excluded.yaw, updated_at = excluded.updated_at
+      `)
+    }
   }
 
   function upsertCharacter(list: readonly PlayerDto[]): Sql {
@@ -283,7 +345,7 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
   const constraints: ConstraintRepository = {
     async loadAll(): Promise<ConstraintDto[]> {
       const rows = await db.many<ConstraintRow>(
-        sql`SELECT id, type, entity_a, entity_b, params, updated_at FROM world_constraints WHERE place_id = ${placeId}`,
+        sql`SELECT id, type, entity_a, entity_b, params, updated_at FROM world_constraints WHERE place_id = ${statePlaceId}`,
       )
       return rows.map((row) => ({
         id: row.id,
@@ -295,51 +357,57 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
       }))
     },
     async upsertMany(list: readonly ConstraintDto[]): Promise<void> {
-      for (const chunk of chunks(list, BATCH_CHUNK)) {
-        if (chunk.length === 0) continue
-        const rows = chunk.map((c) => ({
-          place_id: placeId,
-          id: c.id,
-          type: c.type,
-          entity_a: c.entityA,
-          entity_b: c.entityB,
-          params: c.params === null ? null : sql.json(c.params),
-          updated_at: c.updatedAt,
-        }))
-        await db.query(sql`
+      await writeGameState(async () => {
+        for (const chunk of chunks(list, BATCH_CHUNK)) {
+          if (chunk.length === 0) continue
+          const rows = chunk.map((c) => ({
+            place_id: statePlaceId,
+            id: c.id,
+            type: c.type,
+            entity_a: c.entityA,
+            entity_b: c.entityB,
+            params: c.params === null ? null : sql.json(c.params),
+            updated_at: c.updatedAt,
+          }))
+          await db.query(sql`
           INSERT INTO world_constraints
           ${sql.insert(rows, ['place_id', 'id', 'type', 'entity_a', 'entity_b', 'params', 'updated_at'])}
           ON CONFLICT (place_id, id) DO UPDATE SET
             params = excluded.params, updated_at = excluded.updated_at
         `)
-      }
+        }
+      })
     },
     async deleteMany(ids: readonly string[]): Promise<void> {
-      for (const chunk of chunks(ids, BATCH_CHUNK)) {
-        if (chunk.length === 0) continue
-        await db.exec(
-          sql`DELETE FROM world_constraints WHERE place_id = ${placeId} AND id IN (${idList(chunk)})`,
-        )
-      }
+      await writeGameState(async () => {
+        for (const chunk of chunks(ids, BATCH_CHUNK)) {
+          if (chunk.length === 0) continue
+          await db.exec(
+            sql`DELETE FROM world_constraints WHERE place_id = ${statePlaceId} AND id IN (${idList(chunk)})`,
+          )
+        }
+      })
     },
   }
 
   const meta: MetaRepository = {
     async get(key: string): Promise<unknown | null> {
       const value = await db.value<unknown>(
-        sql`SELECT value FROM world_meta WHERE place_id = ${placeId} AND key = ${key}`,
+        sql`SELECT value FROM world_meta WHERE place_id = ${statePlaceId} AND key = ${key}`,
       )
       return value ?? null
     },
     async set(key: string, value: unknown): Promise<void> {
-      await db.exec(sql`
-        INSERT INTO world_meta (place_id, key, value) VALUES (${placeId}, ${key}, ${sql.json(value)})
+      await writeGameState(() =>
+        db.exec(sql`
+        INSERT INTO world_meta (place_id, key, value) VALUES (${statePlaceId}, ${key}, ${sql.json(value)})
         ON CONFLICT (place_id, key) DO UPDATE SET value = excluded.value
-      `)
+      `),
+      )
     },
     async list(prefix: string): Promise<{ key: string; value: unknown }[]> {
       const rows = await db.many<{ key: string; value: unknown }>(
-        sql`SELECT key, value FROM world_meta WHERE place_id = ${placeId} AND key LIKE ${`${prefix}%`} ORDER BY key`,
+        sql`SELECT key, value FROM world_meta WHERE place_id = ${statePlaceId} AND key LIKE ${`${prefix}%`} ORDER BY key`,
       )
       return rows.map((r) => ({ key: r.key, value: r.value }))
     },
@@ -352,6 +420,10 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
       await db.exec(
         sql`INSERT INTO places (id, name) VALUES (${placeId}, ${name}) ON CONFLICT (id) DO NOTHING`,
       )
+      if (statePlaceId !== placeId)
+        await db.exec(
+          sql`INSERT INTO places (id, name) VALUES (${statePlaceId}, ${name}) ON CONFLICT (id) DO NOTHING`,
+        )
     },
     worldEntities,
     players,
@@ -361,7 +433,10 @@ export function openPgStore(db: Db, opts: PgStoreOptions = {}): PgPersistenceSto
     mods: createModRepository(db),
     mediaMirrors: createMediaMirrorRepository(db),
     transaction<T>(fn: (t: Tx) => Promise<T>): Promise<T> {
-      return db.tx(fn)
+      return db.tx(async (t) => {
+        await opts.leaseGuard?.()
+        return fn(t)
+      })
     },
     close(): Promise<void> {
       return db.close()

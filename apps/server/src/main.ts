@@ -10,13 +10,14 @@ import {
   SCRAPLANDIA_PACK,
   setMapOverride,
 } from '@openvibe/content'
-import { openPgStore } from '@openvibe/persistence'
+import { InstanceRegistry, openPgStore, type InstanceLease } from '@openvibe/persistence'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { createConsoleLogger } from '@openvibe/shared'
 import { loadConfig } from './config.js'
 import { openDb } from './db.js'
 import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
+import { InstanceHub } from './game/instanceHub.js'
 import { attachEditorWs } from './net/editorWs.js'
 import {
   closeSockets,
@@ -79,8 +80,23 @@ async function main(): Promise<void> {
   // PostgreSQL (or embedded PGlite in development), migrated before anything writes. It opens
   // before content because enabled mod packs add definitions to the content registry.
   const db = await openDb(config.db, log)
-  const store = openPgStore(db, { placeId: config.placeId })
+  const registry = new InstanceRegistry(db, config.placeId)
+  let primaryLease: InstanceLease
+  const store = openPgStore(db, {
+    placeId: config.placeId,
+    instanceSlot: 0,
+    leaseGuard: () => registry.assertHeld(primaryLease, Date.now()),
+  })
   await store.ensurePlace()
+  const claimed = await registry.claim(
+    0,
+    config.maxPlayers,
+    crypto.randomUUID(),
+    Date.now(),
+    60_000,
+  )
+  if (!claimed) throw new Error('primary instance slot is already leased')
+  primaryLease = claimed
 
   // Content validates at construction — invalid definitions kill the boot. Packs are the enabled
   // installs granted games.def.define; one that no longer builds is skipped and logged.
@@ -123,10 +139,11 @@ async function main(): Promise<void> {
     packs: packs.length,
   })
 
-  const physics = createRapierWorld(await loadRapier())
+  const rapier = await loadRapier()
+  const physics = createRapierWorld(rapier)
 
   const metrics = new ServerMetrics()
-  const world = new GameWorld(content, physics, log.child({ system: 'world' }))
+  const world = new GameWorld(content, physics, log.child({ system: 'world' }), config.interestCell)
   await world.seedOrRestore(store)
 
   // ── Platform integration (roadmap Wave 12) ─────────────────────────
@@ -217,8 +234,9 @@ async function main(): Promise<void> {
   // games-quickjs@1 script mods run only where the place enables them; the engine (WASM) is not
   // even loaded otherwise. They stay in the def set, so the handshake digest is the same either way.
   const scriptLog = log.child({ system: 'script-mods' })
-  let scripts: ScriptModHost | undefined
-  if (config.scriptMods) {
+  const scriptHosts = new Map<number, ScriptModHost>()
+  const createScriptHost = async (slot: number): Promise<ScriptModHost | undefined> => {
+    if (!config.scriptMods) return undefined
     const { createQuickJsSandboxFactory } = await import('./mods/script/quickjs.js')
     // Built-in pack code is reviewed with the place; installed packs use only the approved subset.
     const grants: Record<string, string[]> = Object.fromEntries(
@@ -236,36 +254,117 @@ async function main(): Promise<void> {
             .map((cap) => cap.slice(6))
       }
     }
-    scripts = new ScriptModHost(
+    const host = new ScriptModHost(
       content.allMods(),
       createQuickJsSandboxFactory(),
-      scriptLog,
+      scriptLog.child({ slot }),
       undefined,
       {
-        placeSeed: config.placeId,
+        placeSeed: slot === 0 ? config.placeId : `${config.placeId}:${slot}`,
         grants: grants as Record<string, ScriptCapability[]>,
         storage: new PgScriptStorage(store.mods, config.placeId, scriptLog),
       },
     )
-  } else if (content.allMods().length > 0) {
+    scriptHosts.set(slot, host)
+    return host
+  }
+  const scripts = await createScriptHost(0)
+  if (!config.scriptMods && content.allMods().length > 0) {
     scriptLog.info('script mods off for this place', { mods: content.allMods().length })
   }
-  const game = new GameServer(config, world, store, metrics, log.child({ system: 'game' }), {
-    ...(recorder ? { events: recorder } : {}),
-    mods: modRuntime,
-    ...(scripts ? { scripts } : {}),
-    ...(progressSummary ? { progressSummary } : {}),
-  })
+  const game = new GameServer(
+    { ...config, instanceSlot: 0 },
+    world,
+    store,
+    metrics,
+    log.child({ system: 'game' }),
+    {
+      ...(recorder ? { events: recorder } : {}),
+      mods: modRuntime,
+      ...(scripts ? { scripts } : {}),
+      ...(progressSummary ? { progressSummary } : {}),
+    },
+  )
   // Async boot: env, markets and the NPC population load before the tick loop starts.
   await game.load()
   await scripts?.start()
+  const runningLease = await registry.renew(primaryLease, Date.now(), 15_000, 'running')
+  if (!runningLease) throw new Error('primary instance lease expired during boot')
+  primaryLease = runningLease
+  const hub = new InstanceHub(
+    registry,
+    {
+      lease: primaryLease,
+      game,
+      world,
+      dispose: async () => {
+        await scripts?.flushWrites()
+        scripts?.dispose()
+        scriptHosts.delete(0)
+        physics.dispose()
+      },
+    },
+    config.instancesPerPlace,
+    config.maxPlayers,
+    async (slot, lease) => {
+      const roomLease = lease
+      const roomStore = openPgStore(db, {
+        placeId: config.placeId,
+        instanceSlot: slot,
+        leaseGuard: () => registry.assertHeld(roomLease, Date.now()),
+      })
+      await roomStore.ensurePlace()
+      const roomPhysics = createRapierWorld(rapier)
+      const roomWorld = new GameWorld(
+        content,
+        roomPhysics,
+        log.child({ system: 'world', slot }),
+        config.interestCell,
+      )
+      await roomWorld.seedOrRestore(roomStore)
+      roomWorld.reconcileMapNodes()
+      roomWorld.reconcileMapProps()
+      const roomScripts = await createScriptHost(slot)
+      const roomGame = new GameServer(
+        { ...config, instanceSlot: slot },
+        roomWorld,
+        roomStore,
+        metrics,
+        log.child({ system: 'game', slot }),
+        {
+          ...(recorder ? { events: recorder } : {}),
+          mods: new ModRuntime(mods, content, log.child({ system: 'mods', slot }), {
+            reconcileEveryTicks: config.tickRate,
+          }),
+          ...(roomScripts ? { scripts: roomScripts } : {}),
+          ...(progressSummary ? { progressSummary } : {}),
+        },
+      )
+      await roomGame.load()
+      await roomScripts?.start()
+      return {
+        lease: roomLease,
+        game: roomGame,
+        world: roomWorld,
+        dispose: async () => {
+          await roomScripts?.flushWrites()
+          roomScripts?.dispose()
+          scriptHosts.delete(slot)
+          roomPhysics.dispose()
+        },
+      }
+    },
+    log.child({ system: 'instances' }),
+  )
+  const heartbeatTimer = setInterval(() => void hub.heartbeat(), 5_000)
+  heartbeatTimer.unref()
 
   const syncScriptView = async (view: ModView): Promise<void> => {
     if (view.mod.runtime !== 'games-quickjs@1') return
     for (const raw of view.pack.mods ?? []) {
       const script = ScriptModSchema.parse(raw)
       const active = view.mod.status === 'enabled' && view.granted.has('games.script.run')
-      scripts?.remove(script.id)
+      for (const host of scriptHosts.values()) host.remove(script.id)
       if (!active) {
         content.removeScriptMod(script.id)
         continue
@@ -276,8 +375,8 @@ async function main(): Promise<void> {
       const pinned = { ...script, granted }
       if (content.allMods().some((mod) => mod.id === script.id)) content.replaceScriptMod(pinned)
       else content.addScriptMod(pinned)
-      if (scripts) {
-        const result = await scripts.add(pinned, granted)
+      for (const host of scriptHosts.values()) {
+        const result = await host.add(pinned, granted)
         if (!result.ok)
           log.warn('script failed to start after grant change', {
             mod: script.id,
@@ -285,9 +384,10 @@ async function main(): Promise<void> {
           })
       }
     }
-    game.announce(
-      'Script mod definitions changed. New connections must use the updated content set.',
-    )
+    for (const room of hub.activeRooms)
+      room.game.announce(
+        'Script mod definitions changed. New connections must use the updated content set.',
+      )
   }
 
   const accountData = platform
@@ -297,11 +397,13 @@ async function main(): Promise<void> {
         send: networkSender({ networkUrl: config.platform.networkUrl, tokens: platform.tokens }),
         closeSessions: async (subjects) => {
           let closed = 0
-          for (const s of subjects) closed += game.revokeSubject(s, Number.MAX_SAFE_INTEGER)
+          for (const s of subjects)
+            for (const room of hub.activeRooms)
+              closed += room.game.revokeSubject(s, Number.MAX_SAFE_INTEGER)
           // Let the closing sockets' character saves land before the rows are erased.
           if (closed) {
             await new Promise((r) => setTimeout(r, 2000))
-            await game.drain()
+            await Promise.all(hub.activeRooms.map((room) => room.game.drain()))
           }
         },
         log: platformLog.child({ system: 'account-data' }),
@@ -313,7 +415,11 @@ async function main(): Promise<void> {
   const revocations = createRevocationEvents({
     db,
     secrets: config.platform.eventsSecrets,
-    onRevoked: (subject, validAfterMs) => game.revokeSubject(subject, validAfterMs),
+    onRevoked: (subject, validAfterMs) =>
+      hub.activeRooms.reduce(
+        (count, room) => count + room.game.revokeSubject(subject, validAfterMs),
+        0,
+      ),
     // Account merge (ADR-029): the folded-in account's characters join the survivor's free slots.
     onMerged: (from, into, mergeId) => store.identity.mergeSubject(from, into, mergeId, Date.now()),
     // Account export and deletion (ADR-033): the part goes to Network; a deleted account's sessions close (each
@@ -361,7 +467,7 @@ async function main(): Promise<void> {
   const readiness = createReadiness({
     pingDb: () => db.ready(),
     metrics,
-    online: () => game.onlineCount(),
+    online: () => hub.onlineCount,
   })
 
   // Per-actor limits on editor saves, uploads and the mods API (roadmap WS-R task 4). With VALKEY_URL the
@@ -389,12 +495,14 @@ async function main(): Promise<void> {
     (next, revision) => {
       try {
         setMapOverride(compileMapFileV2(next))
-        world.reconcileMapTerrain()
-        world.reconcileMapStatics()
-        world.reconcileMapZones()
-        world.reconcileMapNodes()
-        world.reconcileMapProps()
-        game.broadcastMapReload()
+        for (const room of hub.activeRooms) {
+          room.world.reconcileMapTerrain()
+          room.world.reconcileMapStatics()
+          room.world.reconcileMapZones()
+          room.world.reconcileMapNodes()
+          room.world.reconcileMapProps()
+          room.game.broadcastMapReload()
+        }
         editors.broadcastSaved(revision)
         log.info('map applied live', { terrains: next.terrains.length, revision })
       } catch (err) {
@@ -523,18 +631,26 @@ async function main(): Promise<void> {
               script.capabilities ?? (['players.read', 'world.emit'] as const)
             ).filter((cap) => prior.granted.has(scriptGrant(cap)))
             const pinned = { ...script, granted: grants }
-            const prepared = await scripts.prepareReload(pinned, grants)
-            if (!prepared.ok) throw new ModError('mod.reload_failed', prepared.error, 422)
+            const prepared: { commit(): void; cancel(): void }[] = []
+            for (const host of scriptHosts.values()) {
+              const candidate = await host.prepareReload(pinned, grants)
+              if (!candidate.ok) {
+                for (const priorCandidate of prepared) priorCandidate.cancel()
+                throw new ModError('mod.reload_failed', candidate.error, 422)
+              }
+              prepared.push(candidate)
+            }
             try {
               const view = await mods.replace(id, request, actor)
               content.replaceScriptMod(pinned)
-              prepared.commit()
-              game.announce(
-                `Script mod ${script.id} reloaded. New connections must use the updated content set.`,
-              )
+              for (const candidate of prepared) candidate.commit()
+              for (const room of hub.activeRooms)
+                room.game.announce(
+                  `Script mod ${script.id} reloaded. New connections must use the updated content set.`,
+                )
               return view
             } catch (error) {
-              prepared.cancel()
+              for (const candidate of prepared) candidate.cancel()
               throw error
             }
           },
@@ -557,7 +673,7 @@ async function main(): Promise<void> {
   const drainer = httpDrainer(http)
   world.reconcileMapNodes()
   world.reconcileMapProps()
-  const gameWss = attachWebSocket(http, game, {
+  const gameWss = attachWebSocket(http, hub, {
     tickets: ticketStore,
     upgradeLimits: actorLimits,
     clientAddress,
@@ -612,7 +728,7 @@ async function main(): Promise<void> {
     if (!running) return
     const now = performance.now()
     while (now >= nextTick) {
-      game.step()
+      hub.step()
       nextTick += tickMs
       // If we fell far behind (debugger pause, EL stall), resync instead of
       // spiraling through hundreds of catch-up ticks.
@@ -647,27 +763,28 @@ async function main(): Promise<void> {
       const httpDone = drainer.close(DRAIN_MS)
       running = false
       clearInterval(metricsTimer)
+      clearInterval(heartbeatTimer)
       clearInterval(pruneTimer)
       editors.stop()
       const mirrorDone = mirror?.stop()
-      game.announceRestart()
+      for (const room of hub.activeRooms) room.game.announceRestart()
       const [players, editorPeers] = await Promise.all([
         closeSockets(gameWss, SOCKETS_MS),
         closeSockets(editors.wss, SOCKETS_MS),
       ])
       // Mark every session dirty and queue the final checkpoint, then let the whole write-behind queue
       // (that checkpoint plus every disconnect save queued before it) drain.
-      game.shutdown()
-      const drained = await game.drain()
-      await scripts?.flushWrites()
-      scripts?.dispose()
+      const drained = await hub.shutdown()
+      for (const host of scriptHosts.values()) {
+        await host.flushWrites()
+        host.dispose()
+      }
       const cut = await httpDone
       await within(2000, mirrorDone)
       await within(1000, progressSummary?.settle())
       await within(2000, outbox?.stop())
       await mods.flushWrites()
       await store.close()
-      physics.dispose()
       await valkey?.close()
       log.info('stopped', {
         ms: Date.now() - t0,

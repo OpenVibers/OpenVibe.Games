@@ -5,17 +5,11 @@
   "status": "active",
   "visibility": "public",
   "description": "Script binding for mods (games-quickjs@1): game.message, a validated private announcement to one player in the mod's current place, prefixed with the mod's name. Absent unless granted.",
-  "permissions": [
-    "games:player:message"
-  ],
-  "resourceConstraints": [
-    "none"
-  ],
+  "permissions": ["games:player:message"],
+  "resourceConstraints": ["none"],
   "quotaClass": "games-mod-runtime",
   "events": [],
-  "implementedBy": [
-    "mod runtime binding game.message (apps/server/src/mods/script/host.ts)"
-  ],
+  "implementedBy": ["mod runtime binding game.message (apps/server/src/mods/script/host.ts)"],
   "inputSchema": "games.script-message@1",
   "outputSchema": "common.no-body@1"
 }

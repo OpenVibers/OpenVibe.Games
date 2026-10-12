@@ -5,12 +5,8 @@
   "status": "active",
   "visibility": "public",
   "description": "Run a staff-installed script mod (games-quickjs@1, one or more module files in its content pack, imports resolved inside the pack only) in its own QuickJS sandbox per place, under the pack's CPU and memory budgets; a staff hot reload replaces the code and keeps its storage, and a reload that fails to start keeps the previous version running. The script sees only the bindings its install was granted.",
-  "permissions": [
-    "games:script:run"
-  ],
-  "resourceConstraints": [
-    "none"
-  ],
+  "permissions": ["games:script:run"],
+  "resourceConstraints": ["none"],
   "quotaClass": "games-mod-runtime",
   "events": [],
   "implementedBy": [

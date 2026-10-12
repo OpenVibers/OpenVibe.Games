@@ -5,12 +5,8 @@
   "status": "active",
   "visibility": "public",
   "description": "Script binding for mods (games-quickjs@1): game.players and game.player, read-only views of the players in the mod's current place. Absent from the script's game object unless the install was granted it; checked against the install's approved capabilities, which travel in the def-set digest.",
-  "permissions": [
-    "games:players:read"
-  ],
-  "resourceConstraints": [
-    "none"
-  ],
+  "permissions": ["games:players:read"],
+  "resourceConstraints": ["none"],
   "quotaClass": "games-mod-runtime",
   "events": [],
   "implementedBy": [
