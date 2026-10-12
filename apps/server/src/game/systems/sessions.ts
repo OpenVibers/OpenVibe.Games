@@ -189,9 +189,10 @@ export class SessionsSystem implements System {
     const world = ctx.world.content.world
     const playerId = existing ? asPlayerId(existing.id) : newPlayerId()
     const mapSpawn = worldSpawn(world)
-    const spawn = existing
-      ? vec3(existing.pos[0], existing.pos[1], existing.pos[2])
-      : vec3(mapSpawn.pos[0], mapSpawn.pos[1], mapSpawn.pos[2])
+    const spawn =
+      existing && existing.positionInPlace !== false
+        ? vec3(existing.pos[0], existing.pos[1], existing.pos[2])
+        : vec3(mapSpawn.pos[0], mapSpawn.pos[1], mapSpawn.pos[2])
     const inventory = existing
       ? Inventory.fromDto(existing.inventory, ctx.world.content)
       : new Inventory(INVENTORY_SIZE, HOTBAR_SIZE, ctx.world.content)
@@ -225,7 +226,7 @@ export class SessionsSystem implements System {
       rank,
       name: msg.name,
       spawn,
-      yaw: existing?.yaw ?? mapSpawn.yaw,
+      yaw: existing && existing.positionInPlace !== false ? existing.yaw : mapSpawn.yaw,
       inventory,
       skills,
       friends,

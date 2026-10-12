@@ -61,6 +61,13 @@ export type ResolvedConnectionIdentity = TicketIdentity
  * game runs exactly as before without them.
  */
 export interface GameIntegrations {
+  /** A server-confirmed authenticated join, for place-scoped achievements. */
+  playerJoined?: (key: string) => void
+  /** Called only for completed server-simulated rounds. Never accepts a client message. */
+  roundFinished?: (
+    roundId: string,
+    results: { key: string; name: string; score: number; rank: number }[],
+  ) => void
   /** Durable lifecycle/progression events through the outbox. */
   events?: GameEventRecorder
   /** Installed mods (content packs), reconciled every tick. */

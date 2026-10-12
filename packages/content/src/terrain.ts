@@ -183,13 +183,21 @@ export interface MapOverride {
 }
 
 let mapOverride: MapOverride | null = null
+const placeMapOverrides = new Map<string, MapOverride>()
+let suppressMapOverride = false
 
-export function setMapOverride(map: MapOverride | null): void {
+export function setMapOverride(map: MapOverride | null, worldId?: string): void {
+  if (worldId) {
+    if (map) placeMapOverrides.set(worldId, map)
+    else placeMapOverrides.delete(worldId)
+    return
+  }
   mapOverride = map
 }
 
-export function getMapOverride(): MapOverride | null {
-  return mapOverride
+export function getMapOverride(world?: WorldDef): MapOverride | null {
+  if (suppressMapOverride) return null
+  return world ? (placeMapOverrides.get(world.id) ?? mapOverride) : mapOverride
 }
 
 function bilinearGrid(
@@ -250,7 +258,8 @@ function sampleOverride(map: MapOverride, x: number, z: number): number | null {
  * own default instead of the sampler inventing ground.
  */
 export function terrainHeightAt(world: WorldDef, x: number, z: number): number | null {
-  if (mapOverride) return sampleOverride(mapOverride, x, z)
+  const override = getMapOverride(world)
+  if (override) return sampleOverride(override, x, z)
   if (world.flatTerrain) return 0
   return terrainHeight(world, x, z)
 }
@@ -262,7 +271,8 @@ export function terrainHeightAt(world: WorldDef, x: number, z: number): number |
  * `terrainHeightAt` when "there is no ground here" is meaningful.
  */
 export function terrainHeight(world: WorldDef, x: number, z: number): number {
-  if (mapOverride) return sampleOverride(mapOverride, x, z) ?? 0
+  const override = getMapOverride(world)
+  if (override) return sampleOverride(override, x, z) ?? 0
   if (world.flatTerrain) return 0
   let mask = 1
   for (const pad of padsFor(world)) {
@@ -289,6 +299,7 @@ export function defaultHeights(world: WorldDef, sub: number): Float32Array {
   const heights = new Float32Array((sub + 1) * (sub + 1))
   const saved = mapOverride
   mapOverride = null
+  suppressMapOverride = true
   for (let j = 0; j <= sub; j++) {
     for (let i = 0; i <= sub; i++) {
       heights[j * (sub + 1) + i] = terrainHeight(
@@ -299,6 +310,7 @@ export function defaultHeights(world: WorldDef, sub: number): Float32Array {
     }
   }
   mapOverride = saved
+  suppressMapOverride = false
   return heights
 }
 
@@ -387,7 +399,7 @@ export function worldSpawn(world: WorldDef): {
   pos: [number, number, number]
   yaw: number
 } {
-  const o = mapOverride
+  const o = getMapOverride(world)
   return {
     pos: o?.spawn ?? [world.spawnPoint[0], world.spawnPoint[1], world.spawnPoint[2]],
     yaw: o?.spawnYaw ?? world.spawnYaw,

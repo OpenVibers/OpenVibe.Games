@@ -40,6 +40,26 @@ export interface ContentPackV2 {
   defs?: { [K in PackDefKind]?: unknown[] }
   /** One authored map; the built-in Scraplandia pack supplies the default. */
   map?: WorldDef
+  /** Place-scoped achievement definitions evaluated from server events. */
+  achievements?: {
+    id: string
+    name: string
+    description: string
+    criterion: { event: 'player_joined' }
+  }[]
+  /** Built-in game rules. Executable rule evaluation remains server-owned. */
+  game?: {
+    id: string
+    roundSeconds: number
+    intermissionSeconds: number
+    pickups: [number, number, number][]
+    achievements: {
+      id: string
+      name: string
+      description: string
+      criterion: { event: 'round_finished'; minScore?: number; minRank?: number }
+    }[]
+  }
   announcements?: { text: string; everySeconds: number }[]
   props?: { key: string; item: string; pos: [number, number, number]; yaw?: number }[]
   /** `games-quickjs@1` server script mods (schema/scriptMod.ts); they are part of the def set. */

@@ -39,6 +39,8 @@ export interface PlayerDto {
   subjectId?: string
   name: string
   pos: [number, number, number]
+  /** Join hint: this room or place has a saved position for the character. */
+  positionInPlace?: boolean
   yaw: number
   inventory: InventoryDto
   /** Total XP per skill id (levels are derived at runtime). */

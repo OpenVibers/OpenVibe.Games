@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Salvage Rush leaderboard · OpenVibe.Games</title>
+    <meta
+      name="description"
+      content="The best Salvage Rush round scores on OpenVibe.Games, all time and this week. Scores come only from rounds the server played out."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --accent: #3b82f6;
+        --accent-light: #60a5fa;
+        --secondary: #22d3ee;
+        --bg: #0a0f1c;
+        --bg-raised: #101828;
+        --bg-card: rgba(19, 28, 46, 0.88);
+        --border: #1f2d47;
+        --text: #e6edf7;
+        --text-dim: #96a7c2;
+        --text-faint: #7386a3;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(900px 420px at 20% -10%, rgba(59, 130, 246, 0.18), transparent 70%),
+          radial-gradient(700px 360px at 90% 0%, rgba(34, 211, 238, 0.1), transparent 70%),
+          var(--bg);
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      a {
+        color: var(--accent-light);
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px 16px 64px;
+      }
+      .crumbs {
+        display: flex;
+        gap: 14px;
+        font-size: 14px;
+      }
+      .eyebrow {
+        margin: 28px 0 4px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        color: var(--secondary);
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: clamp(28px, 5vw, 40px);
+        font-weight: 900;
+        letter-spacing: 0.01em;
+      }
+      .lede {
+        margin: 0 0 18px;
+        color: var(--text-dim);
+      }
+      .board {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--bg-card);
+        overflow: hidden;
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .tabs button {
+        flex: 0 0 auto;
+        padding: 8px 16px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text-dim);
+        font: inherit;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      .tabs button[aria-pressed='true'] {
+        border-color: var(--accent);
+        background: rgba(59, 130, 246, 0.18);
+        color: var(--text);
+      }
+      .tabs button:focus-visible,
+      .pager button:focus-visible {
+        outline: 2px solid var(--accent-light);
+        outline-offset: 2px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+      }
+      th,
+      td {
+        padding: 12px 16px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-faint);
+        font-weight: 700;
+      }
+      th:last-child,
+      td:last-child {
+        text-align: right;
+      }
+      td:last-child {
+        font-weight: 800;
+      }
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .rank {
+        display: inline-grid;
+        place-items: center;
+        min-width: 30px;
+        height: 30px;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-weight: 800;
+        font-size: 14px;
+      }
+      tr.top-1 .rank {
+        background: linear-gradient(135deg, #fde68a, #f59e0b);
+        color: #1a1405;
+        border: 0;
+      }
+      tr.top-2 .rank {
+        background: linear-gradient(135deg, #e5e7eb, #9ca3af);
+        color: #111827;
+        border: 0;
+      }
+      tr.top-3 .rank {
+        background: linear-gradient(135deg, #fdba74, #c2410c);
+        color: #1c0d04;
+        border: 0;
+      }
+      .name {
+        overflow-wrap: anywhere;
+      }
+      #status {
+        margin: 0;
+        padding: 28px 16px;
+        text-align: center;
+        color: var(--text-dim);
+      }
+      #status:empty {
+        display: none;
+      }
+      .pager {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 16px;
+        border-top: 1px solid var(--border);
+        color: var(--text-faint);
+        font-size: 14px;
+      }
+      .pager button {
+        padding: 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-raised);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+      .pager button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .play {
+        display: inline-block;
+        margin-top: 22px;
+        padding: 13px 28px;
+        border-radius: 12px;
+        background: linear-gradient(120deg, var(--accent), #2563eb);
+        color: #fff;
+        font-weight: 800;
+        letter-spacing: 0.03em;
+        text-decoration: none;
+      }
+      .note {
+        margin-top: 14px;
+        font-size: 14px;
+        color: var(--text-faint);
+      }
+    </style>
+    <script type="module" src="/src/pages/leaderboard.ts"></script>
+  </head>
+  <body>
+    <main>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">OpenVibe.Games</a><a href="/play?game=salvage-rush">Play Salvage Rush</a>
+      </nav>
+      <p class="eyebrow">LEADERBOARD</p>
+      <h1>Salvage Rush</h1>
+      <p class="lede">
+        Each player's best round score. Rounds last 90 seconds; every point comes from a pickup the
+        server counted.
+      </p>
+      <section class="board" aria-labelledby="board-title">
+        <h2 id="board-title" hidden>Best scores</h2>
+        <div class="tabs" role="group" aria-label="Period">
+          <button type="button" data-period="all" aria-pressed="true">All time</button>
+          <button type="button" data-period="week" aria-pressed="false">This week</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Rank</th>
+              <th scope="col">Player</th>
+              <th scope="col">Best score</th>
+            </tr>
+          </thead>
+          <tbody id="entries"></tbody>
+        </table>
+        <p id="status" role="status"></p>
+        <div class="pager">
+          <button id="previous" type="button">Previous</button><span id="page"></span
+          ><button id="next" type="button">Next</button>
+        </div>
+      </section>
+      <a class="play" href="/play?game=salvage-rush">▶ Play a round</a>
+      <p class="note">"This week" starts on Monday, 00:00 UTC.</p>
+    </main>
+  </body>
+</html>

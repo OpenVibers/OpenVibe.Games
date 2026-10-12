@@ -68,6 +68,15 @@ export function createAccountData(opts: {
       const files = [
         { name: 'characters.json', content: data.characters },
         ...(data.structures.length ? [{ name: 'structures.json', content: data.structures }] : []),
+        ...(data.gameResults.length
+          ? [{ name: 'game-results.json', content: data.gameResults }]
+          : []),
+        ...(data.gameBestScores.length
+          ? [{ name: 'game-best-scores.json', content: data.gameBestScores }]
+          : []),
+        ...(data.gameAchievements.length
+          ? [{ name: 'game-achievements.json', content: data.gameAchievements }]
+          : []),
       ]
       const res = await opts.send(`/internal/account-exports/${id}/parts`, { subject, files })
       const outcome = res.ok

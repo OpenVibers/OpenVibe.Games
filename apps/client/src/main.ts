@@ -67,23 +67,36 @@ async function start(): Promise<void> {
   const uiRoot = document.getElementById('ui') as HTMLElement
 
   const identity = getIdentity()
+  const requestedGame = new URLSearchParams(location.search).get('game')
+  const selectedPlace =
+    requestedGame === 'salvage-rush' || requestedGame === 'scraplandia' ? requestedGame : undefined
+  const placeQuery = selectedPlace ? `?game=${selectedPlace}` : ''
   // Fetch the active definition set before constructing game systems or sending hello.
   // A fresh client can join after a staff script install or reload changed the digest.
   let content = createContent()
   try {
-    const response = await fetch('/api/v1/content', { cache: 'no-store' })
+    const response = await fetch(`/api/v1/content${placeQuery}`, { cache: 'no-store' })
     if (response.ok) {
       const data = (await response.json()) as {
         digest?: string
+        game?: string
         packs?: Parameters<typeof createContent>[0]
       }
       if (Array.isArray(data.packs)) {
-        const active = createContent(data.packs)
+        const builtIn =
+          data.game === 'salvage-rush'
+            ? (await import('@openvibe/content/salvage-rush')).SALVAGE_RUSH_PACK
+            : undefined
+        const active = createContent(data.packs, builtIn)
         if (active.digest === data.digest) content = active
       }
     }
   } catch {
     // The hello digest still refuses a mismatched join if content is unavailable.
+  }
+  if (requestedGame === 'salvage-rush' && content.world.id !== 'salvage_rush_arena') {
+    uiRoot.textContent = 'Salvage Rush content is unavailable. Please retry shortly.'
+    return
   }
   // Edited map (must match the server's copy for prediction parity).
   // The map as the runtime currently has it, so a reload can diff against
@@ -92,7 +105,7 @@ async function start(): Promise<void> {
   let mapLightsBoot: MapLight[] | undefined
   try {
     // /map.json is the v2 document, parsed and validated on the way in.
-    const parsed = parseMapFile(await (await fetch('/map.json')).json())
+    const parsed = parseMapFile(await (await fetch(`/map.json${placeQuery}`)).json())
     if (parsed.ok) {
       registerMapAssets({
         textures: parsed.map.textures as MapTextureEntry[],
@@ -196,7 +209,16 @@ async function start(): Promise<void> {
   const weaponSettings = new WeaponSettings()
   registerPhysgunModule()
   registerRiggingModule()
-  const hud = new Hud(uiRoot, state, content, connection, icons, weaponSettings)
+  const hud = new Hud(uiRoot, state, content, connection, icons, weaponSettings, {
+    guest: identity.token,
+    ...(sso ? { bearer: sso } : {}),
+  })
+  const roundUi =
+    content.world.id === 'salvage_rush_arena'
+      ? await import('./ui/salvageRushHud.js').then(
+          ({ SalvageRushHud }) => new SalvageRushHud(uiRoot, scene),
+        )
+      : null
   hud.onQualityChange = (override) => {
     const quality = qualityForTier(resolveQualityTier(override, readDeviceSignals()))
     applyEngineQuality(engine, quality)
@@ -343,6 +365,7 @@ async function start(): Promise<void> {
   })
   let rejected = false
   connection.onMessage = (msg) => {
+    if (msg.t === 'salvage_round') roundUi?.update(msg)
     if (msg.t === 'welcome' && state.myEntityId && msg.instanceId !== state.instanceId) {
       player.onTransfer()
     }
@@ -358,7 +381,7 @@ async function start(): Promise<void> {
     if (msg.t === 'map_reload') {
       void (async () => {
         try {
-          const parsed = parseMapFile(await (await fetch('/map.json')).json())
+          const parsed = parseMapFile(await (await fetch(`/map.json${placeQuery}`)).json())
           if (!parsed.ok) return
           registerMapAssets({
             textures: parsed.map.textures as MapTextureEntry[],
@@ -482,6 +505,7 @@ async function start(): Promise<void> {
       content.digest,
       slot,
       sso,
+      selectedPlace,
     )
   } catch {
     // Refused or timed out (a page opened during a restart): wait for the server, then reload.

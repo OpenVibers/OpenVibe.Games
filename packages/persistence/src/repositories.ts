@@ -84,6 +84,9 @@ export interface IdentityRepository {
   exportSubject(subject: string): Promise<{
     characters: Record<string, unknown>[]
     structures: Record<string, unknown>[]
+    gameResults: Record<string, unknown>[]
+    gameBestScores: Record<string, unknown>[]
+    gameAchievements: Record<string, unknown>[]
   }>
   /**
    * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their

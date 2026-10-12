@@ -16,6 +16,8 @@ export const ClientHelloSchema = z.object({
     .string()
     .regex(/^v[0-9]+-[0-9a-f]{8}$/)
     .optional(),
+  /** Requested place. Older clients omit it and join the configured default. */
+  place: z.string().min(1).max(64).optional(),
   /** Character slot under this account (MMO-style, 3 max). */
   slot: z.number().int().min(0).max(2).default(0),
   name: z.string().min(1).max(24),

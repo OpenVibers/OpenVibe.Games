@@ -12,9 +12,8 @@
  *                            (common.moderation-action@1, ADR-022), for Network's moderation
  *                            audit log
  *
- * Scraplandia has no achievement system, so there is no games.achievement.*
- * event: skill levels and blueprint unlocks are the real progression
- * milestones the game keeps.
+ * Games now stores per-game achievements locally. Achievement events are not yet
+ * published to OpenVibe.Events; Play will own that boundary later.
  *
  * Every event is written to Games' own `event_outbox` table inside the SAME
  * SQLite transaction as the state it describes (progression events are

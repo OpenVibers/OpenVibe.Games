@@ -22,7 +22,7 @@ export interface DbConfig {
 export interface ServerConfig {
   port: number
   host: string
-  /** GAMES_PLACE_ID: the place every world row on this instance belongs to. */
+  /** GAMES_PLACE_ID: the default place for legacy hello messages and the editor map. */
   placeId: string
   db: DbConfig
   /** Directory of built client assets to serve, or null for API/WS only. */
@@ -157,7 +157,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
       valkeyPrefix: env.VALKEY_PREFIX ?? 'ov:games:',
     },
     staticDir: env.STATIC_DIR ?? null,
-    mapPath: env.MAP_PATH ?? 'data/map.json',
+    mapPath:
+      env.MAP_PATH ??
+      (env.GAMES_PLACE_ID === 'salvage-rush' ? 'data/salvage-rush-map.json' : 'data/map.json'),
     trustProxy: parseProxyTrust(env.TRUST_PROXY),
     /** openvibe.network auth endpoint; when set, editor tokens validate there. */
     networkAuthUrl:

@@ -37,6 +37,7 @@ export default defineConfig({
         home: 'index.html',
         main: 'play.html',
         editor: 'editor.html',
+        leaderboard: 'leaderboard.html',
       },
     },
     outDir: 'dist',

@@ -1,8 +1,11 @@
-# Scraplandia
+# OpenVibe.Games
 
 ## Purpose
 
-OpenVibe.Games: Scraplandia, served at https://openvibe.games and https://play.openvibe.games.
+OpenVibe.Games hosts Scraplandia at https://openvibe.games and https://play.openvibe.games.
+The same Games process also hosts Salvage Rush, an on-foot timed collection game with its own
+place, world, rooms and round system. Play it at `/play?game=salvage-rush` on the same host.
+See [docs/games.md](docs/games.md) for both games and local progression.
 A persistent multiplayer physics sandbox for the browser: Source-style movement,
 physgun-driven building from crafted physical objects, gathering, crafting, and
 extraction risk — running against an authoritative dedicated server.
@@ -112,7 +115,8 @@ DATABASE_URL=postgres://… DATABASE_DIRECT_URL=postgres://… STATIC_DIR=apps/c
 `DATABASE_URL` (pooled, through PgBouncer) serves; migrations run at boot on `DATABASE_DIRECT_URL`
 (the owner role, a direct session). With neither set and `NODE_ENV` not `production`, the server uses
 an embedded PGlite database under `DATABASE_DIR` (default `data/`) — development only, one process.
-`GAMES_PLACE_ID` (default `scraplandia`) is the place every world row belongs to; `VALKEY_URL`
+`GAMES_PLACE_ID` (default `scraplandia`) selects the default place for older clients and the
+edited map. Both built-in places have separate world rows and instance leases. `VALKEY_URL`
 (optional) makes the per-actor limits and the WebSocket upgrade tickets shared across instances
 (issue is `SET … PX … NX`, consume is `GETDEL`, so a ticket is single-use cluster-wide).
 `GAMES_INSTANCES_PER_PLACE` (default `1`) enables several room simulations for a place in this process;
@@ -173,7 +177,7 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   `games.skill.leveled`, `games.blueprint.unlocked`, `games.world.saved`
   (at most one checkpoint per `WORLD_SAVED_EVENT_MINUTES`, plus shutdown) and
   `games.mod.installed|enabled|disabled|grants_changed|revoked`. There is no
-  achievement system in Scraplandia, so there are no achievement events.
+  first-visit achievement is stored locally in Games; achievement events are not yet published.
   Progression events come from what a save actually wrote, in the same
   transaction.
 - **Media.** Map-editor assets (textures, paint masks, glb models; the only

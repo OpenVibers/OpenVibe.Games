@@ -10,6 +10,7 @@ import {
   SCRAPLANDIA_PACK,
   setMapOverride,
 } from '@openvibe/content'
+import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
 import { InstanceRegistry, openPgStore, type InstanceLease } from '@openvibe/persistence'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { createConsoleLogger } from '@openvibe/shared'
@@ -18,6 +19,7 @@ import { openDb } from './db.js'
 import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
 import { InstanceHub } from './game/instanceHub.js'
+import { PlaceRouter } from './game/placeRouter.js'
 import { attachEditorWs } from './net/editorWs.js'
 import {
   closeSockets,
@@ -63,6 +65,9 @@ import {
 } from './platform/revocationEvents.js'
 import { createStaffAuthorizer } from './platform/staffAuth.js'
 import { createWsTicketStore } from './net/wsTicket.js'
+import { GameProgressWriter } from './game/progression.js'
+import type { RoundResult } from './game/salvageRush.js'
+import { handleGameRead } from './net/gameRoutes.js'
 
 /**
  * Dedicated authoritative server entry point.
@@ -103,7 +108,11 @@ async function main(): Promise<void> {
   const packs = await loadDefinitionPacks(store.mods, (modId, reason) =>
     log.warn('mod definitions skipped', { mod: modId, reason }),
   )
-  const content = createContent(packs)
+  const builtInPack = config.placeId === 'salvage-rush' ? SALVAGE_RUSH_PACK : SCRAPLANDIA_PACK
+  const content = createContent(packs, builtInPack)
+  const progressWriter = new GameProgressWriter(db, (error) =>
+    log.warn('game progression write failed', { error: String(error) }),
+  )
   const builtInModIds = new Set(
     (SCRAPLANDIA_PACK.mods ?? []).map((raw) => ScriptModSchema.parse(raw).id),
   )
@@ -120,7 +129,7 @@ async function main(): Promise<void> {
         // content.world.statics: that merge was permanent, so the map layer
         // could never be replaced and a live save could not move or delete
         // anything it had already added.
-        setMapOverride(compileMapFileV2(parsed.map))
+        setMapOverride(compileMapFileV2(parsed.map), content.world.id)
         log.info('edited map loaded', {
           statics: parsed.map.statics.length,
           terrains: parsed.map.terrains.length,
@@ -234,13 +243,18 @@ async function main(): Promise<void> {
   // games-quickjs@1 script mods run only where the place enables them; the engine (WASM) is not
   // even loaded otherwise. They stay in the def set, so the handshake digest is the same either way.
   const scriptLog = log.child({ system: 'script-mods' })
-  const scriptHosts = new Map<number, ScriptModHost>()
-  const createScriptHost = async (slot: number): Promise<ScriptModHost | undefined> => {
+  const scriptHosts = new Map<string, ScriptModHost>()
+  const createScriptHost = async (
+    slot: number,
+    placeId = config.placeId,
+    roomContent = content,
+    roomStore = store,
+  ): Promise<ScriptModHost | undefined> => {
     if (!config.scriptMods) return undefined
     const { createQuickJsSandboxFactory } = await import('./mods/script/quickjs.js')
     // Built-in pack code is reviewed with the place; installed packs use only the approved subset.
     const grants: Record<string, string[]> = Object.fromEntries(
-      content
+      roomContent
         .allMods()
         .filter((mod) => mod.granted === undefined)
         .map((mod) => [mod.id, mod.capabilities ?? ['players.read', 'world.emit']]),
@@ -255,17 +269,17 @@ async function main(): Promise<void> {
       }
     }
     const host = new ScriptModHost(
-      content.allMods(),
+      roomContent.allMods(),
       createQuickJsSandboxFactory(),
-      scriptLog.child({ slot }),
+      scriptLog.child({ placeId, slot }),
       undefined,
       {
-        placeSeed: slot === 0 ? config.placeId : `${config.placeId}:${slot}`,
+        placeSeed: slot === 0 ? placeId : `${placeId}:${slot}`,
         grants: grants as Record<string, ScriptCapability[]>,
-        storage: new PgScriptStorage(store.mods, config.placeId, scriptLog),
+        storage: new PgScriptStorage(roomStore.mods, placeId, scriptLog),
       },
     )
-    scriptHosts.set(slot, host)
+    scriptHosts.set(`${placeId}:${slot}`, host)
     return host
   }
   const scripts = await createScriptHost(0)
@@ -283,6 +297,16 @@ async function main(): Promise<void> {
       mods: modRuntime,
       ...(scripts ? { scripts } : {}),
       ...(progressSummary ? { progressSummary } : {}),
+      ...(config.placeId === 'scraplandia'
+        ? { playerJoined: (key: string) => progressWriter.submitJoined(key) }
+        : {}),
+      ...(config.placeId === 'salvage-rush'
+        ? {
+            roundFinished: (roundId: string, results: RoundResult[]) => {
+              progressWriter.submit(`0:${roundId}`, results)
+            },
+          }
+        : {}),
     },
   )
   // Async boot: env, markets and the NPC population load before the tick loop starts.
@@ -300,7 +324,7 @@ async function main(): Promise<void> {
       dispose: async () => {
         await scripts?.flushWrites()
         scripts?.dispose()
-        scriptHosts.delete(0)
+        scriptHosts.delete(`${config.placeId}:0`)
         physics.dispose()
       },
     },
@@ -338,6 +362,16 @@ async function main(): Promise<void> {
           }),
           ...(roomScripts ? { scripts: roomScripts } : {}),
           ...(progressSummary ? { progressSummary } : {}),
+          ...(config.placeId === 'scraplandia'
+            ? { playerJoined: (key: string) => progressWriter.submitJoined(key) }
+            : {}),
+          ...(config.placeId === 'salvage-rush'
+            ? {
+                roundFinished: (roundId: string, results: RoundResult[]) => {
+                  progressWriter.submit(`${slot}:${roundId}`, results)
+                },
+              }
+            : {}),
         },
       )
       await roomGame.load()
@@ -349,14 +383,131 @@ async function main(): Promise<void> {
         dispose: async () => {
           await roomScripts?.flushWrites()
           roomScripts?.dispose()
-          scriptHosts.delete(slot)
+          scriptHosts.delete(`${config.placeId}:${slot}`)
           roomPhysics.dispose()
         },
       }
     },
     log.child({ system: 'instances' }),
   )
-  const heartbeatTimer = setInterval(() => void hub.heartbeat(), 5_000)
+  const secondaryPlace = config.placeId === 'salvage-rush' ? 'scraplandia' : 'salvage-rush'
+  const secondaryContent = createContent(
+    packs,
+    secondaryPlace === 'salvage-rush' ? SALVAGE_RUSH_PACK : SCRAPLANDIA_PACK,
+  )
+  const secondaryRegistry = new InstanceRegistry(db, secondaryPlace)
+  let secondaryPrimaryLease: InstanceLease
+  const secondaryStore = openPgStore(db, {
+    placeId: secondaryPlace,
+    instanceSlot: 0,
+    leaseGuard: () => secondaryRegistry.assertHeld(secondaryPrimaryLease, Date.now()),
+  })
+  await secondaryStore.ensurePlace()
+  const secondaryClaim = await secondaryRegistry.claim(
+    0,
+    config.maxPlayers,
+    crypto.randomUUID(),
+    Date.now(),
+    60_000,
+  )
+  if (!secondaryClaim) throw new Error(`${secondaryPlace} primary instance slot is already leased`)
+  secondaryPrimaryLease = secondaryClaim
+  const secondaryRecorder = sink.enabled
+    ? new GameEventRecorder(
+        sink,
+        secondaryContent.world.id,
+        config.platform.worldSavedEventMinutes * 60_000,
+      )
+    : undefined
+  const createSecondaryRoom = async (slot: number, lease: InstanceLease) => {
+    const roomStore =
+      slot === 0
+        ? secondaryStore
+        : openPgStore(db, {
+            placeId: secondaryPlace,
+            instanceSlot: slot,
+            leaseGuard: () => secondaryRegistry.assertHeld(lease, Date.now()),
+          })
+    await roomStore.ensurePlace()
+    const roomPhysics = createRapierWorld(rapier)
+    const roomWorld = new GameWorld(
+      secondaryContent,
+      roomPhysics,
+      log.child({ system: 'world', place: secondaryPlace, slot }),
+      config.interestCell,
+    )
+    await roomWorld.seedOrRestore(roomStore)
+    roomWorld.reconcileMapNodes()
+    roomWorld.reconcileMapProps()
+    const roomScripts = await createScriptHost(slot, secondaryPlace, secondaryContent, roomStore)
+    const roomGame = new GameServer(
+      { ...config, placeId: secondaryPlace, instanceSlot: slot },
+      roomWorld,
+      roomStore,
+      metrics,
+      log.child({ system: 'game', place: secondaryPlace, slot }),
+      {
+        ...(secondaryRecorder ? { events: secondaryRecorder } : {}),
+        mods: new ModRuntime(
+          mods,
+          secondaryContent,
+          log.child({ system: 'mods', place: secondaryPlace, slot }),
+          {
+            reconcileEveryTicks: config.tickRate,
+          },
+        ),
+        ...(roomScripts ? { scripts: roomScripts } : {}),
+        ...(progressSummary ? { progressSummary } : {}),
+        ...(secondaryPlace === 'scraplandia'
+          ? { playerJoined: (key: string) => progressWriter.submitJoined(key) }
+          : {
+              roundFinished: (roundId: string, results: RoundResult[]) =>
+                progressWriter.submit(`${slot}:${roundId}`, results),
+            }),
+      },
+    )
+    await roomGame.load()
+    await roomScripts?.start()
+    return {
+      lease,
+      game: roomGame,
+      world: roomWorld,
+      dispose: async () => {
+        await roomScripts?.flushWrites()
+        roomScripts?.dispose()
+        scriptHosts.delete(`${secondaryPlace}:${slot}`)
+        roomPhysics.dispose()
+      },
+    }
+  }
+  const secondaryPrimary = await createSecondaryRoom(0, secondaryPrimaryLease)
+  const secondaryRunning = await secondaryRegistry.renew(
+    secondaryPrimaryLease,
+    Date.now(),
+    15_000,
+    'running',
+  )
+  if (!secondaryRunning) throw new Error(`${secondaryPlace} primary lease expired during boot`)
+  secondaryPrimary.lease = secondaryRunning
+  secondaryPrimaryLease = secondaryRunning
+  const secondaryHub = new InstanceHub(
+    secondaryRegistry,
+    secondaryPrimary,
+    config.instancesPerPlace,
+    config.maxPlayers,
+    createSecondaryRoom,
+    log.child({ system: 'instances', place: secondaryPlace }),
+  )
+  const hubs = new Map([
+    [config.placeId, hub],
+    [secondaryPlace, secondaryHub],
+  ])
+  const router = new PlaceRouter(hubs, config.placeId)
+  const contentByPlace = new Map([
+    [config.placeId, content],
+    [secondaryPlace, secondaryContent],
+  ])
+  const heartbeatTimer = setInterval(() => void router.heartbeat(), 5_000)
   heartbeatTimer.unref()
 
   const syncScriptView = async (view: ModView): Promise<void> => {
@@ -366,15 +517,19 @@ async function main(): Promise<void> {
       const active = view.mod.status === 'enabled' && view.granted.has('games.script.run')
       for (const host of scriptHosts.values()) host.remove(script.id)
       if (!active) {
-        content.removeScriptMod(script.id)
+        for (const registryContent of contentByPlace.values())
+          registryContent.removeScriptMod(script.id)
         continue
       }
       const granted = (script.capabilities ?? (['players.read', 'world.emit'] as const)).filter(
         (cap) => view.granted.has(scriptGrant(cap)),
       )
       const pinned = { ...script, granted }
-      if (content.allMods().some((mod) => mod.id === script.id)) content.replaceScriptMod(pinned)
-      else content.addScriptMod(pinned)
+      for (const registryContent of contentByPlace.values()) {
+        if (registryContent.allMods().some((mod) => mod.id === script.id))
+          registryContent.replaceScriptMod(pinned)
+        else registryContent.addScriptMod(pinned)
+      }
       for (const host of scriptHosts.values()) {
         const result = await host.add(pinned, granted)
         if (!result.ok)
@@ -384,7 +539,7 @@ async function main(): Promise<void> {
           })
       }
     }
-    for (const room of hub.activeRooms)
+    for (const room of router.activeRooms)
       room.game.announce(
         'Script mod definitions changed. New connections must use the updated content set.',
       )
@@ -398,12 +553,12 @@ async function main(): Promise<void> {
         closeSessions: async (subjects) => {
           let closed = 0
           for (const s of subjects)
-            for (const room of hub.activeRooms)
+            for (const room of router.activeRooms)
               closed += room.game.revokeSubject(s, Number.MAX_SAFE_INTEGER)
           // Let the closing sockets' character saves land before the rows are erased.
           if (closed) {
             await new Promise((r) => setTimeout(r, 2000))
-            await Promise.all(hub.activeRooms.map((room) => room.game.drain()))
+            await Promise.all(router.activeRooms.map((room) => room.game.drain()))
           }
         },
         log: platformLog.child({ system: 'account-data' }),
@@ -416,7 +571,7 @@ async function main(): Promise<void> {
     db,
     secrets: config.platform.eventsSecrets,
     onRevoked: (subject, validAfterMs) =>
-      hub.activeRooms.reduce(
+      router.activeRooms.reduce(
         (count, room) => count + room.game.revokeSubject(subject, validAfterMs),
         0,
       ),
@@ -467,7 +622,7 @@ async function main(): Promise<void> {
   const readiness = createReadiness({
     pingDb: () => db.ready(),
     metrics,
-    online: () => hub.onlineCount,
+    online: () => router.onlineCount,
   })
 
   // Per-actor limits on editor saves, uploads and the mods API (roadmap WS-R task 4). With VALKEY_URL the
@@ -494,7 +649,7 @@ async function main(): Promise<void> {
     // migrated and validated it, so there is nothing to re-parse here.
     (next, revision) => {
       try {
-        setMapOverride(compileMapFileV2(next))
+        setMapOverride(compileMapFileV2(next), content.world.id)
         for (const room of hub.activeRooms) {
           room.world.reconcileMapTerrain()
           room.world.reconcileMapStatics()
@@ -533,21 +688,35 @@ async function main(): Promise<void> {
     {
       handle: (req, res) => {
         if (req.method === 'GET' && req.url?.split('?')[0] === '/api/v1/content') {
+          const requested = new URL(req.url ?? '/', 'http://games.local').searchParams.get('game')
+          const placeId = router.resolve(requested ?? undefined)
+          const selectedContent = contentByPlace.get(placeId)
+          if (!selectedContent) throw new Error('place content missing')
           const staticPacks = packs.map(({ mods: _mods, ...pack }) => pack)
           res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
           res.end(
             JSON.stringify({
-              digest: content.digest,
+              digest: selectedContent.digest,
+              game: placeId,
               packs: [
                 ...staticPacks,
                 {
-                  mods: content.allMods().filter((mod) => !builtInModIds.has(mod.id)),
+                  mods: selectedContent.allMods().filter((mod) => !builtInModIds.has(mod.id)),
                 },
               ],
             }),
           )
           return true
         }
+        if (
+          handleGameRead(req, res, {
+            db,
+            networkAuthUrl: config.networkAuthUrl,
+            limits: actorLimits,
+            address: (request) => resolveClientAddress(request, config.trustProxy),
+          })
+        )
+          return true
         if (revocations.handle(req, res)) return true
         if (readiness.handle(req, res)) return true
         if (serveRelease(req, res)) return true
@@ -642,9 +811,10 @@ async function main(): Promise<void> {
             }
             try {
               const view = await mods.replace(id, request, actor)
-              content.replaceScriptMod(pinned)
+              for (const registryContent of contentByPlace.values())
+                registryContent.replaceScriptMod(pinned)
               for (const candidate of prepared) candidate.commit()
-              for (const room of hub.activeRooms)
+              for (const room of router.activeRooms)
                 room.game.announce(
                   `Script mod ${script.id} reloaded. New connections must use the updated content set.`,
                 )
@@ -669,11 +839,12 @@ async function main(): Promise<void> {
       config.indexnowKey,
       log.child({ system: 'indexnow' }),
     ),
+    config.placeId,
   )
   const drainer = httpDrainer(http)
   world.reconcileMapNodes()
   world.reconcileMapProps()
-  const gameWss = attachWebSocket(http, hub, {
+  const gameWss = attachWebSocket(http, router, {
     tickets: ticketStore,
     upgradeLimits: actorLimits,
     clientAddress,
@@ -728,7 +899,7 @@ async function main(): Promise<void> {
     if (!running) return
     const now = performance.now()
     while (now >= nextTick) {
-      hub.step()
+      router.step()
       nextTick += tickMs
       // If we fell far behind (debugger pause, EL stall), resync instead of
       // spiraling through hundreds of catch-up ticks.
@@ -767,14 +938,14 @@ async function main(): Promise<void> {
       clearInterval(pruneTimer)
       editors.stop()
       const mirrorDone = mirror?.stop()
-      for (const room of hub.activeRooms) room.game.announceRestart()
+      for (const room of router.activeRooms) room.game.announceRestart()
       const [players, editorPeers] = await Promise.all([
         closeSockets(gameWss, SOCKETS_MS),
         closeSockets(editors.wss, SOCKETS_MS),
       ])
       // Mark every session dirty and queue the final checkpoint, then let the whole write-behind queue
       // (that checkpoint plus every disconnect save queued before it) drain.
-      const drained = await hub.shutdown()
+      const drained = await router.shutdown()
       for (const host of scriptHosts.values()) {
         await host.flushWrites()
         host.dispose()
@@ -784,6 +955,7 @@ async function main(): Promise<void> {
       await within(1000, progressSummary?.settle())
       await within(2000, outbox?.stop())
       await mods.flushWrites()
+      await progressWriter.stop()
       await store.close()
       await valkey?.close()
       log.info('stopped', {
