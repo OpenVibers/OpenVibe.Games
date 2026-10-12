@@ -298,7 +298,11 @@ async function main(): Promise<void> {
       ...(scripts ? { scripts } : {}),
       ...(progressSummary ? { progressSummary } : {}),
       ...(config.placeId === 'scraplandia'
-        ? { playerJoined: (key: string) => progressWriter.submitJoined(key) }
+        ? {
+            playerJoined: (key: string) => progressWriter.submitJoined(key),
+            haulExtracted: (key: string, extractionId: string, name: string, score: number) =>
+              progressWriter.submitHaul(extractionId, key, name, score),
+          }
         : {}),
       ...(config.placeId === 'salvage-rush'
         ? {
@@ -363,7 +367,11 @@ async function main(): Promise<void> {
           ...(roomScripts ? { scripts: roomScripts } : {}),
           ...(progressSummary ? { progressSummary } : {}),
           ...(config.placeId === 'scraplandia'
-            ? { playerJoined: (key: string) => progressWriter.submitJoined(key) }
+            ? {
+                playerJoined: (key: string) => progressWriter.submitJoined(key),
+                haulExtracted: (key: string, extractionId: string, name: string, score: number) =>
+                  progressWriter.submitHaul(extractionId, key, name, score),
+              }
             : {}),
           ...(config.placeId === 'salvage-rush'
             ? {
@@ -459,7 +467,11 @@ async function main(): Promise<void> {
         ...(roomScripts ? { scripts: roomScripts } : {}),
         ...(progressSummary ? { progressSummary } : {}),
         ...(secondaryPlace === 'scraplandia'
-          ? { playerJoined: (key: string) => progressWriter.submitJoined(key) }
+          ? {
+              playerJoined: (key: string) => progressWriter.submitJoined(key),
+              haulExtracted: (key: string, extractionId: string, name: string, score: number) =>
+                progressWriter.submitHaul(extractionId, key, name, score),
+            }
           : {
               roundFinished: (roundId: string, results: RoundResult[]) =>
                 progressWriter.submit(`${slot}:${roundId}`, results),

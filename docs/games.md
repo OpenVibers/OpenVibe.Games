@@ -3,9 +3,11 @@
 ## Scraplandia
 
 The default place (`GAMES_PLACE_ID=scraplandia`) loads `SCRAPLANDIA_PACK`. Its persistent
-world, inventory, crafting, farming, PvP rules, and editor behavior stay as before. The
-pack defines a first-visit achievement unlocked by a server-confirmed join. Its leaderboard
-is public but empty until Scraplandia has a scored game event.
+world, inventory, crafting, farming, PvP rules, and editor behavior stay as before. Extraction
+events are the scored "Haul" mode: a living player who holds the recovery-bird circle secures
+their at-risk valuables, and each secured stack scores `count × valuable.points` haul points.
+The pack defines a first-visit achievement and three haul achievements (First haul, Big haul,
+Haul week), all unlocked by server-confirmed events.
 
 ## Salvage Rush
 
@@ -23,15 +25,17 @@ default place; Salvage Rush currently uses the map in its built-in content pack.
 
 Completed results are stored in `game_round_results`, keyed by game, round and account key.
 `game_best_scores` holds each player's all-time best; weekly bests come from the results table.
-`game_achievements` stores one unlock per game, criterion and player. Local guest keys are
-SHA-256 hashes as for characters; Network subjects remain canonical. No score is written
-until a server round ends. `GET /api/v1/games/:game/leaderboard?period=all|week&page=1`
-returns 20 personal bests per page, ordered by score, then earliest completion. `week`
+Scraplandia hauls are stored one row per extraction in `game_hauls`, keyed by account and
+extraction event; its leaderboard ranks by the sum of haul points in the period rather than a
+single best. `game_achievements` stores one unlock per game, criterion and player. Local guest
+keys are SHA-256 hashes as for characters; Network subjects remain canonical. No score is written
+until the server confirms a round or extraction. `GET /api/v1/games/:game/leaderboard?period=all|week&page=1`
+returns 20 entries per page, ordered by score, then earliest completion. `week`
 starts Monday 00:00 UTC. `GET /api/v1/players/me/achievements` accepts the same
 bearer or `X-Guest-Token` used by the ticket endpoint. Public reads have per-address limits.
-The read-only `/leaderboard.html` page shows Salvage Rush's best round scores, all time or this week (from Monday 00:00 UTC), 20 a page. Scraplandia has no scored mode, so it has no board yet.
-Network account exports include results, best scores and unlocks; account erasure removes them.
-Guest character adoption and Network subject merges move progression to the surviving subject.
+The read-only `/leaderboard.html` page shows Salvage Rush's best round scores and Scraplandia's summed haul points, switchable in the page, all time or this week (from Monday 00:00 UTC), 20 a page.
+Network account exports include results, best scores, unlocks and hauls; account erasure removes them.
+Guest character adoption and Network subject merges move progression (including hauls) to the surviving subject.
 
 ## Adding another game
 

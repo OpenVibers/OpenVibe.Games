@@ -3,6 +3,8 @@
 ## Purpose
 
 OpenVibe.Games hosts Scraplandia at https://openvibe.games and https://play.openvibe.games.
+Scraplandia's extraction events double as its scored "Haul" mode: securing at-risk valuables at a
+recovery bird earns haul points, with its own all-time/this-week leaderboard and achievements.
 The same Games process also hosts Salvage Rush, an on-foot timed collection game with its own
 place, world, rooms and round system. Play it at `/play?game=salvage-rush` on the same host.
 See [docs/games.md](docs/games.md) for both games and local progression.
