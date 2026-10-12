@@ -24,6 +24,12 @@
   var PORTAL = local || !onPlayHost ? '/' : 'https://openvibe.games/'
   var PLAY = local ? '/play' : onPlayHost ? '/' : 'https://play.openvibe.games/'
   var EDITOR = local || !onPlayHost ? '/editor' : 'https://openvibe.games/editor'
+  var RUSH = local
+    ? '/play?game=salvage-rush'
+    : onPlayHost
+      ? '/?game=salvage-rush'
+      : 'https://play.openvibe.games/?game=salvage-rush'
+  var BOARD = local || !onPlayHost ? '/leaderboard.html' : 'https://openvibe.games/leaderboard.html'
 
   function cookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'))
@@ -48,6 +54,8 @@
   var links = [
     { label: 'Games', href: PORTAL },
     { label: 'Scraplandia', href: PLAY },
+    { label: 'Salvage Rush', href: RUSH },
+    { label: 'Leaderboard', href: BOARD },
   ]
   // The shared footer's items are { name, url } (label/href rendered empty links).
   var footerLinks = [
@@ -56,6 +64,8 @@
       items: [
         { name: 'All games', url: PORTAL },
         { name: 'Play Scraplandia', url: PLAY },
+        { name: 'Play Salvage Rush', url: RUSH },
+        { name: 'Leaderboard', url: BOARD },
         { name: 'Map editor', url: EDITOR },
       ],
     },

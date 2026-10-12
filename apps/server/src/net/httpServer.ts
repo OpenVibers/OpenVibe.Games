@@ -178,10 +178,13 @@ export function createHttpServer(
   const apexLinks: NotFoundLink[] = [
     { href: '/', label: 'OpenVibe.Games home' },
     { href: '/play', label: 'Play Scraplandia' },
+    { href: '/play?game=salvage-rush', label: 'Play Salvage Rush' },
+    { href: '/leaderboard.html', label: 'Leaderboard' },
     { href: '/editor', label: 'Map editor' },
   ]
   const playLinks: NotFoundLink[] = [
     { href: '/', label: 'Play Scraplandia' },
+    { href: '/?game=salvage-rush', label: 'Play Salvage Rush' },
     { href: '/editor', label: 'Map editor' },
     { href: portalHome, label: 'OpenVibe.Games home' },
   ]
