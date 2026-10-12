@@ -182,6 +182,7 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   first-visit achievement is stored locally in Games; achievement events are not yet published.
   Progression events come from what a save actually wrote, in the same
   transaction.
+- **Inventory.** Six built-in achievements give Live items: Scraplandia First Haul (Toxic Name), Big Haul (Golden Name), Haul Week (Cowboy Hat); Salvage Rush First Haul (Neon Name), Big Haul (Flames), Arena Winner (Stars). Games grants them after unlock or guest adoption using its own OAuth client; failed grants retry. Inventory items are free, never sold or traded.
 - **Media.** Map-editor assets (textures, paint masks, glb models; the only
   uploaded files Games has) are still served from local disk and are also
   copied into Media objects (`kind: asset`, namespace `MEDIA_NAMESPACE`), with
@@ -221,17 +222,19 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   props, the world clock and the mod registry survive the restart;
   `sliceTest.ts` covers the gameplay state end to end.
 
-Platform environment (all optional; unset = off):
+Platform environment (all optional; service calls need `OV_OAUTH_CLIENT_SECRET`):
 
-| Variable                    | Purpose                                                                               |
-| --------------------------- | ------------------------------------------------------------------------------------- |
-| `OV_OAUTH_CLIENT_ID`        | OAuth client / principal id (default `games`)                                         |
-| `OV_OAUTH_CLIENT_SECRET`    | Its secret: enables SSO and every service call                                        |
-| `OV_NETWORK_INTERNAL_URL`   | Network base for `/oauth/token`, identity and the JWKS (e.g. `http://127.0.0.1:4000`) |
-| `EVENTS_URL`                | OpenVibe.Events base; enables the outbox (`EVENTS_PUBLISH=off` disables)              |
-| `MEDIA_URL`                 | OpenVibe.Media base; enables the asset mirror (`MEDIA_MIRROR=off` disables)           |
-| `MEDIA_NAMESPACE`           | Media tenant for the copies (default `games`)                                         |
-| `WORLD_SAVED_EVENT_MINUTES` | Checkpoint event interval (default 15)                                                |
+| Variable                    | Purpose                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `OV_OAUTH_CLIENT_ID`        | OAuth client / principal id (default `games`)                                              |
+| `OV_OAUTH_CLIENT_SECRET`    | Its secret: enables SSO and every service call                                             |
+| `OV_NETWORK_INTERNAL_URL`   | Network base for `/oauth/token`, identity and the JWKS (e.g. `http://127.0.0.1:4000`)      |
+| `EVENTS_URL`                | OpenVibe.Events base; enables the outbox (`EVENTS_PUBLISH=off` disables)                   |
+| `MEDIA_URL`                 | OpenVibe.Media base; enables the asset mirror (`MEDIA_MIRROR=off` disables)                |
+| `GAMES_INVENTORY_URL`       | Inventory base (default `https://inventory.openvibe.network`; production can use loopback) |
+| `GAMES_ITEMS`               | `on` (default) or `off`; off also when the OAuth client secret is unset                    |
+| `MEDIA_NAMESPACE`           | Media tenant for the copies (default `games`)                                              |
+| `WORLD_SAVED_EVENT_MINUTES` | Checkpoint event interval (default 15)                                                     |
 
 ## Capabilities
 
@@ -242,8 +245,8 @@ mods API, for a principal token or an owner/admin session); `games.world.announc
 `games.world.emit`, and `games.storage.kv` for script packs. Script bindings
 are absent unless approved for that install.
 
-Grants the `games` principal needs in OpenVibe.Network:
-`events.event.publish` and `events.subscription.manage` (openvibe.events: the outbox, and the account,
+Service grants the `games` principal needs:
+`inventory.item.grant` (openvibe.inventory), `events.event.publish` and `events.subscription.manage` (openvibe.events: the outbox, and the account,
 revocation and mod-grant subscriptions), `media.object.upload`
 (openvibe.media, namespace `games`), `identity.subject.resolve`
 (openvibe.network), `network.modules.write` on `games.progress.summary`, and `mods.grant.manage`

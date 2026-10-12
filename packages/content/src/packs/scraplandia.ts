@@ -16,18 +16,21 @@ export const SCRAPLANDIA_PACK: ContentPackV2 = {
     },
     {
       id: 'first-haul',
+      reward: { item: 'fx_toxic', name: 'Toxic Name' },
       name: 'First Haul',
       description: 'Extract valuables to Scrap City.',
       criterion: { event: 'haul_recorded' },
     },
     {
       id: 'big-haul',
+      reward: { item: 'fx_golden', name: 'Golden Name' },
       name: 'Big Haul',
       description: 'Score at least 500 haul points in one extraction.',
       criterion: { event: 'haul_recorded', minScore: 500 },
     },
     {
       id: 'haul-week',
+      reward: { item: 'hat_cowboy', name: 'Cowboy Hat' },
       name: 'Haul Week',
       description: 'Score at least 2,000 haul points in one week.',
       criterion: { event: 'haul_week', minScore: 2000 },

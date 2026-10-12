@@ -44,18 +44,21 @@ export const SALVAGE_RUSH_PACK: ContentPackV2 = {
     achievements: [
       {
         id: 'first-haul',
+        reward: { item: 'fx_neon', name: 'Neon Name' },
         name: 'First Haul',
         description: 'Score in a Salvage Rush round.',
         criterion: { event: 'round_finished', minScore: 1 },
       },
       {
         id: 'big-haul',
+        reward: { item: 'px_flames', name: 'Flames' },
         name: 'Big Haul',
         description: 'Score at least five points in one round.',
         criterion: { event: 'round_finished', minScore: 5 },
       },
       {
         id: 'arena-winner',
+        reward: { item: 'px_stars', name: 'Stars' },
         name: 'Arena Winner',
         description: 'Finish a round in first place.',
         criterion: { event: 'round_finished', minRank: 1 },

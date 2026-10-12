@@ -144,6 +144,7 @@ export class GameProgressWriter {
   constructor(
     private readonly db: Db,
     private readonly onError: (error: unknown) => void,
+    private readonly afterCommit?: (subject: string) => void,
   ) {
     this.timer = setInterval(() => void this.flush().catch(onError), 2000)
     this.timer.unref()
@@ -178,6 +179,7 @@ export class GameProgressWriter {
         for (const [roundId, entry] of this.pending) {
           await recordRound(this.db, 'salvage-rush', roundId, entry.results, entry.finishedAt)
           this.pending.delete(roundId)
+          for (const result of entry.results) this.afterCommit?.(result.key)
         }
         for (const [id, haul] of this.hauls) {
           await recordHaul(
@@ -189,10 +191,12 @@ export class GameProgressWriter {
             haul.finishedAt,
           )
           this.hauls.delete(id)
+          this.afterCommit?.(haul.key)
         }
         for (const [key, at] of this.joined) {
           await recordJoined(this.db, key, at)
           this.joined.delete(key)
+          this.afterCommit?.(key)
         }
       }
     })()

@@ -603,7 +603,12 @@ export class Hud {
       const data = (await response.json()) as {
         games: {
           game: string
-          achievements: { name: string; description: string; unlockedAt: number | null }[]
+          achievements: {
+            name: string
+            description: string
+            reward?: { item: string; name: string }
+            unlockedAt: number | null
+          }[]
         }[]
       }
       if (this.activeTab !== 'achievements') return
@@ -613,7 +618,7 @@ export class Hud {
         []) {
         const line = document.createElement('p')
         line.className = 'skill-row'
-        line.textContent = `${achievement.unlockedAt ? '✓' : '○'} ${achievement.name} — ${achievement.description}`
+        line.textContent = `${achievement.unlockedAt ? '✓' : '○'} ${achievement.name} — ${achievement.description}${achievement.reward ? ` Gives the ${achievement.reward.name} on OpenVibe.Inventory.` : ''}`
         body.append(line)
       }
       if (!body.children.length) body.textContent = 'No achievements for this game yet.'

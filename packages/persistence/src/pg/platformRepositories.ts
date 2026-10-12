@@ -63,11 +63,21 @@ export function createIdentityRepository(db: Db): IdentityRepository {
     `)
     await db.exec(sql`DELETE FROM game_best_scores WHERE account_key = ${from}`)
     await db.exec(sql`
-      INSERT INTO game_achievements (game_id, achievement_id, account_key, unlocked_at)
-      SELECT game_id, achievement_id, ${into}, unlocked_at
+      INSERT INTO game_achievements (game_id, achievement_id, account_key, unlocked_at, item_state, item_error, item_instance, item_attempts, item_updated_at)
+      SELECT game_id, achievement_id, ${into}, unlocked_at,
+        CASE WHEN ${from} LIKE 'usr_%' THEN item_state ELSE NULL END,
+        CASE WHEN ${from} LIKE 'usr_%' THEN item_error ELSE NULL END,
+        CASE WHEN ${from} LIKE 'usr_%' THEN item_instance ELSE NULL END,
+        CASE WHEN ${from} LIKE 'usr_%' THEN item_attempts ELSE 0 END,
+        CASE WHEN ${from} LIKE 'usr_%' THEN item_updated_at ELSE NULL END
       FROM game_achievements WHERE account_key = ${from}
       ON CONFLICT (game_id, achievement_id, account_key) DO UPDATE SET
-        unlocked_at = LEAST(game_achievements.unlocked_at, excluded.unlocked_at)
+        unlocked_at = LEAST(game_achievements.unlocked_at, excluded.unlocked_at),
+        item_state = CASE WHEN game_achievements.item_state = 'granted' OR excluded.item_state = 'granted' THEN 'granted' ELSE NULL END,
+        item_error = CASE WHEN game_achievements.item_state = 'granted' OR excluded.item_state = 'granted' THEN NULL ELSE COALESCE(game_achievements.item_error, excluded.item_error) END,
+        item_instance = COALESCE(game_achievements.item_instance, excluded.item_instance),
+        item_attempts = game_achievements.item_attempts + excluded.item_attempts,
+        item_updated_at = GREATEST(game_achievements.item_updated_at, excluded.item_updated_at)
     `)
     await db.exec(sql`DELETE FROM game_achievements WHERE account_key = ${from}`)
     await db.exec(sql`
@@ -173,7 +183,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         sql`SELECT game_id, player_name, score, finished_at FROM game_best_scores WHERE account_key = ${subject} ORDER BY game_id`,
       )
       const gameAchievements = await db.many<Record<string, unknown>>(
-        sql`SELECT game_id, achievement_id, unlocked_at FROM game_achievements WHERE account_key = ${subject} ORDER BY game_id, achievement_id`,
+        sql`SELECT game_id, achievement_id, unlocked_at, item_state, item_error, item_instance, item_attempts, item_updated_at FROM game_achievements WHERE account_key = ${subject} ORDER BY game_id, achievement_id`,
       )
       const gameHauls = await db.many<Record<string, unknown>>(
         sql`SELECT extraction_id, player_name, score, finished_at FROM game_hauls WHERE account_key = ${subject} ORDER BY finished_at`,
