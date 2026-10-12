@@ -211,7 +211,7 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
 - **In production (2026-09-23, release `f11e21c`):** events and the Media
   mirror are on. `games.world.saved` events reach OpenVibe.Events; no mod is
   installed, no grant exists and no asset has been mirrored to Media yet.
-- **Shared chrome.** The portal, `/play` and `/editor` load the OpenVibe Frame
+- **OpenVibe Frame.** The portal, `/play` and `/editor` load the OpenVibe Frame
   (navbar, footer, theme loader) from this server's own pinned copy at `/shared/`
   (`apps/server/src/net/sharedAssets.ts`), so they keep their frame while Network is down.
 - **Persistence proof.** `apps/server/src/game/platformIntegration.test.ts`
