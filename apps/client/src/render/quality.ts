@@ -33,6 +33,12 @@ export interface QualitySettings {
   hardwareScalingLevel: number
   antialias: boolean
   shadows: boolean
+  /**
+   * The largest texture side the tier loads (null = whatever the GPU allows). WebGL's loader scales a bigger image
+   * down as it uploads it, so the low tier's 1024 px terrain textures take a quarter of the memory. Textures already
+   * loaded keep their size; WebGPU's loader ignores the cap.
+   */
+  maxTextureSize: number | null
 }
 
 /**
@@ -41,9 +47,9 @@ export interface QualitySettings {
  * scene's authored lighting) but drops AA and renders at 80% resolution.
  */
 const QUALITY_SETTINGS: Record<QualityTier, Omit<QualitySettings, 'tier'>> = {
-  high: { hardwareScalingLevel: 1, antialias: true, shadows: true },
-  medium: { hardwareScalingLevel: 1.25, antialias: false, shadows: true },
-  low: { hardwareScalingLevel: 1.5, antialias: false, shadows: false },
+  high: { hardwareScalingLevel: 1, antialias: true, shadows: true, maxTextureSize: null },
+  medium: { hardwareScalingLevel: 1.25, antialias: false, shadows: true, maxTextureSize: null },
+  low: { hardwareScalingLevel: 1.5, antialias: false, shadows: false, maxTextureSize: 512 },
 }
 
 /** The full renderer settings for a tier. Pure — safe to unit-test. */
@@ -167,7 +173,15 @@ export function resolveStartupQuality(
  */
 export function applyEngineQuality(engine: AbstractEngine, settings: QualitySettings): void {
   engine.setHardwareScalingLevel(settings.hardwareScalingLevel)
+  const caps = engine.getCaps?.()
+  if (!caps) return
+  // The device's own limit, read once: a later tier change can raise the cap back to it.
+  if (!deviceTextureLimit.has(engine)) deviceTextureLimit.set(engine, caps.maxTextureSize)
+  const device = deviceTextureLimit.get(engine)!
+  caps.maxTextureSize = settings.maxTextureSize ? Math.min(device, settings.maxTextureSize) : device
 }
+
+const deviceTextureLimit = new WeakMap<AbstractEngine, number>()
 
 /** Shadow maps are a Scene concern, not an engine one. */
 export function applySceneQuality(

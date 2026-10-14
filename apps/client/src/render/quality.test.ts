@@ -213,7 +213,12 @@ describe('qualityForTier', () => {
   it('turns antialiasing off below high and shadows off at low', () => {
     expect(qualityForTier('high')).toMatchObject({ antialias: true, shadows: true })
     expect(qualityForTier('medium')).toMatchObject({ antialias: false, shadows: true })
-    expect(qualityForTier('low')).toMatchObject({ antialias: false, shadows: false })
+    expect(qualityForTier('low')).toMatchObject({
+      antialias: false,
+      shadows: false,
+      maxTextureSize: 512,
+    })
+    expect(qualityForTier('high').maxTextureSize).toBeNull()
   })
 })
 
@@ -247,6 +252,25 @@ describe('applying settings', () => {
     const engine = { setHardwareScalingLevel } as unknown as AbstractEngine
     applyEngineQuality(engine, qualityForTier('medium'))
     expect(setHardwareScalingLevel).toHaveBeenCalledWith(1.25)
+  })
+
+  it('caps texture size at the low tier and gives the device limit back above it', () => {
+    const caps = { maxTextureSize: 4096 }
+    const engine = {
+      setHardwareScalingLevel: vi.fn(),
+      getCaps: () => caps,
+    } as unknown as AbstractEngine
+    applyEngineQuality(engine, qualityForTier('low'))
+    expect(caps.maxTextureSize).toBe(512)
+    applyEngineQuality(engine, qualityForTier('high'))
+    expect(caps.maxTextureSize).toBe(4096)
+    const small = { maxTextureSize: 256 }
+    const weak = {
+      setHardwareScalingLevel: vi.fn(),
+      getCaps: () => small,
+    } as unknown as AbstractEngine
+    applyEngineQuality(weak, qualityForTier('low'))
+    expect(small.maxTextureSize).toBe(256)
   })
 
   it('toggles the scene shadow switch', () => {
