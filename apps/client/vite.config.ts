@@ -1,7 +1,20 @@
 import { defineConfig } from 'vite'
+import wasm from 'vite-plugin-wasm'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+  // Physics (plan M6): the deterministic Rapier build whose wasm is a file of its own, compiled by the browser as it
+  // streams in, instead of the compat build's 4.4 MB of base64 inside a JavaScript chunk. Same engine, same results.
+  // An absolute path: packages/physics imports the compat name and does not depend on this build itself.
+  resolve: {
+    alias: {
+      '@dimforge/rapier3d-deterministic-compat': fileURLToPath(
+        new URL('./node_modules/@dimforge/rapier3d-deterministic/rapier.js', import.meta.url),
+      ),
+    },
+  },
   plugins: [
+    wasm(),
     {
       // Mirror the production server's pretty-URL aliases so the OAuth
       // callback's redirect to /play works in dev too.
