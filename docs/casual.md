@@ -32,12 +32,13 @@ All under `/api/v1/casual/:game`. Identity is a Network session (`Authorization:
 guest token (`X-Guest-Token`), the same two the 3D games use. A signed-in request that still carries the guest
 token takes over that guest's save when the account has none for that game.
 
-| Method and path                                        | Answer                                                                                                                                                                  |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST …/session` `{ src?, c? }`                        | `{ state, version, created, now, digest, player }`. The save is created on the first visit, and the ad link's `src` and `c` are kept then only.                         |
-| `POST …/actions` `{ key, action }` + `X-Casual-Digest` | `{ state, version, result, now }`, `replay: true` for a repeated key; 409 `content_changed` when the page is older than the server's pack; 422 with the refusal's code. |
-| `GET …/leaderboard`                                    | The 50 furthest signed-in players (highest stage, then team power). Guests are never listed.                                                                            |
-| `GET …/ledger?before=`                                 | The player's own ledger, newest first, 100 lines a page.                                                                                                                |
+| Method and path                                        | Answer                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST …/session` `{ src?, c? }`                        | `{ state, version, created, now, digest, player }`. The save is created on the first visit, and the ad link's `src` and `c` are kept then only.                                                                                                                                                            |
+| `POST …/actions` `{ key, action }` + `X-Casual-Digest` | `{ state, version, result, now }`, `replay: true` for a repeated key; 409 `content_changed` when the page is older than the server's pack; 422 with the refusal's code.                                                                                                                                    |
+| `GET …/leaderboard`                                    | The 50 furthest signed-in players (highest stage, then team power). Guests are never listed.                                                                                                                                                                                                               |
+| `GET …/ledger?before=`                                 | The player's own ledger, newest first, 100 lines a page.                                                                                                                                                                                                                                                   |
+| `GET …/numbers?days=30`                                | Staff only (`staff.games.manage`, by bearer or the site's session cookie): per ad source and campaign, the players who first opened the game in the window, how many fought, reached stage 5 and signed in, and next-day (D1) and seventh-day (D7) returns with how many players were old enough for each. |
 
 Actions: `collect`, `battle {stage}`, `sweep {stage, times}`, `team {heroes}`, `level {hero, times}`,
 `star {hero}`, `fuse {hero}`, `equip {hero, slot, gear}`, `summon {count: 1|10}`, `quest {quest}`, `login`,
@@ -58,6 +59,8 @@ Actions: `collect`, `battle {stage}`, `sweep {stage, times}`, `team {heroes}`, `
 
 - The landing route is `/play/<game>?src=<source>&c=<campaign>`. The page sends `src` and `c` with the first visit
   and removes them from the address bar; they are kept on the save (first-party only) for campaign numbers.
+- `…/numbers` is how a campaign is judged: landings, first battles, stage 5, sign-ins, D1 and D7. Returns are read
+  from the ledger (any currency or item change that day).
 - The page's share card (Open Graph and X `summary_large_image`) and its JSON-LD are filled in by the server.
 - No third-party pixel runs. X's pixel waits for the owner's ads account and pixel id (O36) and a consent prompt.
 

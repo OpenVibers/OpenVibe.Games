@@ -29,6 +29,10 @@ let dir = ''
 let clock = Date.UTC(2026, 9, 14, 12)
 const users = new Map<string, NetworkUser>([
   ['ana-token', { id: '1', name: 'ana', rank: null, subjectId: ANA }],
+  [
+    'boss-token',
+    { id: '2', name: 'boss', rank: 'owner', subjectId: 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2B2' },
+  ],
 ])
 
 beforeAll(async () => {
@@ -221,6 +225,43 @@ describe('signing in', () => {
     await call(`${S}/session`, { body: {}, guest: GUEST })
     await act({ t: 'battle', stage: 1 }, 'key-0000020')
     expect((await call(`${S}/leaderboard`)).body.entries).toEqual([])
+  })
+})
+
+describe('campaign numbers', () => {
+  it('counts players, first battles and next-day returns per source and campaign, for staff only', async () => {
+    const GUEST2 = 'g0000000000000000000000000000002'
+    await call(`${S}/session`, { body: { src: 'x', c: 'launch' }, guest: GUEST })
+    await call(`${S}/session`, { body: { src: 'x', c: 'launch' }, guest: GUEST2 })
+    await call(`${S}/session`, { body: {}, guest: 'g0000000000000000000000000000003' })
+    await act({ t: 'battle', stage: 1 }, 'key-0000030')
+    clock += 86_400_000
+    await act({ t: 'login' }, 'key-0000031')
+    clock += 2 * 86_400_000
+    expect((await call(`${S}/numbers`)).status).toBe(401)
+    expect((await call(`${S}/numbers`, { bearer: 'ana-token' })).status).toBe(403)
+    // The signed-in browser's own session cookie opens it too.
+    const viaCookie = await fetch(`${base}${S}/numbers`, {
+      headers: { cookie: 'ovg_sso=boss-token' },
+    })
+    expect(viaCookie.status).toBe(200)
+    const r = await call(`${S}/numbers?days=7`, { bearer: 'boss-token' })
+    expect(r.status).toBe(200)
+    expect(r.body.rows).toEqual([
+      {
+        source: 'x',
+        campaign: 'launch',
+        players: 2,
+        battled: 1,
+        stage5: 0,
+        signedIn: 0,
+        d1: 1,
+        d1Eligible: 2,
+        d7: 0,
+        d7Eligible: 0,
+      },
+      expect.objectContaining({ source: '', campaign: '', players: 1, battled: 0 }),
+    ])
   })
 })
 
