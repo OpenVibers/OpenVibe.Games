@@ -136,9 +136,11 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
   instance registries, fenced leases and game systems. `hello.place` selects Salvage Rush on the same
   WebSocket endpoint; missing or unknown places use `GAMES_PLACE_ID` as the default. Room transfer
   stays within each place. Separate processes remain possible for scale.
-  **Still to build:** OpenVibe.Play as a separate service, Games as its first consumer, score/achievement migration
-  to Play. This local schema is the seed for Play's per-title results and unlocks;
-  the title-scoped principal/grant design in decision 10 remains the target.
+  **Built (2026-10-14):** OpenVibe.Play as a separate service (contracts 0.172.0, play.openvibe.network) with the
+  title-scoped design of decision 10 (a title is owned by the principal that registered it; `play.title.manage`,
+  `play.result.write`, public `play.player.read`), and Games as its first consumer: both titles registered, rounds,
+  hauls, unlocks and guest adoptions posted from the local tables (`GAMES_PLAY_URL`). **Still to build:** the in-game
+  boards read from Play, then the local result tables go (a contract migration).
 - **M6: client floor.** Quality tiers, KTX2 and atlases, baked icons, bundle budget, editor E2E in CI.
   *2026-10-14:* quality tiers and hardware scaling are in (`render/quality.ts`, the HUD's Graphics quality); initial
   JS is 2.35 MB of 2.5 (579 KB gzip). The browser build now loads Rapier from the deterministic non-compat package
