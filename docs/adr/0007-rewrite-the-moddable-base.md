@@ -140,5 +140,12 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
   to Play. This local schema is the seed for Play's per-title results and unlocks;
   the title-scoped principal/grant design in decision 10 remains the target.
 - **M6: client floor.** Quality tiers, KTX2 and atlases, baked icons, bundle budget, editor E2E in CI.
+  *2026-10-14:* quality tiers and hardware scaling are in (`render/quality.ts`, the HUD's Graphics quality); initial
+  JS is 2.35 MB of 2.5 (579 KB gzip). The browser build now loads Rapier from the deterministic non-compat package
+  (Vite alias + `vite-plugin-wasm`): the same engine and results, its wasm a 3.1 MB file the browser compiles as it
+  streams (1.18 MB gzip) instead of a 4.37 MB JavaScript chunk of base64 (1.65 MB gzip). Node keeps the compat build.
+  Still over the 400 KB per-chunk line: Babylon's core (one 2.09 MB chunk: engines, materials, meshes, maths). A split
+  by Babylon folder was tried and refused: circular chunks, and it pulled the lazily loaded shaders into the initial
+  graph (3.97 MB). Left for M6: that chunk, KTX2 and atlases, baked icons, editor E2E in CI.
 
 Each milestone is playable end to end and keeps the slice harness green.
