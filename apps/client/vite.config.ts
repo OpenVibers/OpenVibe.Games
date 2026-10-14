@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import wasm from 'vite-plugin-wasm'
 import { fileURLToPath } from 'node:url'
+import { vendorLayers } from './scripts/vendorLayers'
 
 export default defineConfig({
   // Physics (plan M6): the deterministic Rapier build whose wasm is a file of its own, compiled by the browser as it
@@ -54,6 +55,8 @@ export default defineConfig({
         leaderboard: 'leaderboard.html',
         casual: 'casual.html',
       },
+      // Babylon's core as a chain of layers no larger than 400 KB each, not one 2 MB chunk (scripts/vendorLayers.ts).
+      output: { manualChunks: vendorLayers() },
     },
     outDir: 'dist',
     target: 'es2022',

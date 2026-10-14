@@ -17,9 +17,9 @@ jobs:
       extra: |
         (cd apps/server && npx openvibe-contracts-check --service games --src src)
         pnpm --filter @openvibe/client build
-        # Initial JS is enforced; the 400 KB chunk limit is reported until Babylon's core (instancedMesh.pure, 2.09 MB)
-        # is split (rapier is a wasm file since #61). Drop --chunks=report then.
-        node --import tsx apps/client/scripts/bundleBudget.ts --chunks=report
+        # Initial JS and the 400 KB chunk limit are both enforced: Babylon's core is a chain of layers since
+        # scripts/vendorLayers.ts (it was one 2.09 MB chunk), and Rapier is a wasm file since #61.
+        node --import tsx apps/client/scripts/bundleBudget.ts
   # The editor's browser acceptance suites (ADR-0007 M6: editor E2E in CI). The real server and the built client in
   # Chromium: pnpm test:editor (one editor, every tool, live saves reaching the server) and pnpm test:collab (two
   # editors on one map). They ran only by hand before, and 15 checks had quietly gone red; this keeps them green.
