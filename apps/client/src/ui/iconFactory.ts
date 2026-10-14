@@ -9,6 +9,7 @@ import { Scene } from '@babylonjs/core/scene.js'
 import type { ContentRegistry } from '@openvibe/content'
 import { createToolProp } from '../render/avatar/toolProps.js'
 import { meshForShape } from '../render/sceneSetup.js'
+import { IconCache, iconKey } from './iconCache.js'
 
 /**
  * Generates inventory icons by RENDERING each item's actual 3D model —
@@ -19,7 +20,9 @@ import { meshForShape } from '../render/sceneSetup.js'
  * scene's atmosphere/HDR pipeline must never touch icon captures (it
  * washed them out to pure white), and a second engine proved flaky
  * headless. Generation is async and serialized; `onReady` fires so the
- * HUD can swap real icons in as they finish.
+ * HUD can swap real icons in as they finish. Each finished icon is baked
+ * into the browser's storage (iconCache.ts): the next session shows it at
+ * once and renders only what is new or changed.
  */
 
 const STAGE = new Vector3(0, 0, 0)
@@ -31,6 +34,7 @@ export class IconFactory {
   private readonly queued = new Set<string>()
   private chain: Promise<void> = Promise.resolve()
   private readonly iconScene: Scene
+  private readonly baked = new IconCache()
 
   constructor(
     scene: Scene,
@@ -44,11 +48,29 @@ export class IconFactory {
     hemi.groundColor = new Color3(0.35, 0.33, 0.3)
     const key = new DirectionalLight('icon-key', new Vector3(-0.5, -1, -0.4), this.iconScene)
     key.intensity = 0.7
+    this.baked.clear(true)
+  }
+
+  /** The baked icon's key: what the item looks like (tool kind, or shape and colour), not only its id. */
+  private keyFor(defId: string): string {
+    const def = this.content.item(defId)
+    let visual: unknown = null
+    try {
+      visual = def?.tool ? { tool: toolVisualKind(def.tool.kind) } : this.content.worldRepOf(defId)
+    } catch {
+      // No world representation: the key still names the item; generate() reports the failure.
+    }
+    return iconKey(defId, visual)
   }
 
   iconFor(defId: string): string {
     const cached = this.cache.get(defId)
     if (cached) return cached
+    const baked = this.baked.get(this.keyFor(defId))
+    if (baked) {
+      this.cache.set(defId, baked)
+      return baked
+    }
     if (!this.queued.has(defId)) {
       this.queued.add(defId)
       this.chain = this.chain
@@ -100,7 +122,10 @@ export class IconFactory {
         width: 128,
         height: 128,
       })
-      if (url && url.length > 200) this.cache.set(defId, url)
+      if (url && url.length > 200) {
+        this.cache.set(defId, url)
+        this.baked.set(this.keyFor(defId), url)
+      }
     } finally {
       camera.dispose()
       root.dispose()
