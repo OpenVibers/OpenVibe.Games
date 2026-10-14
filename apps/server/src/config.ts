@@ -98,6 +98,11 @@ export interface PlatformConfig {
   /** OpenVibe.Inventory base and item reward switch. */
   inventoryUrl: string
   items: boolean
+  /**
+   * OpenVibe.Play base (GAMES_PLAY_URL, host-internal in production); null = titles, scores and unlocks stay local.
+   * Needs the client secret too (ADR-0007 decision 10).
+   */
+  playUrl: string | null
   /** Media namespace (tenant app id) Games writes objects into. */
   mediaNamespace: string
   /** At most one `games.world.saved` checkpoint event per this many minutes. */
@@ -136,6 +141,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     mediaUrl: env.MEDIA_URL && env.MEDIA_MIRROR !== 'off' ? trimSlash(env.MEDIA_URL) : null,
     inventoryUrl: trimSlash(env.GAMES_INVENTORY_URL ?? 'https://inventory.openvibe.network'),
     items: env.GAMES_ITEMS !== 'off' && !!secret,
+    playUrl: env.GAMES_PLAY_URL ? trimSlash(env.GAMES_PLAY_URL) : null,
     mediaNamespace: env.MEDIA_NAMESPACE ?? 'games',
     worldSavedEventMinutes: intEnv(env, 'WORLD_SAVED_EVENT_MINUTES', 15),
     eventsSecrets: (env.GAMES_EVENTS_SECRET ?? '')

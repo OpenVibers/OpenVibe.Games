@@ -49,5 +49,9 @@ Guest character adoption and Network subject merges move progression (including 
 4. Add lifecycle, score integrity, criteria, persistence, join routing and API tests.
    More Games processes may later be used for scale.
 
-OpenVibe.Play is the later home of these per-title results, achievements and leaderboards.
-The local tables and APIs are the seed for that extraction; Play is not yet running.
+OpenVibe.Play (play.openvibe.network, contracts 0.172.0) is the network's home for these per-title results,
+achievements and leaderboards. With `GAMES_PLAY_URL` set, Games registers both titles there (Scraplandia's weekly
+haul board sums extractions; Salvage Rush's board ranks each player's best round) and posts every round, haul, unlock
+and guest adoption from the local tables (`apps/server/src/platform/playSync.ts`, position in `play_sync`). Every post
+is idempotent, so the first run imports the history. The local tables still serve the in-game boards; reading them
+from Play and dropping the local copies is the next step.

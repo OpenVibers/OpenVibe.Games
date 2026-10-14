@@ -60,6 +60,7 @@ import { createAccountData, networkSender, type AccountEvent } from './platform/
 import { MediaMirror } from './platform/mediaMirror.js'
 import { createPlatformClient } from './platform/serviceClient.js'
 import { InventoryRewards } from './platform/inventoryRewards.js'
+import { PlaySync } from './platform/playSync.js'
 import {
   createRevocationEvents,
   ensureRevocationSubscription,
@@ -181,6 +182,14 @@ async function main(): Promise<void> {
     warn: (message) => log.warn(message),
   })
   inventoryRewards.start()
+  // OpenVibe.Play (ADR-0007 decision 10): both titles' scores, unlocks and guest adoptions, posted from the local tables.
+  const playSync = new PlaySync({
+    db,
+    url: platform ? config.platform.playUrl : null,
+    tokens: platform?.tokens ?? null,
+    warn: (message) => log.warn(message),
+  })
+  playSync.start()
   const platformLog = log.child({ system: 'platform' })
   const valkey = createValkey({ url: config.db.valkeyUrl ?? '', prefix: config.db.valkeyPrefix })
   let outbox: PgOutbox | null = null
@@ -1021,6 +1030,7 @@ async function main(): Promise<void> {
       await mods.flushWrites()
       await progressWriter.stop()
       inventoryRewards?.stop()
+      playSync.stop()
       await store.close()
       await valkey?.close()
       log.info('stopped', {

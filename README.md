@@ -238,6 +238,7 @@ Platform environment (all optional; service calls need `OV_OAUTH_CLIENT_SECRET`)
 | `MEDIA_URL`                 | OpenVibe.Media base; enables the asset mirror (`MEDIA_MIRROR=off` disables)                |
 | `GAMES_INVENTORY_URL`       | Inventory base (default `https://inventory.openvibe.network`; production can use loopback) |
 | `GAMES_ITEMS`               | `on` (default) or `off`; off also when the OAuth client secret is unset                    |
+| `GAMES_PLAY_URL`            | OpenVibe.Play base (e.g. `http://127.0.0.1:5040`); unset = scores and unlocks stay local   |
 | `MEDIA_NAMESPACE`           | Media tenant for the copies (default `games`)                                              |
 | `WORLD_SAVED_EVENT_MINUTES` | Checkpoint event interval (default 15)                                                     |
 
