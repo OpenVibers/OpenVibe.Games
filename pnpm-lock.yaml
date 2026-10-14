@@ -56,6 +56,9 @@ importers:
       '@babylonjs/procedural-textures':
         specifier: ^9.20.0
         version: 9.20.0(@babylonjs/core@9.20.0)
+      '@openvibe/casual':
+        specifier: workspace:*
+        version: link:../../packages/casual
       '@openvibe/content':
         specifier: workspace:*
         version: link:../../packages/content
@@ -87,6 +90,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.8
         version: 0.5.8
+      '@openvibe/casual':
+        specifier: workspace:*
+        version: link:../../packages/casual
       '@openvibe/content':
         specifier: workspace:*
         version: link:../../packages/content
@@ -139,6 +145,12 @@ importers:
       esbuild:
         specifier: ^0.25.2
         version: 0.25.12
+
+  packages/casual:
+    dependencies:
+      '@openvibe/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/content:
     dependencies:

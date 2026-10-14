@@ -10,6 +10,7 @@ export default defineConfig({
         server.middlewares.use((req, _res, next) => {
           if (req.url === '/play') req.url = '/play.html'
           else if (req.url === '/editor') req.url = '/editor.html'
+          else if (/^\/play\/[a-z0-9-]+(\?|$)/.test(req.url ?? '')) req.url = '/casual.html'
           next()
         })
       },
@@ -38,6 +39,7 @@ export default defineConfig({
         main: 'play.html',
         editor: 'editor.html',
         leaderboard: 'leaderboard.html',
+        casual: 'casual.html',
       },
     },
     outDir: 'dist',

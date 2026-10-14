@@ -114,7 +114,7 @@ describe('account export and deletion (ADR-033)', () => {
       '/internal/account-deletions/del_01J8Z3Q4R5S6T7V8W9X0Y1Z2F8/confirmations',
     )
     expect(validate('network.account-deletion-confirmation@1', conf.body).valid).toBe(true)
-    expect(conf.body.erased).toEqual({ characters: 2, identity_rows: 0 })
+    expect(conf.body.erased).toEqual({ characters: 2, identity_rows: 0, casual_saves: 0 })
     expect(conf.body.retained).toEqual({ structures_unowned: 0 })
     expect(await data.apply(del)).toBe('unchanged')
     expect(sent.length).toBe(2)

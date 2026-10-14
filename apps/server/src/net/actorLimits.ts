@@ -49,6 +49,9 @@ export function createGamesActorLimits(
   // flood must not get to spend tickets or hold sockets (ADR-0007 decision 8).
   const upgrade = limiter('games.ws.upgrade', { minute: 90, hour: 1800 })
   const publicRead = limiter('games.public.read', { minute: 60, hour: 1200 })
+  // Casual games (plan T22): a session open per address, and each player's actions (a tap is one request).
+  const casualSession = limiter('games.casual.session', { minute: 30, hour: 600 })
+  const casualAction = limiter('games.casual.action', { minute: 120, hour: 3000 })
   const run =
     (mw: ReturnType<typeof limiter>) =>
     (req: IncomingMessage, res: ServerResponse, actor: string): Promise<boolean> =>
@@ -68,6 +71,8 @@ export function createGamesActorLimits(
     ticket: run(ticket),
     upgrade: run(upgrade),
     publicRead: run(publicRead),
+    casualSession: run(casualSession),
+    casualAction: run(casualAction),
   }
 }
 

@@ -28,6 +28,11 @@ import { gzipSync } from 'node:zlib'
 export const INITIAL_JS_LIMIT_BYTES = 2_500_000
 /** 400 KB, decimal units. */
 export const CHUNK_LIMIT_BYTES = 400_000
+/**
+ * The casual games' page (plan T22) opens from an ad on a phone, often in an in-app browser on 4G, and must be
+ * playable in about three seconds: its initial JS stays under 60 KB gzip.
+ */
+export const CASUAL_INITIAL_GZIP_LIMIT_BYTES = 60_000
 
 const MODULE_SCRIPT = /<script[^>]*\btype=["']module["'][^>]*>/gi
 const MODULEPRELOAD = /<link[^>]*\brel=["']modulepreload["'][^>]*>/gi
@@ -53,6 +58,8 @@ export interface BudgetViolation {
 export interface BudgetReport {
   dist: string
   initial: { files: FileMeasurement[]; rawBytes: number; gzipBytes: number }
+  /** The casual page's initial JS, when the build has one. */
+  casual?: { files: FileMeasurement[]; rawBytes: number; gzipBytes: number }
   /** Every JS chunk measured against 400 KB; editor-only chunks are excluded. */
   chunks: FileMeasurement[]
   violations: BudgetViolation[]
@@ -175,6 +182,20 @@ export function assessBundleBudget(distDir: string): BudgetReport {
     })
   }
 
+  if (existsSync(join(dist, 'casual.html'))) {
+    const files = pageInitial(dist, 'casual.html').map((file) => measure(dist, file))
+    report.casual = { files, rawBytes: sum(files, 'rawBytes'), gzipBytes: sum(files, 'gzipBytes') }
+    if (report.casual.gzipBytes > CASUAL_INITIAL_GZIP_LIMIT_BYTES) {
+      violations.push({
+        scope: 'initial',
+        metric: 'gzip',
+        actualBytes: report.casual.gzipBytes,
+        limitBytes: CASUAL_INITIAL_GZIP_LIMIT_BYTES,
+        message: `initial JS (casual entry) is ${human(report.casual.gzipBytes)} gzip, over the ${human(CASUAL_INITIAL_GZIP_LIMIT_BYTES)} limit`,
+      })
+    }
+  }
+
   for (const chunk of report.chunks) {
     if (chunk.rawBytes > CHUNK_LIMIT_BYTES) {
       violations.push({
@@ -209,6 +230,13 @@ export function formatReport(report: BudgetReport): string {
       `${human(report.initial.rawBytes)} raw, ${human(report.initial.gzipBytes)} gzip ` +
       `— limit ${human(INITIAL_JS_LIMIT_BYTES)}`,
   )
+  if (report.casual) {
+    lines.push(
+      `  initial JS (casual entry, ${report.casual.files.length} files): ` +
+        `${human(report.casual.rawBytes)} raw, ${human(report.casual.gzipBytes)} gzip ` +
+        `— limit ${human(CASUAL_INITIAL_GZIP_LIMIT_BYTES)} gzip`,
+    )
+  }
   const largest = report.chunks.reduce<FileMeasurement | undefined>(
     (max, chunk) => (!max || chunk.rawBytes > max.rawBytes ? chunk : max),
     undefined,

@@ -11,6 +11,7 @@ import type {
 } from '../dto.js'
 import type { IdentityRepository, MediaMirrorRepository, ModRepository } from '../repositories.js'
 import { idList } from './sqlUtils.js'
+import { eraseCasual, exportCasual, moveCasualSaves } from './casualData.js'
 
 /**
  * PostgreSQL repositories for the platform-integration tables: the adoption ledger, the mod registry
@@ -87,6 +88,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
       ON CONFLICT (account_key, extraction_id) DO NOTHING
     `)
     await db.exec(sql`DELETE FROM game_hauls WHERE account_key = ${from}`)
+    await moveCasualSaves(db, from, into)
   }
   const recordAdoption = (
     key: string,
@@ -188,6 +190,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
       const gameHauls = await db.many<Record<string, unknown>>(
         sql`SELECT extraction_id, player_name, score, finished_at FROM game_hauls WHERE account_key = ${subject} ORDER BY finished_at`,
       )
+      const casual = await exportCasual(db, subject)
       return {
         characters: characters.map(withoutAccountKey),
         structures,
@@ -195,12 +198,14 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         gameBestScores,
         gameAchievements,
         gameHauls,
+        casualSaves: casual.saves,
+        casualLedger: casual.ledger,
       }
     },
 
     eraseSubjects(subjects) {
       return db.tx(async () => {
-        const out = { characters: 0, structures_unowned: 0, identity_rows: 0 }
+        const out = { characters: 0, structures_unowned: 0, identity_rows: 0, casual_saves: 0 }
         if (!subjects.length) return out
         const ids = (
           await db.many<{ id: string }>(
@@ -223,6 +228,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
           sql`DELETE FROM game_round_results WHERE account_key IN (${idList(subjects)})`,
         )
         await db.exec(sql`DELETE FROM game_hauls WHERE account_key IN (${idList(subjects)})`)
+        out.casual_saves = await eraseCasual(db, subjects)
         return out
       })
     },

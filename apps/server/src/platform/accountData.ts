@@ -78,6 +78,12 @@ export function createAccountData(opts: {
           ? [{ name: 'game-achievements.json', content: data.gameAchievements }]
           : []),
         ...(data.gameHauls.length ? [{ name: 'game-hauls.json', content: data.gameHauls }] : []),
+        ...(data.casualSaves.length
+          ? [{ name: 'casual-saves.json', content: data.casualSaves }]
+          : []),
+        ...(data.casualLedger.length
+          ? [{ name: 'casual-ledger.json', content: data.casualLedger }]
+          : []),
       ]
       const res = await opts.send(`/internal/account-exports/${id}/parts`, { subject, files })
       const outcome = res.ok

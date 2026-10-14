@@ -2,7 +2,7 @@
   "repository": "OpenVibers/OpenVibe.Games",
   "stage": "stable",
   "code": true,
-  "product": "Scraplandia and Salvage Rush",
+  "product": "Scraplandia, Salvage Rush and Vibe Heroes",
   "runtime": "node 22, TypeScript (tsx), pnpm workspace; Babylon.js (client) + deterministic Rapier physics; PostgreSQL 18 via openvibe-sdk/db (pg, or embedded PGlite in development); Valkey optional",
   "port": 8000,
   "domain": "openvibe.games, play.openvibe.games",
@@ -27,6 +27,7 @@
     "persistent world, characters and props in PostgreSQL (write-behind flusher; the tick never awaits I/O)",
     "M4 in working tree (not deployed): one-process rooms, PostgreSQL instance registry and fenced leases, capacity-based join, same-place transfer, per-room position, grid-cell interest and socketless load probe",
     "M5 first part in working tree (not deployed): one Games process hosts Scraplandia and Salvage Rush in separate place and instance registries; server-scored rounds, per-game achievements and paginated all-time/week leaderboards in Games",
+    "the casual line (plan T22): packages/casual kit, server economy with ledger and idempotent actions, Vibe Heroes at /play/vibe-heroes (guest play, adoption on sign-in, earned-only summons, gem store; paid products wait for Billing)",
     "six achievement rewards granted as free OpenVibe.Inventory items, never sold or traded; GAMES_ITEMS=on/off and GAMES_INVENTORY_URL configure delivery",
     "map editor with assets mirrored to OpenVibe.Media",
     "declarative mods (games-content@2: definitions merged into the content registry at boot, placements, announcements) with per-install grants and audit",
@@ -37,5 +38,5 @@
     "the OpenVibe Frame from its own pinned copy",
     "per-actor limits on capability-boundary writes (openvibe-sdk/limits)"
   ],
-  "updated": "2026-10-11"
+  "updated": "2026-10-14"
 }

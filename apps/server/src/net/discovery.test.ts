@@ -147,6 +147,7 @@ describe('crawl artifacts (plan T11)', () => {
     expect(r.headers['content-type']).toBe('application/xml; charset=utf-8')
     expect(r.body).toContain('<loc>https://openvibe.games/</loc>')
     expect(r.body).toContain('<loc>https://play.openvibe.games/</loc>')
+    expect(r.body).toContain('<loc>https://openvibe.games/play/vibe-heroes</loc>')
     // The lastmod is the committed content-revision date, not the clock.
     const status = JSON.parse(readFileSync(join(ROOT, 'STATUS.json'), 'utf8')) as {
       updated: string
@@ -163,6 +164,7 @@ describe('crawl artifacts (plan T11)', () => {
     expect(r.body).toContain('# OpenVibe.Games')
     expect(r.body).toContain('- [OpenVibe.Games home](https://openvibe.games/)')
     expect(r.body).toContain('- [Scraplandia](https://play.openvibe.games/)')
+    expect(r.body).toContain('- [Vibe Heroes](https://openvibe.games/play/vibe-heroes)')
     expect(r.body).toContain('https://openvibe.games/sitemap.xml')
     expect(r.body).toContain('https://openvibe.games/robots.txt')
     expect(r.body).toContain('https://openvibe.games/map.json')
@@ -211,6 +213,8 @@ describe('crawl artifacts (plan T11)', () => {
     ]
     expect(blocks.map((b) => (JSON.parse(b[1] ?? '{}') as { '@type'?: string })['@type'])).toEqual([
       'WebSite',
+      'WebApplication',
+      // Vibe Heroes, the casual line's first game (plan T22).
       'WebApplication',
       'WebPage',
     ])

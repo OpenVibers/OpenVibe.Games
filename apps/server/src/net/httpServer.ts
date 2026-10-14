@@ -48,6 +48,7 @@ export function portalHtml(filePath: string): string {
   return html
 }
 import { handleWsTicketRequest, type WsTicketStore } from './wsTicket.js'
+import { casualGameOf, casualPageHtml } from '../casual/page.js'
 import type { MapFileV2 } from '@openvibe/content'
 
 /**
@@ -179,6 +180,7 @@ export function createHttpServer(
     { href: '/', label: 'OpenVibe.Games home' },
     { href: '/play', label: 'Play Scraplandia' },
     { href: '/play?game=salvage-rush', label: 'Play Salvage Rush' },
+    { href: '/play/vibe-heroes', label: 'Play Vibe Heroes' },
     { href: '/leaderboard.html', label: 'Leaderboard' },
     { href: '/editor', label: 'Map editor' },
   ]
@@ -723,6 +725,32 @@ export function createHttpServer(
     // game and /editor the map editor. On the play host the game IS the
     // root page (with /play redirecting there so old links keep working).
     // The old .html URLs and a trailing slash redirect to the canonical URL.
+    // A casual game (plan T22): /play/<game> is the page an ad or a shared link opens. Its query (src, c) is
+    // kept through the trailing-slash redirect, because that is the campaign.
+    const casualId = casualGameOf(url)
+    if (casualId) {
+      if (url.endsWith('/')) {
+        res.writeHead(301, { location: url.slice(0, -1) + (req.url ?? '').slice(url.length) })
+        res.end()
+        return
+      }
+      const page = join(root, 'casual.html')
+      if (!existsSync(page)) {
+        res.writeHead(404)
+        res.end('client build missing')
+        return
+      }
+      res.writeHead(200, {
+        'content-type': 'text/html; charset=utf-8',
+        'cache-control': 'no-cache',
+      })
+      res.end(casualPageHtml(page, casualId))
+      return
+    }
+    if (url === '/casual.html') {
+      notFound()
+      return
+    }
     if (url === '/play.html' || url === '/editor.html') {
       res.writeHead(301, {
         location: url === '/play.html' ? (playHost ? '/' : '/play') : '/editor',

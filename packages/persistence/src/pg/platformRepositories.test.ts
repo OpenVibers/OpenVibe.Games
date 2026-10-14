@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { sql } from 'openvibe-sdk/db'
+import { sql, type Db } from 'openvibe-sdk/db'
 import type { PlayerDto } from '../dto.js'
 import { openTestStore } from '../testing.js'
+import { moveCasualSaves } from './casualData.js'
 
 const SUBJECT = 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0'
 const OTHER = 'usr_01JZZZZZZZZZZZZZZZZZZZZZZZ'
@@ -136,7 +137,24 @@ describe('account export and deletion (ADR-033)', () => {
       INSERT INTO identity_adoptions (adoption_key, subject_id, source, adopted_at)
       VALUES ('merge:mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', ${SUBJECT}, 'merge', 1)
     `)
+    for (const key of [SUBJECT, ALIAS, OTHER]) {
+      await store.db.exec(sql`
+        INSERT INTO casual_saves (game_id, account_key, state, stage, created_at, updated_at)
+        VALUES ('vibe-heroes', ${key}, '{"v":1}'::jsonb, 3, 1, 2)
+      `)
+      await store.db.exec(sql`
+        INSERT INTO casual_ledger (game_id, account_key, action_key, asset, delta, balance, reason, at)
+        VALUES ('vibe-heroes', ${key}, 'start', 'gold', 5000, 5000, 'start', 1)
+      `)
+    }
     const out = await store.identity.exportSubject(SUBJECT)
+    expect(out.casualSaves).toEqual([
+      expect.objectContaining({ game_id: 'vibe-heroes', state: { v: 1 }, stage: 3 }),
+    ])
+    expect(out.casualSaves[0]).not.toHaveProperty('account_key')
+    expect(out.casualLedger).toEqual([
+      { game_id: 'vibe-heroes', asset: 'gold', delta: 5000, balance: 5000, reason: 'start', at: 1 },
+    ])
     expect(out.characters.map((c) => c.id)).toEqual(['d0'])
     expect(out.characters[0]).not.toHaveProperty('token')
     expect(out.characters[0]).not.toHaveProperty('account_key')
@@ -146,7 +164,11 @@ describe('account export and deletion (ADR-033)', () => {
       characters: 2,
       structures_unowned: 1,
       identity_rows: 1,
+      casual_saves: 2,
     })
+    expect(
+      await store.db.many(sql`SELECT account_key FROM casual_ledger ORDER BY account_key`),
+    ).toEqual([{ account_key: OTHER }])
     expect(await store.players.listByToken(SUBJECT)).toEqual([])
     expect(await store.players.listByToken(ALIAS)).toEqual([])
     expect((await store.players.listByToken(OTHER)).map((p) => p.id)).toEqual(['o0'])
@@ -162,7 +184,41 @@ describe('account export and deletion (ADR-033)', () => {
       characters: 0,
       structures_unowned: 0,
       identity_rows: 0,
+      casual_saves: 0,
     })
+  })
+})
+
+describe('casual saves follow their owner (plan T22)', () => {
+  const GUEST = 'guest:' + 'a'.repeat(64)
+  const save = (db: Db, key: string, game: string, stage: number) =>
+    db.exec(sql`
+      INSERT INTO casual_saves (game_id, account_key, state, stage, created_at, updated_at)
+      VALUES (${game}, ${key}, '{"v":1}'::jsonb, ${stage}, 1, 1)
+    `)
+  it('moves a save into an account with none for that game, and keeps the other where it is', async () => {
+    const store = await openTestStore()
+    await save(store.db, GUEST, 'vibe-heroes', 7)
+    await save(store.db, GUEST, 'other-game', 2)
+    await save(store.db, SUBJECT, 'other-game', 9)
+    await store.db.exec(sql`
+      INSERT INTO casual_ledger (game_id, account_key, action_key, asset, delta, balance, reason, at)
+      VALUES ('vibe-heroes', ${GUEST}, 'start', 'gems', 100, 100, 'start', 1)
+    `)
+    expect(await moveCasualSaves(store.db, GUEST, SUBJECT)).toEqual(['vibe-heroes'])
+    expect(
+      await store.db.many(
+        sql`SELECT game_id, account_key, stage FROM casual_saves ORDER BY game_id, account_key`,
+      ),
+    ).toEqual([
+      { game_id: 'other-game', account_key: GUEST, stage: 2 },
+      { game_id: 'other-game', account_key: SUBJECT, stage: 9 },
+      { game_id: 'vibe-heroes', account_key: SUBJECT, stage: 7 },
+    ])
+    expect(await store.db.many(sql`SELECT account_key FROM casual_ledger`)).toEqual([
+      { account_key: SUBJECT },
+    ])
+    expect(await moveCasualSaves(store.db, GUEST, SUBJECT)).toEqual([])
   })
 })
 

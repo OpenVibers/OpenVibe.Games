@@ -5,11 +5,13 @@
  * measured by the CI step, not here.
  */
 import { randomBytes } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  CASUAL_INITIAL_GZIP_LIMIT_BYTES,
   CHUNK_LIMIT_BYTES,
   INITIAL_JS_LIMIT_BYTES,
   assessBundleBudget,
@@ -51,6 +53,30 @@ describe('bundle budget', () => {
     const report = assessBundleBudget(dist)
     expect(report.violations.some((v) => v.scope === 'initial')).toBe(true)
     expect(exitCodeFor(report, 'report')).toBe(1)
+  })
+
+  it('holds the casual page to its own small budget (plan T22)', () => {
+    const ok = assessBundleBudget(
+      makeDist({
+        'play.html': page('/assets/main.js'),
+        'assets/main.js': filler(1_000),
+        'casual.html': page('/assets/casual.js'),
+        'assets/casual.js': filler(5_000),
+      }),
+    )
+    expect(ok.violations).toEqual([])
+    expect(formatReport(ok)).toContain('casual entry')
+    const heavy = assessBundleBudget(
+      makeDist({
+        'play.html': page('/assets/main.js'),
+        'assets/main.js': filler(1_000),
+        'casual.html': page('/assets/casual.js'),
+        // Random bytes do not compress, so the gzip size is the raw size.
+        'assets/casual.js': randomBytes(CASUAL_INITIAL_GZIP_LIMIT_BYTES * 2),
+      }),
+    )
+    expect(heavy.violations.map((v) => v.message).join()).toContain('casual entry')
+    expect(exitCodeFor(heavy, 'report')).toBe(1)
   })
 
   it('passes within budget, and exempts a chunk only the editor entry loads', () => {
