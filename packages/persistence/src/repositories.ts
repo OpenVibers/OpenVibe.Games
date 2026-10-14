@@ -88,6 +88,9 @@ export interface IdentityRepository {
     gameBestScores: Record<string, unknown>[]
     gameAchievements: Record<string, unknown>[]
     gameHauls: Record<string, unknown>[]
+    /** Casual-kit saves (plan T22) and their ledger. */
+    casualSaves: Record<string, unknown>[]
+    casualLedger: Record<string, unknown>[]
   }>
   /**
    * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their
@@ -98,6 +101,7 @@ export interface IdentityRepository {
     characters: number
     structures_unowned: number
     identity_rows: number
+    casual_saves: number
   }>
 }
 

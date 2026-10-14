@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#120c2a" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--casual:head-->
+    <meta name="robots" content="index, follow" />
+    <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
+    <script src="/shared/theme-loader.js"></script>
+    <script src="/shared/navbar.js" defer></script>
+    <script src="/shared/footer.js" defer></script>
+    <script>
+      window.__ovgFrame = { page: 'casual', title: 'Vibe Heroes' }
+    </script>
+    <script src="/frame.js" defer></script>
+    <style>
+      /* The splash paints before the game's script arrives (an ad click lands here first). */
+      html,
+      body {
+        margin: 0;
+        background: #0b0820;
+      }
+      #navbar-mount {
+        min-height: 56px;
+      }
+      .cg {
+        max-width: 480px;
+        margin: 0 auto;
+        height: calc(100dvh - 56px);
+        min-height: 520px;
+        display: flex;
+        flex-direction: column;
+        color: #f4f1ff;
+        background:
+          radial-gradient(120% 60% at 50% 0%, #3a2378 0%, transparent 60%),
+          radial-gradient(90% 50% at 50% 100%, #1d3a7a 0%, transparent 70%), #120c2a;
+        font:
+          15px/1.4 system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      .splash {
+        margin: auto;
+        text-align: center;
+        padding: 24px;
+      }
+      .splash-logo {
+        font-size: 40px;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        background: linear-gradient(180deg, #fff6c8, #ffd25a 45%, #ff9f1c);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 3px 0 #5a2a00);
+      }
+      .splash-ring {
+        width: 42px;
+        height: 42px;
+        margin: 22px auto 10px;
+        border-radius: 50%;
+        border: 4px solid rgba(255, 255, 255, 0.15);
+        border-top-color: #ffd25a;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .splash-ring {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="navbar-mount"></div>
+    <main id="cg" class="cg">
+      <div class="splash">
+        <div class="splash-logo">Vibe Heroes</div>
+        <div class="splash-ring" aria-hidden="true"></div>
+        <p>Summoning your heroes…</p>
+        <noscript><p>Vibe Heroes needs JavaScript to play.</p></noscript>
+      </div>
+    </main>
+    <footer id="ov-footer" class="ovf"></footer>
+    <script type="module" src="/src/casual/main.ts"></script>
+  </body>
+</html>

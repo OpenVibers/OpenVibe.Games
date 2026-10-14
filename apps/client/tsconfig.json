@@ -16,6 +16,7 @@
   "include": ["src"],
   "references": [
     { "path": "../../packages/shared" },
+    { "path": "../../packages/casual" },
     { "path": "../../packages/protocol" },
     { "path": "../../packages/content" },
     { "path": "../../packages/gameplay" },

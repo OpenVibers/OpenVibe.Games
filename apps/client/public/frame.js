@@ -8,8 +8,8 @@
  *
  * Pages configure it with `window.__ovgFrame = { page, title, collapsible }`
  * before this script runs:
- *   page         'portal' | 'play' | 'editor'
- *   title        recorded to the signed-in user's network history (play only)
+ *   page         'portal' | 'play' | 'editor' | 'casual'
+ *   title        recorded to the signed-in user's network history (play and casual)
  *   collapsible  the Frame folds away once the game starts (the `ovg:playing`
  *                event) and a small floating button brings it back.
  *   toggleFromStart  show that button immediately (the editor), not only after
@@ -30,6 +30,8 @@
       ? '/?game=salvage-rush'
       : 'https://play.openvibe.games/?game=salvage-rush'
   var BOARD = local || !onPlayHost ? '/leaderboard.html' : 'https://openvibe.games/leaderboard.html'
+  var HEROES =
+    local || !onPlayHost ? '/play/vibe-heroes' : 'https://openvibe.games/play/vibe-heroes'
 
   function cookie(name) {
     var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'))
@@ -55,6 +57,7 @@
     { label: 'Games', href: PORTAL },
     { label: 'Scraplandia', href: PLAY },
     { label: 'Salvage Rush', href: RUSH },
+    { label: 'Vibe Heroes', href: HEROES },
     { label: 'Leaderboard', href: BOARD },
   ]
   // The shared footer's items are { name, url } (label/href rendered empty links).
@@ -65,6 +68,7 @@
         { name: 'All games', url: PORTAL },
         { name: 'Play Scraplandia', url: PLAY },
         { name: 'Play Salvage Rush', url: RUSH },
+        { name: 'Play Vibe Heroes', url: HEROES },
         { name: 'Leaderboard', url: BOARD },
         { name: 'Map editor', url: EDITOR },
       ],
@@ -96,7 +100,8 @@
       // One prompt=none attempt per tab when the browser says it has an OpenVibe account.
       silentLogin: '/auth/login?silent=1&next={url}',
     }
-    if (cfg.page === 'play') opts.history = { type: 'game', title: cfg.title || 'Scraplandia' }
+    if (cfg.page === 'play' || cfg.page === 'casual')
+      opts.history = { type: 'game', title: cfg.title || 'Scraplandia' }
     window.OpenVibeNavbar.init(opts)
   }
 

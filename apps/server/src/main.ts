@@ -69,6 +69,9 @@ import { createWsTicketStore } from './net/wsTicket.js'
 import { GameProgressWriter } from './game/progression.js'
 import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
+import { createCasualRoutes } from './casual/routes.js'
+import { pruneCasualActions } from './casual/store.js'
+import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 
 /**
  * Dedicated authoritative server entry point.
@@ -252,8 +255,22 @@ async function main(): Promise<void> {
     networkUrl: config.platform.networkUrl,
     log: platformLog.child({ system: 'staff-auth' }),
   })
-  const pruneTimer = setInterval(() => void outbox?.prune(), 6 * 3600 * 1000)
+  const pruneTimer = setInterval(
+    () => {
+      void outbox?.prune()
+      void pruneCasualActions(db, Date.now()).catch((err: unknown) =>
+        log.warn('casual action prune failed', { error: String(err) }),
+      )
+    },
+    6 * 3600 * 1000,
+  )
   pruneTimer.unref()
+  // The casual games' packs (plan T22) are validated like the 3D packs: a bad pack never serves.
+  for (const pack of Object.values(CASUAL_GAMES)) {
+    const problems = validatePack(pack)
+    if (problems.length)
+      throw new Error(`casual pack ${pack.id}: ${problems.slice(0, 5).join('; ')}`)
+  }
 
   // games.progress.summary on Network (WS-B task 9): needs the games principal.
   const progressSummary = platform
@@ -674,6 +691,14 @@ async function main(): Promise<void> {
   // ticket limit and logs (config.TRUST_PROXY; the socket address otherwise).
   const clientAddress = (req: IncomingMessage): string =>
     resolveClientAddress(req, config.trustProxy)
+  // The casual games' JSON API (plan T22).
+  const serveCasual = createCasualRoutes({
+    db,
+    networkAuthUrl: config.networkAuthUrl,
+    limits: actorLimits,
+    address: clientAddress,
+    log: log.child({ system: 'casual' }),
+  })
   const http = createHttpServer(
     config.staticDir,
     metrics,
@@ -746,6 +771,7 @@ async function main(): Promise<void> {
           )
           return true
         }
+        if (serveCasual(req, res)) return true
         if (
           handleGameRead(req, res, {
             db,

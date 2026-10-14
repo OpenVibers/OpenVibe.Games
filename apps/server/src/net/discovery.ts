@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { CASUAL_GAMES } from '@openvibe/casual'
 
 /**
  * Crawl and machine-readability artifacts (plan T11; audit §4 items 1-2): GET /robots.txt,
@@ -166,6 +167,13 @@ function publicPageDocs(): PublicPageDoc[] {
       text: GAME_DESCRIPTION,
       priority: 0.9,
     },
+    ...Object.values(CASUAL_GAMES).map((pack) => ({
+      title: pack.name,
+      url: `${SITE}/play/${pack.id}`,
+      note: 'a casual game for the phone browser, playable as a guest with nothing to install',
+      text: pack.tagline,
+      priority: 0.8,
+    })),
   ]
 }
 
@@ -246,6 +254,15 @@ export function homeJsonLd(): unknown[] {
       category: 'GameApplication',
       keywords: 'browser game, multiplayer, physics sandbox, survival, building, openvibe',
     }),
+    ...Object.values(CASUAL_GAMES).map((pack) =>
+      seo.jsonLd.softwareApp({
+        name: pack.name,
+        url: `${SITE}/play/${pack.id}`,
+        description: pack.tagline,
+        category: 'GameApplication',
+        keywords: 'browser game, idle game, hero collector, mobile, free to play, openvibe',
+      }),
+    ),
     seo.jsonLd.webPage({
       name: SITE_NAME,
       url: `${SITE}/`,
@@ -308,4 +325,19 @@ export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): bool
   // site description, so it ages on the same clock.
   send(res, 'text/plain', url === '/llms-full.txt' ? llmsFullBody() : llmsBody())
   return true
+}
+
+/** A casual game's page JSON-LD (plan T22): the game as a GameApplication, as on the home page. */
+export function casualJsonLdTag(packId: string): string {
+  const pack = CASUAL_GAMES[packId]
+  if (!pack) return ''
+  return seo.jsonLdTag(
+    seo.jsonLd.softwareApp({
+      name: pack.name,
+      url: `${SITE}/play/${pack.id}`,
+      description: pack.tagline,
+      category: 'GameApplication',
+      keywords: 'browser game, idle game, hero collector, mobile, free to play, openvibe',
+    }),
+  )
 }

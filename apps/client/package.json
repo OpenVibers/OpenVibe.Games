@@ -14,6 +14,7 @@
     "@babylonjs/loaders": "^9.20.0",
     "@babylonjs/materials": "^9.20.0",
     "@babylonjs/procedural-textures": "^9.20.0",
+    "@openvibe/casual": "workspace:*",
     "@openvibe/content": "workspace:*",
     "@openvibe/gameplay": "workspace:*",
     "@openvibe/physics": "workspace:*",

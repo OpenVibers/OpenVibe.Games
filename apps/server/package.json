@@ -12,6 +12,7 @@
   "dependencies": {
     "@dimforge/rapier3d-deterministic-compat": "0.21.0",
     "@electric-sql/pglite": "^0.5.8",
+    "@openvibe/casual": "workspace:*",
     "@openvibe/content": "workspace:*",
     "@openvibe/gameplay": "workspace:*",
     "@openvibe/persistence": "workspace:*",

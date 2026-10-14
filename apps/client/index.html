@@ -7,7 +7,7 @@
     <title>OpenVibe.Games — browser games on the OpenVibe network</title>
     <meta
       name="description"
-      content="The games arm of the OpenVibe network. Play Scraplandia, multiplayer survival-building in Scrap City, or Salvage Rush, 90-second scrap-collecting rounds with a leaderboard, in your browser with no download."
+      content="The games arm of the OpenVibe network. Play Scraplandia, multiplayer survival-building in Scrap City; Salvage Rush, 90-second scrap-collecting rounds with a leaderboard; or Vibe Heroes, an idle hero collector for your phone. All in your browser with no download."
     />
     <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
     <!-- Deferred: a slow or unreachable openvibe.network never holds the first paint (the inline colours above cover it). -->
@@ -21,7 +21,7 @@
     <meta property="og:title" content="OpenVibe.Games — browser games on the OpenVibe network" />
     <meta
       property="og:description"
-      content="Play Scraplandia or Salvage Rush in your browser, no download: survival-building in Scrap City, or timed scrap-collecting rounds with a leaderboard. One OpenVibe account across the whole network."
+      content="Play Scraplandia, Salvage Rush or Vibe Heroes in your browser, no download: survival-building in Scrap City, timed scrap-collecting rounds, or an idle hero collector for your phone. One OpenVibe account across the whole network."
     />
     <meta property="og:url" content="https://openvibe.games/" />
     <meta property="og:image" content="https://openvibe.games/og-image.png" />
@@ -203,6 +203,9 @@
         width: 100%;
         height: 100%;
         display: block;
+      }
+      .shot .shot-img {
+        object-fit: contain;
       }
       .game-body {
         padding: 26px;
@@ -661,6 +664,38 @@
           <div class="cta-row">
             <a class="play-cta" href="/play?game=salvage-rush">▶ PLAY A ROUND</a>
             <a class="card-link" href="/leaderboard.html?game=salvage-rush">Leaderboard →</a>
+          </div>
+        </div>
+      </div>
+      <div class="game-card wide">
+        <div
+          class="shot"
+          role="img"
+          aria-label="Vibe Heroes: five hero cards fanned out, a legendary in the middle"
+        >
+          <img
+            class="shot-art shot-img"
+            src="/casual/vibe-heroes/heroes.webp"
+            width="400"
+            height="394"
+            loading="lazy"
+            decoding="async"
+            alt=""
+          />
+        </div>
+        <div class="game-body">
+          <span class="badge live">● NEW</span>
+          <h3>VIBE HEROES</h3>
+          <p>
+            An idle hero collector made for your phone. Your team battles on its own: fuse heroes
+            from shards, star them up and push through 100 stages, even while you are away. Summons
+            use sigils you earn in play, so nothing is a paid random draw.
+          </p>
+          <div class="tags">
+            <span>idle</span><span>hero collector</span><span>phone-first</span>
+          </div>
+          <div class="cta-row">
+            <a class="play-cta" href="/play/vibe-heroes">▶ PLAY NOW</a>
           </div>
         </div>
       </div>

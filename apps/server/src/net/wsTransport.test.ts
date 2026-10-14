@@ -65,6 +65,8 @@ function openLimits() {
     modWrite: () => Promise.resolve(true),
     ticket: () => Promise.resolve(true),
     publicRead: () => Promise.resolve(true),
+    casualSession: () => Promise.resolve(true),
+    casualAction: () => Promise.resolve(true),
     upgrade: (req: unknown, _res: unknown, actor: string) =>
       new Promise<boolean>((resolve) => {
         ;(req as { ovActor?: string }).ovActor = actor

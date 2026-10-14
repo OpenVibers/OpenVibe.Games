@@ -162,28 +162,7 @@ export class Connection {
   }
 }
 
-/** Persistent anonymous identity (interim auth — see ADR-0004). */
-/**
- * Guest identity token: localStorage primary, a long-lived cookie as backup
- * (survives localStorage wipes).
- */
-export function getIdentity(): { token: string; name: string | null } {
-  const cookieTok = document.cookie
-    .split('; ')
-    .find((c) => c.startsWith('openvibe.token='))
-    ?.slice('openvibe.token='.length)
-  let token = localStorage.getItem('openvibe.token') ?? cookieTok ?? null
-  if (!token || !/^[a-z0-9]{8,64}$/i.test(token)) {
-    token = crypto.randomUUID().replaceAll('-', '').slice(0, 32)
-  }
-  localStorage.setItem('openvibe.token', token)
-  document.cookie = `openvibe.token=${token}; Path=/; Max-Age=${400 * 86400}; SameSite=Lax`
-  return { token, name: localStorage.getItem('openvibe.name') }
-}
-
-export function saveName(name: string): void {
-  localStorage.setItem('openvibe.name', name)
-}
+export { getIdentity, saveName } from './identity.js'
 
 export function gameSocketUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'

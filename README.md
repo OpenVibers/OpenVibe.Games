@@ -8,6 +8,8 @@ recovery bird earns haul points, with its own all-time/this-week leaderboard and
 The same Games process also hosts Salvage Rush, an on-foot timed collection game with its own
 place, world, rooms and round system. Play it at `/play?game=salvage-rush` on the same host.
 See [docs/games.md](docs/games.md) for both games and local progression.
+It also hosts the casual line (plan T22): small phone-first browser games built from one kit, starting with
+**Vibe Heroes**, an idle hero collector at `/play/vibe-heroes`. See [docs/casual.md](docs/casual.md).
 A persistent multiplayer physics sandbox for the browser: Source-style movement,
 physgun-driven building from crafted physical objects, gathering, crafting, and
 extraction risk — running against an authoritative dedicated server.
@@ -25,6 +27,8 @@ WebSocket protocol · PostgreSQL 18 + Valkey persistence (openvibe-sdk) · pnpm 
 - the map editor and its assets, the mod registry (`games-content@2` packs, grants, audit), the
   `games-quickjs@1` server script mods (docs/mods.md) and the `games.*` events
 - the game WebSocket protocol and the portal, `/play` and `/editor` pages
+- the casual kit (`packages/casual`), its server economy (saves, ledger, idempotent actions) and the `/play/<game>`
+  pages
 
 ## Does not own
 
@@ -54,6 +58,7 @@ packages/
   gameplay/      Pure domain logic: inventory, crafting, movement sim, zones, entities
   physics/       PhysicsWorld abstraction + Rapier adapter (@openvibe/physics/rapier)
   persistence/   DTOs, repository interfaces, PostgreSQL implementation, migrations
+  casual/        The casual kit: rules, auto-battle and the Vibe Heroes pack (engine-free)
 docs/adr/        Architecture decision records
 ```
 
