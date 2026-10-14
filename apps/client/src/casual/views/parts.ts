@@ -12,7 +12,7 @@ import { h, num } from '../dom.js'
 
 /** A row of stars, filled up to `n` of `max`. */
 export function stars(n: number, max = n): HTMLElement {
-  const row = h('span', { class: 'stars', attrs: { 'aria-label': `${n} stars` } })
+  const row = h('span', { class: 'stars', attrs: { role: 'img', 'aria-label': `${n} stars` } })
   for (let i = 0; i < max; i++) row.append(icon('star', i < n ? 'ico star on' : 'ico star'))
   return row
 }
@@ -37,7 +37,7 @@ export function heroCard(
     card.append(
       h(
         'span',
-        { class: 'shard-bar', attrs: { 'aria-label': `${have} of ${need} shards` } },
+        { class: 'shard-bar', attrs: { role: 'img', 'aria-label': `${have} of ${need} shards` } },
         h('i', { style: { width: `${Math.min(100, (have / need) * 100)}%` } }),
         h('b', { text: `${have}/${need}` }),
       ),

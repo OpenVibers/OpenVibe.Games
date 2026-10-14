@@ -41,7 +41,7 @@ beforeAll(async () => {
   mkdirSync(dist)
   writeFileSync(
     join(dist, 'casual.html'),
-    '<!doctype html><html><head><!--casual:head--></head><body><main id="app"></main></body></html>',
+    '<!doctype html><html><head><!--casual:head--></head><body><main id="app"><h1><!--casual:name--></h1><noscript><!--casual:about--></noscript></main></body></html>',
   )
   writeFileSync(join(dist, 'index.html'), '<!doctype html><title>portal</title>')
   db = await openTestDb()
@@ -274,6 +274,10 @@ describe('the casual page', () => {
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />')
     expect(html).toContain('https://openvibe.games/casual/vibe-heroes/card.png')
     expect(html).toContain('"@type":"WebApplication"')
+    // Without JavaScript the page still says what the game is (the browser check wants 200 characters).
+    expect(html).toContain('<h1>Vibe Heroes</h1>')
+    const about = /<noscript>([\s\S]*?)<\/noscript>/.exec(html)?.[1] ?? ''
+    expect(about.replace(/<[^>]+>/g, '').length).toBeGreaterThan(200)
     const slash = await call('/play/vibe-heroes/?src=x&c=t1')
     expect(slash.status).toBe(301)
     expect(slash.body.location).toBe('/play/vibe-heroes?src=x&c=t1')
