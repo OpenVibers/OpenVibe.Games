@@ -273,6 +273,31 @@ const screenOf = (id: string): Promise<[number, number]> =>
     return w.__editor.worldToScreen(t.position)
   }, id)
 
+/**
+ * A screen point on `id` where a brush stroke reaches the canvas. An object's centre can sit under the brush settings
+ * bar the paint and sculpt tools open along the viewport's bottom edge, and a stroke there lands on the bar, not the
+ * canvas. So walk up from the centre until the point and a ±20 px box around it (the strokes wander that far) are all
+ * the canvas and all pick `id`.
+ */
+const paintPointOf = async (id: string): Promise<[number, number]> => {
+  const [cx, cy] = await screenOf(id)
+  for (let up = 0; up <= 300; up += 10) {
+    const clear = await page.evaluate(
+      ([x, y, oid]) => {
+        const probeApi = (window as never as { __editor: { pickIdAt: (px: number, py: number) => string | null } }).__editor
+        const box: [number, number][] = [[0, 0], [-20, -20], [20, -20], [-20, 20], [20, 20]]
+        return box.every(([dx, dy]) => {
+          const el = document.elementFromPoint(x + dx, y + dy)
+          return el?.tagName === 'CANVAS' && probeApi.pickIdAt(x + dx, y + dy) === oid
+        })
+      },
+      [cx, cy - up, id] as [number, number, string],
+    )
+    if (clear) return [cx, cy - up]
+  }
+  throw new Error(`no visible point of ${id} to paint`)
+}
+
 /** transformOf across the process boundary (closures do not transfer). */
 const xf = (id: string): Promise<{ position: number[]; rotation: number[] | null }> =>
   page.evaluate(([p, oid]) => (p as Probe).transformOf(oid as string)!, [
@@ -624,7 +649,7 @@ if (terrains.length > 0) {
   await page.waitForTimeout(200)
   await ev(page, (p) => p.setPaintTexture('wood_planks'))
   await page.waitForTimeout(200)
-  const [px, py] = await screenOf(tid)
+  const [px, py] = await paintPointOf(tid)
   await page.mouse.move(px, py)
   await page.mouse.down()
   for (let i = 0; i < 5; i++) {

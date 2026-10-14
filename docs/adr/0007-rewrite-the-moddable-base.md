@@ -146,6 +146,14 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
   streams (1.18 MB gzip) instead of a 4.37 MB JavaScript chunk of base64 (1.65 MB gzip). Node keeps the compat build.
   Still over the 400 KB per-chunk line: Babylon's core (one 2.09 MB chunk: engines, materials, meshes, maths). A split
   by Babylon folder was tried and refused: circular chunks, and it pulled the lazily loaded shaders into the initial
-  graph (3.97 MB). Left for M6: that chunk, KTX2 and atlases, baked icons, editor E2E in CI.
+  graph (3.97 MB). Left for M6: that chunk, KTX2 and atlases, baked icons.
+  *2026-10-14, later:* the editor E2E runs in CI (`editor-e2e` job: `pnpm test:editor` and `pnpm test:collab` in
+  Chromium against the real server and the built client). Run by hand only until now, 15 of its checks had gone red:
+  - the paint checks stroked the terrain's centre, which the bottom dock had pushed under the brush settings bar (the
+    stroke landed on the bar); the suite now paints a point of the object the canvas actually shows;
+  - a real server bug: the world gauges on `/metrics` were last-writer-wins across the places and rooms one process
+    hosts, so Salvage Rush's empty map hid every static saved to Scraplandia's. `ServerMetrics.sampleRoom` sums them
+    per room (a room that stops ticking drops out after 5 s).
+  Editor 137/137, collaboration 26/26.
 
 Each milestone is playable end to end and keeps the slice harness green.

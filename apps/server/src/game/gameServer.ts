@@ -330,18 +330,21 @@ export class GameServer {
     // 14. Metrics sampling.
     ctx.metrics.tick = ctx.clock.tick
     ctx.metrics.lastTickAt = Date.now()
-    ctx.metrics.entities = ctx.world.entities.size
-    ctx.metrics.constraints = ctx.world.constraintCount
-    ctx.metrics.constraintIslands = ctx.world.islands.islandCount()
-    ctx.metrics.activeRegions = ctx.regions.activeRegionCount
-    ctx.metrics.occupiedRegions = ctx.regions.occupiedRegionCount
+    // This room's world gauges; the process-wide fields are the sum over every place and room it hosts.
     const [npcFull, npcAbstract] = s.npcs.counts()
-    ctx.metrics.npcsFull = npcFull
-    ctx.metrics.npcsAbstract = npcAbstract
-    ctx.metrics.mapStatics = ctx.world.mapStaticCount()
-    ctx.metrics.mapTerrains = ctx.world.mapTerrainCount()
-    ctx.metrics.mapZones = ctx.world.mapZoneCount()
-    ctx.metrics.mapRebuilds = ctx.world.mapRebuildCount()
+    ctx.metrics.sampleRoom(`${ctx.config.placeId}:${ctx.config.instanceSlot ?? 0}`, {
+      entities: ctx.world.entities.size,
+      constraints: ctx.world.constraintCount,
+      constraintIslands: ctx.world.islands.islandCount(),
+      activeRegions: ctx.regions.activeRegionCount,
+      occupiedRegions: ctx.regions.occupiedRegionCount,
+      npcsFull: npcFull,
+      npcsAbstract: npcAbstract,
+      mapStatics: ctx.world.mapStaticCount(),
+      mapTerrains: ctx.world.mapTerrainCount(),
+      mapZones: ctx.world.mapZoneCount(),
+      mapRebuilds: ctx.world.mapRebuildCount(),
+    })
     ctx.metrics.recordTick(performance.now() - tickStart, s.physics.physicsMs)
   }
 }
