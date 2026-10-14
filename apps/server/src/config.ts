@@ -24,6 +24,8 @@ export interface ServerConfig {
   host: string
   /** GAMES_PLACE_ID: the default place for legacy hello messages and the editor map. */
   placeId: string
+  /** PLAY_URL: public base of the play host; empty when unset. Nothing reads it yet (the OpenVibe.Play client will). */
+  playUrl: string
   db: DbConfig
   /** Directory of built client assets to serve, or null for API/WS only. */
   staticDir: string | null
@@ -152,6 +154,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     port: intEnv(env, 'PORT', 8000),
     host: env.HOST ?? '0.0.0.0',
     placeId: env.GAMES_PLACE_ID ?? 'scraplandia',
+    playUrl: env.PLAY_URL ?? '',
     db: {
       url: env.DATABASE_URL ?? null,
       directUrl: env.DATABASE_DIRECT_URL ?? null,
