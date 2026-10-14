@@ -6,6 +6,7 @@
  *   POST /api/v1/casual/:game/actions      { key, action } → the new state, under the idempotency key
  *   GET  /api/v1/casual/:game/leaderboard  the furthest signed-in players
  *   GET  /api/v1/casual/:game/ledger       the player's own currency and item history
+ *   GET  /api/v1/casual/:game/numbers      staff: players, first battles and returns by ad source and campaign
  *
  * Identity: a Network session (Authorization: Bearer) or the browser's Games guest token (X-Guest-Token), the
  * same two the 3D games use. A signed-in request that still carries the guest token takes over that guest's save.
@@ -17,9 +18,10 @@ import type { Logger } from '@openvibe/shared'
 import { CASUAL_GAMES, packDigest, parseAction, type CasualPack } from '@openvibe/casual'
 import { isGuestToken } from '../platform/accounts.js'
 import { hashGuestKey } from '../net/guestIdentity.js'
-import { resolveNetworkUser, type NetworkUser } from '../net/networkAuth.js'
+import { canEditMap, resolveNetworkUser, type NetworkUser } from '../net/networkAuth.js'
+import { SESSION_COOKIE, parseCookies } from '../net/sso.js'
 import type { GamesActorLimits } from '../net/actorLimits.js'
-import { applyAction, casualLeaderboard, casualLedger, openSave } from './store.js'
+import { applyAction, casualLeaderboard, casualLedger, casualNumbers, openSave } from './store.js'
 
 export interface CasualRouteOptions {
   db: Db
@@ -39,7 +41,8 @@ interface Who {
   guestKey: string | null
 }
 
-const PATH = /^\/api\/v1\/casual\/([a-z0-9-]{1,40})\/(session|actions|leaderboard|ledger)$/
+const PATH = /^\/api\/v1\/casual\/([a-z0-9-]{1,40})\/(session|actions|leaderboard|ledger|numbers)$/
+const READS = new Set(['leaderboard', 'ledger', 'numbers'])
 const ACTION_KEY = /^[A-Za-z0-9_-]{8,64}$/
 const TAG = /^[A-Za-z0-9_-]{1,32}$/
 const MAX_BODY = 4096
@@ -121,7 +124,7 @@ export function createCasualRoutes(
     }
     const pack: CasualPack | undefined = CASUAL_GAMES[m[1] ?? '']
     const route = m[2]
-    const method = route === 'leaderboard' || route === 'ledger' ? 'GET' : 'POST'
+    const method = READS.has(route ?? '') ? 'GET' : 'POST'
     if (req.method !== method) {
       send(405, { error: 'method_not_allowed' }, { allow: method })
       return true
@@ -134,6 +137,23 @@ export function createCasualRoutes(
       if (route === 'leaderboard') {
         if (!(await opts.limits.publicRead(req, res, `ip:${opts.address(req)}`))) return
         send(200, { entries: await casualLeaderboard(opts.db, pack.id) })
+        return
+      }
+      if (route === 'numbers') {
+        // Campaign numbers are for the owner and staff (staff.games.manage), read with their Network session: the
+        // bearer, or the site's own session cookie so the URL opens in a signed-in browser.
+        const token =
+          /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? '')?.[1] ??
+          parseCookies(req.headers.cookie)[SESSION_COOKIE]
+        const user = token ? await resolveUser(opts.networkAuthUrl, token) : null
+        if (!user || !canEditMap(user.rank)) {
+          send(user ? 403 : 401, { error: user ? 'forbidden' : 'unauthorized' })
+          return
+        }
+        if (!(await opts.limits.publicRead(req, res, `staff:${user.subjectId ?? user.id}`))) return
+        const days = Number(url.searchParams.get('days') ?? '30')
+        const span = Number.isSafeInteger(days) && days >= 1 && days <= 365 ? days : 30
+        send(200, await casualNumbers(opts.db, pack.id, now() - span * 86_400_000, now()))
         return
       }
       if (method === 'POST') {

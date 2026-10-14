@@ -200,3 +200,59 @@ export async function casualLedger(
 export async function pruneCasualActions(db: Db, now: number): Promise<number> {
   return db.exec(sql`DELETE FROM casual_actions WHERE at < ${now - 86_400_000}`)
 }
+
+export interface CampaignRow {
+  source: string
+  campaign: string
+  /** Saves first opened in the window. */
+  players: number
+  /** Of those: fought at least one battle. */
+  battled: number
+  /** Reached stage 5. */
+  stage5: number
+  signedIn: number
+  /** Played again the next UTC day (a ledger line that day), of the players old enough to have had one. */
+  d1: number
+  d1Eligible: number
+  /** Played again seven days later. */
+  d7: number
+  d7Eligible: number
+}
+
+/**
+ * The numbers an ad campaign is judged by (plan T22), per ad source and campaign, for saves first opened since
+ * `since`: how many came, fought, got going and came back. Returning is read from the ledger (any currency or item
+ * change that day), which every session that plays writes.
+ */
+export async function casualNumbers(
+  db: Db,
+  game: string,
+  since: number,
+  now: number,
+): Promise<{ game: string; since: number; rows: CampaignRow[] }> {
+  const DAY = 86_400_000
+  const today = Math.floor(now / DAY)
+  const rows = await db.many<CampaignRow>(sql`
+    SELECT coalesce(s.source, '') AS source, coalesce(s.campaign, '') AS campaign,
+      count(*)::int AS players,
+      count(*) FILTER (WHERE coalesce((s.state->'stats'->>'battles')::int, 0) > 0)::int AS battled,
+      count(*) FILTER (WHERE s.stage >= 5)::int AS stage5,
+      count(*) FILTER (WHERE s.account_key LIKE 'usr_%')::int AS "signedIn",
+      count(*) FILTER (WHERE EXISTS (
+        SELECT 1 FROM casual_ledger l WHERE l.game_id = s.game_id AND l.account_key = s.account_key
+          AND l.at >= (s.created_at / ${DAY} + 1) * ${DAY} AND l.at < (s.created_at / ${DAY} + 2) * ${DAY}
+      ))::int AS d1,
+      count(*) FILTER (WHERE s.created_at / ${DAY} + 1 < ${today})::int AS "d1Eligible",
+      count(*) FILTER (WHERE EXISTS (
+        SELECT 1 FROM casual_ledger l WHERE l.game_id = s.game_id AND l.account_key = s.account_key
+          AND l.at >= (s.created_at / ${DAY} + 7) * ${DAY} AND l.at < (s.created_at / ${DAY} + 8) * ${DAY}
+      ))::int AS d7,
+      count(*) FILTER (WHERE s.created_at / ${DAY} + 7 < ${today})::int AS "d7Eligible"
+    FROM casual_saves s
+    WHERE s.game_id = ${game} AND s.created_at >= ${since}
+    GROUP BY 1, 2
+    ORDER BY players DESC, source, campaign
+    LIMIT 200
+  `)
+  return { game, since, rows }
+}
