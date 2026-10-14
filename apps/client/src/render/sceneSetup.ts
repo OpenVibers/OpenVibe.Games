@@ -1,5 +1,4 @@
 import { Engine } from '@babylonjs/core/Engines/engine.js'
-import { WebGPUEngine } from '@babylonjs/core/Engines/webgpuEngine.js'
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine.js'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
@@ -16,7 +15,6 @@ import { LayeredSurfaceMaterial, maskTextureFrom } from './layeredSurface.js'
 import { applyPaintedStatic, createModelPaintOverlay } from './paintedStatic.js'
 import { staticExtent } from './surfaceProjection.js'
 import { ModelCache } from './modelCache.js'
-import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem.js'
 import { PointLight } from '@babylonjs/core/Lights/pointLight.js'
 import { Color4 as BColor4 } from '@babylonjs/core/Maths/math.color.js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
@@ -62,7 +60,13 @@ const engineQuality = new WeakMap<AbstractEngine, QualitySettings>()
 export async function createEngine(canvas: HTMLCanvasElement): Promise<AbstractEngine> {
   const quality = resolveStartupQuality()
   let engine: AbstractEngine
-  if (await WebGPUEngine.IsSupportedAsync) {
+  // WebGPU's engine (about a fifth of Babylon's core) is fetched only where the browser has WebGPU at all (plan M6):
+  // a device without it never downloads or parses it.
+  const gpu = (navigator as Navigator & { gpu?: unknown }).gpu
+  const { WebGPUEngine } = gpu
+    ? await import('@babylonjs/core/Engines/webgpuEngine.js')
+    : { WebGPUEngine: null }
+  if (WebGPUEngine && (await WebGPUEngine.IsSupportedAsync)) {
     const webgpu = new WebGPUEngine(canvas, { antialias: quality.antialias })
     await webgpu.initAsync()
     engine = webgpu
@@ -468,24 +472,33 @@ function buildFountain(scene: Scene, base: Mesh, s: StaticBody, water: Water): v
   pool.material = water.makeCalmSurface('fountain-pool')
   pool.isPickable = false
 
-  // Spray: a slim upward jet that arcs back into the bowl.
-  const spray = new ParticleSystem('fountain:spray', 220, scene)
-  spray.particleTexture = new Texture(dropletTexture(), scene)
-  spray.emitter = new Vector3(cx, baseY + 2.55, cz)
-  spray.minEmitBox = new Vector3(-0.05, 0, -0.05)
-  spray.maxEmitBox = new Vector3(0.05, 0, 0.05)
-  spray.direction1 = new Vector3(-0.35, 2.6, -0.35)
-  spray.direction2 = new Vector3(0.35, 3.2, 0.35)
-  spray.gravity = new Vector3(0, -9.8, 0)
-  spray.minSize = 0.05
-  spray.maxSize = 0.12
-  spray.minLifeTime = 0.7
-  spray.maxLifeTime = 1.1
-  spray.emitRate = 120
-  spray.color1 = new BColor4(0.75, 0.87, 0.95, 0.85)
-  spray.color2 = new BColor4(0.55, 0.75, 0.9, 0.7)
-  spray.colorDead = new BColor4(0.6, 0.8, 0.95, 0)
-  spray.start()
+  // Spray: a slim upward jet that arcs back into the bowl. Babylon's particle system is a module of its own, fetched
+  // once a fountain is built rather than with the core every page loads (plan M6); the jet starts a moment later.
+  void import('@babylonjs/core/Particles/particleSystem.js')
+    .then(({ ParticleSystem }) => {
+      if (scene.isDisposed || base.isDisposed()) return
+      const spray = new ParticleSystem('fountain:spray', 220, scene)
+      spray.particleTexture = new Texture(dropletTexture(), scene)
+      spray.emitter = new Vector3(cx, baseY + 2.55, cz)
+      spray.minEmitBox = new Vector3(-0.05, 0, -0.05)
+      spray.maxEmitBox = new Vector3(0.05, 0, 0.05)
+      spray.direction1 = new Vector3(-0.35, 2.6, -0.35)
+      spray.direction2 = new Vector3(0.35, 3.2, 0.35)
+      spray.gravity = new Vector3(0, -9.8, 0)
+      spray.minSize = 0.05
+      spray.maxSize = 0.12
+      spray.minLifeTime = 0.7
+      spray.maxLifeTime = 1.1
+      spray.emitRate = 120
+      spray.color1 = new BColor4(0.75, 0.87, 0.95, 0.85)
+      spray.color2 = new BColor4(0.55, 0.75, 0.9, 0.7)
+      spray.colorDead = new BColor4(0.6, 0.8, 0.95, 0)
+      spray.start()
+      base.onDisposeObservable.addOnce(() => spray.dispose())
+    })
+    .catch(() => {
+      // Decoration only: a fountain without its jet (the module failed to load, say across a deploy) is still a fountain.
+    })
 }
 
 /** Tiny soft droplet sprite (no asset needed). */

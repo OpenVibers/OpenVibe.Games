@@ -149,6 +149,15 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
   Still over the 400 KB per-chunk line: Babylon's core (one 2.09 MB chunk: engines, materials, meshes, maths). A split
   by Babylon folder was tried and refused: circular chunks, and it pulled the lazily loaded shaders into the initial
   graph (3.97 MB). Left for M6: that chunk, KTX2 and atlases, baked icons.
+  *2026-10-14, that chunk:* gone. WebGPU's engine is fetched only where the browser has WebGPU, and the fountain's
+  particle system once a fountain is built. The rest of Babylon's core is a chain of layers
+  (`apps/client/scripts/vendorLayers.ts`): each layer is the static dependency closure of a few seeds (maths, engine,
+  scene, meshes, materials, post-processing, cameras, lights) minus the layers before it, so a layer imports only
+  itself and earlier layers and the chunks cannot import each other in a circle; only vendor code both pages already
+  load statically is placed, so nothing lazy becomes initial. Babylon's static graph turned out to have no cycle at
+  all, which is what the folder split had missed. Play's initial JS is 2.02 MB (511 KB gzip; was 2.35 MB, 579 KB),
+  the largest chunk 350 KB, and CI enforces the 400 KB line now. The vendor layers change only with a dependency, so
+  they stay cached across Games deploys. Left for M6: KTX2 and atlases, baked icons.
   *2026-10-14, later:* the editor E2E runs in CI (`editor-e2e` job: `pnpm test:editor` and `pnpm test:collab` in
   Chromium against the real server and the built client). Run by hand only until now, 15 of its checks had gone red:
   - the paint checks stroked the terrain's centre, which the bottom dock had pushed under the brush settings bar (the
