@@ -74,7 +74,13 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.map': 'application/json',
+  // Wavefront models are text: a text type lets the CDN compress them (the physgun's 472 KB went out raw as
+  // application/octet-stream).
+  '.obj': 'text/plain; charset=utf-8',
 }
+
+/** A file name Vite content-hashed (`main-CE0R2rej.js`): its bytes can never change under that name. */
+const HASHED_BUILD_FILE = /-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/
 
 /**
  * Authorization for the editor HTTP routes. Owner rule (ADR-0007 deleted
@@ -811,13 +817,17 @@ export function createHttpServer(
     res.writeHead(200, {
       'content-type': type,
       // HTML must always revalidate (a stale page pins an old protocol
-      // version and can't join). Vite content-hashes /assets/, so those
-      // are immutable; everything else gets a modest TTL.
+      // version and can't join). Vite content-hashes what it builds into
+      // /assets/, so those are immutable. The files public/assets/ copies
+      // there keep their names (textures, the physgun model), so they get a
+      // day: one of them changed in place would otherwise stay stale a year.
       'cache-control': filePath.endsWith('.html')
         ? 'no-cache'
-        : filePath.includes('/assets/')
+        : filePath.includes('/assets/') && HASHED_BUILD_FILE.test(filePath)
           ? 'public, max-age=31536000, immutable'
-          : 'public, max-age=3600',
+          : filePath.includes('/assets/')
+            ? 'public, max-age=86400, stale-while-revalidate=604800'
+            : 'public, max-age=3600',
     })
     createReadStream(filePath)
       .on('error', (err) => {

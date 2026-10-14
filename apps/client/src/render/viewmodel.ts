@@ -187,7 +187,7 @@ export class Viewmodel {
     try {
       const result = await SceneLoader.ImportMeshAsync('', '/assets/', 'physgun.obj', this.scene)
       const mat = new StandardMaterial('physgun-vm', this.scene)
-      mat.diffuseTexture = new Texture('/assets/physgun_tex.png', this.scene)
+      mat.diffuseTexture = new Texture('/assets/physgun_tex.jpg', this.scene)
       mat.specularColor = new Color3(0.15, 0.15, 0.15)
       mat.emissiveColor = new Color3(0.25, 0.28, 0.32)
       mat.backFaceCulling = false

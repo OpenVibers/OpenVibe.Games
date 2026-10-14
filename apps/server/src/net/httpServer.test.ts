@@ -139,7 +139,11 @@ describe('real routes on the apex', () => {
     expect(asset.headers['content-type']).toBe('text/javascript')
     expect(asset.headers['cache-control']).toBe('public, max-age=31536000, immutable')
     expect((await send('/frame.js')).status).toBe(200)
-    expect((await send('/assets/tex/wood_planks.jpg')).status).toBe(200)
+    const tex = await send('/assets/tex/wood_planks.jpg')
+    expect(tex.status).toBe(200)
+    expect(tex.headers['cache-control']).toBe(
+      'public, max-age=86400, stale-while-revalidate=604800',
+    )
   })
 
   it('answers health, readiness, metrics and the API', async () => {
