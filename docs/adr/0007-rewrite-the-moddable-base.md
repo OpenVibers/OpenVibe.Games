@@ -142,6 +142,10 @@ The Live legacy import (`platform/liveLegacyImport.ts`, `scripts/importLiveLegac
   hauls, unlocks and guest adoptions posted from the local tables (`GAMES_PLAY_URL`). **Still to build:** the in-game
   boards read from Play, then the local result tables go (a contract migration).
 - **M6: client floor.** Quality tiers, KTX2 and atlases, baked icons, bundle budget, editor E2E in CI.
+  *2026-10-14, baked icons:* inventory icons are still drawn from each item's model (mods add items at runtime, so a
+  build cannot bake them), but each one is drawn once per browser: `ui/iconCache.ts` keeps the picture in local storage
+  under a key naming the item's look (tool kind, or shape and colour) and the drawing recipe (`ICON_RECIPE`), so a
+  changed item or a changed icon scene is drawn again, and a returning player's hotbar shows its icons at once.
   *2026-10-14:* quality tiers and hardware scaling are in (`render/quality.ts`, the HUD's Graphics quality); initial
   JS is 2.35 MB of 2.5 (579 KB gzip). The browser build now loads Rapier from the deterministic non-compat package
   (Vite alias + `vite-plugin-wasm`): the same engine and results, its wasm a 3.1 MB file the browser compiles as it
