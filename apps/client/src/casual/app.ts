@@ -114,11 +114,16 @@ export class App {
   private renderTop(): void {
     const s = this.state
     const p = this.pack
+    // Each chip names its currency for screen readers in hidden text (a label on a plain div is not read).
     const chip = (name: string, value: Node | string, label: string, cls = '') =>
       h(
         'div',
-        { class: `chip ${cls}`, attrs: { 'aria-label': label }, title: label },
+        { class: `chip ${cls}`, title: label },
         icon(name),
+        h('span', {
+          class: 'sr',
+          text: `${name === 'gems' ? 'Gems' : name === 'gold' ? 'Gold' : 'Sigils'}: `,
+        }),
         h('b', null, value),
       )
     const energy = h('b')
@@ -142,10 +147,10 @@ export class App {
         'div',
         {
           class: 'chip chip-energy',
-          attrs: { 'aria-label': 'Energy' },
           title: 'Energy: one point every five minutes',
         },
         icon('energy'),
+        h('span', { class: 'sr', text: 'Energy: ' }),
         h('span', { class: 'chip-stack' }, energy, energyTimer),
       ),
       button(icon('menu'), () => this.menu(this), 'icon-btn top-menu', { 'aria-label': 'Menu' }),
@@ -168,7 +173,7 @@ export class App {
             icon(t.icon),
             h('span', { text: t.label }),
             dots[t.id]
-              ? h('i', { class: 'dot', attrs: { 'aria-label': 'Something is ready' } })
+              ? h('i', { class: 'dot' }, h('span', { class: 'sr', text: ' (something is ready)' }))
               : null,
           ],
           () => this.go(t.id),

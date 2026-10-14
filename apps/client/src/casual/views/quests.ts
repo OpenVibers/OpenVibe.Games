@@ -96,7 +96,16 @@ function questRow(app: App, q: QuestDef): HTMLElement {
       h('b', { text: q.text }),
       h(
         'span',
-        { class: 'progress', attrs: { 'aria-label': `${Math.min(p.n, q.target)} of ${q.target}` } },
+        {
+          class: 'progress',
+          attrs: {
+            role: 'progressbar',
+            'aria-label': q.text,
+            'aria-valuemin': '0',
+            'aria-valuemax': String(q.target),
+            'aria-valuenow': String(Math.min(p.n, q.target)),
+          },
+        },
         h('i', { style: { width: `${Math.min(100, (p.n / q.target) * 100)}%` } }),
       ),
       rewardChips(app.pack, q.reward),

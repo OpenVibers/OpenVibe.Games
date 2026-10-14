@@ -67,6 +67,14 @@
 .cg.is-busy {
   cursor: progress;
 }
+.cg .sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .boot-msg {
   margin: auto;
   padding: 24px;

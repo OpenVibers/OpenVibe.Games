@@ -86,7 +86,7 @@ export function homeView(app: App): HTMLElement {
         'div',
         {
           class: 'chapter-track',
-          attrs: { 'aria-label': `Stage ${next} of ${pack.stages.length}` },
+          attrs: { role: 'img', 'aria-label': `Stage ${next} of ${pack.stages.length}` },
         },
         ...Array.from({ length: 10 }, (_, i) =>
           h('i', {
@@ -132,7 +132,11 @@ export function homeView(app: App): HTMLElement {
     strip.append(
       def && hs
         ? heroCard(pack, def, hs, { small: true })
-        : h('div', { class: 'hero-card empty small', attrs: { 'aria-label': 'Empty slot' } }, '+'),
+        : h(
+            'div',
+            { class: 'hero-card empty small', attrs: { role: 'img', 'aria-label': 'Empty slot' } },
+            '+',
+          ),
     )
   }
   view.append(

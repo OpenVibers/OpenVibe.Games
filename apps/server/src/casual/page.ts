@@ -45,6 +45,19 @@ export function casualHead(id: string): string {
   ].join('\n    ')
 }
 
+/** What the page says without JavaScript (and what a crawler reads): the game, how it plays, and where to go. */
+export function casualAbout(id: string): string {
+  const pack = CASUAL_GAMES[id]
+  if (!pack) return ''
+  const name = esc(pack.name)
+  return [
+    `<p>${esc(pack.tagline)}</p>`,
+    `<p>${name} plays in your phone's browser with nothing to install, as a guest or with your OpenVibe account,`,
+    `and your team keeps earning while you are away. Turn on JavaScript to play.</p>`,
+    `<p><a href="/">More free browser games on OpenVibe.Games</a></p>`,
+  ].join(' ')
+}
+
 let memo: { path: string; mtimeMs: number; raw: string } | null = null
 
 /** The built page for one game (the file is read once per build). */
@@ -53,5 +66,9 @@ export function casualPageHtml(filePath: string, id: string): string {
   if (!memo || memo.path !== filePath || memo.mtimeMs !== mtimeMs) {
     memo = { path: filePath, mtimeMs, raw: readFileSync(filePath, 'utf8') }
   }
-  return memo.raw.replace(MARK, casualHead(id)).replace('<body>', `<body data-game="${esc(id)}">`)
+  return memo.raw
+    .replace(MARK, casualHead(id))
+    .replace('<body>', `<body data-game="${esc(id)}">`)
+    .replaceAll('<!--casual:name-->', esc(CASUAL_GAMES[id]?.name ?? ''))
+    .replace('<!--casual:about-->', casualAbout(id))
 }
