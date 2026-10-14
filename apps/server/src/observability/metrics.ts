@@ -1,9 +1,35 @@
 import type { Logger } from '@openvibe/shared'
 
+/** One room's world gauges, sampled by its tick loop (GameServer). */
+export interface RoomGauges {
+  entities: number
+  constraints: number
+  constraintIslands: number
+  activeRegions: number
+  occupiedRegions: number
+  npcsFull: number
+  npcsAbstract: number
+  mapStatics: number
+  mapTerrains: number
+  mapZones: number
+  mapRebuilds: number
+}
+const ROOM_GAUGES: readonly (keyof RoomGauges)[] = [
+  'entities', 'constraints', 'constraintIslands', 'activeRegions', 'occupiedRegions',
+  'npcsFull', 'npcsAbstract', 'mapStatics', 'mapTerrains', 'mapZones', 'mapRebuilds',
+]
+/** A room that has not ticked for this long (its lease was lost, it was disposed) no longer counts. */
+const ROOM_STALE_MS = 5_000
+
 /**
  * Development observability: cheap counters sampled by the tick loop,
  * exposed as JSON on /metrics and summarized to the structured log
  * periodically. A real metrics backend can consume the same object later.
+ *
+ * One process hosts several places and rooms, all sharing this object. The world gauges (entities, regions, NPCs,
+ * map layers, …) are each room's own: every room reports them through sampleRoom() and the fields hold the sum over
+ * the rooms that ticked recently. (They used to be plain fields each room overwrote, so the last room to tick won:
+ * Salvage Rush's empty map hid every static saved to Scraplandia's.)
  */
 export class ServerMetrics {
   tick = 0
@@ -49,6 +75,26 @@ export class ServerMetrics {
   scriptModFailures = 0
 
   private emaAlpha = 0.05
+  private readonly rooms = new Map<string, { at: number; gauges: RoomGauges }>()
+
+  /** One room's world gauges this tick (`room` is "<place>:<slot>"); the gauge fields become the sum over rooms. */
+  sampleRoom(room: string, gauges: RoomGauges, now = Date.now()): void {
+    this.rooms.set(room, { at: now, gauges })
+    const totals = Object.fromEntries(ROOM_GAUGES.map((k) => [k, 0])) as Record<keyof RoomGauges, number>
+    for (const [key, r] of this.rooms) {
+      if (now - r.at > ROOM_STALE_MS) {
+        this.rooms.delete(key)
+        continue
+      }
+      for (const k of ROOM_GAUGES) totals[k] += r.gauges[k]
+    }
+    for (const k of ROOM_GAUGES) this[k] = totals[k]
+  }
+
+  /** How many rooms reported recently. */
+  get roomCount(): number {
+    return this.rooms.size
+  }
 
   recordTick(totalMs: number, physicsMs: number): void {
     this.tickDurationMs += (totalMs - this.tickDurationMs) * this.emaAlpha
@@ -85,6 +131,7 @@ export class ServerMetrics {
       scriptModsRunning: this.scriptModsRunning,
       scriptModsDisabled: this.scriptModsDisabled,
       scriptModFailures: this.scriptModFailures,
+      rooms: this.rooms.size,
       memRssMb: round2(process.memoryUsage.rss() / 1024 / 1024),
     }
   }

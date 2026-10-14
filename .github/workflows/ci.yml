@@ -17,9 +17,29 @@ jobs:
       extra: |
         (cd apps/server && npx openvibe-contracts-check --service games --src src)
         pnpm --filter @openvibe/client build
-        # Initial JS is enforced; the 400 KB chunk limit is reported until instancedMesh.pure (2.08 MB) and rapier
-        # (4.37 MB, lazy) are split. Drop --chunks=report then.
+        # Initial JS is enforced; the 400 KB chunk limit is reported until Babylon's core (instancedMesh.pure, 2.09 MB)
+        # is split (rapier is a wasm file since #61). Drop --chunks=report then.
         node --import tsx apps/client/scripts/bundleBudget.ts --chunks=report
+  # The editor's browser acceptance suites (ADR-0007 M6: editor E2E in CI). The real server and the built client in
+  # Chromium: pnpm test:editor (one editor, every tool, live saves reaching the server) and pnpm test:collab (two
+  # editors on one map). They ran only by hand before, and 15 checks had quietly gone red; this keeps them green.
+  editor-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.1
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter @openvibe/client build
+      - run: pnpm test:editor
+      - run: pnpm test:collab
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo.
   security:
     uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@66b76f868ea8228aad7811309eafef3726b036f3
