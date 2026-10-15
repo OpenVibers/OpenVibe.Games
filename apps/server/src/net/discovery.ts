@@ -174,6 +174,13 @@ function publicPageDocs(): PublicPageDoc[] {
       text: pack.tagline,
       priority: 0.8,
     })),
+    {
+      title: 'What shipped',
+      url: `${SITE}/updates`,
+      note: 'every change deployed to OpenVibe.Games, newest first',
+      text: "The update log of OpenVibe.Games: every change deployed to the site and its games, newest first, each a commit from the OpenVibers repositories linked to the change itself (the network's shared log; the whole network's is at https://openvibe.network/updates).",
+      priority: 0.4,
+    },
   ]
 }
 

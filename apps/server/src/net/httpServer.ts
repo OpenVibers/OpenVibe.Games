@@ -31,6 +31,7 @@ import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
 import { discoveryHandler, homeJsonLdTags } from './discovery.js'
 import { legalHandler } from './legalPages.js'
+import { updatesHandler } from './updatesPage.js'
 import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
 
 /** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
@@ -200,6 +201,8 @@ export function createHttpServer(
   ]
   // The site's own /terms, /privacy and /dmca (openvibe-shared/legal), built once for the process.
   const serveLegal = legalHandler()
+  // What shipped on the site (the shared update log), as on every OpenVibe site: the portal's host only.
+  const serveUpdates = updatesHandler()
   // GET /<key>.txt — the IndexNow key file, before the static files so it is never shadowed by a
   // build artifact of the same name. Absent when no key is configured.
   const serveIndexNow = indexnow ? indexnowHandler(indexnow) : null
@@ -243,6 +246,7 @@ export function createHttpServer(
     // The site's own legal pages (plan T11 decision 6): /terms, /privacy, /dmca. Before the SPA and the
     // static fallback so they never resolve to a file or the landing page.
     if (serveLegal(req, res)) return
+    if (!playHost && serveUpdates(req, res)) return
     const requestedMapPlace = new URL(req.url ?? '/', 'http://games.local').searchParams.get('game')
     if (url === '/map.json' && requestedMapPlace && requestedMapPlace !== defaultPlaceId) {
       res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' })
