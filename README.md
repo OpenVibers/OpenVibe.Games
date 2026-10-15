@@ -183,8 +183,10 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
   PostgreSQL, table `event_outbox`): `games.player.joined|left`,
   `games.skill.leveled`, `games.blueprint.unlocked`, `games.world.saved`
   (at most one checkpoint per `WORLD_SAVED_EVENT_MINUTES`, plus shutdown) and
-  `games.mod.installed|enabled|disabled|grants_changed|revoked`. There is no
-  first-visit achievement is stored locally in Games; achievement events are not yet published.
+  `games.mod.installed|enabled|disabled|grants_changed|revoked`. Achievements are
+  not published as events: an unlock is stored in Games (its achievement rules read
+  those tables) and sent to OpenVibe.Play over Play's API (`GAMES_PLAY_URL`), which
+  is the network-wide read surface for titles, scores and unlocks.
   Progression events come from what a save actually wrote, in the same
   transaction.
 - **Inventory.** Six built-in achievements give Live items: Scraplandia First Haul (Toxic Name), Big Haul (Golden Name), Haul Week (Cowboy Hat); Salvage Rush First Haul (Neon Name), Big Haul (Flames), Arena Winner (Stars). Games grants them after unlock or guest adoption using its own OAuth client; failed grants retry. Inventory items are free, never sold or traded.
