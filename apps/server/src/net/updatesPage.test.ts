@@ -29,6 +29,8 @@ describe('GET /updates: the shared update log', () => {
     expect(r.headers['content-type']).toMatch(/^text\/html/)
     expect(r.headers['cache-control']).toBe('public, max-age=300')
     expect(r.body).toContain('<h1>What shipped on OpenVibe.Games</h1>')
+    // The site's icon, or the browser asks for /favicon.ico and logs a 404 (browser-watch "errors", 2026-10-15).
+    expect(r.body).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />')
     expect(r.body).toContain('data-ov-shipped="log" data-service="games"')
     expect((r.body.match(/<h1[\s>]/g) ?? []).length).toBe(1)
     expect(r.body).toContain('<link rel="canonical" href="https://openvibe.games/updates">')
