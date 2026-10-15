@@ -16,6 +16,8 @@ import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { createConsoleLogger } from '@openvibe/shared'
 import { loadConfig } from './config.js'
 import { openDb } from './db.js'
+import { telemetry } from 'openvibe-sdk/service'
+import { createPgTelemetrySink, startTelemetryRetention } from 'openvibe-sdk/telemetry'
 import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
 import { InstanceHub } from './game/instanceHub.js'
@@ -91,6 +93,12 @@ async function main(): Promise<void> {
   // PostgreSQL (or embedded PGlite in development), migrated before anything writes. It opens
   // before content because enabled mod packs add definitions to the content registry.
   const db = await openDb(config.db, log)
+  // Request telemetry (openvibe-sdk/service, plan T1): one aggregated sample per route template (net/telemetryRoute.ts),
+  // method and status class each minute, stored in telemetry_samples; rows older than 14 days go daily.
+  // (openvibe-sdk 0.46's service and telemetry typings disagree on whether a sample's `service` is optional.)
+  const telemetrySink = createPgTelemetrySink({ db, log: console })
+  telemetry.init({ service: 'games', sink: (samples) => telemetrySink(samples as Parameters<typeof telemetrySink>[0]), intervalMs: 60_000 })
+  const telemetryRetention = startTelemetryRetention({ db, log: console, olderThanDays: 14 })
   const registry = new InstanceRegistry(db, config.placeId)
   let primaryLease: InstanceLease
   const store = openPgStore(db, {
@@ -1035,6 +1043,7 @@ async function main(): Promise<void> {
       await progressWriter.stop()
       inventoryRewards?.stop()
       playSync.stop()
+      await within(1000, (async () => { await telemetryRetention.stop(); await telemetry.stop() })())   // request telemetry flushes first
       await store.close()
       await valkey?.close()
       log.info('stopped', {
