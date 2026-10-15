@@ -33,6 +33,7 @@ import { discoveryHandler, homeJsonLdTags } from './discovery.js'
 import { legalHandler } from './legalPages.js'
 import { updatesHandler } from './updatesPage.js'
 import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
+import { observeRequest } from './telemetryRoute.js'
 
 /** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
  *  per request (a new build changes the mtime and rebuilds it once). */
@@ -208,6 +209,7 @@ export function createHttpServer(
   const serveIndexNow = indexnow ? indexnowHandler(indexnow) : null
   return createServer((req: IncomingMessage, res: ServerResponse) => {
     const url = (req.url ?? '/').split('?')[0] ?? '/'
+    observeRequest(req, res, url)   // request telemetry (telemetryRoute.ts): a no-op until main.ts calls telemetry.init()
     // Host-based routing: play.openvibe.games serves the game at its root
     // (the apex root is the games portal). Everything else — /assets,
     // /map.json, /api, /auth, websockets — behaves identically on both.
