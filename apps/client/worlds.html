@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Creator worlds · OpenVibe.Games</title>
+    <meta
+      name="description"
+      content="Build your own 3D world in the OpenVibe.Games map editor and publish it for anyone to join in the browser. Browse the worlds players made."
+    />
+    <link rel="canonical" href="https://openvibe.games/worlds" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --accent: #3b82f6;
+        --accent-light: #60a5fa;
+        --secondary: #22d3ee;
+        --bg: #0a0f1c;
+        --bg-raised: #101828;
+        --bg-card: rgba(19, 28, 46, 0.88);
+        --border: #1f2d47;
+        --text: #e6edf7;
+        --text-dim: #96a7c2;
+        --text-faint: #7386a3;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --bad: #f87171;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(900px 420px at 20% -10%, rgba(59, 130, 246, 0.18), transparent 70%),
+          radial-gradient(700px 360px at 90% 0%, rgba(34, 211, 238, 0.1), transparent 70%),
+          var(--bg);
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      a {
+        color: var(--accent-light);
+      }
+      main {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 20px 16px 64px;
+      }
+      .crumbs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        font-size: 14px;
+      }
+      .eyebrow {
+        margin: 28px 0 4px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        color: var(--secondary);
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: clamp(28px, 5vw, 40px);
+        font-weight: 900;
+        letter-spacing: 0.01em;
+      }
+      h2 {
+        margin: 34px 0 12px;
+        font-size: 20px;
+        font-weight: 800;
+      }
+      .lede {
+        margin: 0 0 6px;
+        max-width: 720px;
+        color: var(--text-dim);
+      }
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--bg-card);
+        padding: 16px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 14px;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-width: 0;
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--bg-raised);
+      }
+      .card h3 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 800;
+        overflow-wrap: anywhere;
+      }
+      .card .by,
+      .card .stats {
+        margin: 0;
+        font-size: 14px;
+        color: var(--text-faint);
+      }
+      .card .summary {
+        margin: 0;
+        color: var(--text-dim);
+        overflow-wrap: anywhere;
+      }
+      .card .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: auto;
+        padding-top: 6px;
+      }
+      .badge {
+        align-self: flex-start;
+        padding: 2px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .badge.published {
+        color: var(--good);
+        border-color: rgba(52, 211, 153, 0.45);
+      }
+      .badge.draft {
+        color: var(--warn);
+        border-color: rgba(251, 191, 36, 0.45);
+      }
+      .badge.hidden {
+        color: var(--bad);
+        border-color: rgba(248, 113, 113, 0.45);
+      }
+      .button,
+      button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 8px 16px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+        font-weight: 650;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .button.primary,
+      button.primary {
+        border: 0;
+        background: linear-gradient(120deg, var(--accent), #2563eb);
+        color: #fff;
+        font-weight: 800;
+      }
+      button.danger {
+        color: var(--bad);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .button:focus-visible,
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible {
+        outline: 2px solid var(--accent-light);
+        outline-offset: 2px;
+      }
+      form {
+        display: grid;
+        gap: 10px;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 14px;
+        font-weight: 650;
+        color: var(--text-dim);
+      }
+      input,
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg);
+        color: var(--text);
+        font: inherit;
+      }
+      textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+      .status {
+        margin: 0;
+        color: var(--text-dim);
+      }
+      .status:empty {
+        display: none;
+      }
+      .note {
+        margin-top: 18px;
+        font-size: 14px;
+        color: var(--text-faint);
+      }
+      #more-row {
+        margin-top: 14px;
+      }
+    </style>
+    <script type="module" src="/src/pages/worlds.ts"></script>
+  </head>
+  <body>
+    <main>
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">OpenVibe.Games</a><a href="/play">Play Scraplandia</a
+        ><a href="/leaderboard.html">Leaderboard</a>
+      </nav>
+      <p class="eyebrow">CREATOR WORLDS</p>
+      <h1>Build a world. Share it.</h1>
+      <p class="lede">
+        Shape terrain, place buildings, lights, zones, resource nodes and props in the map editor,
+        then publish your world for anyone to join from their browser. A world is a sandbox: what
+        players gather or build inside it stays in that world.
+      </p>
+
+      <h2 id="mine-title">Your worlds</h2>
+      <section class="panel" aria-labelledby="mine-title">
+        <div id="signed-out" hidden>
+          <p class="status">Sign in with your OpenVibe account to make a world.</p>
+          <p class="row"><a class="button primary" href="/auth/login?next=%2Fworlds">Sign in</a></p>
+        </div>
+        <div id="signed-in" hidden>
+          <form id="create">
+            <label
+              >Title
+              <input id="create-title" name="title" maxlength="60" required autocomplete="off"
+            /></label>
+            <label
+              >What is it? (optional)
+              <textarea id="create-summary" name="summary" maxlength="280"></textarea>
+            </label>
+            <div class="row">
+              <button class="primary" type="submit" id="create-button">Make a world</button>
+              <span class="status" id="create-status" role="status"></span>
+            </div>
+          </form>
+          <div class="grid" id="mine" style="margin-top: 16px"></div>
+        </div>
+        <p class="status" id="mine-status" role="status"></p>
+      </section>
+
+      <h2 id="published-title">Published worlds</h2>
+      <div class="grid" id="published" aria-labelledby="published-title"></div>
+      <p class="status" id="published-status" role="status">Loading worlds…</p>
+      <div class="row" id="more-row" hidden>
+        <button type="button" id="more">More worlds</button>
+      </div>
+
+      <p class="note">
+        Creator worlds use the editor's built-in materials for now; uploaded textures and models
+        stay with staff maps. Characters are not saved inside someone's world, so nothing earned
+        there reaches Scraplandia, the leaderboards or your inventory.
+      </p>
+      <noscript>
+        <p class="note">This page needs JavaScript to list worlds. Play Scraplandia at /play.</p>
+      </noscript>
+    </main>
+  </body>
+</html>

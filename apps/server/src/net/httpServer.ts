@@ -192,6 +192,7 @@ export function createHttpServer(
     { href: '/play?game=salvage-rush', label: 'Play Salvage Rush' },
     { href: '/play/vibe-heroes', label: 'Play Vibe Heroes' },
     { href: '/leaderboard.html', label: 'Leaderboard' },
+    { href: '/worlds', label: 'Creator worlds' },
     { href: '/editor', label: 'Map editor' },
   ]
   const playLinks: NotFoundLink[] = [
@@ -791,7 +792,9 @@ export function createHttpServer(
           ? 'play.html'
           : url === '/editor'
             ? 'editor.html'
-            : null
+            : url === '/worlds'
+              ? 'worlds.html'
+              : null
 
     // Static files with path traversal guard.
     const safePath = normalize(pageAlias ?? url).replace(/^(\.\.[/\\])+/, '')

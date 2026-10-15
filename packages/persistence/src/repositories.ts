@@ -91,6 +91,8 @@ export interface IdentityRepository {
     /** Casual-kit saves (plan T22) and their ledger. */
     casualSaves: Record<string, unknown>[]
     casualLedger: Record<string, unknown>[]
+    /** The person's creator worlds, maps included. */
+    creatorWorlds: Record<string, unknown>[]
   }>
   /**
    * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their
@@ -102,6 +104,7 @@ export interface IdentityRepository {
     structures_unowned: number
     identity_rows: number
     casual_saves: number
+    creator_worlds: number
   }>
 }
 

@@ -8,6 +8,8 @@ recovery bird earns haul points, with its own all-time/this-week leaderboard and
 The same Games process also hosts Salvage Rush, an on-foot timed collection game with its own
 place, world, rooms and round system. Play it at `/play?game=salvage-rush` on the same host.
 See [docs/games.md](docs/games.md) for both games and local progression.
+Players build their own **creator worlds** in the map editor and publish them at `/worlds` for anyone to join
+(sandboxed: characters are not saved there); see [docs/games.md](docs/games.md#creator-worlds).
 It also hosts the casual line (plan T22): small phone-first browser games built from one kit, starting with
 **Vibe Heroes**, an idle hero collector at `/play/vibe-heroes`. See [docs/casual.md](docs/casual.md).
 A persistent multiplayer physics sandbox for the browser: Source-style movement,
@@ -231,18 +233,22 @@ do not know the platform exists. See [ADR-0006](docs/adr/0006-canonical-subjects
 
 Platform environment (all optional; service calls need `OV_OAUTH_CLIENT_SECRET`):
 
-| Variable                    | Purpose                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------ |
-| `OV_OAUTH_CLIENT_ID`        | OAuth client / principal id (default `games`)                                              |
-| `OV_OAUTH_CLIENT_SECRET`    | Its secret: enables SSO and every service call                                             |
-| `OV_NETWORK_INTERNAL_URL`   | Network base for `/oauth/token`, identity and the JWKS (e.g. `http://127.0.0.1:4000`)      |
-| `EVENTS_URL`                | OpenVibe.Events base; enables the outbox (`EVENTS_PUBLISH=off` disables)                   |
-| `MEDIA_URL`                 | OpenVibe.Media base; enables the asset mirror (`MEDIA_MIRROR=off` disables)                |
-| `GAMES_INVENTORY_URL`       | Inventory base (default `https://inventory.openvibe.network`; production can use loopback) |
-| `GAMES_ITEMS`               | `on` (default) or `off`; off also when the OAuth client secret is unset                    |
-| `GAMES_PLAY_URL`            | OpenVibe.Play base (e.g. `http://127.0.0.1:5040`); unset = scores and unlocks stay local   |
-| `MEDIA_NAMESPACE`           | Media tenant for the copies (default `games`)                                              |
-| `WORLD_SAVED_EVENT_MINUTES` | Checkpoint event interval (default 15)                                                     |
+| Variable                           | Purpose                                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `OV_OAUTH_CLIENT_ID`               | OAuth client / principal id (default `games`)                                              |
+| `OV_OAUTH_CLIENT_SECRET`           | Its secret: enables SSO and every service call                                             |
+| `OV_NETWORK_INTERNAL_URL`          | Network base for `/oauth/token`, identity and the JWKS (e.g. `http://127.0.0.1:4000`)      |
+| `EVENTS_URL`                       | OpenVibe.Events base; enables the outbox (`EVENTS_PUBLISH=off` disables)                   |
+| `MEDIA_URL`                        | OpenVibe.Media base; enables the asset mirror (`MEDIA_MIRROR=off` disables)                |
+| `GAMES_INVENTORY_URL`              | Inventory base (default `https://inventory.openvibe.network`; production can use loopback) |
+| `GAMES_ITEMS`                      | `on` (default) or `off`; off also when the OAuth client secret is unset                    |
+| `GAMES_PLAY_URL`                   | OpenVibe.Play base (e.g. `http://127.0.0.1:5040`); unset = scores and unlocks stay local   |
+| `MEDIA_NAMESPACE`                  | Media tenant for the copies (default `games`)                                              |
+| `WORLD_SAVED_EVENT_MINUTES`        | Checkpoint event interval (default 15)                                                     |
+| `GAMES_CREATOR_WORLDS_MAX`         | Creator worlds running at once (default 2; 0 stops new ones starting)                      |
+| `GAMES_CREATOR_WORLDS_PER_PERSON`  | Worlds one account keeps (default 5)                                                       |
+| `GAMES_CREATOR_WORLD_IDLE_SECONDS` | An empty creator world stops after this long (default 180)                                 |
+| `GAMES_CREATOR_WORLD_PLAYERS`      | Players per creator world (default 16)                                                     |
 
 ## Capabilities
 
