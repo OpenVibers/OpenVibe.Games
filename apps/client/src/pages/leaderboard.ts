@@ -35,8 +35,7 @@ const COPY: Record<
 > = {
   'salvage-rush': {
     title: 'Salvage Rush',
-    lede:
-      "Each player's best round score. Rounds last 90 seconds; every point comes from a pickup the server counted.",
+    lede: "Each player's best round score. Rounds last 90 seconds; every point comes from a pickup the server counted.",
     score: 'Best score',
     play: '/play?game=salvage-rush',
     playLabel: '▶ Play a round',
@@ -47,8 +46,7 @@ const COPY: Record<
   },
   scraplandia: {
     title: 'Scraplandia haul',
-    lede:
-      'Total haul points from server-confirmed extractions. Hold a recovery-bird circle to secure valuables and score.',
+    lede: 'Total haul points from server-confirmed extractions. Hold a recovery-bird circle to secure valuables and score.',
     score: 'Haul points',
     play: '/play',
     playLabel: '▶ Play Scraplandia',
@@ -60,7 +58,9 @@ const COPY: Record<
 }
 
 let game: Game =
-  new URLSearchParams(location.search).get('game') === 'scraplandia' ? 'scraplandia' : 'salvage-rush'
+  new URLSearchParams(location.search).get('game') === 'scraplandia'
+    ? 'scraplandia'
+    : 'salvage-rush'
 let period: 'all' | 'week' =
   new URLSearchParams(location.search).get('period') === 'week' ? 'week' : 'all'
 let page = 1
@@ -88,7 +88,8 @@ function applyGame(): void {
 }
 
 async function load(): Promise<void> {
-  for (const tab of periodTabs) tab.setAttribute('aria-pressed', String(tab.dataset.period === period))
+  for (const tab of periodTabs)
+    tab.setAttribute('aria-pressed', String(tab.dataset.period === period))
   const copy = COPY[game]
   status.textContent = 'Loading…'
   entries.replaceChildren()
@@ -98,7 +99,7 @@ async function load(): Promise<void> {
   try {
     const response = await fetch(`/api/v1/games/${game}/leaderboard?period=${period}&page=${page}`)
     if (!response.ok) throw new Error('unavailable')
-    const data = (await response.json()) as { entries: Entry[]; pageSize: number }
+    const data = (await response.json()) as { entries: Entry[]; pages: number }
     for (const entry of data.entries) {
       const row = document.createElement('tr')
       if (entry.rank <= 3) row.className = `top-${entry.rank}`
@@ -110,7 +111,7 @@ async function load(): Promise<void> {
       entries.append(row)
     }
     status.textContent = data.entries.length ? '' : copy.empty(period)
-    next.disabled = data.entries.length < data.pageSize
+    next.disabled = page >= data.pages
   } catch {
     status.textContent = 'The leaderboard is unavailable right now. Try again in a minute.'
   }

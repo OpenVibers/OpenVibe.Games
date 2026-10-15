@@ -4,10 +4,13 @@ import { isGuestToken } from '../platform/accounts.js'
 import { hashGuestKey } from './guestIdentity.js'
 import { resolveNetworkUser } from './networkAuth.js'
 import type { GamesActorLimits } from './actorLimits.js'
-import { isGameId, leaderboard, playerAchievements } from '../game/progression.js'
+import { isGameId, playerAchievements } from '../game/progression.js'
+import { BoardUnavailable, type PlayBoards } from '../platform/playBoards.js'
 
 interface Options {
   db: Db
+  /** The boards, read from OpenVibe.Play. */
+  boards: PlayBoards
   networkAuthUrl: string | null
   limits: GamesActorLimits
   address: (req: IncomingMessage) => string
@@ -45,16 +48,20 @@ export function handleGameRead(
         send(400, { error: 'invalid_query' })
         return
       }
-      send(
-        200,
-        await leaderboard(
-          options.db,
-          match[1] as 'scraplandia' | 'salvage-rush',
-          period,
-          page,
-          Date.now(),
-        ),
-      )
+      try {
+        send(
+          200,
+          await options.boards(
+            match[1] as 'scraplandia' | 'salvage-rush',
+            period,
+            page,
+            options.address(req),
+          ),
+        )
+      } catch (err) {
+        if (!(err instanceof BoardUnavailable)) throw err
+        send(503, { error: 'boards_unavailable' })
+      }
       return
     }
     const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]

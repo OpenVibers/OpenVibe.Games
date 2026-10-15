@@ -213,68 +213,6 @@ export class GameProgressWriter {
   }
 }
 
-interface BoardRow {
-  account_key: string
-  player_name: string
-  score: number
-  finished_at: number
-}
-export async function leaderboard(
-  db: Db,
-  game: GameId,
-  period: 'all' | 'week',
-  page: number,
-  now: number,
-) {
-  const since = period === 'week' ? weekStartMs(now) : 0
-  const limit = 20
-  const offset = (page - 1) * limit
-  const entries = (rows: BoardRow[]) =>
-    rows.map((row, i) => ({
-      rank: offset + i + 1,
-      name: row.player_name,
-      score: Number(row.score),
-      finishedAt: Number(row.finished_at),
-    }))
-
-  if (game === 'scraplandia') {
-    const rows = await db.many<BoardRow>(sql`
-      SELECT account_key, player_name, SUM(score) AS score, MAX(finished_at) AS finished_at
-      FROM game_hauls
-      WHERE finished_at >= ${since}
-      GROUP BY account_key, player_name
-      ORDER BY score DESC, finished_at ASC, account_key ASC
-      LIMIT ${limit} OFFSET ${offset}
-    `)
-    return { game, period, page, pageSize: limit, entries: entries(rows) }
-  }
-
-  const rows =
-    period === 'all'
-      ? await db.many<BoardRow>(sql`
-    SELECT account_key, player_name, score, finished_at FROM game_best_scores
-    WHERE game_id = ${game}
-    ORDER BY score DESC, finished_at ASC, account_key ASC
-    LIMIT ${limit} OFFSET ${offset}
-  `)
-      : await db.many<BoardRow>(sql`
-    SELECT account_key, player_name, score, finished_at FROM (
-      SELECT account_key, player_name, score, finished_at,
-        ROW_NUMBER() OVER (PARTITION BY account_key ORDER BY score DESC, finished_at ASC) AS own_rank
-      FROM game_round_results WHERE game_id = ${game} AND finished_at >= ${since}
-    ) best WHERE own_rank = 1
-    ORDER BY score DESC, finished_at ASC, account_key ASC
-    LIMIT ${limit} OFFSET ${offset}
-  `)
-  return {
-    game,
-    period,
-    page,
-    pageSize: limit,
-    entries: entries(rows),
-  }
-}
-
 export async function playerAchievements(db: Db, token: string) {
   const key = accountKey(token)
   const unlocked = await db.many<{
