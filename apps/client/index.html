@@ -207,6 +207,10 @@
       .shot .shot-img {
         object-fit: contain;
       }
+      /* Art painted on its own background fills the panel (contain left it a square with bands either side). */
+      .shot .shot-img.shot-cover {
+        object-fit: cover;
+      }
       .game-body {
         padding: 26px;
         display: flex;
@@ -285,6 +289,9 @@
       @media (max-width: 760px) {
         .game-card.wide {
           grid-template-columns: 1fr;
+        }
+        .game-card.wide .shot:has(.shot-cover) {
+          min-height: 300px;
         }
       }
       .cta-row {
@@ -674,7 +681,7 @@
           aria-label="Vibe Heroes: five hero cards fanned out, a legendary in the middle"
         >
           <img
-            class="shot-art shot-img"
+            class="shot-art shot-img shot-cover"
             src="/casual/vibe-heroes/heroes.webp"
             width="400"
             height="394"
