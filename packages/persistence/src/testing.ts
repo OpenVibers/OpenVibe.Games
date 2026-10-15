@@ -22,6 +22,7 @@ const TABLES = [
   'casual_actions',
   'play_sync',
   'creator_worlds',
+  'games_index_revisions',
   'game_instances',
   'character_instance_positions',
   'world_meta',

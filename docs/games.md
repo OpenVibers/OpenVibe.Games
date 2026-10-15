@@ -64,6 +64,10 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   `games.world.published` (OpenVibe.Quest's "Publish a creator world"); staff hiding, restoring or deleting someone
   else's world is a `games.moderation.action` (`world.hidden`, `world.restored`, `world.deleted`). Worlds are in the account export, follow an
   account merge and go with an account deletion.
+- **Pages and Search:** a published world has its own page at `/worlds/<id>` (server-rendered, the link to share)
+  and is an OpenVibe.Search document (`games.index_document.upserted`, contracts 0.195.0, through
+  `openvibe-publishing/search-feed` and the event outbox; sequencer `games_index_revisions`, migration 0011). A
+  draft, hidden or deleted world is a tombstone; a sweep a minute after boot and every six hours catches up.
 
 ## Adding another game
 
