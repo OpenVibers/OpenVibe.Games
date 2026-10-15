@@ -30,10 +30,11 @@ extraction event; its leaderboard ranks by the sum of haul points in the period 
 single best. `game_achievements` stores one unlock per game, criterion and player. Local guest
 keys are SHA-256 hashes as for characters; Network subjects remain canonical. No score is written
 until the server confirms a round or extraction. `GET /api/v1/games/:game/leaderboard?period=all|week&page=1`
-returns 20 entries per page, ordered by score, then earliest completion. `week`
-starts Monday 00:00 UTC. `GET /api/v1/players/me/achievements` accepts the same
+reads the game's board on OpenVibe.Play (below): 25 entries per page (`rank`, `name`, `score`, `signedIn`, with
+`pages` and `total`), kept 15 s, the viewer's address forwarded so Play's per-address limits count the viewer; 503
+`boards_unavailable` when Play cannot be read. `week` starts Monday 00:00 UTC. `GET /api/v1/players/me/achievements` accepts the same
 bearer or `X-Guest-Token` used by the ticket endpoint. Public reads have per-address limits.
-The read-only `/leaderboard.html` page shows Salvage Rush's best round scores and Scraplandia's summed haul points, switchable in the page, all time or this week (from Monday 00:00 UTC), 20 a page.
+The read-only `/leaderboard.html` page shows Salvage Rush's best round scores and Scraplandia's summed haul points, switchable in the page, all time or this week (from Monday 00:00 UTC), 25 a page.
 Network account exports include results, best scores, unlocks and hauls; account erasure removes them.
 Guest character adoption and Network subject merges move progression (including hauls) to the surviving subject.
 
@@ -53,5 +54,6 @@ OpenVibe.Play (play.openvibe.network, contracts 0.172.0) is the network's home f
 achievements and leaderboards. With `GAMES_PLAY_URL` set, Games registers both titles there (Scraplandia's weekly
 haul board sums extractions; Salvage Rush's board ranks each player's best round) and posts every round, haul, unlock
 and guest adoption from the local tables (`apps/server/src/platform/playSync.ts`, position in `play_sync`). Every post
-is idempotent, so the first run imports the history. The local tables still serve the in-game boards; reading them
-from Play and dropping the local copies is the next step.
+is idempotent, so the first run imports the history. The in-game boards read Play's (`apps/server/src/platform/playBoards.ts`).
+The local tables stay as the record the achievement rules read (a haul's weekly total, a round's unlocks) and the sync's
+source; nothing reads them for a board.

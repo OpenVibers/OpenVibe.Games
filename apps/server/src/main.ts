@@ -70,6 +70,7 @@ import { createWsTicketStore } from './net/wsTicket.js'
 import { GameProgressWriter } from './game/progression.js'
 import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
+import { createPlayBoards } from './platform/playBoards.js'
 import { createCasualRoutes } from './casual/routes.js'
 import { pruneCasualActions } from './casual/store.js'
 import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
@@ -190,6 +191,8 @@ async function main(): Promise<void> {
     warn: (message) => log.warn(message),
   })
   playSync.start()
+  // The in-game boards are Play's (public reads, no token).
+  const playBoards = createPlayBoards({ url: config.platform.playUrl })
   const platformLog = log.child({ system: 'platform' })
   const valkey = createValkey({ url: config.db.valkeyUrl ?? '', prefix: config.db.valkeyPrefix })
   let outbox: PgOutbox | null = null
@@ -784,6 +787,7 @@ async function main(): Promise<void> {
         if (
           handleGameRead(req, res, {
             db,
+            boards: playBoards,
             networkAuthUrl: config.networkAuthUrl,
             limits: actorLimits,
             address: (request) => resolveClientAddress(request, config.trustProxy),

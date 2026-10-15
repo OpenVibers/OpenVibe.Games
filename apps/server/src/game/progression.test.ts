@@ -1,15 +1,29 @@
 import { describe, expect, it } from 'vitest'
 import { openTestDb, openTestStore } from '@openvibe/persistence/testing'
 import { accountKey } from '@openvibe/persistence'
+import { sql, type Db } from 'openvibe-sdk/db'
 import {
   earnedAchievements,
   earnedHaulAchievements,
-  leaderboard,
   playerAchievements,
   recordHaul,
   recordJoined,
   recordRound,
 } from './progression.js'
+
+// The boards are OpenVibe.Play's (platform/playBoards.ts); these read what the local tables recorded for it.
+const bestScores = async (db: Db, game: string) =>
+  (
+    await db.many<{ account_key: string; score: number }>(
+      sql`SELECT account_key, score FROM game_best_scores WHERE game_id = ${game} ORDER BY score DESC, account_key`,
+    )
+  ).map((row) => ({ key: row.account_key, score: Number(row.score) }))
+const haulTotals = async (db: Db) =>
+  (
+    await db.many<{ account_key: string; total: number }>(
+      sql`SELECT account_key, SUM(score) AS total FROM game_hauls GROUP BY account_key ORDER BY total DESC`,
+    )
+  ).map((row) => Number(row.total))
 
 describe('game progression', () => {
   it('unlocks Scraplandia first visit once from a server join', async () => {
@@ -39,7 +53,7 @@ describe('game progression', () => {
     expect(exported.gameAchievements).toHaveLength(3)
     await store.identity.eraseSubjects([subject])
     expect((await playerAchievements(store.db, subject))[0]?.achievements[0]?.unlockedAt).toBeNull()
-    expect((await leaderboard(store.db, 'salvage-rush', 'all', 1, 300)).entries).toEqual([])
+    expect(await bestScores(store.db, 'salvage-rush')).toEqual([])
   })
 
   it('moves guest scores and unlocks to the subject when its character is adopted', async () => {
@@ -72,7 +86,9 @@ describe('game progression', () => {
       100,
     )
     expect((await store.identity.adoptGuestCharacter(guest, subject, 200)).moved).toBe(1)
-    expect((await leaderboard(store.db, 'salvage-rush', 'all', 1, 300)).entries[0]?.score).toBe(3)
+    expect(await bestScores(store.db, 'salvage-rush')).toEqual([
+      { key: accountKey(subject), score: 3 },
+    ])
     expect(
       (await playerAchievements(store.db, subject))[1]?.achievements.filter((a) => a.unlockedAt),
     ).toHaveLength(2)
@@ -117,7 +133,7 @@ describe('game progression', () => {
     expect(accountKey(subject)).toBe(subject)
   })
 
-  it('orders personal bests and filters this week', async () => {
+  it("keeps each player's all-time best and every round", async () => {
     const db = await openTestDb()
     const now = Date.UTC(2026, 9, 11, 12) // Sunday
     await recordRound(
@@ -137,13 +153,11 @@ describe('game progression', () => {
       ],
       now,
     )
-    expect(
-      (await leaderboard(db, 'salvage-rush', 'all', 1, now)).entries.map((e) => e.score),
-    ).toEqual([10, 5])
-    expect(
-      (await leaderboard(db, 'salvage-rush', 'week', 1, now)).entries.map((e) => e.score),
-    ).toEqual([5, 2])
-    expect((await leaderboard(db, 'salvage-rush', 'all', 2, now)).entries).toEqual([])
+    expect((await bestScores(db, 'salvage-rush')).map((e) => e.score)).toEqual([10, 5])
+    const rounds = await db.many<{ score: number }>(
+      sql`SELECT score FROM game_round_results WHERE game_id = 'salvage-rush' ORDER BY score DESC`,
+    )
+    expect(rounds.map((r) => Number(r.score))).toEqual([10, 5, 2])
   })
 
   it('unlocks Scraplandia haul achievements at their thresholds', () => {
@@ -153,7 +167,7 @@ describe('game progression', () => {
     expect(earnedHaulAchievements(500, 2000)).toEqual(['first-haul', 'big-haul', 'haul-week'])
   })
 
-  it('records hauls once per extraction and sums them on the Scraplandia leaderboard', async () => {
+  it('records hauls once per extraction, never a zero-value one', async () => {
     const db = await openTestDb()
     const now = Date.UTC(2026, 9, 11, 12) // Sunday
     await recordHaul(db, 'a', 'e1', 'A', 100, now)
@@ -161,12 +175,7 @@ describe('game progression', () => {
     await recordHaul(db, 'a', 'e2', 'A', 999, now) // duplicate extraction id, ignored
     await recordHaul(db, 'b', 'e3', 'B', 10, Date.UTC(2026, 9, 4, 23, 59)) // previous week
     await recordHaul(db, 'c', 'e4', 'C', 0, now) // zero-value, not recorded
-    expect((await leaderboard(db, 'scraplandia', 'all', 1, now)).entries.map((e) => e.score)).toEqual(
-      [150, 10],
-    )
-    expect((await leaderboard(db, 'scraplandia', 'week', 1, now)).entries.map((e) => e.score)).toEqual(
-      [150],
-    )
+    expect(await haulTotals(db)).toEqual([150, 10])
   })
 
   it('unlocks haul achievements after a recorded haul', async () => {
