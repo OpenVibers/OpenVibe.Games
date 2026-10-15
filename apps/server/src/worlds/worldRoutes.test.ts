@@ -4,10 +4,16 @@ import { emptyMapV2, type MapFileV2 } from '@openvibe/content'
 import { createCreatorWorldStore, type CreatorWorld } from '@openvibe/persistence'
 import { openTestDb } from '@openvibe/persistence/testing'
 import { createConsoleLogger } from '@openvibe/shared'
+import { createRequire } from 'node:module'
+import type { EventInput } from 'openvibe-sdk/events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createGamesActorLimits } from '../net/actorLimits.js'
 import type { NetworkUser } from '../net/networkAuth.js'
-import { cleanText, createWorldRoutes } from './worldRoutes.js'
+import { cleanText, createWorldRoutes, parseIfMatch } from './worldRoutes.js'
+
+const { validate } = createRequire(import.meta.url)('openvibe-contracts') as {
+  validate(id: string, v: unknown): { valid: boolean; errors?: unknown }
+}
 
 const KIM = 'usr_01J0000000000000000000000K'
 const LEE = 'usr_01J0000000000000000000000L'
@@ -32,6 +38,7 @@ async function setup(perPerson = 2) {
     applied: [] as string[],
     changed: [] as (string | null)[],
     removed: [] as string[],
+    events: [] as EventInput[],
   }
   const handler = createWorldRoutes({
     store,
@@ -41,9 +48,12 @@ async function setup(perPerson = 2) {
       changed: async (world: CreatorWorld | null, id: string) => {
         calls.changed.push(world ? `${id}:${world.status}` : null)
       },
-      remove: async (id) => {
+      remove: async (id, within) => {
         calls.removed.push(id)
-        await store.remove(id)
+        await db.tx(async (t) => {
+          await store.remove(id)
+          await within?.(t)
+        })
       },
     },
     resolveUser: async (token) => USERS[token] ?? null,
@@ -51,6 +61,17 @@ async function setup(perPerson = 2) {
     address: () => '127.0.0.1',
     log: createConsoleLogger({ app: 'world-routes-test' }, 'error'),
     perPerson,
+    events: {
+      db,
+      sink: {
+        enabled: true,
+        enqueue: async (_t, event) => {
+          expect(db.inTransaction()).toBe(true)
+          calls.events.push(event)
+        },
+      },
+      siteUrl: 'https://openvibe.games',
+    },
   })
   server = createServer((req, res) => {
     if (!handler(req, res)) {
@@ -96,6 +117,13 @@ describe('/api/worlds', () => {
     expect(cleanText(42, 60)).toBeNull()
   })
 
+  it('reads If-Match the way it arrives through Cloudflare (a weak ETag) or straight', () => {
+    expect(parseIfMatch('W/"abc123"')).toBe('abc123')
+    expect(parseIfMatch('"abc123"')).toBe('abc123')
+    expect(parseIfMatch(undefined)).toBeNull()
+    expect(parseIfMatch('')).toBeNull()
+  })
+
   it('lets a signed-in person make, save, publish and delete a world; staff take one down', async () => {
     const { call, calls } = await setup()
     expect((await call('POST', '/api/worlds', undefined, { title: 'x' })).status).toBe(401)
@@ -133,7 +161,7 @@ describe('/api/worlds', () => {
     expect(refused.body.issues?.some((i) => i.startsWith('textures:'))).toBe(true)
     const next: MapFileV2 = { ...emptyMapV2(), spawn: [2, 1, 2] }
     const saved = await call('PUT', `/api/worlds/${id}/map`, 'kim', next, {
-      'if-match': map.etag ?? '',
+      'if-match': `W/${map.etag ?? ''}`,
     })
     expect(saved.status).toBe(200)
     expect(calls.applied).toEqual([id])
@@ -150,6 +178,21 @@ describe('/api/worlds', () => {
       200,
     )
     expect(calls.changed).toEqual([`${id}:published`])
+    // The first publication is an event (Quest's "Publish a creator world"); publishing again is not.
+    expect(calls.events.map((e) => e.event_type)).toEqual(['games.world.published'])
+    const published = calls.events[0] as EventInput & { payload: Record<string, unknown> }
+    expect(published.payload).toMatchObject({
+      world: id,
+      owner: { type: 'user', id: KIM },
+      title: 'Moon base',
+      url: `https://openvibe.games/play?world=${id}`,
+    })
+    expect(validate('games.world.published@1', published.payload)).toMatchObject({ valid: true })
+    expect((await call('PATCH', `/api/worlds/${id}`, 'kim', { status: 'draft' })).status).toBe(200)
+    expect((await call('PATCH', `/api/worlds/${id}`, 'kim', { status: 'published' })).status).toBe(
+      200,
+    )
+    expect(calls.events).toHaveLength(1)
     const listed = (await call('GET', '/api/worlds')).body.worlds ?? []
     expect(listed.map((w) => w.id)).toEqual([id])
     expect(listed[0]).toMatchObject({
@@ -167,6 +210,10 @@ describe('/api/worlds', () => {
     expect((await call('PATCH', `/api/worlds/${id}`, 'staff', { status: 'hidden' })).status).toBe(
       200,
     )
+    expect(calls.events.at(-1)).toMatchObject({
+      event_type: 'games.moderation.action',
+      payload: { action: 'world.hidden', target: { type: 'world', id, owner_subject: KIM } },
+    })
     expect((await call('GET', '/api/worlds')).body.worlds).toEqual([])
     expect((await call('PATCH', `/api/worlds/${id}`, 'kim', { status: 'published' })).status).toBe(
       403,
@@ -181,6 +228,18 @@ describe('/api/worlds', () => {
     expect((await call('DELETE', `/api/worlds/${id}`, 'lee')).status).toBe(404)
     expect((await call('DELETE', `/api/worlds/${id}`, 'kim')).status).toBe(204)
     expect(calls.removed).toEqual([id])
+    // The owner deleting is not moderation; games staff deleting someone else's world is.
+    expect(calls.events.filter((e) => e.event_type === 'games.moderation.action')).toHaveLength(1)
+    const other = String((await call('POST', '/api/worlds', 'lee', { title: 'Lee world' })).body.id)
+    expect((await call('DELETE', `/api/worlds/${other}`, 'staff')).status).toBe(204)
+    expect(calls.events.at(-1)).toMatchObject({
+      event_type: 'games.moderation.action',
+      actor: { type: 'user', id: STAFF },
+      payload: {
+        action: 'world.deleted',
+        target: { type: 'world', id: other, owner_subject: LEE },
+      },
+    })
     expect((await call('GET', `/api/worlds/${id}`, 'kim')).status).toBe(404)
     expect((await call('GET', '/api/worlds/not-an-id')).status).toBe(404)
   })
