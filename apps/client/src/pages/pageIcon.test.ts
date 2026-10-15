@@ -17,6 +17,13 @@ describe('page icon', () => {
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />')
   })
 
+  it('the home page description fits a search result (at most 160 characters)', () => {
+    const html = readFileSync(client('index.html'), 'utf8')
+    const d = /name="description"\s+content="([^"]*)"/.exec(html)?.[1] ?? ''
+    expect(d.length).toBeGreaterThanOrEqual(50)
+    expect(d.length).toBeLessThanOrEqual(160)
+  })
+
   it('public/favicon.svg exists and is an SVG', () => {
     expect(existsSync(client('public/favicon.svg'))).toBe(true)
     expect(readFileSync(client('public/favicon.svg'), 'utf8')).toMatch(
