@@ -38,6 +38,31 @@ The read-only `/leaderboard.html` page shows Salvage Rush's best round scores an
 Network account exports include results, best scores, unlocks and hauls; account erasure removes them.
 Guest character adoption and Network subject merges move progression (including hauls) to the surviving subject.
 
+## Creator worlds
+
+`/worlds` lists the worlds players built and published; a signed-in OpenVibe account (not a guest) can keep up to
+five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in the map editor at
+`/editor?world=<id>` and played at `/play?world=<id>`.
+
+- **Storage:** `creator_worlds` (migration 0010) holds the title, summary, status (`draft`, `published`, `hidden`)
+  and the editor's v2 map document; `revision` is its hash and the editor's `If-Match`.
+- **Editing:** the owner alone, over `PUT /api/worlds/:id/map`, with no collaboration socket (`/editor-ws` stays
+  staff-only). Creator maps use the built-in materials: no uploaded textures, models or paint masks (they wait for
+  the Pics safety pipeline), and smaller limits than staff maps (`CREATOR_MAP_LIMITS`: 2 MB, 4,000 statics, 16
+  terrains, 400 nodes and props, 64 lights and zones). A save reaches a running world at once.
+- **Running:** a world is the place `world:<id>` with the plain creator pack (`creatorWorldPack`, the same def set
+  on server and client) and its map as the override. It starts on the first join (inside the router's admission
+  chain), runs one room of `GAMES_CREATOR_WORLD_PLAYERS` (16), and stops after `GAMES_CREATOR_WORLD_IDLE_SECONDS`
+  (180) empty. At most `GAMES_CREATOR_WORLDS_MAX` (2) run at once, so Scraplandia's tick keeps its budget; a join
+  beyond that closes with 4005 `world_unavailable` and the client says the world is not open right now.
+- **Sandbox:** characters are read but never saved in a creator world (`worlds/sandboxStore.ts`), and the room has
+  no NPCs, world events, rewards, boards or events. Nothing gathered, crafted, traded or dropped in somebody's world
+  reaches Scraplandia, the leaderboards or the Inventory. The world's own rows (props, constraints, clock) persist.
+- **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
+  (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
+  cannot publish it again. Deleting a world removes its place's rows. Worlds are in the account export, follow an
+  account merge and go with an account deletion.
+
 ## Adding another game
 
 1. Create a `games-content@2` built-in pack with a validated map document and declarative

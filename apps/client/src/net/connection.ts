@@ -93,7 +93,8 @@ export async function fetchWsTicket(args: {
 export class Connection {
   private ws: WebSocket | null = null
   onMessage: ((msg: ServerMessage) => void) | null = null
-  onClose: (() => void) | null = null
+  /** The socket closed; `code` is the server's close code (4005: the creator world is not open). */
+  onClose: ((code: number) => void) | null = null
 
   async connect(
     url: string,
@@ -146,7 +147,7 @@ export class Connection {
       }
       this.onMessage?.(msg)
     }
-    ws.onclose = () => this.onClose?.()
+    ws.onclose = (event) => this.onClose?.(event.code)
     // Identity was resolved at the upgrade; hello carries no identity field.
     this.send(helloForContent(name, appearance, slot, contentDigest, place))
   }

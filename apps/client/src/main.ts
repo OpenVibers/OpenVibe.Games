@@ -1,5 +1,8 @@
 import {
+  CREATOR_WORLD_ID,
   createContent,
+  creatorPlaceId,
+  creatorWorldPack,
   setMapOverride,
   type MapLight,
   compileMapFileV2,
@@ -67,10 +70,26 @@ async function start(): Promise<void> {
   const uiRoot = document.getElementById('ui') as HTMLElement
 
   const identity = getIdentity()
-  const requestedGame = new URLSearchParams(location.search).get('game')
-  const selectedPlace =
-    requestedGame === 'salvage-rush' || requestedGame === 'scraplandia' ? requestedGame : undefined
-  const placeQuery = selectedPlace ? `?game=${selectedPlace}` : ''
+  const params = new URLSearchParams(location.search)
+  const requestedGame = params.get('game')
+  // A creator world (/worlds): its own place, the plain creator pack and the world's map.
+  const requestedWorld = params.get('world')
+  const worldId = requestedWorld && CREATOR_WORLD_ID.test(requestedWorld) ? requestedWorld : null
+  const selectedPlace = worldId
+    ? creatorPlaceId(worldId)
+    : requestedGame === 'salvage-rush' || requestedGame === 'scraplandia'
+      ? requestedGame
+      : undefined
+  const placeQuery = worldId ? `?world=${worldId}` : selectedPlace ? `?game=${selectedPlace}` : ''
+  // A draft world's map answers only its owner, so the map read carries the Network token when there is one.
+  const mapRequest = (): Promise<Response> => {
+    if (!worldId) return fetch(`/map.json${placeQuery}`)
+    const token = localStorage.getItem('ovg_sso')
+    return fetch(`/api/worlds/${worldId}/map`, {
+      cache: 'no-store',
+      ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
+    })
+  }
   // Fetch the active definition set before constructing game systems or sending hello.
   // A fresh client can join after a staff script install or reload changed the digest.
   let content = createContent()
@@ -86,7 +105,9 @@ async function start(): Promise<void> {
         const builtIn =
           data.game === 'salvage-rush'
             ? (await import('@openvibe/content/salvage-rush')).SALVAGE_RUSH_PACK
-            : undefined
+            : data.game === 'creator' && worldId
+              ? creatorWorldPack(worldId)
+              : undefined
         const active = createContent(data.packs, builtIn)
         if (active.digest === data.digest) content = active
       }
@@ -105,7 +126,7 @@ async function start(): Promise<void> {
   let mapLightsBoot: MapLight[] | undefined
   try {
     // /map.json is the v2 document, parsed and validated on the way in.
-    const parsed = parseMapFile(await (await fetch(`/map.json${placeQuery}`)).json())
+    const parsed = parseMapFile(await (await mapRequest()).json())
     if (parsed.ok) {
       registerMapAssets({
         textures: parsed.map.textures as MapTextureEntry[],
@@ -381,7 +402,7 @@ async function start(): Promise<void> {
     if (msg.t === 'map_reload') {
       void (async () => {
         try {
-          const parsed = parseMapFile(await (await fetch(`/map.json${placeQuery}`)).json())
+          const parsed = parseMapFile(await (await mapRequest()).json())
           if (!parsed.ok) return
           registerMapAssets({
             textures: parsed.map.textures as MapTextureEntry[],
@@ -487,8 +508,18 @@ async function start(): Promise<void> {
         .catch(() => {})
     }, 2000)
   }
-  connection.onClose = () => {
+  connection.onClose = (code) => {
     if (rejected) return
+    if (code === 4005) {
+      // A creator world that is not open: unpublished, taken down, or every world slot is busy. Reloading would
+      // only ask again, so say so and leave the way back.
+      rejected = true
+      hud.setStatus(
+        'This world is not open right now. It may be busy or unpublished: try again in a minute.',
+      )
+      hud.toast('World not open — see /worlds', true)
+      return
+    }
     // Come back on our own instead of freezing on a dead socket.
     hud.setStatus('connection lost — reconnecting automatically…')
     hud.toast('Disconnected — reconnecting…', true)

@@ -12,6 +12,7 @@ import type {
 import type { IdentityRepository, MediaMirrorRepository, ModRepository } from '../repositories.js'
 import { idList } from './sqlUtils.js'
 import { eraseCasual, exportCasual, moveCasualSaves } from './casualData.js'
+import { eraseCreatorWorlds, exportCreatorWorlds, moveCreatorWorlds } from './creatorWorlds.js'
 
 /**
  * PostgreSQL repositories for the platform-integration tables: the adoption ledger, the mod registry
@@ -163,6 +164,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
           moved++
         }
         await moveProgress(from, into)
+        await moveCreatorWorlds(db, from, into)
         await recordAdoption(key, into, 'merge', moved, kept, now)
         return { moved, kept, already: false }
       })
@@ -191,6 +193,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         sql`SELECT extraction_id, player_name, score, finished_at FROM game_hauls WHERE account_key = ${subject} ORDER BY finished_at`,
       )
       const casual = await exportCasual(db, subject)
+      const creatorWorlds = await exportCreatorWorlds(db, subject)
       return {
         characters: characters.map(withoutAccountKey),
         structures,
@@ -200,12 +203,19 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         gameHauls,
         casualSaves: casual.saves,
         casualLedger: casual.ledger,
+        creatorWorlds,
       }
     },
 
     eraseSubjects(subjects) {
       return db.tx(async () => {
-        const out = { characters: 0, structures_unowned: 0, identity_rows: 0, casual_saves: 0 }
+        const out = {
+          characters: 0,
+          structures_unowned: 0,
+          identity_rows: 0,
+          casual_saves: 0,
+          creator_worlds: 0,
+        }
         if (!subjects.length) return out
         const ids = (
           await db.many<{ id: string }>(
@@ -229,6 +239,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         )
         await db.exec(sql`DELETE FROM game_hauls WHERE account_key IN (${idList(subjects)})`)
         out.casual_saves = await eraseCasual(db, subjects)
+        out.creator_worlds = await eraseCreatorWorlds(db, subjects)
         return out
       })
     },

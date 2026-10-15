@@ -30,6 +30,8 @@ export interface AssetControllerOptions {
   history: CommandHistory<EditorDocument>
   modelCache: ModelCache
   editorToken: () => string
+  /** The upload endpoint; null where uploads are off (a creator world). Default /api/map-assets. */
+  assetsUrl?: string | null
   /** Re-register custom textures with the renderer after a change. */
   onAssetsChanged: () => void
   setMessage: (m: string) => void
@@ -119,8 +121,10 @@ export class AssetController {
 
   /** POST raw bytes to the content-addressed store. */
   private async upload(blob: Blob): Promise<UploadedAsset | 'forbidden' | null> {
+    const url = this.opts.assetsUrl === undefined ? '/api/map-assets' : this.opts.assetsUrl
+    if (url === null) return 'forbidden'
     try {
-      const resp = await fetch('/api/map-assets', {
+      const resp = await fetch(url, {
         method: 'POST',
         headers: { authorization: `Bearer ${this.opts.editorToken()}` },
         body: blob,
@@ -131,6 +135,12 @@ export class AssetController {
     } catch {
       return null
     }
+  }
+
+  private forbiddenMessage(): string {
+    return this.opts.assetsUrl === null
+      ? '⛔ creator worlds use the built-in materials for now (uploads are staff-only)'
+      : '⛔ import needs your admin token (top right)'
   }
 
   textureUsage(): Map<string, TextureUsage> {
@@ -148,7 +158,7 @@ export class AssetController {
     setMessage('🖼 uploading texture…')
     const uploaded = await this.upload(file)
     if (uploaded === 'forbidden') {
-      setMessage('⛔ import needs your admin token (top right)')
+      setMessage(this.forbiddenMessage())
       return null
     }
     if (!uploaded) {
@@ -177,7 +187,7 @@ export class AssetController {
     setMessage('🗿 uploading model…')
     const uploaded = await this.upload(file)
     if (uploaded === 'forbidden') {
-      setMessage('⛔ import needs your admin token (top right)')
+      setMessage(this.forbiddenMessage())
       return null
     }
     if (!uploaded) {

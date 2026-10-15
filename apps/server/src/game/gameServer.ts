@@ -164,7 +164,8 @@ export class GameServer {
   async load(): Promise<void> {
     await this.systems.environment.load()
     await this.systems.economy.load()
-    await this.systems.npcs.load()
+    // A creator world has no NPC population: the content spawns are Scraplandia's.
+    if (!this.ctx.config.sandbox) await this.systems.npcs.load()
   }
 
   get currentTick(): number {
@@ -299,7 +300,7 @@ export class GameServer {
 
     // 5. NPC simulation (LOD-aware; abstract NPCs cost nothing here).
     //    The sound buffer resets once a second inside the same step.
-    s.npcs.tick(ctx, dt)
+    if (!ctx.config.sandbox) s.npcs.tick(ctx, dt)
 
     // 6. Crafting queues (completions grant crafting/construction XP).
     s.production.tickCraftQueues()
@@ -309,7 +310,8 @@ export class GameServer {
     s.environment.tick(ctx, dt)
 
     // 8. Once a second: world events (supply drops, extraction).
-    s.worldEvents.tick(ctx, dt)
+    //    Not in a creator world: the events' drop and extraction sites are Scraplandia's.
+    if (!ctx.config.sandbox) s.worldEvents.tick(ctx, dt)
 
     // 9. Once a second: production sweep (generators, machines, tanks, crops).
     s.production.tickProduction()

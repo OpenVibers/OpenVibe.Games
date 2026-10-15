@@ -175,6 +175,13 @@ function publicPageDocs(): PublicPageDoc[] {
       priority: 0.8,
     })),
     {
+      title: 'Creator worlds',
+      url: `${SITE}/worlds`,
+      note: 'worlds players built in the map editor and published, each playable in the browser',
+      text: 'Creator worlds: players shape terrain and place buildings, lights, zones, resource nodes and props in the OpenVibe.Games map editor, then publish the world for anyone to join from the browser. A world is a sandbox: what players gather or build inside it stays in that world.',
+      priority: 0.7,
+    },
+    {
       title: 'What shipped',
       url: `${SITE}/updates`,
       note: 'every change deployed to OpenVibe.Games, newest first',

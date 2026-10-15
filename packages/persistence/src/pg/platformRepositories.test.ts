@@ -165,6 +165,7 @@ describe('account export and deletion (ADR-033)', () => {
       structures_unowned: 1,
       identity_rows: 1,
       casual_saves: 2,
+      creator_worlds: 0,
     })
     expect(
       await store.db.many(sql`SELECT account_key FROM casual_ledger ORDER BY account_key`),
@@ -185,6 +186,7 @@ describe('account export and deletion (ADR-033)', () => {
       structures_unowned: 0,
       identity_rows: 0,
       casual_saves: 0,
+      creator_worlds: 0,
     })
   })
 })

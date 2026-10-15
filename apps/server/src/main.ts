@@ -4,14 +4,22 @@ import { dirname, join } from 'node:path'
 import { createEventsClient, createPgOutbox, type PgOutbox } from 'openvibe-sdk/events'
 import { createValkey } from 'openvibe-sdk/valkey'
 import {
+  CREATOR_WORLD_ID,
   compileMapFileV2,
   createContent,
+  creatorWorldPack,
   parseMapFile,
   SCRAPLANDIA_PACK,
   setMapOverride,
+  type ContentRegistry,
 } from '@openvibe/content'
 import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
-import { InstanceRegistry, openPgStore, type InstanceLease } from '@openvibe/persistence'
+import {
+  InstanceRegistry,
+  createCreatorWorldStore,
+  openPgStore,
+  type InstanceLease,
+} from '@openvibe/persistence'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { createConsoleLogger } from '@openvibe/shared'
 import { loadConfig } from './config.js'
@@ -76,6 +84,9 @@ import { createPlayBoards } from './platform/playBoards.js'
 import { createCasualRoutes } from './casual/routes.js'
 import { pruneCasualActions } from './casual/store.js'
 import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
+import { CreatorWorldHost } from './worlds/worldHost.js'
+import { createWorldHubStarter } from './worlds/startWorldHub.js'
+import { createWorldRoutes } from './worlds/worldRoutes.js'
 
 /**
  * Dedicated authoritative server entry point.
@@ -573,7 +584,43 @@ async function main(): Promise<void> {
     [config.placeId, hub],
     [secondaryPlace, secondaryHub],
   ])
-  const router = new PlaceRouter(hubs, config.placeId)
+  // ── Creator worlds (worlds/): players' own places, started on the first join, stopped when empty ──
+  // A creator world is the place `world:<id>` with the plain creator pack and its map as the override. Its room is
+  // sandboxed: no NPCs, no world events, no rewards, no events, and characters are never saved there.
+  const creatorWorlds = createCreatorWorldStore(db)
+  const creatorContent = new Map<string, ContentRegistry>()
+  const contentForWorld = (worldId: string): ContentRegistry => {
+    let built = creatorContent.get(worldId)
+    if (!built) {
+      if (creatorContent.size >= 256) creatorContent.clear()
+      built = createContent([], creatorWorldPack(worldId))
+      creatorContent.set(worldId, built)
+    }
+    return built
+  }
+  const startWorldHub = createWorldHubStarter({
+    db,
+    rapier,
+    config,
+    metrics,
+    log,
+    contentFor: contentForWorld,
+  })
+  const worldHost = new CreatorWorldHost({
+    store: creatorWorlds,
+    start: startWorldHub,
+    log: log.child({ system: 'creator-worlds' }),
+    maxRunning: config.creatorWorldsMax,
+    idleMs: config.creatorWorldIdleSeconds * 1000,
+  })
+  const router = new PlaceRouter(hubs, config.placeId, worldHost)
+  // The idle sweep runs in the admission chain, so a world never stops under a join that is starting it.
+  const worldSweepTimer = setInterval(() => {
+    void router
+      .serialize(() => worldHost.sweep())
+      .catch((err: unknown) => log.warn('creator world sweep failed', { error: String(err) }))
+  }, 30_000)
+  worldSweepTimer.unref()
   const contentByPlace = new Map([
     [config.placeId, content],
     [secondaryPlace, secondaryContent],
@@ -711,6 +758,30 @@ async function main(): Promise<void> {
   // ticket limit and logs (config.TRUST_PROXY; the socket address otherwise).
   const clientAddress = (req: IncomingMessage): string =>
     resolveClientAddress(req, config.trustProxy)
+  // Creator worlds' JSON API (worlds/worldRoutes.ts). State changes run in the router's admission chain.
+  const serveWorlds = createWorldRoutes({
+    store: creatorWorlds,
+    host: {
+      online: () => worldHost.online(),
+      applyMap: (id, map) => {
+        void router.serialize(async () => worldHost.applyMap(id, map))
+      },
+      changed: (world, id) => router.serialize(() => worldHost.changed(world, id)),
+      remove: (id) =>
+        router.serialize(async () => {
+          await worldHost.changed(null, id)
+          await creatorWorlds.remove(id)
+        }),
+    },
+    resolveUser: (token) =>
+      config.networkAuthUrl
+        ? resolveNetworkUser(config.networkAuthUrl, token)
+        : Promise.resolve(null),
+    limits: actorLimits,
+    address: clientAddress,
+    log: log.child({ system: 'worlds' }),
+    perPerson: config.creatorWorldsPerPerson,
+  })
   // The casual games' JSON API (plan T22).
   const serveCasual = createCasualRoutes({
     db,
@@ -771,6 +842,30 @@ async function main(): Promise<void> {
     {
       handle: (req, res) => {
         if (req.method === 'GET' && req.url?.split('?')[0] === '/api/v1/content') {
+          const requestedWorld = new URL(req.url ?? '/', 'http://games.local').searchParams.get(
+            'world',
+          )
+          if (requestedWorld !== null) {
+            // A creator world: the plain creator pack and no installed packs (the client builds the same set).
+            if (!CREATOR_WORLD_ID.test(requestedWorld)) {
+              res.writeHead(404, {
+                'content-type': 'application/json',
+                'cache-control': 'no-store',
+              })
+              res.end('{"error":"world_not_found"}')
+              return true
+            }
+            res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+            res.end(
+              JSON.stringify({
+                digest: contentForWorld(requestedWorld).digest,
+                game: 'creator',
+                world: requestedWorld,
+                packs: [],
+              }),
+            )
+            return true
+          }
           const requested = new URL(req.url ?? '/', 'http://games.local').searchParams.get('game')
           const placeId = router.resolve(requested ?? undefined)
           const selectedContent = contentByPlace.get(placeId)
@@ -792,6 +887,7 @@ async function main(): Promise<void> {
           return true
         }
         if (serveCasual(req, res)) return true
+        if (serveWorlds(req, res)) return true
         if (
           handleGameRead(req, res, {
             db,
@@ -1020,6 +1116,7 @@ async function main(): Promise<void> {
       running = false
       clearInterval(metricsTimer)
       clearInterval(heartbeatTimer)
+      clearInterval(worldSweepTimer)
       clearInterval(pruneTimer)
       editors.stop()
       const mirrorDone = mirror?.stop()

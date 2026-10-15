@@ -21,6 +21,7 @@ import type { PaintSurfaceRegistry } from '../materials/paintSurfaceRegistry.js'
 import { surfaceDataFor, writeSurfaceData } from '../materials/paintController.js'
 import { DraftStore, indexedDbDraftStorage } from '../recovery/draftStore.js'
 import { editorToken } from './editorToken.js'
+import { fetchMap, mapEndpoints, type MapEndpoints } from './mapEndpoints.js'
 
 export interface SaveControllerOptions {
   doc: EditorDocument
@@ -31,6 +32,8 @@ export interface SaveControllerOptions {
   /** Every live painted surface, keyed by (object, surface). */
   paintSurfaces: PaintSurfaceRegistry
   setMessage: (m: string) => void
+  /** Where the map is read and saved (default: the place's own map). */
+  endpoints?: MapEndpoints
 }
 
 export interface SaveController {
@@ -50,6 +53,8 @@ export interface SaveController {
 
 export function createSaveController(opts: SaveControllerOptions): SaveController {
   const { doc, history, setMessage } = opts
+  const endpoints = opts.endpoints ?? mapEndpoints('', location.origin)
+  const who = endpoints.worldId ? 'you saved in another tab' : 'another admin saved'
   let baseRevision = opts.bootRevision
   let remoteDoc: MapFileV2 = doc.serialize()
   let nonHistoryDirt = false
@@ -60,7 +65,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
 
   const drafts = new DraftStore({
     storage: indexedDbDraftStorage(),
-    mapKey: `${location.origin}/map.json`,
+    mapKey: endpoints.draftKey,
   })
 
   const isDirty = (): boolean => nonHistoryDirt || history.isDirty()
@@ -85,11 +90,13 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
    */
   let maskUploads = 0
   const uploadDirtyMasks = async (): Promise<void> => {
+    const assets = endpoints.assets
+    if (!assets) return
     for (const surface of opts.paintSurfaces.dirtySurfaces()) {
       const blob = await surface.mask.toBlob()
       if (!blob) continue
       try {
-        const resp = await fetch('/api/map-assets', {
+        const resp = await fetch(assets, {
           method: 'POST',
           headers: { authorization: `Bearer ${tokenOf()}` },
           body: blob,
@@ -116,8 +123,8 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
     const file = serialize()
     let resp: Response
     try {
-      resp = await fetch('/api/map', {
-        method: 'POST',
+      resp = await fetch(endpoints.save, {
+        method: endpoints.saveMethod,
         headers: {
           'content-type': 'application/json',
           authorization: `Bearer ${token}`,
@@ -138,13 +145,13 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
       nonHistoryDirt = false
       remoteDoc = file
       void drafts.markSaved()
-      setMessage('✅ saved — live in game')
+      setMessage(endpoints.worldId ? '✅ saved — live in your world' : '✅ saved — live in game')
       notify()
       return
     }
     if (resp.status === 409) {
       await openConflict()
-      setMessage('⚠ another admin saved first — your revision is stale')
+      setMessage(`⚠ ${who} first — your revision is stale`)
       return
     }
     if (resp.status === 422) {
@@ -153,8 +160,10 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
       return
     }
     setMessage(
-      resp.status === 403
-        ? '⛔ not authorized (admin token/key required)'
+      resp.status === 403 || resp.status === 401
+        ? endpoints.worldId
+          ? "⛔ sign in as the world's owner to save"
+          : '⛔ not authorized (admin token/key required)'
         : resp.status === 413
           ? '⛔ map too large'
           : `save failed (${resp.status})`,
@@ -168,7 +177,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
    */
   const pollRemote = async (): Promise<void> => {
     try {
-      const resp = await fetch('/map.json')
+      const resp = await fetchMap(endpoints)
       const served = resp.headers.get('etag')?.replace(/"/g, '')
       if (served && served === baseRevision) return
       const parsed = parseMapFile(await resp.json())
@@ -177,7 +186,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
       if (isDirty()) {
         remoteDoc = parsed.map
         await openConflict()
-        setMessage('⚠ another admin saved while you have unsaved changes')
+        setMessage(`⚠ ${who} while you have unsaved changes`)
         return
       }
       remoteDoc = parsed.map
@@ -186,7 +195,9 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
       // NOT a merge: the local copy was clean, so it was REPLACED by the
       // remote one. Calling that "merged" would tell the user their edits
       // were combined with someone else's, which nothing here does.
-      setMessage("🔄 loaded another admin's saved map")
+      setMessage(
+        endpoints.worldId ? '🔄 loaded the newer saved map' : "🔄 loaded another admin's saved map",
+      )
       notify()
     } catch {
       // Offline poll; the next one will pick it up.
@@ -196,7 +207,7 @@ export function createSaveController(opts: SaveControllerOptions): SaveControlle
   const openConflict = async (): Promise<void> => {
     conflictOpen = true
     try {
-      const resp = await fetch('/map.json')
+      const resp = await fetchMap(endpoints)
       const parsed = parseMapFile(await resp.json())
       conflictSummary = parsed.ok
         ? describeDiff(diffMapFileV2(serialize(), parsed.map))

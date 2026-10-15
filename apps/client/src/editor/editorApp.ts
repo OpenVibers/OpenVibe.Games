@@ -72,6 +72,7 @@ import { PaintSurfaceRegistry } from './materials/paintSurfaceRegistry.js'
 import { buildShell } from './ui/editorShell.js'
 import { createEditorUi } from './ui/editorUi.js'
 import { createSaveController } from './net/saveController.js'
+import { fetchMap, mapEndpoints } from './net/mapEndpoints.js'
 import { editorToken, ssoToken } from './net/editorToken.js'
 import { ActionRouter } from './input/actionRouter.js'
 import { ACTIONS, loadBindings, type Binding } from './bindings.js'
@@ -113,7 +114,9 @@ export async function bootEditor(): Promise<void> {
   // /map.json is the v2 document, so the editor only ever holds v2 — and a
   // missing or invalid map is emptyMapV2(), never a fabricated starter
   // heightfield.
-  const bootResp = await fetch('/map.json')
+  // The place's map, or a creator world's (/editor?world=<id>: the owner's draft, built-in materials, one editor).
+  const endpoints = mapEndpoints()
+  const bootResp = await fetchMap(endpoints)
   const bootRevision = bootResp.headers.get('etag')?.replace(/"/g, '') ?? ''
   const bootParsed = parseMapFile(await bootResp.json().catch(() => null))
   if (!bootParsed.ok) console.warn('[editor] map rejected, starting empty:', bootParsed.issues)
@@ -730,31 +733,33 @@ export async function bootEditor(): Promise<void> {
     },
     paintSurfaces,
     setMessage: (m) => ui.setMessage(m),
+    endpoints,
   })
 
-  const { createEditorConnection } = await import('./collaboration/editorConnection.js')
-  const connection = createEditorConnection({
-    scene,
-    peersEl: document.getElementById('peers') as HTMLElement,
-    camera,
-    keyOf: editorToken,
-    nameOf: defaultEditorName,
-    onRemoteSaved: () => void saveController.pollRemote(),
-    onLockDenied: (owner) => ui.setMessage(`🔒 held by ${owner} — you have read-only access`),
-    onChange: () => {
-      refreshVisuals()
-      ui.refreshAll()
-    },
-    onLockLost: () => {
-      // The lease went away mid-gesture: restore the exact starting state
-      // rather than leaving half-applied local edits the server disagrees
-      // with.
-      if (xform.active) xform.cancel()
-      selection.unfreeze()
-      lockedForSelection = []
-      ui.setMessage('⚠ edit lock lost — reselect to reacquire')
-    },
-  })
+  const connection = endpoints.collaboration
+    ? (await import('./collaboration/editorConnection.js')).createEditorConnection({
+        scene,
+        peersEl: document.getElementById('peers') as HTMLElement,
+        camera,
+        keyOf: editorToken,
+        nameOf: defaultEditorName,
+        onRemoteSaved: () => void saveController.pollRemote(),
+        onLockDenied: (owner) => ui.setMessage(`🔒 held by ${owner} — you have read-only access`),
+        onChange: () => {
+          refreshVisuals()
+          ui.refreshAll()
+        },
+        onLockLost: () => {
+          // The lease went away mid-gesture: restore the exact starting state
+          // rather than leaving half-applied local edits the server disagrees
+          // with.
+          if (xform.active) xform.cancel()
+          selection.unfreeze()
+          lockedForSelection = []
+          ui.setMessage('⚠ edit lock lost — reselect to reacquire')
+        },
+      })
+    : (await import('./collaboration/soloConnection.js')).createSoloConnection()
 
   // ── UI ──────────────────────────────────────────────────────────────
   const bindings = loadBindings(localStorage.getItem('openvibe.editor.bindings'))
@@ -765,6 +770,7 @@ export async function bootEditor(): Promise<void> {
     history,
     modelCache,
     editorToken,
+    assetsUrl: endpoints.assets,
     onAssetsChanged: () => {
       registerCustomTextures(doc.textures() as MapTextureEntry[])
       ui.refreshAll()
@@ -996,6 +1002,8 @@ export async function bootEditor(): Promise<void> {
   // reloads the editor with the new token.
   if (!ssoToken()) {
     ui.setMessage('Sign in with OpenVibe (top right) before editing')
+  } else if (endpoints.worldId) {
+    ui.setMessage('Your world: saving makes it live. Publish it from /worlds.')
   }
   connection.connect()
   // Offer any unsaved work from a previous session. Never automatic: a

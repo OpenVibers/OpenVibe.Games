@@ -66,6 +66,19 @@ export interface ServerConfig {
   instancesPerPlace: number
   /** Internal runtime slot; never read from the public environment. */
   instanceSlot?: number
+  /**
+   * Internal: a creator world's room (never read from the environment). No NPC population and no world events
+   * (both are Scraplandia's), and characters are not saved there (worlds/sandboxStore.ts).
+   */
+  sandbox?: boolean
+  /** GAMES_CREATOR_WORLDS_MAX: creator worlds running at once in this process (0 turns joining them off). */
+  creatorWorldsMax: number
+  /** GAMES_CREATOR_WORLDS_PER_PERSON: worlds one person can keep. */
+  creatorWorldsPerPerson: number
+  /** GAMES_CREATOR_WORLD_IDLE_SECONDS: an empty creator world stops after this long. */
+  creatorWorldIdleSeconds: number
+  /** GAMES_CREATOR_WORLD_PLAYERS: players per creator world. */
+  creatorWorldPlayers: number
   maxPlayers: number
   persistFlushSeconds: number
   metricsLogSeconds: number
@@ -205,6 +218,10 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     metricsLogSeconds: intEnv(env, 'METRICS_LOG_SECONDS', 30),
     eventIntervalScale: env.EVENT_INTERVAL_SCALE ? Number(env.EVENT_INTERVAL_SCALE) : 1,
     scriptMods: env.GAMES_SCRIPT_MODS === '1' || env.GAMES_SCRIPT_MODS === 'true',
+    creatorWorldsMax: intEnv(env, 'GAMES_CREATOR_WORLDS_MAX', 2),
+    creatorWorldsPerPerson: positiveIntEnv(env, 'GAMES_CREATOR_WORLDS_PER_PERSON', 5),
+    creatorWorldIdleSeconds: positiveIntEnv(env, 'GAMES_CREATOR_WORLD_IDLE_SECONDS', 180),
+    creatorWorldPlayers: positiveIntEnv(env, 'GAMES_CREATOR_WORLD_PLAYERS', 16),
   }
 }
 

@@ -5,3 +5,14 @@ export { openPgStore, type PgPersistenceStore, type PgStoreOptions } from './pg/
 export { InstanceRegistry, type InstanceLease, type InstanceState } from './pg/instanceRegistry.js'
 export { MIGRATIONS_DIR } from './migrations.js'
 export { moveCasualSaves, exportCasual, eraseCasual } from './pg/casualData.js'
+export {
+  createCreatorWorldStore,
+  mapRevision,
+  removeWorldPlaces,
+  exportCreatorWorlds,
+  eraseCreatorWorlds,
+  moveCreatorWorlds,
+  type CreatorWorld,
+  type CreatorWorldStatus,
+  type CreatorWorldStore,
+} from './pg/creatorWorlds.js'
