@@ -84,6 +84,7 @@ beforeAll(async () => {
   writeFileSync(join(dist, 'frame.js'), 'void 0')
   writeFileSync(join(dist, ASSET.slice(1)), 'export {}')
   writeFileSync(join(dist, 'assets', 'tex', 'wood_planks.jpg'), 'jpeg')
+  writeFileSync(join(dist, 'assets', 'tex', 'wood_planks.ktx2'), 'ktx2')
   const mapPath = join(dir, 'data', 'map.json')
   mkdirSync(join(dir, 'data', 'map-assets'), { recursive: true })
   writeFileSync(join(dir, 'data', 'map-assets', 'tex-1700000000000.png'), 'png')
@@ -144,6 +145,8 @@ describe('real routes on the apex', () => {
     expect(tex.headers['cache-control']).toBe(
       'public, max-age=86400, stale-while-revalidate=604800',
     )
+    const ktx2 = await send('/assets/tex/wood_planks.ktx2')
+    expect([ktx2.status, ktx2.headers['content-type']]).toEqual([200, 'image/ktx2'])
   })
 
   it('answers health, readiness, metrics and the API', async () => {

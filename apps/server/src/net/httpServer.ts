@@ -77,6 +77,8 @@ const MIME: Record<string, string> = {
   // Wavefront models are text: a text type lets the CDN compress them (the physgun's 472 KB went out raw as
   // application/octet-stream).
   '.obj': 'text/plain; charset=utf-8',
+  // GPU-compressed surface textures (Games M6, apps/client/src/render/ktx2.ts).
+  '.ktx2': 'image/ktx2',
 }
 
 /** A file name Vite content-hashed (`main-CE0R2rej.js`): its bytes can never change under that name. */

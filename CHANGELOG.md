@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **KTX2 surface textures (M6).** The built-in surface textures ship as KTX2 (Basis ETC1S with mipmaps), beside their
+  JPEGs:
+  - the GPU keeps them compressed, about a seventh of the memory of a decoded JPEG, which matters most on the low tier;
+  - they decode in workers instead of on the main thread;
+  - they are a quarter smaller (1.64 MB against 2.17 MB).
+
+  Babylon's decoder is vendored same-origin in `/ktx2/` (`apps/client/scripts/vendorKtx2.sh`, following
+  `@babylonjs/core`), so nothing loads from Babylon's CDN. `apps/client/scripts/encodeKtx2.sh` makes the files with
+  basisu, flipped vertically, because Babylon does not flip compressed data the way it flips a JPEG. This was checked
+  pixel by pixel in Chrome.
+
+  The JPEG is used when WebAssembly or workers are missing, with `?ktx2=0`, with `openvibe.ktx2=off`, or when a KTX2
+  fails to load. The server answers `.ktx2` as `image/ktx2`.
+
 - **The casual line and Vibe Heroes (plan T22).** `packages/casual` is a kit for small phone-first games: data
   packs, a server-fought auto-battle, shards and fusing, levels and star-ups, gear, energy, an idle chest with
   offline earnings, daily and weekly quests, a login calendar, earned-only summons with published odds and a
