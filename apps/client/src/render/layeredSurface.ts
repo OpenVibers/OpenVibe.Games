@@ -16,6 +16,7 @@ import { CustomMaterial } from '@babylonjs/materials/custom/customMaterial.js'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture.js'
+import { loadTexture } from './ktx2.js'
 import { Engine } from '@babylonjs/core/Engines/engine.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import {
@@ -133,7 +134,7 @@ export class LayeredSurfaceMaterial {
     const baseInfo = data.base.tex ? resolveTexInfo(data.base.tex) : null
     m.diffuseTexture?.dispose()
     if (baseInfo) {
-      const tx = new Texture(baseInfo.url, this.scene)
+      const tx = loadTexture(baseInfo, this.scene)
       const tiles = this.opts.baseTiling ?? 1
       tx.uScale = tx.vScale = tiles
       m.diffuseTexture = tx
@@ -159,7 +160,7 @@ export class LayeredSurfaceMaterial {
       const info = layer.tex === 'none' ? null : resolveTexInfo(layer.tex)
       if (!info && layer.tex !== 'none') continue
       if (info) {
-        const tx = new Texture(info.url, this.scene)
+        const tx = loadTexture(info, this.scene)
         tx.uScale = tx.vScale = 1
         this.layerTextures[idx] = tx
         scales[idx] = layer.scale ?? this.opts.layerTiling ?? 8

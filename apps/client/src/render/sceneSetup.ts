@@ -3,6 +3,7 @@ import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine.js'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture.js'
+import { builtinTexSource, loadTexture } from './ktx2.js'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js'
 import { Quaternion } from '@babylonjs/core/Maths/math.vector.js'
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js'
@@ -257,7 +258,7 @@ export function buildTerrainPatches(
     // 'none' = plain color (no texture at all); absent = default grass.
     const info = resolveTexInfo(patch.tex ?? 'leafy_grass')
     if (info) {
-      const tx = new Texture(info.url, scene)
+      const tx = loadTexture(info, scene)
       applyPatchTexture(tx, patch.halfExtent, info, patch.uv)
       mat.diffuseTexture = tx
     }
@@ -380,7 +381,7 @@ function decorateBuilding(scene: Scene, building: Mesh, s: StaticBody): void {
   roof.scaling.set(w + 0.8, 1.5, d + 0.8)
   roof.position.y = h / 2 + 0.75
   const roofMat = new StandardMaterial(`${building.name}:roofmat`, scene)
-  const roofTex = new Texture('/assets/tex/clay_roof_tiles.jpg', scene)
+  const roofTex = loadTexture(builtinTexSource('clay_roof_tiles'), scene)
   roofTex.uScale = 3
   roofTex.vScale = 2
   roofMat.diffuseTexture = roofTex

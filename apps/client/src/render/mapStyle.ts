@@ -1,6 +1,7 @@
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial.js'
-import { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
+import type { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
+import { builtinTexSource, loadTexture } from './ktx2.js'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
@@ -24,6 +25,8 @@ import type { FaceStyle, MapLight, MapTextureEntry, WorldShape } from '@openvibe
 
 export interface CustomTexInfo {
   url: string
+  /** The JPEG to use when a built-in texture's KTX2 cannot load (render/ktx2.ts). */
+  fallback?: string
   /** World meters covered by one texture tile (default 2). */
   scale?: number
 }
@@ -42,7 +45,7 @@ export function registerCustomTextures(entries: MapTextureEntry[] | undefined): 
 export function resolveTexInfo(name: string | undefined): CustomTexInfo | null {
   if (!name || name === 'none') return null
   if (name.startsWith('custom:')) return customTextures.get(name.slice(7)) ?? null
-  return { url: `/assets/tex/${name}.jpg` }
+  return builtinTexSource(name)
 }
 
 /** 'red_brick_diff_4k' → 'Red Brick' (display name, no prefixes/suffixes). */
@@ -84,7 +87,7 @@ function styledTexture(
   style: FaceStyle,
   dims: [number, number],
 ): Texture {
-  const tx = new Texture(info.url, scene)
+  const tx = loadTexture(info, scene)
   const tile = info.scale ?? 2 // meters per tile
   tx.uScale = style.sx && style.sx > 0 ? style.sx : Math.max(0.25, dims[0] / tile)
   tx.vScale = style.sy && style.sy > 0 ? style.sy : Math.max(0.25, dims[1] / tile)
