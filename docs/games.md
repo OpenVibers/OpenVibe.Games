@@ -60,7 +60,9 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   reaches Scraplandia, the leaderboards or the Inventory. The world's own rows (props, constraints, clock) persist.
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
-  cannot publish it again. Deleting a world removes its place's rows. Worlds are in the account export, follow an
+  cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event
+  `games.world.published` (OpenVibe.Quest's "Publish a creator world"); staff hiding, restoring or deleting someone
+  else's world is a `games.moderation.action` (`world.hidden`, `world.restored`, `world.deleted`). Worlds are in the account export, follow an
   account merge and go with an account deletion.
 
 ## Adding another game

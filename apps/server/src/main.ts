@@ -767,10 +767,13 @@ async function main(): Promise<void> {
         void router.serialize(async () => worldHost.applyMap(id, map))
       },
       changed: (world, id) => router.serialize(() => worldHost.changed(world, id)),
-      remove: (id) =>
+      remove: (id, within) =>
         router.serialize(async () => {
           await worldHost.changed(null, id)
-          await creatorWorlds.remove(id)
+          await db.tx(async (t) => {
+            await creatorWorlds.remove(id)
+            await within?.(t)
+          })
         }),
     },
     resolveUser: (token) =>
@@ -781,6 +784,7 @@ async function main(): Promise<void> {
     address: clientAddress,
     log: log.child({ system: 'worlds' }),
     perPerson: config.creatorWorldsPerPerson,
+    events: { db, sink, siteUrl: config.oauth?.selfUrl ?? 'https://openvibe.games' },
   })
   // The casual games' JSON API (plan T22).
   const serveCasual = createCasualRoutes({

@@ -9,6 +9,14 @@ import {
 } from '@openvibe/content'
 import type { CreatorWorld, CreatorWorldStatus, CreatorWorldStore } from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
+import type { Db, Tx } from 'openvibe-sdk/db'
+import type { EventInput } from 'openvibe-sdk/events'
+import {
+  actorFor,
+  moderationEvent,
+  worldPublishedEvent,
+  type EventSink,
+} from '../platform/gameEvents.js'
 import type { GamesActorLimits } from '../net/actorLimits.js'
 import type { NetworkUser } from '../net/networkAuth.js'
 
@@ -32,8 +40,11 @@ export interface WorldHostView {
   online(): Map<string, number>
   applyMap(id: string, map: MapFileV2): void
   changed(world: CreatorWorld | null, id: string): Promise<void>
-  /** Stops the world (its last save lands) and removes it with its place's rows. */
-  remove(id: string): Promise<void>
+  /**
+   * Stops the world (its last save lands) and removes it with its place's rows; `within` runs in the transaction
+   * that removes it (a staff deletion's moderation event).
+   */
+  remove(id: string, within?: (t: Tx) => Promise<void>): Promise<void>
 }
 
 export interface WorldRouteOptions {
@@ -45,6 +56,11 @@ export interface WorldRouteOptions {
   address: (req: IncomingMessage) => string
   log: Logger
   perPerson: number
+  /**
+   * Events through Games' outbox, each in the transaction of the change it describes: games.world.published on a
+   * world's first publication, games.moderation.action when staff hide, restore or delete someone else's world.
+   */
+  events?: { db: Db; sink: EventSink; siteUrl: string }
   now?: () => number
 }
 
@@ -118,6 +134,16 @@ function ownerView(world: CreatorWorld, online: number) {
   }
 }
 
+/** An If-Match header as a bare revision: Cloudflare hands the browser a weak `W/"…"` form of the ETag. */
+export function parseIfMatch(header: string | string[] | undefined): string | null {
+  const raw = Array.isArray(header) ? header[0] : header
+  const value = String(raw ?? '')
+    .trim()
+    .replace(/^W\//, '')
+    .replace(/"/g, '')
+  return value || null
+}
+
 function readBody(req: IncomingMessage, max: number): Promise<{ text: string; bytes: number }> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
@@ -149,6 +175,15 @@ function parseJson(text: string): unknown {
 export function createWorldRoutes(opts: WorldRouteOptions) {
   const now = opts.now ?? Date.now
   const online = (id: string): number => opts.host.online().get(id) ?? 0
+  /** Runs a change with its events in one transaction (or without events when the outbox is off). */
+  const withEvents = <T>(
+    fn: (enqueue: (event: EventInput) => Promise<void>) => Promise<T>,
+  ): Promise<T> => {
+    const events = opts.events?.sink.enabled ? opts.events : null
+    return events
+      ? events.db.tx((t) => fn((event) => events.sink.enqueue(t, event)))
+      : fn(async () => {})
+  }
 
   const send = (
     res: ServerResponse,
@@ -291,7 +326,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       const issues = creatorMapIssues(map, bytes)
       if (issues.length) fail(422, 'map_invalid', { issues })
       const { revision: _client, ...doc } = map
-      const ifMatch = (req.headers['if-match'] as string | undefined)?.replace(/"/g, '') || null
+      const ifMatch = parseIfMatch(req.headers['if-match'])
       const saved = await opts.store.saveMap(id, doc, ifMatch, now())
       if (saved === null) fail(404, 'world_not_found')
       if (saved === 'conflict') {
@@ -364,7 +399,22 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         }
         patch.status = status as CreatorWorldStatus
       }
-      const updated = await opts.store.update(id, patch, now())
+      const updated = await withEvents(async (enqueue) => {
+        const next = await opts.store.update(id, patch, now())
+        if (!next) return null
+        if (mine && patch.status === 'published' && world.publishedAt === null)
+          await enqueue(worldPublishedEvent(next, opts.events?.siteUrl ?? ''))
+        if (!mine && patch.status && patch.status !== world.status)
+          await enqueue(
+            moderationEvent(
+              patch.status === 'hidden' ? 'world.hidden' : 'world.restored',
+              { type: 'world', id, ownerSubject: world.ownerSubject },
+              actorFor(user.subjectId),
+              { details: { from: world.status, to: patch.status } },
+            ),
+          )
+        return next
+      })
       if (!updated) fail(404, 'world_not_found')
       if (mine) void opts.store.rename(user.subjectId, user.name).catch(() => undefined)
       if (patch.status && patch.status !== world.status) {
@@ -386,7 +436,23 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       const world = CREATOR_WORLD_ID.test(id) ? await opts.store.get(id) : null
       if (!world || (world.ownerSubject !== user.subjectId && !isGamesStaff(user)))
         return fail(404, 'world_not_found')
-      await opts.host.remove(id)
+      const byStaff = world.ownerSubject !== user.subjectId
+      const events = opts.events?.sink.enabled ? opts.events : null
+      await opts.host.remove(
+        id,
+        byStaff && events
+          ? (t) =>
+              events.sink.enqueue(
+                t,
+                moderationEvent(
+                  'world.deleted',
+                  { type: 'world', id, ownerSubject: world.ownerSubject },
+                  actorFor(user.subjectId),
+                  { details: { status: world.status } },
+                ),
+              )
+          : undefined,
+      )
       opts.log.info('creator world deleted', {
         world: id,
         staff: world.ownerSubject !== user.subjectId,

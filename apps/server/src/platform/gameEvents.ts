@@ -7,6 +7,7 @@
  *   games.skill.leveled      a persisted skill level went up (one event per skill per save)
  *   games.blueprint.unlocked a persisted blueprint recipe unlock
  *   games.world.saved        the authoritative world was written (checkpoint / shutdown)
+ *   games.world.published    a player published a creator world for the first time (worlds/worldRoutes.ts)
  *   games.mod.*              mod install, enable, disable, grant changes and revoke
  *   games.moderation.action  staff took down or put back a mod someone else published
  *                            (common.moderation-action@1, ADR-022), for Network's moderation
@@ -153,6 +154,31 @@ export function worldSavedEvent(
       entities_written: save.entities,
       players_written: save.players,
       since: new Date(save.sinceMs).toISOString(),
+    },
+  }
+}
+
+/**
+ * games.world.published (contracts 0.194.0): a player published one of their creator worlds for the first time.
+ * Public: the world is listed at /worlds. OpenVibe.Quest credits the owner's "Publish a creator world" quest.
+ */
+export function worldPublishedEvent(
+  world: { id: string; ownerSubject: string; title: string; publishedAt: number | null },
+  siteUrl: string,
+): EventInput {
+  const owner = actorFor(world.ownerSubject)
+  return {
+    event_type: 'games.world.published',
+    actor: owner,
+    subject: { type: 'world', id: world.id },
+    visibility: 'public',
+    priority: 'low',
+    payload: {
+      world: world.id,
+      owner,
+      title: world.title,
+      url: `${siteUrl.replace(/\/+$/, '')}/play?world=${world.id}`,
+      published_at: new Date(world.publishedAt ?? Date.now()).toISOString(),
     },
   }
 }
