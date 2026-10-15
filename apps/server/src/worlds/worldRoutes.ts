@@ -19,6 +19,7 @@ import {
 } from '../platform/gameEvents.js'
 import type { GamesActorLimits } from '../net/actorLimits.js'
 import type { NetworkUser } from '../net/networkAuth.js'
+import type { WorldSearchIndex } from './searchIndex.js'
 
 /**
  * /api/worlds: creator worlds (migration 0010). Anyone reads the published list and plays a published world; a
@@ -61,6 +62,8 @@ export interface WorldRouteOptions {
    * world's first publication, games.moderation.action when staff hide, restore or delete someone else's world.
    */
   events?: { db: Db; sink: EventSink; siteUrl: string }
+  /** Published worlds in OpenVibe.Search (searchIndex.ts), synced in the same transaction as the events. */
+  search?: WorldSearchIndex
   now?: () => number
 }
 
@@ -177,12 +180,12 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
   const online = (id: string): number => opts.host.online().get(id) ?? 0
   /** Runs a change with its events in one transaction (or without events when the outbox is off). */
   const withEvents = <T>(
-    fn: (enqueue: (event: EventInput) => Promise<void>) => Promise<T>,
+    fn: (enqueue: (event: EventInput) => Promise<void>, t: Tx | null) => Promise<T>,
   ): Promise<T> => {
     const events = opts.events?.sink.enabled ? opts.events : null
     return events
-      ? events.db.tx((t) => fn((event) => events.sink.enqueue(t, event)))
-      : fn(async () => {})
+      ? events.db.tx((t) => fn((event) => events.sink.enqueue(t, event), t))
+      : fn(async () => {}, null)
   }
 
   const send = (
@@ -399,9 +402,11 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         }
         patch.status = status as CreatorWorldStatus
       }
-      const updated = await withEvents(async (enqueue) => {
+      const updated = await withEvents(async (enqueue, t) => {
         const next = await opts.store.update(id, patch, now())
         if (!next) return null
+        // Search follows what the page shows: a published world's title and summary, or a tombstone.
+        if (t && opts.search) await opts.search.sync(t, next)
         if (mine && patch.status === 'published' && world.publishedAt === null)
           await enqueue(worldPublishedEvent(next, opts.events?.siteUrl ?? ''))
         if (!mine && patch.status && patch.status !== world.status)
@@ -440,17 +445,20 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       const events = opts.events?.sink.enabled ? opts.events : null
       await opts.host.remove(
         id,
-        byStaff && events
-          ? (t) =>
-              events.sink.enqueue(
-                t,
-                moderationEvent(
-                  'world.deleted',
-                  { type: 'world', id, ownerSubject: world.ownerSubject },
-                  actorFor(user.subjectId),
-                  { details: { status: world.status } },
-                ),
-              )
+        events
+          ? async (t) => {
+              await opts.search?.remove(t, id)
+              if (byStaff)
+                await events.sink.enqueue(
+                  t,
+                  moderationEvent(
+                    'world.deleted',
+                    { type: 'world', id, ownerSubject: world.ownerSubject },
+                    actorFor(user.subjectId),
+                    { details: { status: world.status } },
+                  ),
+                )
+            }
           : undefined,
       )
       opts.log.info('creator world deleted', {

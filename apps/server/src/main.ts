@@ -87,6 +87,8 @@ import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 import { CreatorWorldHost } from './worlds/worldHost.js'
 import { createWorldHubStarter } from './worlds/startWorldHub.js'
 import { createWorldRoutes } from './worlds/worldRoutes.js'
+import { createWorldPage } from './worlds/worldPage.js'
+import { createWorldSearchIndex } from './worlds/searchIndex.js'
 
 /**
  * Dedicated authoritative server entry point.
@@ -758,6 +760,19 @@ async function main(): Promise<void> {
   // ticket limit and logs (config.TRUST_PROXY; the socket address otherwise).
   const clientAddress = (req: IncomingMessage): string =>
     resolveClientAddress(req, config.trustProxy)
+  // Published creator worlds in OpenVibe.Search (worlds/searchIndex.ts): through the outbox, so only with events on.
+  const gamesSiteUrl = config.oauth?.selfUrl ?? 'https://openvibe.games'
+  const worldSearch = outbox
+    ? createWorldSearchIndex({
+        db,
+        outbox,
+        baseUrl: gamesSiteUrl,
+        log: log.child({ system: 'world-search' }),
+      })
+    : null
+  worldSearch?.start()
+  // GET /worlds/<id>: a published world's own page (the one Search links to).
+  const serveWorldPage = createWorldPage({ store: creatorWorlds, siteUrl: gamesSiteUrl })
   // Creator worlds' JSON API (worlds/worldRoutes.ts). State changes run in the router's admission chain.
   const serveWorlds = createWorldRoutes({
     store: creatorWorlds,
@@ -784,7 +799,8 @@ async function main(): Promise<void> {
     address: clientAddress,
     log: log.child({ system: 'worlds' }),
     perPerson: config.creatorWorldsPerPerson,
-    events: { db, sink, siteUrl: config.oauth?.selfUrl ?? 'https://openvibe.games' },
+    events: { db, sink, siteUrl: gamesSiteUrl },
+    ...(worldSearch ? { search: worldSearch } : {}),
   })
   // The casual games' JSON API (plan T22).
   const serveCasual = createCasualRoutes({
@@ -892,6 +908,7 @@ async function main(): Promise<void> {
         }
         if (serveCasual(req, res)) return true
         if (serveWorlds(req, res)) return true
+        if (serveWorldPage(req, res)) return true
         if (
           handleGameRead(req, res, {
             db,
@@ -1121,6 +1138,7 @@ async function main(): Promise<void> {
       clearInterval(metricsTimer)
       clearInterval(heartbeatTimer)
       clearInterval(worldSweepTimer)
+      worldSearch?.stop()
       clearInterval(pruneTimer)
       editors.stop()
       const mirrorDone = mirror?.stop()

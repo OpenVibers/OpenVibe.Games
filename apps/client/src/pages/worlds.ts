@@ -82,8 +82,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node
 }
 
-function link(text: string, href: string, primary = false): HTMLAnchorElement {
-  const a = el('a', { className: primary ? 'button primary' : 'button', text })
+function link(text: string, href: string, primary = false, className?: string): HTMLAnchorElement {
+  const a = el('a', { className: className ?? (primary ? 'button primary' : 'button'), text })
   a.href = href
   return a
 }
@@ -99,6 +99,15 @@ function button(
   return b
 }
 
+/** A world's title: a link to its own page (/worlds/<id>) once it is published, plain text before. */
+function titleOf(world: World): HTMLElement {
+  const heading = el('h3')
+  if ((world.status ?? 'published') === 'published')
+    heading.append(link(world.title, `/worlds/${world.id}`, false, 'title'))
+  else heading.textContent = world.title
+  return heading
+}
+
 const count = (n: number, one: string, many: string): string =>
   `${n.toLocaleString()} ${n === 1 ? one : many}`
 
@@ -112,7 +121,7 @@ function publishedCard(world: World, staff: boolean): HTMLElement {
   const card = el(
     'article',
     { className: 'card' },
-    el('h3', { text: world.title }),
+    titleOf(world),
     el('p', { className: 'by', text: `by ${world.owner}` }),
     world.summary ? el('p', { className: 'summary', text: world.summary }) : null,
     el('p', { className: 'stats', text: stats(world) }),
@@ -137,7 +146,7 @@ function mineCard(world: World): HTMLElement {
     'article',
     { className: 'card' },
     el('span', { className: `badge ${status}`, text: label }),
-    el('h3', { text: world.title }),
+    titleOf(world),
     world.summary ? el('p', { className: 'summary', text: world.summary }) : null,
     el('p', { className: 'stats', text: stats(world) }),
   )
