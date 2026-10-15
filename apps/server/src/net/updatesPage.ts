@@ -42,6 +42,8 @@ export function updatesHandler(req: NodeRequire = createRequire(import.meta.url)
       description: `Every change deployed to ${SITE_NAME}, newest first.`,
       canonical: `${SITE_URL}/updates`,
       robots: 'index, follow',
+      // The site's icon, as on every other page (apps/client/*.html): without it the browser asks for /favicon.ico (404).
+      head: '<link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
       navbar: {
         service: 'games',
         apiBase: NETWORK_URL,
