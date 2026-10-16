@@ -126,22 +126,26 @@ export function createEditorUi(opts: EditorUiOptions): EditorUi {
   )
 
   // ── Dock ────────────────────────────────────────────────────────────
-  const assets = new AssetBrowser(shell.dockPanels['assets']!, {
-    onUseTexture: (name) => {
-      const ids = selection.ids()
-      if (ids.length > 0) opts.setProperty(ids, 'tex', name)
-      else (document.getElementById('paint-tex') as HTMLSelectElement).value = name
+  const assets = new AssetBrowser(
+    shell.dockPanels['assets']!,
+    {
+      onUseTexture: (name) => {
+        const ids = selection.ids()
+        if (ids.length > 0) opts.setProperty(ids, 'tex', name)
+        else (document.getElementById('paint-tex') as HTMLSelectElement).value = name
+      },
+      // Genuinely arms the placement tool rather than telling the user to go
+      // and find it themselves.
+      onPlaceModel: (id) => opts.placeModel(id),
+      onFindUsages: (ids) => selection.replaceMany(ids),
+      onDeleteTexture: (name) => void opts.assets.deleteTexture(name),
+      onDeleteModel: (id) => void opts.assets.deleteModel(id),
+      onRenameTexture: (name, next) => void opts.assets.renameTexture(name, next),
+      onImportTexture: (file) => void opts.assets.importTexture(file),
+      onImportModel: (file) => void opts.assets.importModel(file),
     },
-    // Genuinely arms the placement tool rather than telling the user to go
-    // and find it themselves.
-    onPlaceModel: (id) => opts.placeModel(id),
-    onFindUsages: (ids) => selection.replaceMany(ids),
-    onDeleteTexture: (name) => void opts.assets.deleteTexture(name),
-    onDeleteModel: (id) => void opts.assets.deleteModel(id),
-    onRenameTexture: (name, next) => void opts.assets.renameTexture(name, next),
-    onImportTexture: (file) => void opts.assets.importTexture(file),
-    onImportModel: (file) => void opts.assets.importModel(file),
-  })
+    opts.assets.uploadsAllowed,
+  )
 
   const historyPanel = new HistoryPanel(shell.dockPanels['history']!, (steps) => {
     for (let i = 0; i < Math.abs(steps); i++) history.undo()

@@ -119,6 +119,11 @@ export function sanitizeTextureName(raw: string, taken: (name: string) => boolea
 export class AssetController {
   constructor(private readonly opts: AssetControllerOptions) {}
 
+  /** Whether this map takes uploads (a creator world does not, for now). */
+  get uploadsAllowed(): boolean {
+    return this.opts.assetsUrl !== null
+  }
+
   /** POST raw bytes to the content-addressed store. */
   private async upload(blob: Blob): Promise<UploadedAsset | 'forbidden' | null> {
     const url = this.opts.assetsUrl === undefined ? '/api/map-assets' : this.opts.assetsUrl
