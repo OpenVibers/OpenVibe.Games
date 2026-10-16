@@ -101,7 +101,10 @@ function defaultEditorName(): string {
 export async function bootEditor(): Promise<void> {
   const canvas = document.getElementById('game') as HTMLCanvasElement
   const mount = document.getElementById('shell') as HTMLElement
-  const shell = buildShell(mount, canvas)
+  // The place's map, or a creator world's (/editor?world=<id>: the owner's draft, built-in materials, one editor,
+  // no Paint: its masks would be uploads).
+  const endpoints = mapEndpoints()
+  const shell = buildShell(mount, canvas, endpoints.assets ? [] : ['paint'])
 
   const engine = new Engine(canvas, true)
   const scene = new Scene(engine)
@@ -114,8 +117,6 @@ export async function bootEditor(): Promise<void> {
   // /map.json is the v2 document, so the editor only ever holds v2 — and a
   // missing or invalid map is emptyMapV2(), never a fabricated starter
   // heightfield.
-  // The place's map, or a creator world's (/editor?world=<id>: the owner's draft, built-in materials, one editor).
-  const endpoints = mapEndpoints()
   const bootResp = await fetchMap(endpoints)
   const bootRevision = bootResp.headers.get('etag')?.replace(/"/g, '') ?? ''
   const bootParsed = parseMapFile(await bootResp.json().catch(() => null))

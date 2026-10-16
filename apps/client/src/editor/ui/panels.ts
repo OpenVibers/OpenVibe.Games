@@ -64,6 +64,8 @@ export class AssetBrowser {
   constructor(
     private readonly root: HTMLElement,
     private readonly callbacks: AssetBrowserCallbacks,
+    /** false in a creator world: no import (uploads are staff-only there for now). */
+    private readonly uploads = true,
   ) {}
 
   setState(next: Partial<AssetBrowserState>): void {
@@ -71,21 +73,7 @@ export class AssetBrowser {
     this.render()
   }
 
-  private render(): void {
-    const { tab, filter } = this.state
-    this.root.textContent = ''
-
-    const tabs = document.createElement('div')
-    tabs.className = 'asset-tabs'
-    for (const name of ['textures', 'models'] as const) {
-      const b = document.createElement('button')
-      b.type = 'button'
-      b.textContent = name
-      b.className = tab === name ? 'active' : ''
-      b.addEventListener('click', () => this.setState({ tab: name }))
-      tabs.append(b)
-    }
-    // Import lives beside the list it adds to, so the flow is obvious.
+  private importControl(tab: 'textures' | 'models'): HTMLLabelElement {
     const importLabel = document.createElement('label')
     importLabel.className = 'mini asset-import'
     importLabel.textContent = tab === 'textures' ? '＋ Import texture' : '＋ Import GLB'
@@ -102,7 +90,32 @@ export class AssetBrowser {
       importInput.value = ''
     })
     importLabel.append(importInput)
-    tabs.append(importLabel)
+    return importLabel
+  }
+
+  private render(): void {
+    const { tab, filter } = this.state
+    this.root.textContent = ''
+
+    const tabs = document.createElement('div')
+    tabs.className = 'asset-tabs'
+    for (const name of ['textures', 'models'] as const) {
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.textContent = name
+      b.className = tab === name ? 'active' : ''
+      b.addEventListener('click', () => this.setState({ tab: name }))
+      tabs.append(b)
+    }
+    // Import lives beside the list it adds to, so the flow is obvious. A creator world says why there is none.
+    if (this.uploads) tabs.append(this.importControl(tab))
+    else {
+      const note = document.createElement('span')
+      note.className = 'mini asset-import'
+      note.textContent = 'Built-in materials only here'
+      note.title = 'Uploaded textures and models stay with staff maps for now.'
+      tabs.append(note)
+    }
     this.root.append(tabs)
 
     const needle = filter.trim().toLowerCase()

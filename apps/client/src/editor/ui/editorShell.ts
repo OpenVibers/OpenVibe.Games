@@ -100,13 +100,18 @@ const textureOptions = (): { value: string; label: string }[] => [
 ]
 
 /** Build the workspace into `mount` and return every element the app drives. */
-export function buildShell(mount: HTMLElement, canvas: HTMLCanvasElement): ShellElements {
+/** `hideTools`: tools a mode cannot use (a creator world has no Paint: its masks would be uploads). */
+export function buildShell(
+  mount: HTMLElement,
+  canvas: HTMLCanvasElement,
+  hideTools: readonly Tool[] = [],
+): ShellElements {
   const root = el('div', 'workspace', 'workspace')
 
   // ── Toolbar ─────────────────────────────────────────────────────────
   const toolbar = el('div', 'toolbar')
   const tools = el('div', 'tools', 'tools')
-  for (const [id, icon, title] of TOOLS) {
+  for (const [id, icon, title] of TOOLS.filter(([t]) => !hideTools.includes(t))) {
     const b = el('button', 'tool', `tool-${id}`)
     b.type = 'button'
     b.dataset['tool'] = id
