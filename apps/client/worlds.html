@@ -30,6 +30,9 @@
       * {
         box-sizing: border-box;
       }
+      [hidden] {
+        display: none !important;
+      }
       body {
         margin: 0;
         min-height: 100vh;
@@ -79,6 +82,43 @@
         margin: 0 0 6px;
         max-width: 720px;
         color: var(--text-dim);
+      }
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin: 22px 0 0;
+        padding: 0;
+        list-style: none;
+        counter-reset: step;
+      }
+      .steps li {
+        position: relative;
+        padding: 14px 16px 14px 56px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg-raised);
+        color: var(--text-dim);
+        font-size: 15px;
+      }
+      .steps li::before {
+        counter-increment: step;
+        content: counter(step);
+        position: absolute;
+        left: 16px;
+        top: 14px;
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.18);
+        color: var(--accent-light);
+        font-weight: 800;
+      }
+      .steps b {
+        display: block;
+        color: var(--text);
       }
       .panel {
         border: 1px solid var(--border);
@@ -254,6 +294,13 @@
         then publish your world for anyone to join from their browser. A world is a sandbox: what
         players gather or build inside it stays in that world.
       </p>
+      <ol class="steps">
+        <li><b>Make a world</b>Give it a title. You can keep five.</li>
+        <li>
+          <b>Build it</b>Terrain, buildings, lights and zones in the editor. Saving puts it live.
+        </li>
+        <li><b>Publish it</b>Anyone joins from the browser, and it gets its own page to share.</li>
+      </ol>
 
       <h2 id="mine-title">Your worlds</h2>
       <section class="panel" aria-labelledby="mine-title">
