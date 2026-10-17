@@ -82,6 +82,34 @@ interface SeoToolkit {
   jsonLdTag(node: unknown): string
 }
 const seo = createRequire(import.meta.url)('openvibe-shared/seo') as SeoToolkit
+// The installable app: the shared OpenVibe icon set for Games (openvibe-shared/app-icons, pre-rendered PNGs).
+const appIcons = createRequire(import.meta.url)('openvibe-shared/app-icons') as {
+  path(name: string): string
+  site(service: string): { name: string; description?: string } | null
+}
+const APP_ICON_RE = /^\/app-icons\/(games-(?:maskable-)?(?:192|512)\.png)$/
+function manifestBody(): string {
+  const icons = [192, 512].flatMap((size) =>
+    [false, true].map((maskable) => ({
+      src: `/app-icons/games-${maskable ? 'maskable-' : ''}${size}.png`,
+      sizes: `${size}x${size}`,
+      type: 'image/png',
+      purpose: maskable ? 'maskable' : 'any',
+    })),
+  )
+  return JSON.stringify({
+    name: 'OpenVibe.Games',
+    short_name: 'Games',
+    description: appIcons.site('games')?.description ?? 'Browser games',
+    id: '/',
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    background_color: '#0a0f1c',
+    theme_color: '#0d131d',
+    icons,
+  })
+}
 
 const SITE = 'https://openvibe.games'
 const PLAY = 'https://play.openvibe.games'
@@ -308,17 +336,38 @@ function send(res: ServerResponse, type: string, body: string): void {
  */
 export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): boolean {
   const url = (rq.url ?? '/').split('?')[0] ?? '/'
+  const icon = APP_ICON_RE.exec(url)
   if (
     url !== '/robots.txt' &&
     url !== '/sitemap.xml' &&
     url !== '/llms.txt' &&
-    url !== '/llms-full.txt'
+    url !== '/llms-full.txt' &&
+    url !== '/manifest.webmanifest' &&
+    !icon
   ) {
     return false
   }
   if (rq.method !== 'GET' && rq.method !== 'HEAD') {
     res.writeHead(405, { allow: 'GET, HEAD' })
     res.end()
+    return true
+  }
+  if (url === '/manifest.webmanifest') {
+    send(res, 'application/manifest+json', manifestBody())
+    return true
+  }
+  if (icon) {
+    // Only the names the regex allows reach the file system (openvibe-shared/app-icons resolves them).
+    let png: Buffer
+    try {
+      png = readFileSync(appIcons.path(`icons/${icon[1]}`))
+    } catch {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('Not found')
+      return true
+    }
+    res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' })
+    res.end(png)
     return true
   }
   if (url === '/robots.txt') {

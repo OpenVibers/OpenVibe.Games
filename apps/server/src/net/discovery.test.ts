@@ -171,6 +171,25 @@ describe('crawl artifacts (plan T11)', () => {
     for (const p of PRIVATE) expect(r.body).not.toContain(p)
   })
 
+  it('serves the installable app: /manifest.webmanifest and its icons (the shared Games set)', async () => {
+    const m = await send('/manifest.webmanifest')
+    expect(m.status).toBe(200)
+    expect(m.headers['content-type']).toBe('application/manifest+json; charset=utf-8')
+    const manifest = JSON.parse(m.body) as { name: string; start_url: string; icons: { src: string; purpose: string }[] }
+    expect(manifest.name).toBe('OpenVibe.Games')
+    expect(manifest.start_url).toBe('/')
+    expect(manifest.icons.map((i) => i.src)).toEqual([
+      '/app-icons/games-192.png', '/app-icons/games-maskable-192.png', '/app-icons/games-512.png', '/app-icons/games-maskable-512.png',
+    ])
+    for (const i of manifest.icons) {
+      const r = await send(i.src)
+      expect(r.status).toBe(200)
+      expect(r.headers['content-type']).toBe('image/png')
+    }
+    // Nothing else under /app-icons reaches the file system.
+    expect((await send('/app-icons/..%2F..%2Fpackage.json')).status).not.toBe(200)
+  })
+
   it('serves /llms-full.txt: text/plain, the home page, and nothing robots keeps out', async () => {
     const r = await send('/llms-full.txt')
     expect(r.status).toBe(200)
