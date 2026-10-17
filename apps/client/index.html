@@ -103,6 +103,11 @@
         line-height: 1;
         animation: rise 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
       }
+      /* "OpenVibe.Games" is one unbreakable word (~8.8 em wide): on phones under 420px it takes the width it fits in
+         (at 42px it overflowed a 320px screen by 62px). */
+      @media (max-width: 420px) {
+        .hero-title { font-size: calc((100vw - 40px) / 8.8); }
+      }
       .hero-title b {
         background: linear-gradient(
           120deg,
