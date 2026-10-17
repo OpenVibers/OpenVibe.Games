@@ -5,9 +5,9 @@
 useDefault = true
 
 [[allowlists]]
-description = "Made-up player/session tokens in unit tests"
+description = "Made-up player/session tokens in unit tests (sqlite/sqliteStore.test.ts: the same token in the first commit, before the PostgreSQL move)"
 condition = "AND"
-paths = ['''^packages/(persistence/src/pg/pgStore|protocol/src/codec)\.test\.ts$''']
+paths = ['''^packages/(persistence/src/pg/pgStore|persistence/src/sqlite/sqliteStore|protocol/src/codec)\.test\.ts$''']
 regexes = ['''^(tok_12345678|abcdefgh12345678)$''']
 
 [[allowlists]]
