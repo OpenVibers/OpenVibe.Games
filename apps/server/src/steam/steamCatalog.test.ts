@@ -64,6 +64,10 @@ describe('Steam lists from OpenVibe.Sources', () => {
     const html = steamPageHtml({ top: [g(730, 'Counter-Strike 2', { final_price: 0, original_price: 0 })], sale: [g(413150, 'Stardew Valley', { final_price: 749, original_price: 1499, discount_percent: 50 })], new: [g(3527290, 'A <New> Game')], observed_at: NOW - 3600_000 }, 'https://openvibe.games', shell, NOW)
     expect(html).toContain('Steam top sellers, deals and new releases')
     expect(html).toContain('<span class="rank" aria-label="Number 1">1</span>')
+    // Steam's list repeats games (one id at positions 0 and 1): ranks count the games shown, 1, 2, 3 with no gaps.
+    const gappy = steamPageHtml({ top: [g(1, 'First', { position: 0 }), g(2, 'Second', { position: 2 })], sale: [], new: [], observed_at: NOW }, 'https://openvibe.games', shell, NOW)
+    expect(gappy).toContain('<span class="rank" aria-label="Number 2">2</span>')
+    expect(gappy).not.toContain('aria-label="Number 3"')
     expect(html).toContain('<span>Free</span>')
     expect(html).toMatch(/<span class="off">−50%<\/span><span>\$7\.49<\/span><span class="was">\$14\.99<\/span>/)
     expect(html).toContain('A &lt;New&gt; Game')

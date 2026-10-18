@@ -71,7 +71,7 @@ function endsIn(ms: number | null, now: number): string {
   return `Ends in ${h} hour${h === 1 ? '' : 's'}`
 }
 
-function card(g: SteamGame, now: number, ranked: boolean): string {
+function card(g: SteamGame, now: number, rank: number | null): string {
   const store = `https://store.steampowered.com/app/${g.appid}/`
   const price =
     g.discount_percent > 0 && g.original_price != null
@@ -81,7 +81,7 @@ function card(g: SteamGame, now: number, ranked: boolean): string {
   const ends = endsIn(g.discount_ends_at, now)
   return `<li class="game">
   ${g.header_image ? `<img class="art" src="${escapeHtml(g.header_image)}" alt="" loading="lazy" decoding="async" width="460" height="215" referrerpolicy="no-referrer">` : '<span class="art" aria-hidden="true"></span>'}
-  ${ranked ? `<span class="rank" aria-label="Number ${g.position + 1}">${g.position + 1}</span>` : ''}
+  ${rank ? `<span class="rank" aria-label="Number ${rank}">${rank}</span>` : ''}
   <div class="body">
     <h3 class="name"><a href="${store}" rel="noopener" target="_blank">${escapeHtml(g.name)}</a></h3>
     <p class="price">${price}</p>
@@ -92,7 +92,7 @@ function card(g: SteamGame, now: number, ranked: boolean): string {
 
 function section(id: string, title: string, note: string, games: SteamGame[], now: number, ranked = false): string {
   return `<section aria-labelledby="${id}"><h2 id="${id}">${title} <small>${note}</small></h2>
-${games.length ? `<ol class="grid">${games.map((g) => card(g, now, ranked)).join('')}</ol>` : '<p class="empty">Steam\'s list could not be read just now.</p>'}
+${games.length ? `<ol class="grid">${games.map((g, i) => card(g, now, ranked ? i + 1 : null)).join('')}</ol>` : '<p class="empty">Steam\'s list could not be read just now.</p>'}
 </section>`
 }
 
