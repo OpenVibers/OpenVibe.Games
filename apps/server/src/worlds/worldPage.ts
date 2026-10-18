@@ -22,7 +22,7 @@ const LINKS: NotFoundLink[] = [
 ]
 
 const STYLE = `<style>
-.world{max-width:760px;margin:0 auto;padding:28px 16px 64px}
+.world{max-width:760px;margin:0 auto;padding:28px 16px 64px;font-family:var(--ov-font,'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif)}
 .world .eyebrow{margin:0 0 6px;font-size:12px;font-weight:800;letter-spacing:.14em;color:var(--secondary,#22d3ee)}
 .world h1{margin:0 0 6px;font-size:clamp(28px,5vw,40px);font-weight:900;overflow-wrap:anywhere}
 .world .by,.world .stats{margin:0 0 10px;color:var(--text-dim,#96a7c2)}
