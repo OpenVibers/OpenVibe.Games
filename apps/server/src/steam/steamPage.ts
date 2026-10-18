@@ -16,7 +16,7 @@ const SITE_NAME = 'OpenVibe.Games'
 const NETWORK_URL = 'https://openvibe.network'
 
 const STYLE = `<style>
-.steam{max-width:1180px;margin:0 auto;padding:28px 16px 64px}
+.steam{max-width:1180px;margin:0 auto;padding:28px 16px 64px;font-family:var(--ov-font,'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif)}
 .steam .eyebrow{margin:0 0 6px;font-size:12px;font-weight:800;letter-spacing:.14em;color:var(--secondary,#22d3ee)}
 .steam h1{margin:0 0 8px;font-size:clamp(28px,5vw,40px);font-weight:900}
 .steam .lede{margin:0 0 6px;max-width:68ch;color:var(--text-dim,#96a7c2)}
@@ -30,10 +30,11 @@ const STYLE = `<style>
 .steam .game:hover{border-color:var(--accent,#3b82f6);transform:translateY(-2px)}
 .steam .game a{color:inherit;text-decoration:none}
 .steam .game a::after{content:'';position:absolute;inset:0}
-.steam .art{aspect-ratio:460/215;background:var(--bg-tertiary,#16213a);display:block;width:100%;object-fit:cover}
+.steam .art{aspect-ratio:460/215;background:var(--bg-tertiary,#16213a);display:block;width:100%;height:auto;object-fit:cover}
 .steam .rank{position:absolute;top:8px;left:8px;min-width:30px;height:30px;padding:0 8px;border-radius:9px;display:grid;
   place-items:center;background:rgba(5,10,20,.82);font-weight:900;font-size:14px}
 .steam .body{display:flex;flex-direction:column;gap:6px;padding:12px 13px 13px;flex:1}
+.steam .body p{margin:0}
 .steam .name{margin:0;font-size:16px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
 .steam .price{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:auto;font-weight:800}
 .steam .off{padding:2px 7px;border-radius:7px;background:#16a34a;color:#fff;font-size:13px}
@@ -43,6 +44,20 @@ const STYLE = `<style>
 .steam .empty{padding:18px;border:1px dashed var(--border,#1f2d47);border-radius:14px;color:var(--text-dim,#96a7c2)}
 .steam .about{margin-top:10px;font-size:14px;color:var(--text-faint,#7386a3);max-width:80ch}
 .steam .about a{color:var(--accent-light,#93c5fd)}
+@media (max-width:380px){.steam .art{width:112px !important}}
+/* Phones: one compact row per game (picture left, details right), so 46 games are a list, not a long scroll of posters. */
+@media (max-width:560px){
+  .steam .grid{grid-template-columns:1fr;gap:10px}
+  .steam .game{flex-direction:row;align-items:stretch}
+  .steam .game{align-items:center;min-height:84px}
+  .steam .art{width:136px;flex:none;aspect-ratio:460/215;height:auto;margin-left:8px;border-radius:8px}
+  .steam .rank{top:6px;left:6px;min-width:24px;height:24px;font-size:12px;border-radius:7px}
+  .steam .body{padding:9px 11px;gap:4px;min-width:0}
+  .steam .name{font-size:14px}
+  .steam .price{font-size:14px;margin-top:2px}
+  .steam .meta .pf{display:none}
+  .steam .meta:not(:has(.ends)){display:none}
+}
 </style>`
 
 function money(cents: number | null, currency: string | null): string {
@@ -85,7 +100,7 @@ function card(g: SteamGame, now: number, rank: number | null): string {
   <div class="body">
     <h3 class="name"><a href="${store}" rel="noopener" target="_blank">${escapeHtml(g.name)}</a></h3>
     <p class="price">${price}</p>
-    <p class="meta">${platforms.map((p) => `<span>${p}</span>`).join('')}${ends ? `<span>${escapeHtml(ends)}</span>` : ''}</p>
+    <p class="meta">${platforms.map((p) => `<span class="pf">${p}</span>`).join('')}${ends ? `<span class="ends">${escapeHtml(ends)}</span>` : ''}</p>
   </div>
 </li>`
 }
