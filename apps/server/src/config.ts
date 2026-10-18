@@ -116,6 +116,11 @@ export interface PlatformConfig {
    * Needs the client secret too (ADR-0007 decision 10).
    */
   playUrl: string | null
+  /**
+   * OpenVibe.Sources base (GAMES_SOURCES_URL, host-internal in production); null = no Steam lists. Needs the client
+   * secret too (grant sources.item.read, category games).
+   */
+  sourcesUrl: string | null
   /** Media namespace (tenant app id) Games writes objects into. */
   mediaNamespace: string
   /** At most one `games.world.saved` checkpoint event per this many minutes. */
@@ -155,6 +160,7 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
     inventoryUrl: trimSlash(env.GAMES_INVENTORY_URL ?? 'https://inventory.openvibe.network'),
     items: env.GAMES_ITEMS !== 'off' && !!secret,
     playUrl: env.GAMES_PLAY_URL ? trimSlash(env.GAMES_PLAY_URL) : null,
+    sourcesUrl: env.GAMES_SOURCES_URL ? trimSlash(env.GAMES_SOURCES_URL) : null,
     mediaNamespace: env.MEDIA_NAMESPACE ?? 'games',
     worldSavedEventMinutes: intEnv(env, 'WORLD_SAVED_EVENT_MINUTES', 15),
     eventsSecrets: (env.GAMES_EVENTS_SECRET ?? '')
