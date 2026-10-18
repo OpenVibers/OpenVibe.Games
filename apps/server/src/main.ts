@@ -88,6 +88,8 @@ import { CreatorWorldHost } from './worlds/worldHost.js'
 import { createWorldHubStarter } from './worlds/startWorldHub.js'
 import { createWorldRoutes } from './worlds/worldRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
+import { createSteamCatalog } from './steam/steamCatalog.js'
+import { createSteamRoutes } from './steam/steamPage.js'
 import { createWorldSearchIndex } from './worlds/searchIndex.js'
 
 /**
@@ -773,6 +775,15 @@ async function main(): Promise<void> {
   worldSearch?.start()
   // GET /worlds/<id>: a published world's own page (the one Search links to).
   const serveWorldPage = createWorldPage({ store: creatorWorlds, siteUrl: gamesSiteUrl })
+  // GET /steam and /api/steam: Steam's featured lists from OpenVibe.Sources (steam/steamCatalog.ts), synced hourly.
+  const steamCatalog = createSteamCatalog({
+    db,
+    sourcesUrl: config.platform.sourcesUrl,
+    tokens: platform?.tokens ?? null,
+    log: log.child({ system: 'steam' }),
+  })
+  steamCatalog.start()
+  const serveSteam = createSteamRoutes({ catalog: steamCatalog, siteUrl: gamesSiteUrl })
   // Creator worlds' JSON API (worlds/worldRoutes.ts). State changes run in the router's admission chain.
   const serveWorlds = createWorldRoutes({
     store: creatorWorlds,
@@ -909,6 +920,7 @@ async function main(): Promise<void> {
         if (serveCasual(req, res)) return true
         if (serveWorlds(req, res)) return true
         if (serveWorldPage(req, res)) return true
+        if (serveSteam(req, res)) return true
         if (
           handleGameRead(req, res, {
             db,
@@ -1139,6 +1151,7 @@ async function main(): Promise<void> {
       clearInterval(heartbeatTimer)
       clearInterval(worldSweepTimer)
       worldSearch?.stop()
+      steamCatalog.stop()
       clearInterval(pruneTimer)
       editors.stop()
       const mirrorDone = mirror?.stop()

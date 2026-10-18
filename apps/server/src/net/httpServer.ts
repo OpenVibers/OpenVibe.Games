@@ -193,6 +193,7 @@ export function createHttpServer(
     { href: '/play/vibe-heroes', label: 'Play Vibe Heroes' },
     { href: '/leaderboard.html', label: 'Leaderboard' },
     { href: '/worlds', label: 'Creator worlds' },
+    { href: '/steam', label: 'On Steam right now' },
     { href: '/editor', label: 'Map editor' },
   ]
   const playLinks: NotFoundLink[] = [
