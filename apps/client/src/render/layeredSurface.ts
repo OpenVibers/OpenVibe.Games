@@ -67,12 +67,17 @@ const FRAGMENT_BLEND = `
   // Coverage for up to four paint layers, packed into one RGBA mask.
   // Each layer is its texture MULTIPLIED by its tint; a plain-colour layer
   // simply samples a 1x1 white texture, so tint alone is the paint.
-  vec4 openvibeCoverage = texture2D(openvibeMask, vDiffuseUV);
+  // vDiffuseUV carries the BASE texture's tiling; the mask covers the surface
+  // once and each layer tiles by its own count, so both start from the
+  // untiled UV. (Sampled at the tiled UV, a terrain's mask read its clamped
+  // edge everywhere: one layer covered the whole terrain.)
+  vec2 openvibeUV = vDiffuseUV / openvibeBaseTiling;
+  vec4 openvibeCoverage = texture2D(openvibeMask, openvibeUV);
   vec3 openvibeOut = baseColor.rgb;
-  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer0, vDiffuseUV * openvibeScale.x).rgb * openvibeTint0, openvibeCoverage.r * openvibeEnabled.x);
-  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer1, vDiffuseUV * openvibeScale.y).rgb * openvibeTint1, openvibeCoverage.g * openvibeEnabled.y);
-  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer2, vDiffuseUV * openvibeScale.z).rgb * openvibeTint2, openvibeCoverage.b * openvibeEnabled.z);
-  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer3, vDiffuseUV * openvibeScale.w).rgb * openvibeTint3, openvibeCoverage.a * openvibeEnabled.w);
+  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer0, openvibeUV * openvibeScale.x).rgb * openvibeTint0, openvibeCoverage.r * openvibeEnabled.x);
+  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer1, openvibeUV * openvibeScale.y).rgb * openvibeTint1, openvibeCoverage.g * openvibeEnabled.y);
+  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer2, openvibeUV * openvibeScale.z).rgb * openvibeTint2, openvibeCoverage.b * openvibeEnabled.z);
+  openvibeOut = mix(openvibeOut, texture2D(openvibeLayer3, openvibeUV * openvibeScale.w).rgb * openvibeTint3, openvibeCoverage.a * openvibeEnabled.w);
   baseColor.rgb = openvibeOut;
 `
 
@@ -109,6 +114,7 @@ export class LayeredSurfaceMaterial {
     // unbound sampler can never bleed through.
     m.AddUniform('openvibeScale', 'vec4', null)
     m.AddUniform('openvibeEnabled', 'vec4', null)
+    m.AddUniform('openvibeBaseTiling', 'vec2', null)
     for (let i = 0; i < MAX_PAINT_LAYERS; i++) m.AddUniform(`openvibeTint${i}`, 'vec3', null)
     m.Fragment_Custom_Diffuse(FRAGMENT_BLEND)
     this.material = m
@@ -138,7 +144,9 @@ export class LayeredSurfaceMaterial {
       const tiles = this.opts.baseTiling ?? 1
       tx.uScale = tx.vScale = tiles
       m.diffuseTexture = tx
+      this.baseTiling = tiles
     } else {
+      this.baseTiling = 1
       // Plain-colour base still needs a diffuse sampler for vDiffuseUV.
       m.diffuseTexture = white(this.scene)
     }
@@ -179,6 +187,8 @@ export class LayeredSurfaceMaterial {
 
   private scales: number[] = [1, 1, 1, 1]
   private enabled: number[] = [0, 0, 0, 0]
+  /** The base texture's uScale/vScale, divided back out of vDiffuseUV in the shader. */
+  private baseTiling = 1
   private tints: Color3[] = [Color3.White(), Color3.White(), Color3.White(), Color3.White()]
 
   private bind(): void {
@@ -188,6 +198,7 @@ export class LayeredSurfaceMaterial {
       const effect = m.getEffect()
       if (!effect) return
       effect.setTexture('openvibeMask', this.maskTexture ?? this.fallbackMask)
+      effect.setFloat2('openvibeBaseTiling', this.baseTiling, this.baseTiling)
       for (let i = 0; i < MAX_PAINT_LAYERS; i++) {
         effect.setTexture(`openvibeLayer${i}`, this.layerTextures[i] ?? this.fallbackMask)
         effect.setColor3(`openvibeTint${i}`, this.tints[i] ?? Color3.White())

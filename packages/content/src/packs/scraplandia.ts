@@ -37,7 +37,10 @@ export const SCRAPLANDIA_PACK: ContentPackV2 = {
     },
   ],
   map: {
-    id: 'openvibeville_v2',
+    // Scrap Island (apps/server/src/maps/scrapIsland.ts) is the map document the server loads from MAP_PATH. The id
+    // changed with it: a new id makes the server re-seed resources and move every character to the island's spawn,
+    // since positions saved on the old blank map would sit inside the island's ground.
+    id: 'scrap_island',
     flatTerrain: true,
     name: 'Scrap City',
     groundHalfExtent: 80,

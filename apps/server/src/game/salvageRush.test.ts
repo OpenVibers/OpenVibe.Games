@@ -17,7 +17,7 @@ const player = (key: string, x: number) => ({ key, name: key, pos: [x, 1, 0] as 
 
 describe('Salvage Rush server round', () => {
   it('loads its own map without replacing the default Scraplandia map', () => {
-    expect(createContent().world.id).toBe('openvibeville_v2')
+    expect(createContent().world.id).toBe('scrap_island')
     expect(createContent([], SALVAGE_RUSH_PACK).world.id).toBe('salvage_rush_arena')
   })
   it('starts, collects from simulated positions, ends and resets', () => {
