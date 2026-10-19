@@ -411,7 +411,10 @@ function renderStaticBody(
   else if (s.decor === 'lamp') decorateLamp(scene, mesh, s, decorSeed ?? 0)
   // Statics never move (a live map save disposes and rebuilds them): their world matrices, and their roofs',
   // doors' and windows', are computed once instead of every frame.
-  for (const m of [mesh, ...mesh.getChildMeshes()]) m.freezeWorldMatrix()
+  for (const m of [mesh, ...mesh.getChildMeshes()]) {
+    m.freezeWorldMatrix()
+    m.receiveShadows = true
+  }
 }
 
 /**
