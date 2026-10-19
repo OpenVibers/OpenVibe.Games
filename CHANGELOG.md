@@ -18,6 +18,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **First steps.** A new scrapper gets a checklist in the corner:
+  - gather branches and stones (piles just inside every city gate);
+  - craft a Stone Axe;
+  - chop an oak in the west forest;
+  - mine at the quarry;
+  - salvage the scrapyard;
+  - extract a haul.
+
+  Each step says where to go. Progress only moves forward and is kept in the browser, and the list can be closed.
 - **Scrap Island, Scraplandia's world (2026-10-19).** Production ran on an empty map document, so a new player
   spawned over open water and drowned within seconds. `apps/server/src/maps/scrapIsland.ts` generates the island as an
   ordinary v2 map document, the file the editor saves, so staff keep editing it in `/editor`. It is deterministic.

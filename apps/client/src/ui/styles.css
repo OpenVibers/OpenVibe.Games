@@ -961,6 +961,88 @@ body.ovg-frame-hidden #ov-footer {
   opacity: 1;
 }
 
+/* ── First steps (ui/firstSteps.ts) ───────────────────────── */
+.first-steps {
+  position: absolute;
+  top: 56px;
+  right: 16px;
+  width: min(290px, calc(100vw - 32px));
+  padding: 10px 12px 8px;
+  border-radius: 10px;
+  background: rgba(20, 26, 34, 0.86);
+  border: 1px solid rgba(232, 181, 74, 0.55);
+  color: #e8e2d4;
+  font-size: 13px;
+  line-height: 1.35;
+  pointer-events: auto;
+}
+.first-steps[hidden] {
+  display: none;
+}
+.first-steps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  color: #e8b54a;
+}
+.first-steps-head button {
+  background: none;
+  border: 0;
+  color: #b9b2a3;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.first-steps-head button:hover {
+  color: #fff;
+}
+.first-steps ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.first-steps li {
+  padding: 2px 0;
+  color: #a8a194;
+}
+.first-steps li .mark {
+  display: inline-block;
+  width: 1.2em;
+  color: #6f6a60;
+}
+.first-steps li.done {
+  color: #7f9b6e;
+}
+.first-steps li.done .mark {
+  color: #8fc06f;
+}
+.first-steps li.current {
+  color: #fff;
+  font-weight: 600;
+}
+.first-steps li.current .mark {
+  color: #e8b54a;
+}
+.first-steps .hint {
+  margin: 2px 0 4px 1.2em;
+  font-weight: 400;
+  color: #cfc8b8;
+  font-size: 12px;
+}
+@media (max-width: 640px) {
+  .first-steps {
+    top: auto;
+    bottom: 96px;
+    font-size: 12px;
+  }
+}
+
 /* ── Death screen ─────────────────────────────────────────────────── */
 .death-screen {
   position: absolute;

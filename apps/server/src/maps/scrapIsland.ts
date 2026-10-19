@@ -600,6 +600,26 @@ export function generateScrapIsland(seed = 20261019): MapFileV2 {
       color: '#6e4a36',
     })
   }
+  // Starter piles just inside each gate: fallen branches and loose stones, which need no tool, so a new player's first
+  // planks and stone axe are a short walk from spawn.
+  for (const [ax, az] of [
+    [0, 1],
+    [0, -1],
+    [1, 0],
+    [-1, 0],
+  ] as const) {
+    const at = (along: number, depth: number): [number, number] =>
+      ax === 0 ? [along, az * depth] : [ax * depth, along]
+    for (const [along, depth, kind] of [
+      [-6.2, 34.5, 'branch_pile'],
+      [6.2, 34.5, 'loose_stones'],
+      [-6.2, 31.5, 'loose_stones'],
+      [6.2, 31.5, 'branch_pile'],
+    ] as const) {
+      const [x, z] = at(along, depth)
+      node(kind, x, z)
+    }
+  }
   // Lamps: down each avenue and round the plaza (each one is a point light at night, so not too many).
   for (const [x, z] of [
     [5, 16],

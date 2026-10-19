@@ -39,6 +39,22 @@ describe('Scrap Island', () => {
     expect(map.statics.filter((s) => s.decor === 'lamp').length).toBeLessThanOrEqual(12)
   })
 
+  it('puts branches and loose stones (no tool needed) inside every gate, in the safe zone', () => {
+    const city = map.zones.find((zone) => zone.id === 'scrap-city')!
+    for (const [gx, gz] of [
+      [0, ISLAND.wall],
+      [0, -ISLAND.wall],
+      [ISLAND.wall, 0],
+      [-ISLAND.wall, 0],
+    ] as const) {
+      const near = map.nodes.filter((n) => Math.hypot(n.pos[0] - gx, n.pos[2] - gz) < 10)
+      expect(near.filter((n) => n.node === 'branch_pile').length).toBeGreaterThanOrEqual(2)
+      expect(near.filter((n) => n.node === 'loose_stones').length).toBeGreaterThanOrEqual(2)
+      for (const n of near)
+        expect(Math.max(Math.abs(n.pos[0]), Math.abs(n.pos[2]))).toBeLessThan(city.max[0])
+    }
+  })
+
   it('is an island: land in the middle, sea at the edges, the city flat', () => {
     const t = map.terrains[0]!
     const h = decodeHeights(t.heights)
