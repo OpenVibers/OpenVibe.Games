@@ -350,14 +350,23 @@ export function buildMapStaticVisuals(
  * material has a handful of light slots: with every lamp on every mesh, the first few lamps took the slots
  * everywhere and the rest lit nothing.
  */
+/** Meshes bigger than this (the terrain) are never lit by a lamp. */
+const LAMP_MESH_MAX_RADIUS = 40
+
 export function fitLampLights(scene: Scene): void {
   const world = [...scene.meshes].filter((m) => /^(static|mapstatic|patch):|^terrain/.test(m.name))
   for (const light of scene.lights) {
     if (!light.name.startsWith('lamp:') || !(light instanceof PointLight)) continue
     const at = light.getAbsolutePosition()
+    // Not the terrain: it is one mesh whose bounds reach every lamp, so its shader looped over 8 lights per pixel
+    // all day (the forest, mostly ground on screen, ran at half the frame rate). Lamp light pools fall on the
+    // pavement and buildings, which are statics.
     light.includedOnlyMeshes = world.filter((m) => {
       const sphere = m.getBoundingInfo().boundingSphere
-      return Vector3.Distance(sphere.centerWorld, at) <= light.range + sphere.radiusWorld
+      return (
+        sphere.radiusWorld < LAMP_MESH_MAX_RADIUS &&
+        Vector3.Distance(sphere.centerWorld, at) <= light.range + sphere.radiusWorld
+      )
     })
   }
 }

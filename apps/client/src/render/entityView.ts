@@ -1,12 +1,13 @@
 import '@babylonjs/core/Meshes/instancedMesh.js' // createInstance() needs its side effect (tree instances)
 import '@babylonjs/core/Rendering/outlineRenderer.js'
-import { Color3 } from '@babylonjs/core/Maths/math.color.js'
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js'
 import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import { PointLight } from '@babylonjs/core/Lights/pointLight.js'
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js'
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder.js'
+import { CreateIcoSphere } from '@babylonjs/core/Meshes/Builders/icoSphereBuilder.js'
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js'
-import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
+import { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import type { ContentRegistry, WorldShape } from '@openvibe/content'
 import { DEFAULT_MOVEMENT, hullHeightFor } from '@openvibe/gameplay'
@@ -564,7 +565,10 @@ function buildPropVisual(scene: Scene, id: string, def: string): Mesh | null {
   return null
 }
 
-/** Placeholder archetype visuals for resource nodes (root mesh at ground pos). */
+/**
+ * Resource node visuals (root mesh at ground pos): faceted low-poly shapes, each node a little different (size, turn,
+ * shade) from a hash of its id. They were a cylinder under a round sphere and plain boxes.
+ */
 function buildNodeVisual(
   scene: Scene,
   id: string,
@@ -572,17 +576,27 @@ function buildNodeVisual(
 ): Mesh {
   const root = CreateBox(`res:${id}:root`, { size: 0.01 }, scene)
   root.isVisible = false
+  const r = (salt: number): number => hash01(id, salt)
   switch (visual) {
     case 'tree': {
-      // Instances of one trunk, canopy and stump per scene: the island's ~200 trees draw in one call per part,
-      // where every tree used to be its own two draw calls.
+      // Instances of one trunk, canopy and stump per scene: the island's ~200 trees draw in one call per part.
       const parts = treeParts(scene)
       const trunk = parts.trunk.createInstance(`res:${id}`)
       trunk.position.y = 1.6
+      trunk.rotation.y = r(1) * Math.PI * 2
+      trunk.scaling.setAll(0.85 + 0.4 * r(2))
       trunk.parent = root
+      const shade = TREE_SHADES[Math.floor(r(3) * TREE_SHADES.length)]!
       const canopy = parts.canopy.createInstance(`res:${id}:canopy`)
       canopy.parent = trunk
-      canopy.position.y = 1.9
+      canopy.position.y = 1.85
+      canopy.scaling.set(1, 0.8 + 0.3 * r(4), 1)
+      canopy.instancedBuffers.color = shade
+      const tuft = parts.canopy.createInstance(`res:${id}:canopy2`)
+      tuft.parent = trunk
+      tuft.position.set((r(5) - 0.5) * 1.4, 1.15 + 0.4 * r(6), (r(7) - 0.5) * 1.4)
+      tuft.scaling.setAll(0.55 + 0.2 * r(8))
+      tuft.instancedBuffers.color = shade
       // Chopped-down state: the standing tree is replaced by a stump (the
       // trunk itself falls as a physical prop spawned by the server).
       const stump = parts.stump.createInstance(`res:${id}:stump`)
@@ -592,39 +606,98 @@ function buildNodeVisual(
       break
     }
     case 'rock': {
-      const rock = CreateBox(`res:${id}`, { width: 1.4, height: 1.1, depth: 1.4 }, scene)
-      rock.position.y = 0.55
+      const rock = CreateIcoSphere(`res:${id}`, { radius: 0.8, subdivisions: 1 }, scene)
+      rock.scaling.set(1 + 0.3 * r(1), 0.7 + 0.2 * r(2), 0.9 + 0.3 * r(3))
+      rock.position.y = 0.42
       rock.rotation.y = hashAngle(id)
       rock.material = materialFor(scene, '#7b7f83')
       rock.parent = root
       break
     }
-    case 'scrap': {
-      const pile = CreateBox(`res:${id}`, { width: 0.9, height: 0.5, depth: 0.9 }, scene)
-      pile.position.y = 0.25
-      pile.rotation.y = hashAngle(id)
-      pile.material = materialFor(scene, '#5e6a70')
-      pile.parent = root
+    case 'scrap':
+      cluster(
+        scene,
+        id,
+        root,
+        '#5e6a70',
+        3,
+        (k) => CreateBox(`res:${id}:${k}`, { width: 0.55, height: 0.32, depth: 0.4 }, scene),
+        0.3,
+      )
       break
-    }
-    case 'branches': {
-      const pile = CreateBox(`res:${id}`, { width: 0.85, height: 0.3, depth: 0.85 }, scene)
-      pile.position.y = 0.15
-      pile.rotation.y = hashAngle(id)
-      pile.material = materialFor(scene, '#7a5a34')
-      pile.parent = root
+    case 'branches':
+      cluster(
+        scene,
+        id,
+        root,
+        '#7a5a34',
+        4,
+        (k) => {
+          const b = CreateCylinder(
+            `res:${id}:${k}`,
+            { diameter: 0.1, height: 1.1, tessellation: 5 },
+            scene,
+          )
+          b.rotation.z = Math.PI / 2
+          return b
+        },
+        0.1,
+      )
       break
-    }
-    case 'stones': {
-      const pile = CreateBox(`res:${id}`, { width: 0.7, height: 0.28, depth: 0.7 }, scene)
-      pile.position.y = 0.14
-      pile.rotation.y = hashAngle(id)
-      pile.material = materialFor(scene, '#8a8d90')
-      pile.parent = root
+    case 'stones':
+      cluster(
+        scene,
+        id,
+        root,
+        '#8a8d90',
+        4,
+        (k) => CreateIcoSphere(`res:${id}:${k}`, { radius: 0.17, subdivisions: 1 }, scene),
+        0.12,
+      )
       break
-    }
   }
   return root
+}
+
+/** A small pile: `count` pieces scattered and turned by the node's hash, merged into one mesh (one draw call). */
+function cluster(
+  scene: Scene,
+  id: string,
+  root: Mesh,
+  color: string,
+  count: number,
+  piece: (k: number) => Mesh,
+  y: number,
+): void {
+  const pieces: Mesh[] = []
+  for (let k = 0; k < count; k++) {
+    const m = piece(k)
+    const a = hash01(id, 10 + k) * Math.PI * 2
+    const d = 0.12 + 0.2 * hash01(id, 20 + k)
+    m.position.set(Math.cos(a) * d, y + 0.08 * k, Math.sin(a) * d)
+    m.rotation.y = hash01(id, 30 + k) * Math.PI * 2
+    pieces.push(m)
+  }
+  const merged = Mesh.MergeMeshes(pieces, true) ?? pieces[0]!
+  merged.name = `res:${id}`
+  merged.material = materialFor(scene, color)
+  merged.parent = root
+}
+
+/** Canopy greens (a late-summer one now and then), one per tree. */
+const TREE_SHADES = ['#3e6b34', '#4a7a3a', '#365e2e', '#557f3a', '#44703a', '#7d7a35'].map(
+  (hex) => {
+    const c = Color3.FromHexString(hex)
+    return new Color4(c.r, c.g, c.b, 1)
+  },
+)
+
+/** A stable number in [0, 1) from a node id and a salt. */
+function hash01(id: string, salt: number): number {
+  let h = 2166136261 ^ salt
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619)
+  h = Math.imul(h ^ (h >>> 13), 0x5bd1e995)
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296
 }
 
 /** The source meshes every tree instances (hidden themselves; one set per scene). */
@@ -632,11 +705,23 @@ const treePartSets = new WeakMap<Scene, { trunk: Mesh; canopy: Mesh; stump: Mesh
 function treeParts(scene: Scene): { trunk: Mesh; canopy: Mesh; stump: Mesh } {
   let set = treePartSets.get(scene)
   if (set) return set
-  const trunk = CreateCylinder('tree:trunk', { diameter: 0.6, height: 3.2 }, scene)
+  const trunk = CreateCylinder(
+    'tree:trunk',
+    { diameterTop: 0.34, diameterBottom: 0.62, height: 3.2, tessellation: 7 },
+    scene,
+  )
+  trunk.convertToFlatShadedMesh()
   trunk.material = materialFor(scene, '#6d4c2a')
-  const canopy = CreateSphere('tree:canopy', { diameter: 2.8, segments: 8 }, scene)
-  canopy.material = materialFor(scene, '#3e6b34')
-  const stump = CreateCylinder('tree:stump', { diameter: 0.7, height: 0.45 }, scene)
+  // The canopy is white; each instance's colour buffer tints it.
+  const canopy = CreateIcoSphere('tree:canopy', { radius: 1.45, subdivisions: 1 }, scene)
+  canopy.material = materialFor(scene, '#ffffff')
+  canopy.registerInstancedBuffer('color', 4)
+  canopy.instancedBuffers.color = TREE_SHADES[0]!
+  const stump = CreateCylinder(
+    'tree:stump',
+    { diameter: 0.7, height: 0.45, tessellation: 7 },
+    scene,
+  )
   stump.material = materialFor(scene, '#5c3f24')
   for (const m of [trunk, canopy, stump]) {
     m.isVisible = false // a source draws nothing itself; its instances do
