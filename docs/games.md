@@ -32,6 +32,8 @@ file without `--force`, because that file may hold staff edits.
   - the farm to the south-east;
   - the shipwreck beach to the south;
   - ruins along the dirt roads.
+- **Starter piles**: two fallen-branch and two loose-stone piles just inside each gate, which need no tool, so a new player's first planks and Stone Axe are close to spawn.
+- **First steps** (`apps/client/src/ui/firstSteps.ts`): a checklist in the corner for a new scrapper. The steps are gather, a Stone Axe, an oak (woodcutting level 2), the quarry (mining level 2), the scrapyard and a haul. Progress only moves forward, it's kept in the browser, and the list can be closed.
 - **NPCs**: the content's NPC homes fit the layout. Thugs and hares are just outside the walls, wardens and
   townsfolk on the plaza.
 - **World id**: `scrap_island`. Changing the id re-seeds resources and moves characters to spawn on the next boot.

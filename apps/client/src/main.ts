@@ -59,6 +59,7 @@ import { registerRiggingModule } from './weapons/riggingModule.js'
 import { ConstraintLineRenderer } from './render/constraintLines.js'
 import { PlacementGhost } from './game/placementGhost.js'
 import { WeaponSettings, weaponModuleFor } from './weapons/registry.js'
+import { FirstSteps } from './ui/firstSteps.js'
 
 /**
  * Client bootstrap: engine/scene -> character customization (live preview)
@@ -234,6 +235,16 @@ async function start(): Promise<void> {
     guest: identity.token,
     ...(sso ? { bearer: sso } : {}),
   })
+  // Scraplandia's first-steps checklist (not in Salvage Rush or a creator world, whose worlds are something else).
+  if (!worldId && content.world.id === 'scrap_island') {
+    const firstSteps = new FirstSteps(uiRoot, () => ({
+      count: (item) => state.countOf(item),
+      level: (skill) => state.skillLevel(skill),
+    }))
+    state.events.on('inventory', () => firstSteps.update())
+    state.events.on('skills', () => firstSteps.update())
+    state.events.on('announce', (text) => firstSteps.onAnnounce(String(text)))
+  }
   const roundUi =
     content.world.id === 'salvage_rush_arena'
       ? await import('./ui/salvageRushHud.js').then(
