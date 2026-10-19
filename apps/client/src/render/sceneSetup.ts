@@ -23,6 +23,8 @@ import {
   buildPatchGrid,
   buildTerrainGrid,
   getMapOverride,
+  terrainHeight,
+  WATER_LEVEL,
   type ContentRegistry,
   type MapTextureEntry,
   type WorldShape,
@@ -301,9 +303,27 @@ export function buildStaticWorld(scene: Scene, content: ContentRegistry): void {
   const groundMeshes = buildTerrainMesh(scene, content)
   for (const m of groundMeshes) water.addToRenderList(m)
 
+  // The water re-renders its render list twice a frame (reflection and refraction), so only geometry near open
+  // water belongs on it: on Scrap Island every one of 422 statics, a whole town inland, was drawn three times a frame.
+  nearWater = (x, z) =>
+    NEAR_WATER_PROBES.some(([dx, dz]) => terrainHeight(world, x + dx, z + dz) < WATER_LEVEL + 0.5)
   for (const [i, s] of world.statics.entries()) renderStaticBody(scene, water, s, `static:${i}`, i)
   buildMapStaticVisuals(scene, water)
 }
+
+/** Ground samples around a static: water within ~12 m of it means it can show in the water. */
+const NEAR_WATER_PROBES: [number, number][] = [
+  [0, 0],
+  [12, 0],
+  [-12, 0],
+  [0, 12],
+  [0, -12],
+  [8, 8],
+  [-8, -8],
+  [8, -8],
+  [-8, 8],
+]
+let nearWater: (x: number, z: number) => boolean = () => true
 
 /**
  * The MAP's statics, rendered under their stable ids in their own layer.
@@ -376,10 +396,13 @@ function renderStaticBody(
   mesh.rotationQuaternion = s.rot
     ? Quaternion.FromEulerAngles(s.rot[0], s.rot[1], s.rot[2])
     : Quaternion.FromEulerAngles(0, s.yaw, 0)
-  water?.addToRenderList(mesh)
+  if (water && nearWater(s.pos[0], s.pos[2])) water.addToRenderList(mesh)
   if (s.decor === 'building') decorateBuilding(scene, mesh, s)
   else if (s.decor === 'fountain' && water) buildFountain(scene, mesh, s, water)
   else if (s.decor === 'lamp') decorateLamp(scene, mesh, s, decorSeed ?? 0)
+  // Statics never move (a live map save disposes and rebuilds them): their world matrices, and their roofs',
+  // doors' and windows', are computed once instead of every frame.
+  for (const m of [mesh, ...mesh.getChildMeshes()]) m.freezeWorldMatrix()
 }
 
 /**
@@ -398,42 +421,74 @@ function decorateBuilding(scene: Scene, building: Mesh, s: StaticBody): void {
   roof.rotation.y = Math.PI / 4
   roof.scaling.set(w + 0.8, 1.5, d + 0.8)
   roof.position.y = h / 2 + 0.75
-  const roofMat = new StandardMaterial(`${building.name}:roofmat`, scene)
-  const roofTex = loadTexture(builtinTexSource('clay_roof_tiles'), scene)
-  roofTex.uScale = 3
-  roofTex.vScale = 2
-  roofMat.diffuseTexture = roofTex
-  roofMat.specularColor = new Color3(0.03, 0.03, 0.03)
-  roof.material = roofMat
+  const mats = buildingMaterials(scene)
+  roof.material = mats.roof
 
-  const doorMat = new StandardMaterial(`${building.name}:door`, scene)
-  doorMat.diffuseColor = Color3.FromHexString('#3a2a1c')
-  doorMat.specularColor = Color3.Black()
-  const winMat = new StandardMaterial(`${building.name}:win`, scene)
-  winMat.diffuseColor = Color3.FromHexString('#2a3540')
-  winMat.emissiveColor = new Color3(0.45, 0.34, 0.14) // warm glow at night
-  winMat.specularColor = Color3.Black()
-
+  // Doors and windows: built in the building's local space, merged into one mesh each and parented to it. Every
+  // building used to add 7 meshes and 3 materials of its own; a town of 50 was ~500 extra draw calls a frame.
+  const doors: Mesh[] = []
+  const windows: Mesh[] = []
   for (const side of [1, -1]) {
     const door = CreateBox(
       `${building.name}:door${side}`,
       { width: 1, height: 1.9, depth: 0.1 },
       scene,
     )
-    door.parent = building
     door.position.set(0, -h / 2 + 0.95, side * (d / 2 + 0.03))
-    door.material = doorMat
+    doors.push(door)
     for (const wx of [-1, 1]) {
       const win = CreateBox(
         `${building.name}:win${side}${wx}`,
         { width: 0.8, height: 0.8, depth: 0.08 },
         scene,
       )
-      win.parent = building
       win.position.set((wx * w) / 3.4, 0.45, side * (d / 2 + 0.03))
-      win.material = winMat
+      windows.push(win)
     }
   }
+  for (const [parts, mat, name] of [
+    [doors, mats.door, 'doors'],
+    [windows, mats.window, 'windows'],
+  ] as const) {
+    const merged = Mesh.MergeMeshes(parts, true)
+    if (!merged) continue
+    merged.name = `${building.name}:${name}`
+    merged.material = mat
+    merged.parent = building
+  }
+}
+
+/** The roof, door and window materials every building shares (one set per scene). */
+const buildingMaterialSets = new WeakMap<
+  Scene,
+  { roof: StandardMaterial; door: StandardMaterial; window: StandardMaterial }
+>()
+function buildingMaterials(scene: Scene): {
+  roof: StandardMaterial
+  door: StandardMaterial
+  window: StandardMaterial
+} {
+  let set = buildingMaterialSets.get(scene)
+  if (set) return set
+  const roof = new StandardMaterial('building:roof', scene)
+  const roofTex = loadTexture(builtinTexSource('clay_roof_tiles'), scene)
+  roofTex.uScale = 3
+  roofTex.vScale = 2
+  roof.diffuseTexture = roofTex
+  roof.specularColor = new Color3(0.03, 0.03, 0.03)
+  roof.maxSimultaneousLights = 8
+  const door = new StandardMaterial('building:door', scene)
+  door.diffuseColor = Color3.FromHexString('#3a2a1c')
+  door.specularColor = Color3.Black()
+  door.maxSimultaneousLights = 8
+  const window = new StandardMaterial('building:window', scene)
+  window.diffuseColor = Color3.FromHexString('#2a3540')
+  window.emissiveColor = new Color3(0.45, 0.34, 0.14) // warm glow at night
+  window.specularColor = Color3.Black()
+  window.maxSimultaneousLights = 8
+  set = { roof, door, window }
+  buildingMaterialSets.set(scene, set)
+  return set
 }
 
 /**

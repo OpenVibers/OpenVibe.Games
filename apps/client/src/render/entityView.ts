@@ -1,3 +1,4 @@
+import '@babylonjs/core/Meshes/instancedMesh.js' // createInstance() needs its side effect (tree instances)
 import '@babylonjs/core/Rendering/outlineRenderer.js'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector.js'
@@ -573,19 +574,19 @@ function buildNodeVisual(
   root.isVisible = false
   switch (visual) {
     case 'tree': {
-      const trunk = CreateCylinder(`res:${id}`, { diameter: 0.6, height: 3.2 }, scene)
+      // Instances of one trunk, canopy and stump per scene: the island's ~200 trees draw in one call per part,
+      // where every tree used to be its own two draw calls.
+      const parts = treeParts(scene)
+      const trunk = parts.trunk.createInstance(`res:${id}`)
       trunk.position.y = 1.6
-      trunk.material = materialFor(scene, '#6d4c2a')
       trunk.parent = root
-      const canopy = CreateSphere(`res:${id}:canopy`, { diameter: 2.8, segments: 8 }, scene)
-      canopy.material = materialFor(scene, '#3e6b34')
+      const canopy = parts.canopy.createInstance(`res:${id}:canopy`)
       canopy.parent = trunk
       canopy.position.y = 1.9
       // Chopped-down state: the standing tree is replaced by a stump (the
       // trunk itself falls as a physical prop spawned by the server).
-      const stump = CreateCylinder(`res:${id}:stump`, { diameter: 0.7, height: 0.45 }, scene)
+      const stump = parts.stump.createInstance(`res:${id}:stump`)
       stump.position.y = 0.22
-      stump.material = materialFor(scene, '#5c3f24')
       stump.parent = root
       stump.setEnabled(false)
       break
@@ -624,6 +625,26 @@ function buildNodeVisual(
     }
   }
   return root
+}
+
+/** The source meshes every tree instances (hidden themselves; one set per scene). */
+const treePartSets = new WeakMap<Scene, { trunk: Mesh; canopy: Mesh; stump: Mesh }>()
+function treeParts(scene: Scene): { trunk: Mesh; canopy: Mesh; stump: Mesh } {
+  let set = treePartSets.get(scene)
+  if (set) return set
+  const trunk = CreateCylinder('tree:trunk', { diameter: 0.6, height: 3.2 }, scene)
+  trunk.material = materialFor(scene, '#6d4c2a')
+  const canopy = CreateSphere('tree:canopy', { diameter: 2.8, segments: 8 }, scene)
+  canopy.material = materialFor(scene, '#3e6b34')
+  const stump = CreateCylinder('tree:stump', { diameter: 0.7, height: 0.45 }, scene)
+  stump.material = materialFor(scene, '#5c3f24')
+  for (const m of [trunk, canopy, stump]) {
+    m.isVisible = false // a source draws nothing itself; its instances do
+    m.isPickable = false
+  }
+  set = { trunk, canopy, stump }
+  treePartSets.set(scene, set)
+  return set
 }
 
 /** Deterministic pseudo-random yaw so identical piles don't look cloned. */
