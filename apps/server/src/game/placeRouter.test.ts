@@ -121,8 +121,8 @@ it('one Games process hosts both places and routes hello to place-specific rooms
       'scraplandia:0',
     ])
     expect(router.activeRooms.map((room) => room.world.content.world.id).sort()).toEqual([
-      'openvibeville_v2',
       'salvage_rush_arena',
+      'scrap_island',
     ])
     const moved = join('salvage-rush', 'a')
     await until(() => moved.inbox.some((m) => m.t === 'welcome'))

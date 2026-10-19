@@ -322,6 +322,24 @@ export function buildMapStaticVisuals(
     if (only && !only.has(s.id ?? '')) continue
     renderStaticBody(scene, water, s, `mapstatic:${s.id ?? ''}`)
   }
+  fitLampLights(scene)
+}
+
+/**
+ * Each lamp lights only the town geometry within its reach. A light affects every mesh unless told otherwise, and a
+ * material has a handful of light slots: with every lamp on every mesh, the first few lamps took the slots
+ * everywhere and the rest lit nothing.
+ */
+export function fitLampLights(scene: Scene): void {
+  const world = [...scene.meshes].filter((m) => /^(static|mapstatic|patch):|^terrain/.test(m.name))
+  for (const light of scene.lights) {
+    if (!light.name.startsWith('lamp:') || !(light instanceof PointLight)) continue
+    const at = light.getAbsolutePosition()
+    light.includedOnlyMeshes = world.filter((m) => {
+      const sphere = m.getBoundingInfo().boundingSphere
+      return Vector3.Distance(sphere.centerWorld, at) <= light.range + sphere.radiusWorld
+    })
+  }
 }
 
 /**
@@ -430,7 +448,10 @@ function decorateLamp(scene: Scene, post: Mesh, s: StaticBody, i: number): void 
   headMat.diffuseColor = Color3.FromHexString('#2c3136')
   headMat.emissiveColor = new Color3(0.45, 0.36, 0.16)
   head.material = headMat
-  const light = new PointLight(`lamp:${i}`, new Vector3(s.pos[0], s.pos[1] + 1.9, s.pos[2]), scene)
+  // Parented to the post (1.9 m above its centre, as before), so it goes when the post is disposed: a live map
+  // save rebuilds the statics, and the old lights used to stay behind.
+  const light = new PointLight(`lamp:${i}`, new Vector3(0, 1.9, 0), scene)
+  light.parent = post
   light.diffuse = new Color3(1, 0.82, 0.5)
   light.intensity = 0 // Environment drives this after dark
   light.range = 16

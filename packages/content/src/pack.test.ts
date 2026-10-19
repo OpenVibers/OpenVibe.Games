@@ -265,7 +265,7 @@ describe('Scraplandia default pack', () => {
     // Recorded from main 545f6c1, packages/content/src/defs/scrapcity.ts.
     // The released city is an editor-built blank slate: no seeded entity ids.
     const expected = {
-      id: 'openvibeville_v2',
+      id: 'scrap_island',
       name: 'Scrap City',
       flatTerrain: true,
       groundHalfExtent: 80,

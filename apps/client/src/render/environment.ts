@@ -61,6 +61,11 @@ export class Environment {
     this.sun.diffuse = new Color3(1, 0.96, 0.88)
     this.hemi = new HemisphericLight('hemi', new Vector3(0.2, 1, 0.1), scene)
     this.hemi.groundColor = new Color3(0.25, 0.22, 0.2)
+    // A material takes its first maxSimultaneousLights lights, highest renderPriority first. The town's lamps were
+    // created before these two, so a map with a dozen lamps filled every slot with lights that are off by day and
+    // the whole world rendered black. Sun and sky always get a slot.
+    this.sun.renderPriority = 10
+    this.hemi.renderPriority = 10
 
     // ── Sky dome (analytic daylight model; renders the actual sun disc) ─
     this.skyMat = new SkyMaterial('sky', scene)

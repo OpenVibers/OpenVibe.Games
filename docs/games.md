@@ -9,6 +9,33 @@ their at-risk valuables, and each secured stack scores `count × valuable.points
 The pack defines a first-visit achievement and three haul achievements (First haul, Big haul,
 Haul week), all unlocked by server-confirmed events.
 
+### Scrap Island, the map
+
+Scraplandia's world is **Scrap Island**, a map document like any the editor saves. The server loads it from
+`MAP_PATH`, clients fetch it at `/map.json`, and staff edit it in `/editor` (Save map applies live). Generate a fresh copy with:
+
+    pnpm --filter @openvibe/server exec tsx scripts/writeScrapIsland.ts --out <map.json> [--seed N] [--force]
+
+The generator is `apps/server/src/maps/scrapIsland.ts`. It is deterministic, and it refuses to overwrite an existing
+file without `--force`, because that file may hold staff edits.
+- **Terrain**: one 420 m heightfield (2 m cells) above the sea at `WATER_LEVEL`, painted grass, rock (slopes, heights)
+  and sand (shores) over a dirt base. The dirt shows on the roads.
+- **Scrap City** (the safe zone `scrap-city`, walls at ±38.5): the plaza and fountain, four market stalls, a workbench,
+  campfire, still and storage, avenues and a ring road (pavement slabs), about 50 houses, tenements and shacks, gates
+  in the four walls, four watchtowers and 12 lamps.
+- **The wilds**:
+  - the scrapyard to the east: container stacks, a crane, wrecks, scrap piles and loot;
+  - the forest to the west: oaks, branches and berries;
+  - the terraced quarry to the south-west: stone deposits;
+  - Rust Ridge to the north, with the radio mast and its red light;
+  - the lake to the north-east, with a jetty;
+  - the farm to the south-east;
+  - the shipwreck beach to the south;
+  - ruins along the dirt roads.
+- **NPCs**: the content's NPC homes fit the layout. Thugs and hares are just outside the walls, wardens and
+  townsfolk on the plaza.
+- **World id**: `scrap_island`. Changing the id re-seeds resources and moves characters to spawn on the next boot.
+
 ## Salvage Rush
 
 The same Games server process also loads `SALVAGE_RUSH_PACK`: a flat 44-metre arena

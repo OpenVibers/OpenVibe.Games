@@ -6,7 +6,29 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Lamps blacked out the world.** A material uses its first 8 lights, and the town's lamp lights (off by day) were
+  created before the sun and sky. A map with a dozen lamps rendered every surface black. The sun and sky now have the
+  higher render priority. Each lamp lights only the geometry in its range, and its light goes with its post, so a live
+  map save no longer leaks lights.
+- **Terrain paint never showed.** The layered surface sampled the paint mask at the base texture's tiled UV. On any
+  terrain (base tiling half its extent), the mask read its clamped edge, so one layer covered the whole terrain. The
+  mask now spans the surface once, and each layer tiles by its own count.
+
 ### Added
+
+- **Scrap Island, Scraplandia's world (2026-10-19).** Production ran on an empty map document, so a new player
+  spawned over open water and drowned within seconds. `apps/server/src/maps/scrapIsland.ts` generates the island as an
+  ordinary v2 map document, the file the editor saves, so staff keep editing it in `/editor`. It is deterministic.
+  - **Scrap City**, walled and safe: the plaza and fountain, four market stalls, a crafting corner, avenues and a ring
+    road, houses, tenements and shacks, lamps and four watchtowers.
+  - **The wilds**: the scrapyard (container stacks, a crane, wrecks, scrap piles), the forest (about 200 oaks, berries
+    and branches), the terraced quarry, Rust Ridge and its radio mast, the lake and jetty, the farm, the shipwreck
+    beach, and ruins along the dirt roads.
+  - The terrain is one 420 m heightfield painted grass, rock and sand.
+  - Scraplandia's world id is now `scrap_island`: resources re-seed and characters move to the new spawn.
+  - Write it with `scripts/writeScrapIsland.ts` (docs/games.md).
 
 - **KTX2 surface textures (M6).** The built-in surface textures ship as KTX2 (Basis ETC1S with mipmaps), beside their
   JPEGs:
