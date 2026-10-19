@@ -1,6 +1,9 @@
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine.js'
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js'
+import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent.js'
+import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js'
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh.js'
 import '@babylonjs/core/LensFlares/lensFlareSystemSceneComponent.js'
 // LensFlareSystem's occlusion test uses Scene.pick, which requires the Ray
 // side-effect module in tree-shaken builds.
@@ -42,6 +45,9 @@ const FOGMODE_EXP2 = 2
 export class Environment {
   readonly sun: DirectionalLight
   private readonly hemi: HemisphericLight
+  /** Sun shadows in a box around the player (quality tiers with shadows; scene.shadowsEnabled gates them). */
+  private readonly shadows: ShadowGenerator
+  private readonly shadowCenter = new Vector3()
   private pipeline: DefaultRenderingPipeline | null = null
   private readonly flareEmitter: TransformNode
   private readonly flares: LensFlareSystem
@@ -66,6 +72,25 @@ export class Environment {
     // the whole world rendered black. Sun and sky always get a slot.
     this.sun.renderPriority = 10
     this.hemi.renderPriority = 10
+
+    // The sun casts shadows within SHADOW_REACH of the player: the world had no shadows at all, so buildings, trees
+    // and people floated on flat ground. The shadow box follows the camera (update()), snapped to a grid so the
+    // edges do not crawl while walking.
+    this.sun.autoUpdateExtends = false
+    this.sun.orthoLeft = -SHADOW_REACH
+    this.sun.orthoRight = SHADOW_REACH
+    this.sun.orthoTop = SHADOW_REACH
+    this.sun.orthoBottom = -SHADOW_REACH
+    this.sun.shadowMinZ = 1
+    this.sun.shadowMaxZ = 420
+    this.shadows = new ShadowGenerator(2048, this.sun)
+    this.shadows.usePercentageCloserFiltering = true
+    this.shadows.filteringQuality = ShadowGenerator.QUALITY_MEDIUM
+    this.shadows.bias = 0.0006
+    this.shadows.normalBias = 0.02
+    this.shadows.setDarkness(0.35)
+    const map = this.shadows.getShadowMap()
+    if (map) map.renderListPredicate = (m) => castsShadow(m, this.shadowCenter)
 
     // ── Sky dome (analytic daylight model; renders the actual sun disc) ─
     this.skyMat = new SkyMaterial('sky', scene)
@@ -196,6 +221,12 @@ export class Environment {
     const dir = new Vector3(azimuth * 0.62, -Math.max(elevation, -0.6), 0.45)
     dir.normalize()
     this.sun.direction = dir
+    this.shadowCenter.set(
+      Math.round(cameraPos.x / 4) * 4,
+      Math.round(cameraPos.y / 4) * 4,
+      Math.round(cameraPos.z / 4) * 4,
+    )
+    this.sun.position.copyFrom(this.shadowCenter).subtractInPlace(dir.scale(200))
 
     // Sky dome follows the sun; turbidity rises toward dusk for warm haze.
     const sunPos = dir.scale(-800)
@@ -257,6 +288,21 @@ export class Environment {
       if (light.name.startsWith('lamp:')) light.intensity = lampGlow * 0.9
     }
   }
+}
+
+/** Half the side of the box around the player in which the sun casts shadows, metres. */
+const SHADOW_REACH = 60
+/** What casts a sun shadow: world geometry, trees and nodes, props and people, near the player. */
+const CASTER = /^(mapstatic|static|res|tree|prop|npc|player):/
+function castsShadow(mesh: AbstractMesh, center: Vector3): boolean {
+  if (!CASTER.test(mesh.name)) return false
+  const sphere = mesh.getBoundingInfo().boundingSphere
+  // Small things (pebbles, branches) add nothing a player notices; past the box's edge nothing lands inside it.
+  if (sphere.radiusWorld < 0.5) return false
+  return (
+    Vector3.DistanceSquared(sphere.centerWorld, center) <=
+    (SHADOW_REACH * 1.15 + sphere.radiusWorld) ** 2
+  )
 }
 
 /** Tiny procedural radial-gradient flare sprite (no asset needed). */
