@@ -15,8 +15,47 @@ import type { ServerContext } from './context.js'
 import type { HandlerMap, System } from './system.js'
 
 export const MOVE = DEFAULT_MOVEMENT
-/** Bounded input queue: the cap stops a client from buying simulation speed with backlog. */
-export const MAX_INPUT_QUEUE = 6
+
+/*
+ * Every input a client sends is simulated once, in order, and the server never invents one. The client predicts each
+ * input as it sends it and replays the ones the server has not acknowledged, so any input the server drops or adds
+ * is a misprediction, and the next snapshot snaps the player back. The queue used to hold 6 inputs and drop the
+ * rest, and an empty queue repeated the last input: a frame hitch or network jitter (a home connection, OBS on the
+ * same machine) made walking rubber-band (owner, 2026-10-19).
+ *
+ * Speed stays honest through credit: one per tick, banked up to a second's worth, one spent per simulated input.
+ * After a hitch the bank lets the backlog catch up a few inputs a tick; a client sending faster than real time runs
+ * out of credit and its extra inputs only wait.
+ */
+/** Inputs that may wait: a second of play. A client past it is flooding, and its oldest go. */
+export const MAX_INPUT_QUEUE = 30
+/** Credit banked at most: a second of play. */
+export const MAX_INPUT_CREDIT = 30
+/** Inputs simulated in one tick at most, while catching up. */
+export const CATCH_UP_PER_TICK = 4
+/** Ticks a late client is waited for (its player holds still) before its player coasts to a stop. */
+export const STALL_TICKS = 15
+
+/** Queue one input from the client. */
+export function queueInput(session: PlayerSession, input: ClientInput): void {
+  if (session.inputQueue.length >= MAX_INPUT_QUEUE) session.inputQueue.shift()
+  session.inputQueue.push(input)
+}
+
+/** This tick's inputs, in order: earn one credit, then spend one per input, at most CATCH_UP_PER_TICK. */
+export function takeInputs(session: PlayerSession): ClientInput[] {
+  session.inputCredit = Math.min(MAX_INPUT_CREDIT, session.inputCredit + 1)
+  const out: ClientInput[] = []
+  while (
+    out.length < CATCH_UP_PER_TICK &&
+    session.inputCredit >= 1 &&
+    session.inputQueue.length > 0
+  ) {
+    out.push(session.inputQueue.shift()!)
+    session.inputCredit -= 1
+  }
+  return out
+}
 const _bodyPosScratch = vec3()
 
 /**
@@ -55,7 +94,7 @@ export class MovementSystem implements System {
 
   readonly handlers: HandlerMap = {
     input: (session, msg: ClientInput, _conn) => {
-      if (session.inputQueue.length < MAX_INPUT_QUEUE) session.inputQueue.push(msg)
+      queueInput(session, msg)
     },
     editmode: (session, msg: ClientEditMode, _conn) => {
       // Rank-gated noclip build mode. The flag lives in the move state so
@@ -102,13 +141,8 @@ export class MovementSystem implements System {
       return
     }
     this.sweepSelf = ctx.sessions.bodyOf(session.playerId)
-    // Process at most 2 queued inputs per tick (catch-up), else repeat the
-    // last input — the queue bound caps client-driven speedup.
-    const budget = session.inputQueue.length > 2 ? 2 : 1
     let simulated = 0
-    for (let i = 0; i < budget; i++) {
-      const input = session.inputQueue.shift()
-      if (!input) break
+    for (const input of takeInputs(session)) {
       session.lastInput = input
       session.starvedTicks = 0
       session.lastProcessedSeq = input.seq
@@ -118,15 +152,21 @@ export class MovementSystem implements System {
       simulated++
     }
     if (simulated === 0 && session.lastInput) {
-      // Bridge short network jitter by repeating the last command, but only
-      // briefly — a silent client must coast to a stop, not walk forever.
+      // No input this tick. A late client's inputs are on their way: its player holds still and catches up when
+      // they land (simulating anything now would be a step the client never predicted). A client quiet for longer
+      // (a background tab, a dropped connection) coasts to a stop under gravity.
       session.starvedTicks++
-      // Zero MOVEMENT only — buttons stay held. Zeroing buttons fabricates
-      // release edges for toggle keys (prone/crouch), so any client hitch
-      // longer than 3 ticks made the server flap stances endlessly.
-      const input =
-        session.starvedTicks <= 3 ? session.lastInput : { ...session.lastInput, moveX: 0, moveZ: 0 }
-      stepMovement(session.move, toMoveInput(session, input), MOVE, this.moveQueries, dt)
+      if (session.starvedTicks > STALL_TICKS) {
+        // Zero MOVEMENT only: buttons stay held. Zeroing buttons fabricates release edges for toggle keys
+        // (prone/crouch), and the server flapped stances.
+        stepMovement(
+          session.move,
+          toMoveInput(session, { ...session.lastInput, moveX: 0, moveZ: 0 }),
+          MOVE,
+          this.moveQueries,
+          dt,
+        )
+      }
     }
     let bodyId = ctx.sessions.bodyOf(session.playerId)
     if (bodyId !== undefined && session.bodyStance !== session.move.stance) {

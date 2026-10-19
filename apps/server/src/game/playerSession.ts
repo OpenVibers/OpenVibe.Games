@@ -102,8 +102,10 @@ export interface PlayerSession {
   /** Pending input commands (bounded queue: anti-speedup). */
   inputQueue: ClientInput[]
   lastInput: ClientInput | null
-  /** Consecutive ticks simulated without a fresh input (jitter bridging). */
+  /** Consecutive ticks with no input to simulate (a late or quiet client). */
   starvedTicks: number
+  /** Input credit: one per tick, spent one per simulated input (systems/movement.ts takeInputs). */
+  inputCredit: number
   lastProcessedSeq: number
   /** Entity ids this client currently knows about (interest management). */
   known: Set<EntityId>
@@ -178,6 +180,7 @@ export function createSession(init: SessionInit): PlayerSession {
     inputQueue: [],
     lastInput: null,
     starvedTicks: 0,
+    inputCredit: 0,
     lastProcessedSeq: 0,
     known: new Set(),
     interestCells: new Set(),
