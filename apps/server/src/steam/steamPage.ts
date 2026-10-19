@@ -37,7 +37,7 @@ const STYLE = `<style>
 .steam .body p{margin:0}
 .steam .name{margin:0;font-size:16px;font-weight:800;line-height:1.25;overflow-wrap:anywhere}
 .steam .price{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:auto;font-weight:800}
-.steam .off{padding:2px 7px;border-radius:7px;background:#16a34a;color:#fff;font-size:13px}
+.steam .off{padding:2px 7px;border-radius:7px;background:#15803d;color:#fff;font-size:13px}
 .steam .was{color:var(--text-faint,#7386a3);font-weight:600;text-decoration:line-through}
 .steam .meta{display:flex;flex-wrap:wrap;gap:6px;font-size:12px;color:var(--text-faint,#7386a3)}
 .steam .meta span{padding:1px 7px;border:1px solid var(--border,#1f2d47);border-radius:999px}
