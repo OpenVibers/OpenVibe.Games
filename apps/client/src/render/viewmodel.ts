@@ -3,7 +3,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
+import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh.js'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js'
 import type { Scene } from '@babylonjs/core/scene.js'
@@ -89,7 +89,7 @@ export class Viewmodel {
       },
       this.scene,
     )
-    fist.material = materialFor(this.scene, skin)
+    fist.material = this.armMaterial(skin)
     fist.parent = arm
     fist.position.y = 0.1
     // Thumb: small block sunk INTO the mitt's inner side (reads attached).
@@ -105,7 +105,7 @@ export class Viewmodel {
       },
       this.scene,
     )
-    thumb.material = materialFor(this.scene, skin)
+    thumb.material = this.armMaterial(skin)
     thumb.parent = arm
     thumb.position.set(-0.05 * m, 0.075, -0.01)
 
@@ -122,7 +122,7 @@ export class Viewmodel {
       },
       this.scene,
     )
-    wrist.material = materialFor(this.scene, skin)
+    wrist.material = this.armMaterial(skin)
     wrist.parent = arm
     wrist.position.y = 0.015
     const forearm = createTaperedBox(
@@ -137,10 +137,26 @@ export class Viewmodel {
       },
       this.scene,
     )
-    forearm.material = materialFor(this.scene, sleeve)
+    forearm.material = this.armMaterial(sleeve)
     forearm.parent = arm
     forearm.position.y = -0.04
     return arm
+  }
+
+  private readonly armMaterials = new Map<string, StandardMaterial>()
+  /**
+   * The arm's copy of a world colour, lit a little from within like the tool
+   * props, so it reads in shade and at night instead of going brown-black.
+   */
+  private armMaterial(hex: string): StandardMaterial {
+    let mat = this.armMaterials.get(hex)
+    if (!mat) {
+      const base = materialFor(this.scene, hex)
+      mat = base.clone(`${base.name}:vm`)
+      mat.emissiveColor = base.diffuseColor.scale(0.3)
+      this.armMaterials.set(hex, mat)
+    }
+    return mat
   }
 
   private leftFist: TransformNode | null = null
@@ -163,24 +179,46 @@ export class Viewmodel {
     this.layoutHands(null)
   }
 
-  /** Armed: one support hand under the tool. Unarmed: boxer guard. */
+  /** Armed: the right hand grips the tool (gripTool). Unarmed: boxer guard. */
   private layoutHands(itemDef: string | null): void {
     if (!this.hands || !this.rightArm || !this.leftFist) return
     if (itemDef === null) {
       // Center the guard on screen (cancel the rig's +0.26 offset; local x
       // is mirrored, so PLUS moves left... i.e. toward screen center).
       this.hands.position.set(0.26, 0.05, 0.08)
+      this.rightArm.rotationQuaternion = null
       this.rightArm.position.set(-0.24, 0, 0)
       this.rightArm.rotation.set(-1.05, -0.28, 0)
       this.leftFist.position.set(0.24, 0, 0)
       this.leftFist.rotation.set(-1.05, 0.28, 0)
       this.leftFist.setEnabled(true)
     } else {
-      this.hands.position.set(0.02, -0.06, -0.04)
-      this.rightArm.position.set(0, 0, 0)
-      this.rightArm.rotation.set(0, 0, 0)
       this.leftFist.setEnabled(false)
     }
+  }
+
+  /**
+   * Holds the tool by its grip at HAND_SPOT, the right fist closed around it
+   * and the forearm running back out of the lower-right corner of the screen.
+   * The fist used to stand upright in front of the tool, a flat skin-coloured
+   * block covering the corner, and a gun's grip sat below the screen's edge.
+   */
+  private gripTool(root: TransformNode, grip: Grip): void {
+    if (!this.hands || !this.rightArm) return
+    const turn = Matrix.Compose(
+      root.scaling,
+      Quaternion.FromEulerVector(root.rotation),
+      Vector3.Zero(),
+    )
+    root.position
+      .copyFrom(HAND_SPOT)
+      .subtractInPlace(Vector3.TransformCoordinates(new Vector3(...grip.at), turn))
+    const q = Quaternion.FromUnitVectorsToRef(ARM_DOWN, FOREARM, new Quaternion())
+    this.hands.position.setAll(0)
+    this.rightArm.rotationQuaternion = q
+    // The fist's centre (arm-local y = FIST_CENTRE) sits on the grip.
+    const centre = new Vector3(0, FIST_CENTRE, 0).rotateByQuaternionToRef(q, new Vector3())
+    this.rightArm.position.copyFrom(HAND_SPOT).subtractInPlace(centre)
   }
 
   private async loadPhysgun(): Promise<void> {
@@ -301,6 +339,11 @@ export class Viewmodel {
     if (itemDef === this.currentItem) return
     this.currentItem = itemDef
     this.equipT = 0
+    // A jab still in flight would reset the arm's pose on top of the grip.
+    if (this.punchingFist) {
+      this.punchingFist.position.set(this.punchingFist === this.rightArm ? -0.24 : 0.24, 0, 0)
+      this.punchingFist = null
+    }
     // Hands always show — empty hands are FISTS (you can punch, Minecraft-
     // style). The left guard fist appears only when unarmed.
     if (this.hands) this.hands.setEnabled(true)
@@ -319,12 +362,13 @@ export class Viewmodel {
       if (this.toolProp) {
         this.toolProp.root.parent = this.rig
         const isTool = def?.tool !== undefined
-        this.toolProp.root.position.set(0, isTool ? -0.06 : 0.01, isTool ? -0.08 : -0.11)
+        const grip = GRIPS[isTool ? toolGripKind(def?.tool?.kind) : 'item']
         // The rig is yawed PI (see update()); cancel it on the prop so its
         // +z (muzzle) points AWAY from the camera. Without this the muzzle
         // sat BETWEEN gun and camera and the beam projected wildly off-tip.
-        this.toolProp.root.rotation.y = Math.PI
+        this.toolProp.root.rotation.set(grip.tilt, Math.PI, 0)
         this.toolProp.root.scaling.scaleInPlace(isTool ? 1.05 : 1)
+        this.gripTool(this.toolProp.root, grip)
         // Viewmodels sit in the scene's shadow side; self-illuminate them a
         // touch so their shapes read instead of silhouetting to black.
         for (const child of this.toolProp.root.getChildMeshes()) {
@@ -366,3 +410,32 @@ export class Viewmodel {
 }
 
 const VIEWMODEL_RENDER_GROUP = 1
+
+/** Where the right fist closes on a held thing, in its own frame (+z muzzle or head side, +y up), and how far it tips. */
+interface Grip {
+  at: [number, number, number]
+  /** Rotation about the tool's x axis, radians: an axe leans its head away from the camera. */
+  tilt: number
+}
+type GripKind = 'physgun' | 'axe' | 'pickaxe' | 'generic' | 'item'
+const GRIPS: Record<GripKind, Grip> = {
+  physgun: { at: [0, -0.075, -0.012], tilt: 0 },
+  axe: { at: [0, -0.15, 0], tilt: 0.6 },
+  pickaxe: { at: [0, -0.15, 0], tilt: 0.6 },
+  generic: { at: [0, -0.07, 0.04], tilt: 0 },
+  item: { at: [0, -0.07, 0], tilt: 0 },
+}
+function toolGripKind(kind: string | undefined): GripKind {
+  return kind === 'physgun' || kind === 'axe' || kind === 'pickaxe' ? kind : 'generic'
+}
+/** Where the right fist holds things, in the rig's frame: low in the lower-right of the view, where it shows. */
+const HAND_SPOT = new Vector3(0, -0.05, -0.1)
+/**
+ * The forearm runs from the fist back toward the camera, down and out to the right, whatever the tool's tilt. Rig
+ * frame: +z is toward the camera and +x is screen-left.
+ */
+const FOREARM = new Vector3(-0.32, -0.5, 0.8).normalize()
+/** An arm is built fist up, the sleeve hanging below it. */
+const ARM_DOWN = new Vector3(0, -1, 0)
+/** Arm-local height of the fist's centre (buildArm: the fist spans y 0 to 0.1). */
+const FIST_CENTRE = 0.05

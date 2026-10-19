@@ -220,13 +220,16 @@ export class Environment {
     const azimuth = Math.cos(phase)
     const dir = new Vector3(azimuth * 0.62, -Math.max(elevation, -0.6), 0.45)
     dir.normalize()
-    this.sun.direction = dir
+    // After sunset the same light is the moon's, shining down from the moon (opposite the sun, above the horizon).
+    // It used to keep the set sun's direction, pointing up out of the ground, so the ground got only sky light.
+    const lightDir = elevation >= 0 ? dir : dir.negate()
+    this.sun.direction = lightDir
     this.shadowCenter.set(
       Math.round(cameraPos.x / 4) * 4,
       Math.round(cameraPos.y / 4) * 4,
       Math.round(cameraPos.z / 4) * 4,
     )
-    this.sun.position.copyFrom(this.shadowCenter).subtractInPlace(dir.scale(200))
+    this.sun.position.copyFrom(this.shadowCenter).subtractInPlace(lightDir.scale(200))
 
     // Sky dome follows the sun; turbidity rises toward dusk for warm haze.
     const sunPos = dir.scale(-800)
@@ -246,7 +249,7 @@ export class Environment {
     const day = Math.max(0, elevation)
     const night = Math.max(0, -elevation)
     const dim = 1 - this.weatherDim * 0.65
-    this.sun.intensity = (day * 1.25 + night * 0.12 + 0.03) * dim
+    this.sun.intensity = (day * 1.25 + night * 0.35 + 0.03) * dim
     this.sun.diffuse.set(
       1 - night * 0.35,
       0.96 - dusk * 0.22 - night * 0.3,
