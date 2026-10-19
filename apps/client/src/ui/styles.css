@@ -307,6 +307,10 @@ body.ovg-frame-hidden #ov-footer {
   font-size: 12px;
   color: #8fa0b0;
 }
+/* In the world the folded Frame's OpenVibe pill sits in that corner: the status line goes under it. */
+body:has(#ovg-frame-toggle:not([hidden])) .status {
+  top: 42px;
+}
 
 .overlay-center {
   position: absolute;

@@ -15,6 +15,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Terrain paint never showed.** The layered surface sampled the paint mask at the base texture's tiled UV. On any
   terrain (base tiling half its extent), the mask read its clamped edge, so one layer covered the whole terrain. The
   mask now spans the surface once, and each layer tiles by its own count.
+- **Nights lit from under the ground.** After sunset the sun's light kept the set sun's direction, pointing up out of
+  the ground, so the ground got only sky light and nights were brown-black. The light is now the moon's, shining down
+  from the moon, a little stronger than the old night light.
+- **The first-person hand.** The right fist stood upright in front of a held tool, a flat skin-coloured block in the
+  corner of the screen, and the gun's grip sat below the screen's edge. Now the fist closes on each tool's grip, the
+  gun's grip or low on an axe or pickaxe handle (the head leaning away), and the forearm runs out of the lower-right
+  corner. The arm is lit a little from within, like the tool, so it reads at night.
+- **The status line under the OpenVibe button.** In the world, the tick, fps and entity line sat under the folded
+  Frame's button in the same corner. It now sits below it.
 
 ### Added
 
