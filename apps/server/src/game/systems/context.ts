@@ -30,6 +30,7 @@ import type { SessionsSystem } from './sessions.js'
 import type { SocialSystem } from './social.js'
 import type { VehicleSystem } from './vehicles.js'
 import type { WorldEventSystem } from './worldEvents.js'
+import type { Milestone } from '../progression.js'
 
 /**
  * A network connection as the game sees it — transport-agnostic.
@@ -72,6 +73,8 @@ export interface GameIntegrations {
   ) => void
   /** Called for a server-confirmed extraction haul (Scraplandia). Never accepts a client message. */
   haulExtracted?: (key: string, extractionId: string, name: string, score: number) => void
+  /** A server-confirmed milestone past the first haul (Scraplandia): a contract, a harvest, a skill level. */
+  milestone?: (key: string, milestone: Milestone) => void
   /** Durable lifecycle/progression events through the outbox. */
   events?: GameEventRecorder
   /** Installed mods (content packs), reconciled every tick. */

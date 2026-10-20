@@ -197,12 +197,20 @@ export class EconomySystem implements System {
         addReputation(session.reputation, market.faction, job.reward.reputation)
         this.sendReputation(session)
       }
+      const key = session.subjectId ?? session.token
       if (job.reward.xp) {
         const ups = session.skills.addXp(job.reward.xp.skill, job.reward.xp.amount)
-        for (const up of ups)
+        for (const up of ups) {
           this.ctx.net.send(session, { t: 'levelup', skill: up.skill, level: up.level })
+          this.ctx.integrations.milestone?.(key, {
+            event: 'skill_level',
+            skill: up.skill,
+            level: up.level,
+          })
+        }
         this.ctx.net.sendSkills(session)
       }
+      this.ctx.integrations.milestone?.(key, { event: 'contract_completed' })
       session.activeJob = null
       session.dirty = true
       this.ctx.net.send(session, { t: 'result', action: 'trade', ok: true })

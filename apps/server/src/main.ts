@@ -77,7 +77,7 @@ import {
 } from './platform/revocationEvents.js'
 import { createStaffAuthorizer } from './platform/staffAuth.js'
 import { createWsTicketStore } from './net/wsTicket.js'
-import { GameProgressWriter } from './game/progression.js'
+import { GameProgressWriter, type Milestone } from './game/progression.js'
 import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
 import { createPlayBoards } from './platform/playBoards.js'
@@ -374,6 +374,8 @@ async function main(): Promise<void> {
             playerJoined: (key: string) => progressWriter.submitJoined(key),
             haulExtracted: (key: string, extractionId: string, name: string, score: number) =>
               progressWriter.submitHaul(extractionId, key, name, score),
+            milestone: (key: string, milestone: Milestone) =>
+              progressWriter.submitMilestone(key, milestone),
           }
         : {}),
       ...(config.placeId === 'salvage-rush'
@@ -444,6 +446,8 @@ async function main(): Promise<void> {
                 playerJoined: (key: string) => progressWriter.submitJoined(key),
                 haulExtracted: (key: string, extractionId: string, name: string, score: number) =>
                   progressWriter.submitHaul(extractionId, key, name, score),
+                milestone: (key: string, milestone: Milestone) =>
+                  progressWriter.submitMilestone(key, milestone),
               }
             : {}),
           ...(config.placeId === 'salvage-rush'
@@ -545,6 +549,8 @@ async function main(): Promise<void> {
               playerJoined: (key: string) => progressWriter.submitJoined(key),
               haulExtracted: (key: string, extractionId: string, name: string, score: number) =>
                 progressWriter.submitHaul(extractionId, key, name, score),
+              milestone: (key: string, milestone: Milestone) =>
+                progressWriter.submitMilestone(key, milestone),
             }
           : {
               roundFinished: (roundId: string, results: RoundResult[]) =>

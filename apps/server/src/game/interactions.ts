@@ -70,6 +70,8 @@ export interface GatherResult {
   /** Entity spawned as a side effect (felled tree trunk), if any. */
   spawned: GameEntity | null
   levelUps: LevelUp[]
+  /** A crop was harvested from a planter (a Scraplandia milestone). */
+  harvested?: boolean
   xpChanged: boolean
 }
 
@@ -190,6 +192,7 @@ export function handleUse(
           changed: entity,
           levelUps,
           xpChanged: true,
+          harvested: true,
         }
       }
       const seed = heldDef?.seed

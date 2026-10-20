@@ -41,6 +41,45 @@ export function earnedHaulAchievements(score: number, weeklyScore: number): stri
     .map((def) => def.id)
 }
 
+/** A server-confirmed step past the first haul (never a client message). */
+export type Milestone =
+  | { event: 'contract_completed' }
+  | { event: 'crop_harvested' }
+  | { event: 'skill_level'; skill: string; level: number }
+
+/** Scraplandia achievements a milestone earns. */
+export function earnedMilestoneAchievements(milestone: Milestone): string[] {
+  return definitions.scraplandia
+    .filter((def) => {
+      const c = def.criterion
+      if (c.event !== milestone.event) return false
+      if (c.event === 'skill_level' && milestone.event === 'skill_level') {
+        return (
+          milestone.level >= c.minLevel && (c.skill === undefined || c.skill === milestone.skill)
+        )
+      }
+      return true
+    })
+    .map((def) => def.id)
+}
+
+/** Record unlocked Scraplandia achievements (idempotent per account). */
+export async function recordUnlocks(
+  db: Db,
+  key: string,
+  achievements: readonly string[],
+  now: number,
+): Promise<void> {
+  const account = accountKey(key)
+  for (const achievement of achievements) {
+    await db.exec(sql`
+      INSERT INTO game_achievements (game_id, achievement_id, account_key, unlocked_at)
+      VALUES ('scraplandia', ${achievement}, ${account}, ${now})
+      ON CONFLICT (game_id, achievement_id, account_key) DO NOTHING
+    `)
+  }
+}
+
 function weekStartMs(now: number): number {
   const date = new Date(now)
   return Date.UTC(
@@ -138,6 +177,8 @@ export class GameProgressWriter {
     string,
     { key: string; name: string; score: number; extractionId: string; finishedAt: number }
   >()
+  /** Achievement unlocks from milestones, one entry per account and achievement. */
+  private readonly unlocks = new Map<string, { key: string; achievement: string; at: number }>()
   private inFlight: Promise<void> | null = null
   private readonly timer: ReturnType<typeof setInterval>
 
@@ -172,10 +213,26 @@ export class GameProgressWriter {
     void this.flush().catch(this.onError)
   }
 
+  submitMilestone(key: string, milestone: Milestone): void {
+    const earned = earnedMilestoneAchievements(milestone)
+    if (earned.length === 0) return
+    const now = Date.now()
+    for (const achievement of earned) {
+      const id = `${accountKey(key)}\u0000${achievement}`
+      if (!this.unlocks.has(id)) this.unlocks.set(id, { key, achievement, at: now })
+    }
+    void this.flush().catch(this.onError)
+  }
+
   async flush(): Promise<void> {
     if (this.inFlight) return this.inFlight
     this.inFlight = (async () => {
-      while (this.pending.size > 0 || this.joined.size > 0 || this.hauls.size > 0) {
+      while (
+        this.pending.size > 0 ||
+        this.joined.size > 0 ||
+        this.hauls.size > 0 ||
+        this.unlocks.size > 0
+      ) {
         for (const [roundId, entry] of this.pending) {
           await recordRound(this.db, 'salvage-rush', roundId, entry.results, entry.finishedAt)
           this.pending.delete(roundId)
@@ -197,6 +254,11 @@ export class GameProgressWriter {
           await recordJoined(this.db, key, at)
           this.joined.delete(key)
           this.afterCommit?.(key)
+        }
+        for (const [id, unlock] of this.unlocks) {
+          await recordUnlocks(this.db, unlock.key, [unlock.achievement], unlock.at)
+          this.unlocks.delete(id)
+          this.afterCommit?.(unlock.key)
         }
       }
     })()
