@@ -112,11 +112,7 @@ async function main(): Promise<void> {
   // method and status class each minute, stored in telemetry_samples; rows older than 14 days go daily.
   // (openvibe-sdk 0.46's service and telemetry typings disagree on whether a sample's `service` is optional.)
   const telemetrySink = createPgTelemetrySink({ db, log: console })
-  telemetry.init({
-    service: 'games',
-    sink: (samples) => telemetrySink(samples as Parameters<typeof telemetrySink>[0]),
-    intervalMs: 60_000,
-  })
+  telemetry.init({ service: 'games', sink: (samples) => telemetrySink(samples as Parameters<typeof telemetrySink>[0]), intervalMs: 60_000 })
   const telemetryRetention = startTelemetryRetention({ db, log: console, olderThanDays: 14 })
   const registry = new InstanceRegistry(db, config.placeId)
   let primaryLease: InstanceLease
@@ -1180,13 +1176,7 @@ async function main(): Promise<void> {
       await progressWriter.stop()
       inventoryRewards?.stop()
       playSync.stop()
-      await within(
-        1000,
-        (async () => {
-          await telemetryRetention.stop()
-          await telemetry.stop()
-        })(),
-      ) // request telemetry flushes first
+      await within(1000, (async () => { await telemetryRetention.stop(); await telemetry.stop() })())   // request telemetry flushes first
       await store.close()
       await valkey?.close()
       log.info('stopped', {
