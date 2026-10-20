@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Far avatars floated, twisted.** The merged copy that stands in for an avatar past 18 m baked each part's world
+  position, but a Babylon clone keeps its source's parent, so the joint chain applied a second time: far NPCs hung
+  0.4 m up, out of shape. Each copy now drops its parent before baking, and a test checks that the copy stands on its
+  feet at a person's height.
 - **NPCs cost 150 draw calls in town.** Each avatar is about 14 meshes, so eleven townsfolk and wardens in view drew
   150 times a frame. Past 18 m an avatar, NPC or remote player, now draws as one merged copy of itself in its rest
   pose and skips the animation work. It switches back to the full rig inside 16 m. In town, NPC draws went from 150
