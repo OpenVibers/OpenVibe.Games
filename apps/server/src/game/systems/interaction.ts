@@ -48,9 +48,16 @@ export class InteractionSystem implements System {
       session.lastUseTick = this.ctx.clock.tick
       this.ctx.net.sendInventory(session)
       if (gather.xpChanged) this.ctx.net.sendSkills(session)
+      const key = session.subjectId ?? session.token
       for (const up of gather.levelUps) {
         this.ctx.net.send(session, { t: 'levelup', skill: up.skill, level: up.level })
+        this.ctx.integrations.milestone?.(key, {
+          event: 'skill_level',
+          skill: up.skill,
+          level: up.level,
+        })
       }
+      if (gather.harvested) this.ctx.integrations.milestone?.(key, { event: 'crop_harvested' })
       if (gather.pickedUp) {
         if (session.held?.entityId === gather.pickedUp.id) {
           this.ctx.systems.manipulation.releaseHeld(session)

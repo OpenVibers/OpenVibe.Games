@@ -219,6 +219,11 @@ export class ProductionSystem implements System {
           const ups = session.skills.addXp(recipeSkill(recipe.category), recipeXp(recipe))
           for (const up of ups) {
             this.ctx.net.send(session, { t: 'levelup', skill: up.skill, level: up.level })
+            this.ctx.integrations.milestone?.(session.subjectId ?? session.token, {
+              event: 'skill_level',
+              skill: up.skill,
+              level: up.level,
+            })
           }
         }
         this.ctx.net.sendSkills(session)

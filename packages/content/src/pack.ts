@@ -50,6 +50,9 @@ export interface ContentPackV2 {
       | { event: 'player_joined' }
       | { event: 'haul_recorded'; minScore?: number }
       | { event: 'haul_week'; minScore: number }
+      | { event: 'contract_completed' }
+      | { event: 'crop_harvested' }
+      | { event: 'skill_level'; minLevel: number; skill?: string }
   }[]
   /** Built-in game rules. Executable rule evaluation remains server-owned. */
   game?: {

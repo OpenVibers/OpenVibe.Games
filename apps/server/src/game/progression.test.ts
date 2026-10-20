@@ -3,8 +3,10 @@ import { openTestDb, openTestStore } from '@openvibe/persistence/testing'
 import { accountKey } from '@openvibe/persistence'
 import { sql, type Db } from 'openvibe-sdk/db'
 import {
+  GameProgressWriter,
   earnedAchievements,
   earnedHaulAchievements,
+  earnedMilestoneAchievements,
   playerAchievements,
   recordHaul,
   recordJoined,
@@ -187,5 +189,42 @@ describe('game progression', () => {
       (a) => a.unlockedAt,
     )
     expect(unlocks?.map((a) => a.id)).toEqual(['first-haul', 'big-haul', 'haul-week'])
+  })
+
+  it('earns the after-the-haul achievements from milestones', () => {
+    expect(earnedMilestoneAchievements({ event: 'contract_completed' })).toEqual(['first-contract'])
+    expect(earnedMilestoneAchievements({ event: 'crop_harvested' })).toEqual(['green-thumb'])
+    expect(
+      earnedMilestoneAchievements({ event: 'skill_level', skill: 'mining', level: 4 }),
+    ).toEqual([])
+    expect(
+      earnedMilestoneAchievements({ event: 'skill_level', skill: 'mining', level: 5 }),
+    ).toEqual(['journeyman'])
+    expect(
+      earnedMilestoneAchievements({ event: 'skill_level', skill: 'farming', level: 10 }),
+    ).toEqual(['journeyman', 'old-hand'])
+  })
+
+  it('records milestone unlocks once per account through the writer', async () => {
+    const db = await openTestDb()
+    const committed: string[] = []
+    const writer = new GameProgressWriter(
+      db,
+      (error) => {
+        throw error
+      },
+      (subject) => committed.push(subject),
+    )
+    const subject = 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0'
+    writer.submitMilestone(subject, { event: 'contract_completed' })
+    writer.submitMilestone(subject, { event: 'contract_completed' })
+    writer.submitMilestone(subject, { event: 'skill_level', skill: 'woodcutting', level: 3 }) // earns nothing
+    writer.submitMilestone(subject, { event: 'skill_level', skill: 'woodcutting', level: 5 })
+    await writer.stop()
+    const unlocked = (await playerAchievements(db, subject))[0]?.achievements.filter(
+      (a) => a.unlockedAt,
+    )
+    expect(unlocked?.map((a) => a.id).sort()).toEqual(['first-contract', 'journeyman'])
+    expect(committed.length).toBeGreaterThan(0)
   })
 })

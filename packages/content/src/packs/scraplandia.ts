@@ -35,6 +35,32 @@ export const SCRAPLANDIA_PACK: ContentPackV2 = {
       description: 'Score at least 2,000 haul points in one week.',
       criterion: { event: 'haul_week', minScore: 2000 },
     },
+    // What there is to do after the first haul (roadmap "Scraplandia's first hour"): the Goose's contracts, a crop of
+    // your own, and skills worth levelling. They show in the Achievements tab and on OpenVibe.Play.
+    {
+      id: 'first-contract',
+      name: "The Goose's Trust",
+      description: "Complete a contract from Goose's Trading Post.",
+      criterion: { event: 'contract_completed' },
+    },
+    {
+      id: 'green-thumb',
+      name: 'Green Thumb',
+      description: 'Harvest a crop you grew in a planter.',
+      criterion: { event: 'crop_harvested' },
+    },
+    {
+      id: 'journeyman',
+      name: 'Journeyman',
+      description: 'Reach level 5 in any skill.',
+      criterion: { event: 'skill_level', minLevel: 5 },
+    },
+    {
+      id: 'old-hand',
+      name: 'Old Hand',
+      description: 'Reach level 10 in any skill.',
+      criterion: { event: 'skill_level', minLevel: 10 },
+    },
   ],
   map: {
     // Scrap Island (apps/server/src/maps/scrapIsland.ts) is the map document the server loads from MAP_PATH. The id
