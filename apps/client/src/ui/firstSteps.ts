@@ -22,6 +22,11 @@ export interface FirstStep {
   title: string
   hint: string
   done: (v: StepView) => boolean
+  /**
+   * Where the waypoint points (ui/waypoint.ts): the nearest node of these types that has something left, else the
+   * map zone with this id (a landmark). `items` narrows the nodes to the ones yielding what the player still lacks.
+   */
+  toward?: { nodes?: string[]; zone?: string }
 }
 
 export const FIRST_STEPS: FirstStep[] = [
@@ -32,6 +37,7 @@ export const FIRST_STEPS: FirstStep[] = [
     done: (v) =>
       (v.count('wood_log') > 0 || v.count('wood_plank') > 0 || v.count('stone_axe') > 0) &&
       (v.count('stone') > 0 || v.count('stone_axe') > 0),
+    toward: { nodes: ['branch_pile', 'loose_stones'] },
   },
   {
     id: 'axe',
@@ -44,18 +50,21 @@ export const FIRST_STEPS: FirstStep[] = [
     title: 'Chop an oak',
     hint: 'The forest is west of town. Hold the axe and swing (left click).',
     done: (v) => v.level('woodcutting') >= 2,
+    toward: { nodes: ['oak_tree'], zone: 'forest' },
   },
   {
     id: 'mine',
     title: 'Mine at the quarry',
     hint: 'South-west of town. A Stone Pickaxe breaks the stone deposits.',
     done: (v) => v.level('mining') >= 2,
+    toward: { nodes: ['stone_deposit'], zone: 'quarry' },
   },
   {
     id: 'scrap',
     title: 'Salvage the scrapyard',
     hint: 'East of town, past the gate. Rustjaw thugs hang around out there.',
     done: (v) => v.count('scrap_metal') >= 4 || v.level('scavenging') >= 2,
+    toward: { nodes: ['scrap_pile'], zone: 'scrapyard' },
   },
   {
     id: 'haul',
@@ -126,8 +135,21 @@ export class FirstSteps {
     this.render()
   }
 
+  /** The step being worked on, or null when all are done or the panel was closed. */
+  current(): FirstStep | null {
+    if (this.saved.closed) return null
+    const done = new Set(this.saved.done)
+    return FIRST_STEPS.find((s) => !done.has(s.id)) ?? null
+  }
+
+  /** Where the recovery bird said it would land ("… near (56, -20) …"), for the haul step's waypoint. */
+  birdAt: [number, number] | null = null
+
   /** A server announce: an extraction that secured something completes the last step. */
   onAnnounce(text: string): void {
+    const near = /near \((-?\d+(?:\.\d+)?), (-?\d+(?:\.\d+)?)\)/.exec(text)
+    if (near) this.birdAt = [Number(near[1]), Number(near[2])]
+    if (/Extracted|recovery bird moves on/i.test(text)) this.birdAt = null
     if (/Extracted! [1-9]/.test(text)) {
       this.saved.hauled = true
       this.update()

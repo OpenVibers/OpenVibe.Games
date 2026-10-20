@@ -91,6 +91,23 @@ export const ISLAND = {
   spawn: [0, 0, -17] as Vec3,
 }
 
+/** Named areas for the first-steps waypoint (zone id, name, [x, z] min, [x, z] max). */
+const LANDMARKS: [string, string, [number, number], [number, number]][] = [
+  [
+    'forest',
+    'The Forest',
+    [ISLAND.forest.center[0] - ISLAND.forest.radius, ISLAND.forest.center[1] - ISLAND.forest.radius],
+    [ISLAND.forest.center[0] + ISLAND.forest.radius, ISLAND.forest.center[1] + ISLAND.forest.radius],
+  ],
+  [
+    'quarry',
+    'The Quarry',
+    [ISLAND.quarry.center[0] - 22, ISLAND.quarry.center[1] - 22],
+    [ISLAND.quarry.center[0] + 22, ISLAND.quarry.center[1] + 22],
+  ],
+  ['scrapyard', 'The Scrapyard', [...ISLAND.scrapyard.min], [...ISLAND.scrapyard.max]],
+]
+
 /** Dirt roads from the city gates out to each district (x, z polylines). */
 const ROADS: [number, number][][] = [
   [
@@ -1031,6 +1048,15 @@ export function generateScrapIsland(seed = 20261019): MapFileV2 {
         max: [W + 2, 60, W + 2],
         rules: { pvp: false, build: false, physgun: true },
       },
+      // Landmarks: named areas with the wilds' own rules, so they change nothing; the first-steps waypoint points at
+      // them until a tree, deposit or scrap pile is in sight, and the editor can move them with the map.
+      ...LANDMARKS.map(([id, name, [x0, z0], [x1, z1]]) => ({
+        id,
+        name,
+        min: [x0, -10, z0] as Vec3,
+        max: [x1, 80, z1] as Vec3,
+        rules: { pvp: true, build: true, physgun: true },
+      })),
     ],
     models: [],
     textures: [],

@@ -737,6 +737,41 @@ body:has(#ovg-frame-toggle:not([hidden])) .status {
   color: #f0b040;
 }
 
+/* The first-steps waypoint: an arrow and a distance at the top centre, toward the current step's target. */
+.waypoint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(240, 176, 64, 0.45);
+  background: rgba(14, 18, 24, 0.78);
+  color: #f3e6c8;
+  font: 600 13px/1.2 system-ui, sans-serif;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.waypoint[hidden] {
+  display: none;
+}
+.waypoint-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f0b040;
+  color: #1a1206;
+  font-size: 15px;
+  font-weight: 800;
+  transition: transform 0.15s linear;
+}
+
 /* Settings: the sound volume slider, tall enough to drag with a thumb. */
 .volume-range {
   display: block;
