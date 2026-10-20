@@ -86,3 +86,35 @@ describe('first steps', () => {
     expect(progress(view, { done: ['gather'] })).toEqual(['gather', 'mine'])
   })
 })
+
+describe('the waypoint hooks', () => {
+  it('names the current step, and none once the panel is closed', () => {
+    const steps = new FirstSteps(root, read, storage as unknown as Storage)
+    expect(steps.current()?.id).toBe('gather')
+    items = { wood_log: 1, stone: 2 }
+    steps.update()
+    expect(steps.current()?.id).toBe('axe')
+    ;(root.querySelector('[data-first-steps-close]') as HTMLElement).click()
+    expect(steps.current()).toBeNull()
+  })
+
+  it('remembers where the recovery bird said it would land, until it extracts or moves on', () => {
+    const steps = new FirstSteps(root, read, storage as unknown as Storage)
+    steps.onAnnounce(
+      '🚁 Recovery bird inbound near (56, -20) — hold the circle to secure your haul!',
+    )
+    expect(steps.birdAt).toEqual([56, -20])
+    steps.onAnnounce('🚁 The recovery bird is circling. Get inside and HOLD.')
+    expect(steps.birdAt).toEqual([56, -20])
+    steps.onAnnounce('🚁 The recovery bird moves on.')
+    expect(steps.birdAt).toBeNull()
+  })
+
+  it('gives the outdoor steps somewhere to point', () => {
+    const toward = Object.fromEntries(FIRST_STEPS.map((s) => [s.id, s.toward]))
+    expect(toward.gather?.nodes).toEqual(['branch_pile', 'loose_stones'])
+    expect(toward.chop).toEqual({ nodes: ['oak_tree'], zone: 'forest' })
+    expect(toward.mine?.zone).toBe('quarry')
+    expect(toward.scrap?.zone).toBe('scrapyard')
+  })
+})

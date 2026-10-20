@@ -18,7 +18,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Appearance } from '@openvibe/protocol'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Scene } from '@babylonjs/core/scene.js'
-import { WATER_LEVEL, terrainHeight } from '@openvibe/content'
+import { WATER_LEVEL, getMapOverride, terrainHeight } from '@openvibe/content'
 import { DEFAULT_MOVEMENT } from '@openvibe/gameplay'
 import { Sfx, footstepSurface, materialForVisual } from './audio/sfx.js'
 import { HitChips } from './render/hitChips.js'
@@ -63,6 +63,7 @@ import { ConstraintLineRenderer } from './render/constraintLines.js'
 import { PlacementGhost } from './game/placementGhost.js'
 import { WeaponSettings, weaponModuleFor } from './weapons/registry.js'
 import { FirstSteps } from './ui/firstSteps.js'
+import { Waypoint, pickTarget, type NodeSighting } from './ui/waypoint.js'
 
 /**
  * Client bootstrap: engine/scene -> character customization (live preview)
@@ -239,6 +240,7 @@ async function start(): Promise<void> {
     ...(sso ? { bearer: sso } : {}),
   })
   // Scraplandia's first-steps checklist (not in Salvage Rush or a creator world, whose worlds are something else).
+  let updateWaypoint: (() => void) | null = null
   if (!worldId && content.world.id === 'scrap_island') {
     const firstSteps = new FirstSteps(uiRoot, () => ({
       count: (item) => state.countOf(item),
@@ -247,6 +249,39 @@ async function start(): Promise<void> {
     state.events.on('inventory', () => firstSteps.update())
     state.events.on('skills', () => firstSteps.update())
     state.events.on('announce', (text) => firstSteps.onAnnounce(String(text)))
+    // The waypoint toward the current step's target (refreshed from the frame loop).
+    const waypoint = new Waypoint(uiRoot)
+    updateWaypoint = () => {
+      const step = firstSteps.current()
+      const from = { x: player.move.pos.x, z: player.move.pos.z }
+      if (!step) return waypoint.update(from, player.viewYaw, null)
+      if (step.id === 'haul') {
+        const bird = firstSteps.birdAt
+        return waypoint.update(
+          from,
+          player.viewYaw,
+          bird ? { label: 'Recovery bird', x: bird[0], z: bird[1] } : null,
+        )
+      }
+      if (!step.toward) return waypoint.update(from, player.viewYaw, null)
+      // Gathering: point at whichever pile gives what is still missing.
+      const hasWood = state.countOf('wood_log') > 0 || state.countOf('wood_plank') > 0
+      const hasStone = state.countOf('stone') > 0
+      const prefer = step.id === 'gather' ? (hasStone ? ['branch_pile'] : hasWood ? ['loose_stones'] : []) : []
+      const sightings: NodeSighting[] = []
+      for (const e of state.entities.values()) {
+        if (e.kind !== 'resource' || !e.def) continue
+        sightings.push({
+          def: e.def,
+          name: content.nodeType(e.def)?.name ?? e.def,
+          x: e.pos[0],
+          z: e.pos[2],
+          remaining: e.remaining ?? 1,
+        })
+      }
+      const zones = getMapOverride(content.world)?.zones ?? []
+      waypoint.update(from, player.viewYaw, pickTarget(from, { ...step.toward, prefer }, sightings, zones))
+    }
   }
   const roundUi =
     content.world.id === 'salvage_rush_arena'
@@ -388,6 +423,7 @@ async function start(): Promise<void> {
     if (id === state.myEntityId && (kind === 'hurt' || kind === 'death')) sfx.hurt()
   })
   let stride = 0
+  let lastWaypoint = 0
   let wasGrounded = true
   let fallSpeed = 0
 
@@ -652,6 +688,10 @@ async function start(): Promise<void> {
     }
     wasGrounded = grounded
     sfx.update(elapsed, environment.daylight)
+    if (updateWaypoint && now - lastWaypoint > 150) {
+      lastWaypoint = now
+      updateWaypoint()
+    }
     chips.update(elapsed)
 
     // Beams (modular: any weapon whose module declares firesBeam gets this

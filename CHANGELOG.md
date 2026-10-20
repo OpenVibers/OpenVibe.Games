@@ -58,6 +58,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **A waypoint for the first steps.** An arrow and a distance at the top of the screen point toward the current
+  step's target: "Oak Tree · 30 m". The target is the nearest node in sight that has something left (a starter pile,
+  preferring whichever gives what you still lack; an oak; a stone deposit; a scrap pile), else a landmark. The haul step
+  points at the recovery bird's announced landing. "The forest is west of town" was all a new scrapper had to find a
+  forest over 100 m away.
+  - Landmarks are map zones with the wilds' own rules, so they change no gameplay: The Forest, The Quarry and The
+    Scrapyard on Scrap Island. They can be moved in the editor.
 - **The town's props look like things.** Merchant stalls have a counter, posts, a striped awning in the stall's colour
   and goods on top. Crates have edge boards, barrels have hoops and a bung, and the storage box has a lid and a latch.
   The workbench has legs, a shelf, a vise and a saw, the still has a dome and a pipe, planters grow, and the campfire
