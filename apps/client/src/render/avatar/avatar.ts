@@ -82,6 +82,8 @@ export class Avatar {
       if (!(part instanceof Mesh) || !part.getTotalVertices() || !material?.diffuseColor) continue
       const copy = part.clone(`${this.name}:lodpart`, null, true)
       copy.makeGeometryUnique()
+      // A clone keeps its source's parent (its joint), which would apply the joint chain again on top of the bake.
+      copy.parent = null
       copy.position.setAll(0)
       copy.rotationQuaternion = null
       copy.rotation.setAll(0)
