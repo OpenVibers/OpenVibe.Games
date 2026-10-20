@@ -16,6 +16,7 @@ import type { ServerSnapshot, WireEntity } from '@openvibe/protocol'
 import { quat, vec3, wrapAngle } from '@openvibe/shared'
 import type { ClientState } from '../state/clientState.js'
 import { Avatar } from './avatar/avatar.js'
+import { buildCritter, npcAppearance } from './npcLooks.js'
 import { materialFor, meshForShape } from './sceneSetup.js'
 
 /**
@@ -50,6 +51,8 @@ interface EntityVisual {
   bodyStance: number
   /** Hit-shake time remaining (resources being chopped/mined). */
   shakeT: number
+  /** An NPC avatar's feet below its position (half its height); null for players, whose hull sets it. */
+  feetOffset: number | null
 }
 
 const INTERP_DELAY = 0.13
@@ -94,6 +97,7 @@ export class EntityView {
 
     let mesh: Mesh | null = null
     let avatar: Avatar | null = null
+    let feetOffset: number | null = null
     let bodyId: BodyId | null = null
 
     if (e.kind === 'player') {
@@ -126,22 +130,19 @@ export class EntityView {
     } else if (e.kind === 'prop') {
       mesh = CreateBox(`prop:${e.id}`, { size: 0.5 }, this.scene)
     } else if (e.kind === 'npc') {
-      // Placeholder NPC visual: tinted capsule-ish body + head knob until
-      // real models exist. A collision mirror makes it aim-able.
+      // People wear the players' avatar, dressed by archetype (npcLooks.ts); animals get a small body. A collision
+      // mirror makes either aim-able.
       const arch = this.content.npc(e.def ?? '')
       const height = arch?.heightM ?? 1.7
       const radius = arch?.radius ?? 0.35
-      mesh = CreateBox(
-        `npc:${e.id}`,
-        { width: radius * 2, height: height * 0.72, depth: radius * 1.4 },
-        this.scene,
-      )
-      mesh.material = materialFor(this.scene, arch?.color ?? '#888888')
-      const head = CreateBox(`npc:${e.id}:head`, { size: radius * 1.1 }, this.scene)
-      head.parent = mesh
-      head.position.y = height * 0.72 * 0.5 + radius * 0.6
-      head.material = mesh.material
-      mesh.rotationQuaternion = new Quaternion(e.rot[0], e.rot[1], e.rot[2], e.rot[3])
+      const look = npcAppearance(arch?.id ?? '', e.id)
+      if (look) {
+        avatar = new Avatar(this.scene, this.content, look, `npc:${e.id}`)
+        feetOffset = height / 2
+      } else {
+        mesh = buildCritter(this.scene, `npc:${e.id}`, arch?.color ?? '#888888', height / 2)
+        mesh.rotationQuaternion = new Quaternion(e.rot[0], e.rot[1], e.rot[2], e.rot[3])
+      }
       bodyId = this.physics.addBody({
         shape: { type: 'capsule', radius, height },
         motion: 'static',
@@ -195,6 +196,7 @@ export class EntityView {
       buffer: [],
       bodyStance: 0,
       shakeT: 0,
+      feetOffset,
     })
   }
 
@@ -281,7 +283,20 @@ export class EntityView {
     for (const b of snap.bodies) {
       const v = this.visuals.get(b.id)
       if (!v) continue
-      pushSample(v.buffer, { t: serverTime, pos: b.pos, rot: b.rot })
+      if (v.avatar) {
+        // An NPC avatar: facing from its rotation, walking speed from how far it went since the last sample.
+        const prev = v.buffer[v.buffer.length - 1]
+        const dt = prev ? serverTime - prev.t : 0
+        pushSample(v.buffer, {
+          t: serverTime,
+          pos: b.pos,
+          rot: b.rot,
+          yaw: 2 * Math.atan2(b.rot[1], b.rot[3]),
+          speed:
+            prev && dt > 0 ? Math.hypot(b.pos[0] - prev.pos[0], b.pos[2] - prev.pos[2]) / dt : 0,
+          grounded: true,
+        })
+      } else pushSample(v.buffer, { t: serverTime, pos: b.pos, rot: b.rot })
       v.entity.pos = b.pos
       v.entity.rot = b.rot
       if (v.bodyId !== null) {
@@ -352,12 +367,13 @@ export class EntityView {
         // Blend FEET height, not capsule-center height: the center jumps
         // when the hull shrinks (crouch/prone) and blending centers sinks
         // the avatar through the floor mid-transition.
-        const feetA = a.pos[1] - hullHeightFor((a.stance ?? 0) as 0 | 1 | 2) / 2
-        const feetB = b.pos[1] - hullHeightFor((b.stance ?? 0) as 0 | 1 | 2) / 2
+        const feetA = a.pos[1] - (v.feetOffset ?? hullHeightFor((a.stance ?? 0) as 0 | 1 | 2) / 2)
+        const feetB = b.pos[1] - (v.feetOffset ?? hullHeightFor((b.stance ?? 0) as 0 | 1 | 2) / 2)
         const feetY = feetA + (feetB - feetA) * alpha
         // Keep the player collision mirror on the smooth pose; swap the hull
         // when their stance changes so crouched players are shorter to walk on.
-        if (v.bodyId !== null) {
+        // (An NPC's mirror follows its snapshots, in onSnapshot.)
+        if (v.bodyId !== null && v.feetOffset === null) {
           const stance = latest.stance ?? 0
           if (stance !== v.bodyStance) {
             this.entityByBody.delete(v.bodyId)
