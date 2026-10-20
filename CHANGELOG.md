@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Shadows halved the frame rate in town.** The shadow pass drew every caster in Scrap City again each frame (about
+  390 more draw calls, ~720 a frame), and a test browser dropped from ~50 to ~10 fps. The shadow map is now redrawn
+  every third frame, and at once whenever the shadow box moves, so no shadow jumps. That gives ~490 draw calls and
+  about twice the frame rate in the same browser.
 - **Lamps blacked out the world.** A material uses its first 8 lights, and the town's lamp lights (off by day) were
   created before the sun and sky. A map with a dozen lamps rendered every surface black. The sun and sky now have the
   higher render priority. Each lamp lights only the geometry in its range, and its light goes with its post, so a live

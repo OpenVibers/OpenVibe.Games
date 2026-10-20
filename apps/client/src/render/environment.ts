@@ -3,6 +3,7 @@ import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent.js'
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js'
+import type { RenderTargetTexture } from '@babylonjs/core/Materials/Textures/renderTargetTexture.js'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh.js'
 import '@babylonjs/core/LensFlares/lensFlareSystemSceneComponent.js'
 // LensFlareSystem's occlusion test uses Scene.pick, which requires the Ray
@@ -48,6 +49,7 @@ export class Environment {
   /** Sun shadows in a box around the player (quality tiers with shadows; scene.shadowsEnabled gates them). */
   private readonly shadows: ShadowGenerator
   private readonly shadowCenter = new Vector3()
+  private shadowMap: RenderTargetTexture | null = null
   private pipeline: DefaultRenderingPipeline | null = null
   private readonly flareEmitter: TransformNode
   private readonly flares: LensFlareSystem
@@ -92,7 +94,14 @@ export class Environment {
     this.shadows.normalBias = 0.02
     this.shadows.setDarkness(0.35)
     const map = this.shadows.getShadowMap()
-    if (map) map.renderListPredicate = (m) => castsShadow(m, this.shadowCenter)
+    if (map) {
+      map.renderListPredicate = (m) => castsShadow(m, this.shadowCenter)
+      // The shadow pass draws every caster in the box again, about 390 draw calls in Scrap City, which took the
+      // frame rate from ~50 to ~10 in a test browser. The sun moves slowly and the box only moves in 4 m steps (and
+      // forces a fresh map when it does, in update()), so the map is redrawn every third frame.
+      map.refreshRate = SHADOW_REFRESH_FRAMES
+    }
+    this.shadowMap = map
 
     // ── Sky dome (analytic daylight model; renders the actual sun disc) ─
     this.skyMat = new SkyMaterial('sky', scene)
@@ -226,11 +235,13 @@ export class Environment {
     // It used to keep the set sun's direction, pointing up out of the ground, so the ground got only sky light.
     const lightDir = elevation >= 0 ? dir : dir.negate()
     this.sun.direction = lightDir
-    this.shadowCenter.set(
-      Math.round(cameraPos.x / 4) * 4,
-      Math.round(cameraPos.y / 4) * 4,
-      Math.round(cameraPos.z / 4) * 4,
-    )
+    const cx = Math.round(cameraPos.x / 4) * 4
+    const cy = Math.round(cameraPos.y / 4) * 4
+    const cz = Math.round(cameraPos.z / 4) * 4
+    // A moved box needs its map at once: a stale one would shift every shadow by 4 m for a frame or two.
+    if (cx !== this.shadowCenter.x || cy !== this.shadowCenter.y || cz !== this.shadowCenter.z)
+      this.shadowMap?.resetRefreshCounter()
+    this.shadowCenter.set(cx, cy, cz)
     this.sun.position.copyFrom(this.shadowCenter).subtractInPlace(lightDir.scale(200))
 
     // Sky dome follows the sun; turbidity rises toward dusk for warm haze.
@@ -298,6 +309,8 @@ export class Environment {
 
 /** Half the side of the box around the player in which the sun casts shadows, metres. */
 const SHADOW_REACH = 60
+/** The shadow map is redrawn once every this many frames (and at once when the box moves). */
+const SHADOW_REFRESH_FRAMES = 3
 /** What casts a sun shadow: world geometry, trees and nodes, props and people, near the player. */
 const CASTER = /^(mapstatic|static|res|tree|prop|npc|player):/
 function castsShadow(mesh: AbstractMesh, center: Vector3): boolean {
