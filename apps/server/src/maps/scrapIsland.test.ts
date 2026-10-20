@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ITEMS,
-  NPC_SPAWNS,
+  NPC_ARCHETYPES,
   RESOURCE_NODES,
   WATER_LEVEL,
   decodeHeights,
@@ -23,7 +23,11 @@ describe('Scrap Island', () => {
     const items = new Set(ITEMS.map((i) => i.id))
     expect(map.nodes.filter((n) => !nodeKinds.has(n.node))).toEqual([])
     expect(map.props.filter((p) => !items.has(p.item))).toEqual([])
-    const ids = [...map.statics, ...map.nodes, ...map.props, ...map.lights].map((o) => o.id)
+    const archetypes = new Set(NPC_ARCHETYPES.map((a) => a.id))
+    expect(map.npcs.filter((n) => !archetypes.has(n.npc))).toEqual([])
+    const ids = [...map.statics, ...map.nodes, ...map.props, ...map.lights, ...map.npcs].map(
+      (o) => o.id,
+    )
     expect(new Set(ids).size).toBe(ids.length)
   })
 
@@ -101,12 +105,20 @@ describe('Scrap Island', () => {
     expect(inside).toEqual([])
   })
 
-  it("keeps the content's NPC homes on land and outside the walls, except the town's own", () => {
+  it('has people and animals of its own: the town inside the walls, the rest out on land, Rustjaw far from the gates', () => {
     const height = makeHeight(20261019)
-    for (const s of NPC_SPAWNS) {
-      expect(height(s.pos[0], s.pos[2])).toBeGreaterThan(WATER_LEVEL + 0.5)
-      const outside = Math.max(Math.abs(s.pos[0]), Math.abs(s.pos[2])) > ISLAND.wall
-      expect(outside).toBe(s.archetype !== 'city_warden' && s.archetype !== 'townsfolk')
+    const count = (a: string) => map.npcs.filter((n) => n.npc === a).length
+    expect(count('city_warden')).toBeGreaterThanOrEqual(4)
+    expect(count('townsfolk')).toBeGreaterThanOrEqual(4)
+    expect(count('dust_hare')).toBeGreaterThanOrEqual(6)
+    expect(count('rustjaw_thug')).toBeGreaterThanOrEqual(4)
+    for (const n of map.npcs) {
+      const [x, , z] = n.pos
+      expect(height(x, z)).toBeGreaterThan(WATER_LEVEL + 0.5)
+      const inside = Math.max(Math.abs(x), Math.abs(z)) < ISLAND.wall
+      expect(inside).toBe(n.npc === 'city_warden' || n.npc === 'townsfolk')
+      // A hostile thug's leash (35 m) never reaches a city gate.
+      if (n.npc === 'rustjaw_thug') expect(Math.hypot(x, z)).toBeGreaterThan(ISLAND.wall + 50)
     }
   })
 })

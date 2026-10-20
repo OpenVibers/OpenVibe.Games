@@ -21,7 +21,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh.js'
 import { blankHeights, type MapModelV2, type StaticObjectV2 } from '@openvibe/content'
-import { NODE_LOOKS, newId, type Placeable } from '../catalog.js'
+import { NODE_LOOKS, newId, npcLook, type Placeable } from '../catalog.js'
 import { meshForShape } from '../../render/sceneSetup.js'
 import type { EditorObjectKind } from '../document/editorDocument.js'
 
@@ -49,6 +49,7 @@ export function placeableShape(
 ): StaticObjectV2['shape'] {
   if (def.kind === 'static') return def.shape!
   if (def.kind === 'node') return NODE_LOOKS[def.node!]?.shape ?? { type: 'sphere', radius: 0.6 }
+  if (def.kind === 'npc') return npcLook(def.npc!).shape
   if (def.kind === 'model') {
     const b = models.find((m) => m.id === def.modelId)?.bounds ?? [1, 1, 1]
     return { type: 'box', size: [b[0]!, b[1]!, b[2]!] }
@@ -57,7 +58,7 @@ export function placeableShape(
 }
 
 /** Kinds that always stand upright, whatever they were dropped on. */
-const UPRIGHT = new Set(['node', 'spawn', 'prop'])
+const UPRIGHT = new Set(['node', 'spawn', 'prop', 'npc'])
 
 export class PlacementTool {
   private ghost: Mesh | null = null
@@ -99,7 +100,9 @@ export class PlacementTool {
         ? (def.color ?? '#8a8d90')
         : def.kind === 'node'
           ? (NODE_LOOKS[def.node!]?.color ?? '#888888')
-          : '#e8b54a'
+          : def.kind === 'npc'
+            ? npcLook(def.npc!).color
+            : '#e8b54a'
     this.ghost = meshForShape(this.ctx.scene, 'ghost', shape, color)
     this.ghost.visibility = 0.5
     this.ghost.isPickable = false
@@ -219,6 +222,12 @@ export function objectForPlacement(
       return {
         kind: 'prop',
         object: { id: newId('pr'), item: def.node!, pos: [pose.pos.x, 1, pose.pos.z], yaw: e.y },
+      }
+    case 'npc':
+      // Like a node: a ground position the NPC lives and wanders around.
+      return {
+        kind: 'npc',
+        object: { id: newId('npc'), npc: def.npc!, pos: [pose.pos.x, 0, pose.pos.z] },
       }
     case 'spawn':
       return {

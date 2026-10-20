@@ -27,6 +27,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **NPCs in the map, and 26 on Scrap Island.** The v2 map document has `npcs` (an archetype and a ground position),
+  and the editor's Entity tool places them: City warden, Townsfolk, Dust hare and Rustjaw thug. A map with NPCs
+  replaces the content's seven spawns, which were laid out for the procedural world and stood Rustjaw thugs just
+  outside Scrap City's wall. The server matches the NPCs to the map's spawns at boot and on every live save: a spawn
+  placed, moved or deleted in the editor shows up at once, and an NPC no spawn claims goes, saved row and all. Scrap
+  Island now has:
+  - a warden at each gate and one by the spawn square;
+  - six townsfolk on the avenues and the ring road;
+  - nine hares at the farm and in the fields;
+  - six Rustjaw thugs at the far end of the scrapyard, in the deep forest and on Rust Ridge, all beyond a leash's
+    reach of a gate.
+
+  Creator worlds still run no NPCs, and a creator map with NPC spawns says so.
 - **Something flies off a hit.** Wood chips off a tree or branches, grit off a rock, sparks off scrap, leaves off a
   bush. Before, a swing changed nothing on screen until the server moved a count. Nothing flies toward the camera, and a
   point-blank hit throws smaller pieces. Two thin-instanced meshes draw every particle.

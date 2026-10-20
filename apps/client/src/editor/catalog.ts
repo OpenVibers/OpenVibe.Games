@@ -16,12 +16,14 @@ export const newId = (prefix: string): string =>
 
 export interface Placeable {
   name: string
-  kind: 'static' | 'node' | 'spawn' | 'model' | 'prop' | 'patch'
+  kind: 'static' | 'node' | 'spawn' | 'model' | 'prop' | 'patch' | 'npc'
   shape?: StaticBody['shape']
   color?: string
   tex?: string
   decor?: string
   node?: string
+  /** NPC archetype id (kind 'npc'). */
+  npc?: string
   modelId?: string
 }
 
@@ -58,6 +60,10 @@ export const ENTITY_DEFS: Placeable[] = [
   { name: '🏪 Merchant stall (shop)', kind: 'prop', node: 'merchant_stall' },
   { name: '📦 Wooden crate (prop)', kind: 'prop', node: 'wooden_crate' },
   { name: '🛢 Metal barrel (prop)', kind: 'prop', node: 'metal_barrel' },
+  { name: '🛡 City warden (NPC)', kind: 'npc', npc: 'city_warden' },
+  { name: '🧑 Townsfolk (NPC)', kind: 'npc', npc: 'townsfolk' },
+  { name: '🐇 Dust hare (NPC)', kind: 'npc', npc: 'dust_hare' },
+  { name: '☠ Rustjaw thug (NPC, hostile)', kind: 'npc', npc: 'rustjaw_thug' },
 ]
 
 export const TEXTURES = [
@@ -73,6 +79,20 @@ export const TEXTURES = [
   'weathered_plank_siding',
   'wood_planks',
 ]
+
+/** Stand-ins for NPC spawns: a body-sized column in the faction's colour (hostile red). */
+export const NPC_LOOKS: Record<string, { color: string; shape: StaticBody['shape'] }> = {
+  city_warden: { color: '#3d6fb0', shape: { type: 'cylinder', radius: 0.4, height: 1.9 } },
+  townsfolk: { color: '#c9a25a', shape: { type: 'cylinder', radius: 0.35, height: 1.75 } },
+  dust_hare: { color: '#a08868', shape: { type: 'box', size: [0.35, 0.3, 0.6] } },
+  rustjaw_thug: { color: '#b0413e', shape: { type: 'cylinder', radius: 0.42, height: 1.85 } },
+}
+const NPC_FALLBACK = {
+  color: '#9a7ab0',
+  shape: { type: 'cylinder', radius: 0.4, height: 1.8 },
+} as const
+export const npcLook = (archetype: string): { color: string; shape: StaticBody['shape'] } =>
+  NPC_LOOKS[archetype] ?? NPC_FALLBACK
 
 /** Visual stand-ins for resource nodes (matched loosely to the game's). */
 export const NODE_LOOKS: Record<string, { color: string; shape: StaticBody['shape'] }> = {

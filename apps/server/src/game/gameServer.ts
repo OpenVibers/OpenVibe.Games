@@ -220,6 +220,11 @@ export class GameServer {
     this.systems.editor.broadcastMapReload()
   }
 
+  /** A live map save: NPCs follow the map's spawns (not in a sandbox, which runs none). */
+  reconcileMapNpcs(): void {
+    if (!this.ctx.config.sandbox) this.systems.npcs.reconcileSpawns()
+  }
+
   announce(text: string): void {
     this.ctx.net.broadcastAll({ t: 'announce', text })
   }

@@ -27,13 +27,14 @@ import {
   type ContentRegistry,
   type MapLightV2,
   type MapNodeV2,
+  type MapNpcV2,
   type MapPropV2,
   type MapZoneV2,
   type StaticObjectV2,
   type SurfaceMaterialData,
   type TerrainObjectV2,
 } from '@openvibe/content'
-import { NODE_LOOKS } from '../../catalog.js'
+import { NODE_LOOKS, npcLook } from '../../catalog.js'
 import { meshForShape } from '../../../render/sceneSetup.js'
 import { applyStaticStyle, instantiateMapLight } from '../../../render/mapStyle.js'
 import { LayeredSurfaceMaterial } from '../../../render/layeredSurface.js'
@@ -266,6 +267,53 @@ class NodeView implements EditorView {
     this.node = object as MapNodeV2
     // The look is driven by the node TYPE, so changing it needs a new mesh.
     if (keys.includes('node')) return false
+    this.applyPose()
+    return true
+  }
+
+  setVisible(on: boolean): void {
+    this.root.setEnabled(on)
+  }
+
+  dispose(): void {
+    this.root.dispose(false, true)
+  }
+}
+
+/** An NPC's home: a body-sized stand-in on the ground (the game's NPC wanders from here). */
+class NpcView implements EditorView {
+  readonly kind = 'npc' as const
+  readonly root: Mesh
+
+  constructor(
+    readonly id: string,
+    private npc: MapNpcV2,
+    private readonly ctx: ViewContext,
+  ) {
+    const look = npcLook(npc.npc)
+    this.root = meshForShape(ctx.scene, `npc:${id}`, look.shape, look.color)
+    this.root.metadata = { height: shapeHeight(look.shape) }
+    this.applyPose()
+  }
+
+  private applyPose(): void {
+    const n = this.npc
+    const h = (this.root.metadata as { height: number }).height
+    this.root.position.set(
+      n.pos[0],
+      n.pos[1] + this.ctx.sampleGround(n.pos[0], n.pos[2]) + h / 2,
+      n.pos[2],
+    )
+  }
+
+  meshes(): Mesh[] {
+    return [this.root]
+  }
+
+  update(object: EditorObject, keys: readonly string[]): boolean {
+    this.npc = object as MapNpcV2
+    // The look follows the archetype, so changing it needs a new mesh.
+    if (keys.includes('npc')) return false
     this.applyPose()
     return true
   }
@@ -674,6 +722,8 @@ export function createViewFactory(ctx: ViewContext) {
         return new NodeView(id, object as MapNodeV2, ctx)
       case 'prop':
         return new PropView(id, object as MapPropV2, ctx)
+      case 'npc':
+        return new NpcView(id, object as MapNpcV2, ctx)
       case 'light':
         return new LightView(id, object as MapLightV2, ctx)
       case 'zone':

@@ -332,6 +332,11 @@ export class GameWorld {
     return entity
   }
 
+  /** Delete a saved row at the next flush: an NPC dropped while abstract has no entity to despawn. */
+  forgetPersisted(id: EntityId): void {
+    this.deletedIds.add(id)
+  }
+
   despawn(id: EntityId): void {
     const entity = this.entities.remove(id)
     if (!entity) return
