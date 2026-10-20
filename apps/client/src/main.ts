@@ -21,6 +21,7 @@ import { Scene } from '@babylonjs/core/scene.js'
 import { WATER_LEVEL, terrainHeight } from '@openvibe/content'
 import { DEFAULT_MOVEMENT } from '@openvibe/gameplay'
 import { Sfx, footstepSurface, materialForVisual } from './audio/sfx.js'
+import { HitChips } from './render/hitChips.js'
 import { InteractionController } from './game/interactionController.js'
 import { LocalPlayer } from './game/localPlayer.js'
 import { InputTracker } from './input/inputTracker.js'
@@ -352,6 +353,7 @@ async function start(): Promise<void> {
 
   // Sounds. Browsers start audio only after a gesture: the first click or key.
   const sfx = new Sfx()
+  const chips = new HitChips(scene)
   const unlockAudio = (): void => sfx.unlock()
   window.addEventListener('pointerdown', unlockAudio)
   window.addEventListener('keydown', unlockAudio)
@@ -368,8 +370,12 @@ async function start(): Promise<void> {
           : target.def && content.item(target.def)?.health
             ? 'wood'
             : null
-    // The blow lands mid-swing, after the whoosh starts.
-    if (material) setTimeout(() => sfx.hit(material), 90)
+    // The blow lands mid-swing, after the whoosh starts: its sound, and what flies off.
+    if (material)
+      setTimeout(() => {
+        sfx.hit(material)
+        chips.burst(target.point, target.normal, material, player.eye)
+      }, 90)
   }
   let packCount = -1
   state.events.on('inventory', () => {
@@ -646,6 +652,7 @@ async function start(): Promise<void> {
     }
     wasGrounded = grounded
     sfx.update(elapsed, environment.daylight)
+    chips.update(elapsed)
 
     // Beams (modular: any weapon whose module declares firesBeam gets this
     // muzzle-anchored beam pipeline). Mine fires whenever the trigger is

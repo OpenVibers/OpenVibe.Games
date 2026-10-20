@@ -27,6 +27,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Something flies off a hit.** Wood chips off a tree or branches, grit off a rock, sparks off scrap, leaves off a
+  bush. Before, a swing changed nothing on screen until the server moved a count. Nothing flies toward the camera, and a
+  point-blank hit throws smaller pieces. Two thin-instanced meshes draw every particle.
 - **Sound.** Scraplandia had none. Every sound is synthesised in the browser, so there are no files to load:
   - footsteps on grass, stone and water;
   - a jump and a landing as hard as the fall;
