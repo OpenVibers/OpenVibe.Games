@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **NPCs cost 150 draw calls in town.** Each avatar is about 14 meshes, so eleven townsfolk and wardens in view drew
+  150 times a frame. Past 18 m an avatar, NPC or remote player, now draws as one merged copy of itself in its rest
+  pose and skips the animation work. It switches back to the full rig inside 16 m. In town, NPC draws went from 150
+  to 4.
 - **Shadows halved the frame rate in town.** The shadow pass drew every caster in Scrap City again each frame (about
   390 more draw calls, ~720 a frame), and a test browser dropped from ~50 to ~10 fps. The shadow map is now redrawn
   every third frame, and at once whenever the shadow box moves, so no shadow jumps. That gives ~490 draw calls and

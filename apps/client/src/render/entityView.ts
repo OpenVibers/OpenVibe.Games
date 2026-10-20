@@ -107,6 +107,7 @@ export class EntityView {
         this.content,
         Avatar.appearanceOrDefault(e.appearance),
         `player:${e.id}`,
+        true,
       )
       // Collision mirror so local prediction blocks on other players the
       // same way the server does (players collide with players).
@@ -139,7 +140,7 @@ export class EntityView {
       const radius = arch?.radius ?? 0.35
       const look = npcAppearance(arch?.id ?? '', e.id)
       if (look) {
-        avatar = new Avatar(this.scene, this.content, look, `npc:${e.id}`)
+        avatar = new Avatar(this.scene, this.content, look, `npc:${e.id}`, true)
         feetOffset = height / 2
       } else {
         mesh = buildCritter(this.scene, `npc:${e.id}`, arch?.color ?? '#888888', height / 2)

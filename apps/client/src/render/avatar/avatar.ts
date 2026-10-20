@@ -1,13 +1,17 @@
 import '@babylonjs/core/Rendering/outlineRenderer.js'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import type { Scene } from '@babylonjs/core/scene.js'
-import type { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
+import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
+import { VertexBuffer } from '@babylonjs/core/Buffers/buffer.js'
+import { Mesh } from '@babylonjs/core/Meshes/mesh.js'
+import type { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import type { ContentRegistry } from '@openvibe/content'
 import type { Appearance } from '@openvibe/protocol'
 import { defaultAppearance } from '@openvibe/protocol'
 import { AvatarAnimator } from './animator.js'
 import { buildAvatarRig, type AvatarRig } from './rig.js'
 import { createHeldItemNode, type HeldItemNode } from '../heldItem.js'
+import { materialFor } from '../sceneSetup.js'
 
 /**
  * A complete animated player character: parametric rig + procedural
@@ -35,6 +39,14 @@ export interface AvatarUpdate {
 
 const HURT_OVERLAY = new Color3(0.9, 0.12, 0.08)
 
+/**
+ * Past LOD_FAR metres from the camera an avatar draws as one merged copy of itself in its rest pose (one draw call,
+ * not ~14, and no animation work); it comes back to the full rig inside LOD_NEAR. Eleven townsfolk and wardens in
+ * view were 150 draw calls.
+ */
+const LOD_FAR = 18
+const LOD_NEAR = 16
+
 export class Avatar {
   private rig: AvatarRig
   private animator: AvatarAnimator
@@ -48,9 +60,61 @@ export class Avatar {
     private readonly content: ContentRegistry,
     private appearance: Appearance,
     private readonly name: string,
+    /** Remote players and NPCs: draw far avatars as one merged mesh (see LOD_FAR). */
+    private readonly withLod = false,
   ) {
     this.rig = buildAvatarRig(scene, appearance, name)
     this.animator = new AvatarAnimator(this.rig.joints)
+    if (withLod) this.lod = this.buildLod()
+  }
+
+  private lod: Mesh | null = null
+  private lodActive = false
+
+  /** The rig's meshes in their rest pose, each tinted its material's colour, merged under one white material. */
+  private buildLod(): Mesh | null {
+    const root = this.rig.joints.root
+    root.computeWorldMatrix(true)
+    const toRoot = root.getWorldMatrix().clone().invert()
+    const parts: Mesh[] = []
+    for (const part of root.getChildMeshes(false)) {
+      const material = part.material as StandardMaterial | null
+      if (!(part instanceof Mesh) || !part.getTotalVertices() || !material?.diffuseColor) continue
+      const copy = part.clone(`${this.name}:lodpart`, null, true)
+      copy.makeGeometryUnique()
+      copy.position.setAll(0)
+      copy.rotationQuaternion = null
+      copy.rotation.setAll(0)
+      copy.scaling.setAll(1)
+      copy.bakeTransformIntoVertices(part.computeWorldMatrix(true).multiply(toRoot))
+      const c = material.diffuseColor
+      const colors = new Float32Array(copy.getTotalVertices() * 4)
+      for (let i = 0; i < colors.length; i += 4) colors.set([c.r, c.g, c.b, 1], i)
+      copy.setVerticesData(VertexBuffer.ColorKind, colors)
+      parts.push(copy)
+    }
+    const merged = parts.length ? Mesh.MergeMeshes(parts, true, true) : null
+    if (!merged) return null
+    merged.name = `${this.name}:lod`
+    merged.material = materialFor(this.scene, '#ffffff')
+    merged.isPickable = false
+    merged.setEnabled(false)
+    return merged
+  }
+
+  /** Full rig near the camera, the merged copy far from it (with a little hysteresis). */
+  private useLod(x: number, y: number, z: number): boolean {
+    if (!this.lod) return false
+    const cam = this.scene.activeCamera
+    if (!cam) return this.lodActive
+    const d = Vector3.Distance(cam.globalPosition, new Vector3(x, y, z))
+    const far = this.lodActive ? d > LOD_NEAR : d > LOD_FAR
+    if (far !== this.lodActive) {
+      this.lodActive = far
+      this.rig.joints.root.setEnabled(!far)
+      this.lod.setEnabled(far)
+    }
+    return far
   }
 
   static appearanceOrDefault(a: Appearance | undefined): Appearance {
@@ -76,6 +140,9 @@ export class Avatar {
     this.animator = new AvatarAnimator(this.rig.joints)
     this.rig.setHeadVisible(this.headVisible)
     this.rig.setArmsVisible(this.armsVisible)
+    this.lod?.dispose()
+    this.lod = this.withLod ? this.buildLod() : null
+    this.lodActive = false
   }
 
   setHeadVisible(visible: boolean): void {
@@ -121,6 +188,11 @@ export class Avatar {
     const j = this.rig.joints
     j.root.position.set(u.x, u.y, u.z)
     j.root.rotation.y = u.yaw
+    if (this.useLod(u.x, u.y, u.z)) {
+      this.lod!.position.set(u.x, u.y, u.z)
+      this.lod!.rotation.y = u.yaw
+      return
+    }
 
     if (u.itemDef !== this.toolItemDef) {
       this.toolItemDef = u.itemDef
@@ -156,5 +228,6 @@ export class Avatar {
   dispose(): void {
     this.toolProp?.dispose()
     this.rig.dispose()
+    this.lod?.dispose()
   }
 }
