@@ -12,6 +12,8 @@ import {
 } from './mapFileV2.js'
 import { NPC_SPAWNS, npcSpawnsFor } from './defs/npcs.js'
 import { setMapOverride } from './terrain.js'
+import { SALVAGE_RUSH_PACK } from './packs/salvageRush.js'
+import type { WorldDef } from './schema/world.js'
 
 const SUB = 8
 
@@ -471,6 +473,19 @@ describe('map-authored NPCs', () => {
       setMapOverride(null)
     }
     expect(npcSpawnsFor()).toBe(NPC_SPAWNS)
+  })
+
+  it("a world with its own spawns (none, in Salvage Rush's arena) is not given the content's", () => {
+    const arena = SALVAGE_RUSH_PACK.map as WorldDef
+    expect(arena.npcSpawns).toEqual([])
+    expect(npcSpawnsFor(arena)).toEqual([])
+    // A map that places NPCs still wins.
+    setMapOverride({ terrains: [], npcs: [{ id: 'n', npc: 'dust_hare', pos: [1, 0, 1] }] })
+    try {
+      expect(npcSpawnsFor(arena)).toEqual([{ archetype: 'dust_hare', pos: [1, 0, 1] }])
+    } finally {
+      setMapOverride(null)
+    }
   })
 
   it('an NPC id may not repeat another object id', () => {

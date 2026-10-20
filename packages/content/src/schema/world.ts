@@ -155,6 +155,11 @@ export const WorldDefSchema = z.object({
   resourceNodes: z.array(ResourceNodeSpawnSchema),
   initialProps: z.array(PropSpawnSchema),
   zones: z.array(ZoneDefSchema),
+  /**
+   * The world's own NPCs, when it has an opinion: `[]` for none (a timed arena), else archetypes and ground
+   * positions. Absent, it gets the content's NPC_SPAWNS. A map's own NPCs win over either (npcSpawnsFor).
+   */
+  npcSpawns: z.array(z.object({ archetype: z.string(), pos: vec3 })).optional(),
 })
 
 export type WorldDef = z.infer<typeof WorldDefSchema>
