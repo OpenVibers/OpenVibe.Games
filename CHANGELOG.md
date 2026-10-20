@@ -70,6 +70,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Salvage Rush's arena looks like a scrapyard pit.** A plated wall runs round the edge with a lamp on each corner
+  (they light after dark). Scrap heaps sit against the wall and crates and drums in the far corners, all clear of the
+  eight scrap spots and the new spawn pad. It was a bare floor with four coloured boxes.
 - **A waypoint for the first steps.** An arrow and a distance at the top of the screen point toward the current
   step's target: "Oak Tree · 30 m". The target is the nearest node in sight that has something left (a starter pile,
   preferring whichever gives what you still lack; an oak; a stone deposit; a scrap pile), else a landmark. The haul step
