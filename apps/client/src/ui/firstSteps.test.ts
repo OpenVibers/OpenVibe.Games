@@ -44,6 +44,9 @@ describe('first steps', () => {
     expect(current()).toContain('Craft a Stone Axe')
     items = { stone_axe: 1 }
     fs.update()
+    expect(current()).toContain('Craft a Stone Pickaxe')
+    items = { stone_axe: 1, stone_pickaxe: 1 }
+    fs.update()
     expect(current()).toContain('Chop an oak')
     levels = { woodcutting: 2 }
     fs.update()
@@ -52,7 +55,7 @@ describe('first steps', () => {
     levels = {}
     fs.update()
     expect(current()).toContain('Mine at the quarry')
-    expect(root.querySelector('.first-steps-head')?.textContent).toContain('3/6')
+    expect(root.querySelector('.first-steps-head')?.textContent).toContain('4/7')
   })
 
   it('finishes with a haul and then hides', () => {
@@ -83,7 +86,7 @@ describe('first steps', () => {
 
   it('progress() unions what was done with what is done now', () => {
     const view = { count: () => 0, level: (s: string) => (s === 'mining' ? 2 : 1), hauled: false }
-    expect(progress(view, { done: ['gather'] })).toEqual(['gather', 'mine'])
+    expect(progress(view, { done: ['gather'] })).toEqual(['gather', 'pickaxe', 'mine'])
   })
 })
 
@@ -108,6 +111,22 @@ describe('the waypoint hooks', () => {
     expect(steps.birdAt).toEqual([56, -20])
     steps.onAnnounce('🚁 The recovery bird moves on.')
     expect(steps.birdAt).toBeNull()
+  })
+
+  it('makes the pickaxe a step of its own, right after the axe, from the same gate piles', () => {
+    const ids = FIRST_STEPS.map((s) => s.id)
+    expect(ids.indexOf('pickaxe')).toBe(ids.indexOf('axe') + 1)
+    const pickaxe = FIRST_STEPS.find((s) => s.id === 'pickaxe')!
+    expect(pickaxe.hint).toMatch(/2 Wood Planks and 3 Stones/)
+    expect(
+      pickaxe.done({
+        count: (i) => (i === 'stone_pickaxe' ? 1 : 0),
+        level: () => 1,
+        hauled: false,
+      }),
+    ).toBe(true)
+    expect(pickaxe.done({ count: () => 0, level: () => 1, hauled: false })).toBe(false)
+    expect(FIRST_STEPS[0]?.hint).toMatch(/five stones/)
   })
 
   it('gives the outdoor steps somewhere to point', () => {
