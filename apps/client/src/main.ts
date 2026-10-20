@@ -793,7 +793,9 @@ function promptFor(
   if (target.kind === 'npc') {
     const arch = content.npc(target.def ?? '')
     const stance = arch ? content.faction(arch.faction)?.playerStance : undefined
-    return `${arch?.name ?? 'stranger'}${stance === 'hostile' ? ' ⚠' : ''} — LMB attack`
+    // Town folk and wardens are friendly: their name, not an invitation to hit them (a swing still lands).
+    if (stance === 'friendly') return arch?.name ?? 'stranger'
+    return `${arch?.name ?? 'stranger'}${stance === 'hostile' ? ' ⚠ — LMB attack' : ' — LMB hunt'}`
   }
   if (target.kind === 'prop') {
     if (tool === 'rigging') {
