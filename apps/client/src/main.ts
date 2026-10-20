@@ -62,7 +62,7 @@ import { registerRiggingModule } from './weapons/riggingModule.js'
 import { ConstraintLineRenderer } from './render/constraintLines.js'
 import { PlacementGhost } from './game/placementGhost.js'
 import { WeaponSettings, weaponModuleFor } from './weapons/registry.js'
-import { FirstSteps } from './ui/firstSteps.js'
+import { FirstSteps, towardOf } from './ui/firstSteps.js'
 import { Waypoint, pickTarget, type NodeSighting } from './ui/waypoint.js'
 
 /**
@@ -241,6 +241,7 @@ async function start(): Promise<void> {
   })
   // Scraplandia's first-steps checklist (not in Salvage Rush or a creator world, whose worlds are something else).
   let updateWaypoint: (() => void) | null = null
+  let firstStepsRef: FirstSteps | null = null
   if (!worldId && content.world.id === 'scrap_island') {
     const firstSteps = new FirstSteps(uiRoot, () => ({
       count: (item) => state.countOf(item),
@@ -249,6 +250,7 @@ async function start(): Promise<void> {
     state.events.on('inventory', () => firstSteps.update())
     state.events.on('skills', () => firstSteps.update())
     state.events.on('announce', (text) => firstSteps.onAnnounce(String(text)))
+    firstStepsRef = firstSteps
     // The waypoint toward the current step's target (refreshed from the frame loop).
     const waypoint = new Waypoint(uiRoot)
     updateWaypoint = () => {
@@ -263,24 +265,32 @@ async function start(): Promise<void> {
           bird ? { label: 'Recovery bird', x: bird[0], z: bird[1] } : null,
         )
       }
-      if (!step.toward) return waypoint.update(from, player.viewYaw, null)
+      const toward = towardOf(step, firstSteps.view())
+      if (!toward) return waypoint.update(from, player.viewYaw, null)
       // Gathering: point at whichever pile gives what is still missing.
       const hasWood = state.countOf('wood_log') > 0 || state.countOf('wood_plank') > 0
       const hasStone = state.countOf('stone') > 0
       const prefer = step.id === 'gather' ? (hasStone ? ['branch_pile'] : hasWood ? ['loose_stones'] : []) : []
       const sightings: NodeSighting[] = []
+      // Props the step names (the campfire, the workbench, the trading post) count as sightings too.
+      const props = new Set(toward.props ?? [])
       for (const e of state.entities.values()) {
-        if (e.kind !== 'resource' || !e.def) continue
-        sightings.push({
-          def: e.def,
-          name: content.nodeType(e.def)?.name ?? e.def,
-          x: e.pos[0],
-          z: e.pos[2],
-          remaining: e.remaining ?? 1,
-        })
+        if (!e.def) continue
+        if (e.kind === 'resource') {
+          sightings.push({
+            def: e.def,
+            name: content.nodeType(e.def)?.name ?? e.def,
+            x: e.pos[0],
+            z: e.pos[2],
+            remaining: e.remaining ?? 1,
+          })
+        } else if (e.kind === 'prop' && props.has(e.def)) {
+          sightings.push({ def: e.def, name: content.item(e.def)?.name ?? e.def, x: e.pos[0], z: e.pos[2], remaining: 1 })
+        }
       }
       const zones = getMapOverride(content.world)?.zones ?? []
-      waypoint.update(from, player.viewYaw, pickTarget(from, { ...step.toward, prefer }, sightings, zones))
+      const wanted = { nodes: [...(toward.nodes ?? []), ...props], ...(toward.zone ? { zone: toward.zone } : {}), prefer }
+      waypoint.update(from, player.viewYaw, pickTarget(from, wanted, sightings, zones))
     }
   }
   const roundUi =
@@ -470,6 +480,8 @@ async function start(): Promise<void> {
   input.onWheel = (delta) => interact.onWheel(delta)
 
   state.events.on('actionResult', (r) => {
+    // A drink the server accepted (eating answers the same action, so only right after this client asked to drink).
+    if (r.action === 'consume' && r.ok && Date.now() - interact.lastDrinkAt < 3000) firstStepsRef?.onDrink()
     if (r.action === 'use' && r.ok && interact.lastTargetWasPlayer) {
       interact.lastTargetWasPlayer = false
       hud.flashHitmarker()

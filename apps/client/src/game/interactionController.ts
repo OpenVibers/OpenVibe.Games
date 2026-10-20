@@ -68,6 +68,8 @@ export class InteractionController {
   lastTargetWasPlayer = false
   /** Hook: player pressed E on a trading post (entity id passed along). */
   onShopOpen: ((targetId: string) => void) | null = null
+  /** When this client last asked to drink (ms), so the server's consume result can be told apart from eating. */
+  lastDrinkAt = 0
   /** Rigging tool: first selected endpoint (highlight + prompt read this). */
   riggingFirst: RiggingPick | null = null
   /** Ghost preview pose supplier (wired by main; null = no valid ghost). */
@@ -237,7 +239,10 @@ export class InteractionController {
         }
         const target = this.aim()
         if (!target) {
-          if (this.standingInWater()) this.connection.send({ t: 'drink' })
+          if (this.standingInWater()) {
+            this.lastDrinkAt = Date.now()
+            this.connection.send({ t: 'drink' })
+          }
           break
         }
         this.lastTargetWasPlayer = target.kind === 'player'
