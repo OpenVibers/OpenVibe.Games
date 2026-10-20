@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A shared /worlds link had no preview.** The creator worlds page carried no Open Graph or Twitter tags, so a
+  link posted in Discord or X showed a bare URL. It now has the same card as the home page, with its own title and
+  description.
 - **No step said to make a pickaxe.** Scraplandia's first steps went from the Stone Axe to "Mine at the quarry", whose
   hint only said a Stone Pickaxe breaks the deposits, and the gather step finished after a single stone. A new
   "Craft a Stone Pickaxe" step follows the axe (2 Wood Planks and 3 Stones), and the gather hint says a log and five
