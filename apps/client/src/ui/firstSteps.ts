@@ -3,7 +3,7 @@
  * used to arrive with an empty hotbar and nothing to say what Scraplandia is about (owner, 2026-10-19: "so boring").
  *
  * The steps follow Scrap Island (apps/server/src/maps/scrapIsland.ts) and the tool chain: branches and loose stones
- * need no tool → planks → a Stone Axe → an oak in the west forest → a Stone Pickaxe → the quarry → the scrapyard →
+ * need no tool → planks → a Stone Axe and a Stone Pickaxe → an oak in the west forest → the quarry → the scrapyard →
  * a haul at the recovery bird. Each step reads what the client already knows (inventory, skill levels, the
  * extraction announce); progress only moves forward and is kept in this browser. The panel can be closed for good.
  */
@@ -33,7 +33,9 @@ export const FIRST_STEPS: FirstStep[] = [
   {
     id: 'gather',
     title: 'Gather branches and stones',
-    hint: 'Piles just inside every city gate. Look at one and press E.',
+    // A pile holds five stones and a log makes four planks: exactly the axe (2 planks, 2 stones) and the pickaxe
+    // (2 planks, 3 stones). The hint said nothing of how many, and nothing said to make a pickaxe.
+    hint: 'Piles just inside every city gate. Look at one and press E: a log and five stones make your first two tools.',
     done: (v) =>
       (v.count('wood_log') > 0 || v.count('wood_plank') > 0 || v.count('stone_axe') > 0) &&
       (v.count('stone') > 0 || v.count('stone_axe') > 0),
@@ -46,6 +48,12 @@ export const FIRST_STEPS: FirstStep[] = [
     done: (v) => v.count('stone_axe') > 0 || v.level('woodcutting') >= 2,
   },
   {
+    id: 'pickaxe',
+    title: 'Craft a Stone Pickaxe',
+    hint: 'Tab → Crafting: 2 Wood Planks and 3 Stones. Short of stones? The gate piles refill every two minutes.',
+    done: (v) => v.count('stone_pickaxe') > 0 || v.level('mining') >= 2,
+  },
+  {
     id: 'chop',
     title: 'Chop an oak',
     hint: 'The forest is west of town. Hold the axe and swing (left click).',
@@ -55,7 +63,7 @@ export const FIRST_STEPS: FirstStep[] = [
   {
     id: 'mine',
     title: 'Mine at the quarry',
-    hint: 'South-west of town. A Stone Pickaxe breaks the stone deposits.',
+    hint: 'South-west of town. Hold the pickaxe and swing at the stone deposits.',
     done: (v) => v.level('mining') >= 2,
     toward: { nodes: ['stone_deposit'], zone: 'quarry' },
   },

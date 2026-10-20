@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **No step said to make a pickaxe.** Scraplandia's first steps went from the Stone Axe to "Mine at the quarry", whose
+  hint only said a Stone Pickaxe breaks the deposits, and the gather step finished after a single stone. A new
+  "Craft a Stone Pickaxe" step follows the axe (2 Wood Planks and 3 Stones), and the gather hint says a log and five
+  stones make the first two tools: one pile and one log are exactly both recipes.
 - **Townsfolk in the Salvage Rush arena.** The 90-second scrap round ran the content's seven NPC spawns, laid out for
   the procedural world: townsfolk and a warden wandered inside the arena and Rustjaw thugs stood just past its edge.
   A world definition can now name its own NPCs (`npcSpawns`; `[]` is none), and the arena has none. A map's own NPCs
