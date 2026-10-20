@@ -302,7 +302,10 @@ export class Environment {
     // Town lights: any light named 'lamp:*' fades up after dark.
     const lampGlow = Math.min(1, Math.max(0, 0.15 - elevation) * 6)
     for (const light of this.scene.lights) {
-      if (light.name.startsWith('lamp:')) light.intensity = lampGlow * 0.9
+      if (!light.name.startsWith('lamp:')) continue
+      light.intensity = lampGlow * 0.9
+      // Off by day, not just dark: a lamp at intensity 0 still costs every pixel it is included on a light loop.
+      if (light.isEnabled() !== lampGlow > 0) light.setEnabled(lampGlow > 0)
     }
   }
 }
@@ -314,7 +317,7 @@ const SHADOW_REFRESH_FRAMES = 3
 /** What casts a sun shadow: world geometry, trees and nodes, props and people, near the player. */
 const CASTER = /^(mapstatic|static|res|tree|prop|npc|player):/
 function castsShadow(mesh: AbstractMesh, center: Vector3): boolean {
-  if (!CASTER.test(mesh.name)) return false
+  if (!CASTER.test(mesh.name) || !mesh.isEnabled()) return false
   const sphere = mesh.getBoundingInfo().boundingSphere
   // Small things (pebbles, branches) add nothing a player notices; past the box's edge nothing lands inside it.
   if (sphere.radiusWorld < 0.5) return false

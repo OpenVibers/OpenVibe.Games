@@ -40,6 +40,7 @@ import {
   type QualitySettings,
 } from './quality.js'
 import { Water } from './water.js'
+import { batchMapStatics, unbatchMapStatics } from './staticBatches.js'
 import {
   applyPatchTexture,
   applyStaticStyle,
@@ -342,6 +343,7 @@ export function buildMapStaticVisuals(
     if (only && !only.has(s.id ?? '')) continue
     renderStaticBody(scene, water, s, `mapstatic:${s.id ?? ''}`)
   }
+  batchMapStatics(scene)
   fitLampLights(scene)
 }
 
@@ -350,8 +352,8 @@ export function buildMapStaticVisuals(
  * material has a handful of light slots: with every lamp on every mesh, the first few lamps took the slots
  * everywhere and the rest lit nothing.
  */
-/** Meshes bigger than this (the terrain) are never lit by a lamp. */
-const LAMP_MESH_MAX_RADIUS = 40
+/** Meshes bigger than this (the terrain, 210 m) are never lit by a lamp; a batch of statics (32 m cells) is smaller. */
+const LAMP_MESH_MAX_RADIUS = 60
 
 export function fitLampLights(scene: Scene): void {
   const world = [...scene.meshes].filter((m) => /^(static|mapstatic|patch):|^terrain/.test(m.name))
@@ -376,6 +378,8 @@ export function fitLampLights(scene: Scene): void {
  * when omitted), leaving base content alone.
  */
 export function rebuildMapStaticVisuals(scene: Scene, ids?: readonly string[]): void {
+  // Back to one mesh per static first; buildMapStaticVisuals merges them again.
+  unbatchMapStatics(scene)
   const wanted = ids ? new Set(ids.map((id) => `mapstatic:${id}`)) : null
   for (const m of [...scene.meshes]) {
     if (!m.name.startsWith('mapstatic:')) continue
@@ -405,7 +409,11 @@ function renderStaticBody(
   mesh.rotationQuaternion = s.rot
     ? Quaternion.FromEulerAngles(s.rot[0], s.rot[1], s.rot[2])
     : Quaternion.FromEulerAngles(0, s.yaw, 0)
-  if (water && nearWater(s.pos[0], s.pos[2])) water.addToRenderList(mesh)
+  if (water && nearWater(s.pos[0], s.pos[2])) {
+    water.addToRenderList(mesh)
+    // Reflected by the water, which holds this mesh: never merged into a batch (staticBatches.ts).
+    mesh.metadata = { ...(mesh.metadata as object | null), water: true }
+  }
   if (s.decor === 'building') decorateBuilding(scene, mesh, s)
   else if (s.decor === 'fountain' && water) buildFountain(scene, mesh, s, water)
   else if (s.decor === 'lamp') decorateLamp(scene, mesh, s, decorSeed ?? 0)

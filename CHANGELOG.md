@@ -8,6 +8,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Scrap City drew every static on its own.** It is several hundred static meshes (walls, wall plates, buildings,
+  roofs, doors, stalls), and each textured one had a material of its own because its texture's scale follows its size.
+  That came to 165 draw calls in view and 298 shadow casters, with 525 materials.
+  - Statics are now merged once built (`render/staticBatches.ts`). Each static's texture tiling is baked into its UVs
+    and its tint into its vertex colours, so everything with one texture shares one material, per 32 m square.
+  - Lamps, the fountain, statics the water reflects, painted surfaces, per-face styles and glb models stay as they
+    were.
+  - A live map save unbatches, rebuilds what changed and batches again.
+  - Lamp lights switch off by day, not just dim: at intensity 0 a lamp still cost every pixel it was included on. A
+    batch is under the lamps' size limit (60 m; the terrain is 210 m).
+  - In town: statics went from 165 draw calls to 44 and shadow casters from 439 to 178. The frame came to about 230
+    draw calls (720 this evening), and a test browser ran at 38–44 fps instead of 8–13.
 - **Far avatars floated, twisted.** The merged copy that stands in for an avatar past 18 m baked each part's world
   position, but a Babylon clone keeps its source's parent, so the joint chain applied a second time: far NPCs hung
   0.4 m up, out of shape. Each copy now drops its parent before baking, and a test checks that the copy stands on its
