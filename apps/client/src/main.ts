@@ -780,6 +780,13 @@ function promptFor(
     const nodeType = content.nodeType(target.def ?? '')
     if (!nodeType) return null
     const itemName = content.item(nodeType.item)?.name ?? nodeType.item
+    // An empty node used to keep saying "E — gather …" while E did nothing (the gate piles empty fast when several
+    // new scrappers arrive at once).
+    if ((state.entities.get(target.entityId)?.remaining ?? 1) <= 0) {
+      const back = Math.max(1, Math.round(nodeType.respawnSeconds / 60))
+      const gone = nodeType.visual === 'tree' ? 'felled, grows back' : 'picked clean, back'
+      return `${nodeType.name} — ${gone} within ${back} min${back === 1 ? '' : 's'}`
+    }
     if (nodeType.requiredTool && tool !== nodeType.requiredTool) {
       return `LMB — hit for ${itemName} (much faster with ${nodeType.requiredTool})`
     }

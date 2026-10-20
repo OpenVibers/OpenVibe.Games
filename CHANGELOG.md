@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An empty pile kept saying "E — gather".** When a node had nothing left (the gate piles empty fast when several new
+  scrappers arrive together), its prompt still offered to gather and E did nothing. It now says so, for example
+  "Loose Stones — picked clean, back within 2 mins" or "Oak Tree — felled, grows back within … mins". A production
+  play-test found it: a new guest walked to the north gate, and the branch pile had been emptied a minute earlier.
 - **"City Warden — LMB attack".** Looking at a friendly warden or townsperson now shows just their name, so the prompt
   no longer invites you to hit them; a swing still lands. Wildlife says "LMB hunt", and Rustjaw thugs keep "⚠ — LMB
   attack".
