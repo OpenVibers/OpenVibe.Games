@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest'
-import { FIRST_STEPS, FirstSteps, progress } from './firstSteps.js'
+import { FIRST_STEPS, FirstSteps, progress, towardOf, type StepView } from './firstSteps.js'
 
 class MemoryStorage {
   private map = new Map<string, string>()
@@ -55,13 +55,30 @@ describe('first steps', () => {
     levels = {}
     fs.update()
     expect(current()).toContain('Mine at the quarry')
-    expect(root.querySelector('.first-steps-head')?.textContent).toContain('4/7')
+    expect(root.querySelector('.first-steps-head')?.textContent).toContain(
+      `4/${FIRST_STEPS.length}`,
+    )
   })
 
-  it('finishes with a haul and then hides', () => {
+  it('then water, food, scrap, the workbench and the trading post, and finishes with a haul', () => {
     const fs = new FirstSteps(root, read, storage as unknown as Storage)
-    items = { stone_axe: 1, scrap_metal: 5 }
+    items = { stone_axe: 1, stone_pickaxe: 1 }
     levels = { woodcutting: 3, mining: 2 }
+    fs.update()
+    expect(current()).toContain('Drink at the shore')
+    expect(current()).toContain('shallow water and press E')
+    fs.onDrink()
+    expect(current()).toContain('Cook a Trail Stew')
+    items = { trail_stew: 1 }
+    fs.update()
+    expect(current()).toContain('Salvage the scrapyard')
+    items = { scrap_metal: 5 }
+    fs.update()
+    expect(current()).toContain('Hammer Sheet Metal')
+    items = { sheet_metal: 1 }
+    fs.update()
+    expect(current()).toContain("Sell at Goose's Trading Post")
+    items = { coin: 3 }
     fs.update()
     expect(current()).toContain('Extract a haul')
     fs.onAnnounce('🚁 Extracted! 0 stacks secured · 0 haul points.')
@@ -85,8 +102,29 @@ describe('first steps', () => {
   })
 
   it('progress() unions what was done with what is done now', () => {
-    const view = { count: () => 0, level: (s: string) => (s === 'mining' ? 2 : 1), hauled: false }
+    const view = {
+      count: () => 0,
+      level: (s: string) => (s === 'mining' ? 2 : 1),
+      hauled: false,
+      drank: false,
+    }
     expect(progress(view, { done: ['gather'] })).toEqual(['gather', 'pickaxe', 'mine'])
+  })
+
+  it('keeps a scrapper who already made a haul past the steps added since', () => {
+    const view = { count: () => 0, level: () => 1, hauled: false, drank: false }
+    const before = ['gather', 'axe', 'pickaxe', 'chop', 'mine', 'scrap', 'haul']
+    expect(progress(view, { done: before })).toEqual(FIRST_STEPS.map((s) => s.id))
+    storage.setItem('scraplandia:first-steps', JSON.stringify({ done: before, hauled: true }))
+    new FirstSteps(root, read, storage as unknown as Storage).update()
+    expect((root.querySelector('.first-steps') as HTMLElement).hidden).toBe(true)
+  })
+
+  it('remembers a drink across a reload', () => {
+    const fs = new FirstSteps(root, read, storage as unknown as Storage)
+    fs.onDrink()
+    root.innerHTML = ''
+    expect(new FirstSteps(root, read, storage as unknown as Storage).view().drank).toBe(true)
   })
 })
 
@@ -123,17 +161,47 @@ describe('the waypoint hooks', () => {
         count: (i) => (i === 'stone_pickaxe' ? 1 : 0),
         level: () => 1,
         hauled: false,
+        drank: false,
       }),
     ).toBe(true)
-    expect(pickaxe.done({ count: () => 0, level: () => 1, hauled: false })).toBe(false)
+    expect(pickaxe.done({ count: () => 0, level: () => 1, hauled: false, drank: false })).toBe(
+      false,
+    )
     expect(FIRST_STEPS[0]?.hint).toMatch(/five stones/)
   })
 
   it('gives the outdoor steps somewhere to point', () => {
-    const toward = Object.fromEntries(FIRST_STEPS.map((s) => [s.id, s.toward]))
+    const view: StepView = { count: () => 0, level: () => 1, hauled: false, drank: false }
+    const toward = Object.fromEntries(FIRST_STEPS.map((s) => [s.id, towardOf(s, view)]))
     expect(toward.gather?.nodes).toEqual(['branch_pile', 'loose_stones'])
     expect(toward.chop).toEqual({ nodes: ['oak_tree'], zone: 'forest' })
     expect(toward.mine?.zone).toBe('quarry')
     expect(toward.scrap?.zone).toBe('scrapyard')
+    // The town's stations are props: the workbench, the trading post, and the campfire once there are berries.
+    expect(toward.stew).toEqual({ nodes: ['berry_bush'] })
+    const stew = FIRST_STEPS.find((s) => s.id === 'stew')!
+    expect(towardOf(stew, { ...view, count: (i) => (i === 'berries' ? 3 : 0) })).toEqual({
+      props: ['campfire'],
+    })
+    expect(toward.sheet).toEqual({ props: ['workbench'] })
+    expect(toward.trade).toEqual({ props: ['merchant_stall'] })
+    expect(toward.drink).toBeUndefined()
+  })
+
+  it('puts water and food before the scrapyard, and the workbench and trading post before the haul', () => {
+    const ids = FIRST_STEPS.map((s) => s.id)
+    expect(ids).toEqual([
+      'gather',
+      'axe',
+      'pickaxe',
+      'chop',
+      'mine',
+      'drink',
+      'stew',
+      'scrap',
+      'sheet',
+      'trade',
+      'haul',
+    ])
   })
 })

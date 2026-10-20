@@ -3,9 +3,11 @@
  * used to arrive with an empty hotbar and nothing to say what Scraplandia is about (owner, 2026-10-19: "so boring").
  *
  * The steps follow Scrap Island (apps/server/src/maps/scrapIsland.ts) and the tool chain: branches and loose stones
- * need no tool → planks → a Stone Axe and a Stone Pickaxe → an oak in the west forest → the quarry → the scrapyard →
- * a haul at the recovery bird. Each step reads what the client already knows (inventory, skill levels, the
- * extraction announce); progress only moves forward and is kept in this browser. The panel can be closed for good.
+ * need no tool → planks → a Stone Axe and a Stone Pickaxe → an oak in the west forest → the quarry → water and food
+ * (thirst empties in 30 minutes and hunger in 40, and nothing said how to drink or eat) → the scrapyard → the town's
+ * workbench and Goose's Trading Post (both stood in town unmentioned) → a haul at the recovery bird. Each step reads
+ * what the client already knows (inventory, skill levels, a drink the server confirmed, the extraction announce);
+ * progress only moves forward and is kept in this browser. The panel can be closed for good.
  */
 
 export interface StepView {
@@ -15,6 +17,15 @@ export interface StepView {
   level: (skill: string) => number
   /** Set once an extraction secured something. */
   hauled: boolean
+  /** Set once the server confirmed a drink of water. */
+  drank: boolean
+}
+
+/** What the waypoint points at: nodes of these types with something left, props of these kinds, else a zone. */
+export interface Toward {
+  nodes?: string[]
+  props?: string[]
+  zone?: string
 }
 
 export interface FirstStep {
@@ -23,10 +34,11 @@ export interface FirstStep {
   hint: string
   done: (v: StepView) => boolean
   /**
-   * Where the waypoint points (ui/waypoint.ts): the nearest node of these types that has something left, else the
-   * map zone with this id (a landmark). `items` narrows the nodes to the ones yielding what the player still lacks.
+   * Where the waypoint points (ui/waypoint.ts): the nearest node of these types that has something left (or prop of
+   * these kinds: a campfire, the workbench, the trading post), else the map zone with this id (a landmark). A
+   * function picks by what the player holds, e.g. berry bushes until there are enough berries, then the campfire.
    */
-  toward?: { nodes?: string[]; zone?: string }
+  toward?: Toward | ((v: StepView) => Toward)
 }
 
 export const FIRST_STEPS: FirstStep[] = [
@@ -68,11 +80,38 @@ export const FIRST_STEPS: FirstStep[] = [
     toward: { nodes: ['stone_deposit'], zone: 'quarry' },
   },
   {
+    id: 'drink',
+    title: 'Drink at the shore',
+    hint: 'Your H2O bar runs dry in about half an hour. Wade into shallow water and press E with nothing in front of you.',
+    done: (v) => v.drank,
+  },
+  {
+    id: 'stew',
+    title: 'Cook a Trail Stew',
+    hint: 'Food lasts about 40 minutes. Pick 3 berries from the bushes (E), then at the campfire in town: Tab → Crafting, 3 berries and a log.',
+    done: (v) => v.count('trail_stew') > 0,
+    toward: (v) => (v.count('berries') >= 3 ? { props: ['campfire'] } : { nodes: ['berry_bush'] }),
+  },
+  {
     id: 'scrap',
     title: 'Salvage the scrapyard',
     hint: 'East of town, past the gate. Rustjaw thugs hang around out there.',
     done: (v) => v.count('scrap_metal') >= 4 || v.level('scavenging') >= 2,
     toward: { nodes: ['scrap_pile'], zone: 'scrapyard' },
+  },
+  {
+    id: 'sheet',
+    title: 'Hammer Sheet Metal',
+    hint: 'At the workbench in town, Tab → Crafting: 3 scrap make a sheet, the start of metal walls, water tanks and a generator.',
+    done: (v) => v.count('sheet_metal') > 0,
+    toward: { props: ['workbench'] },
+  },
+  {
+    id: 'trade',
+    title: "Sell at Goose's Trading Post",
+    hint: "The goose's stall in town buys stone, logs, planks and scrap for bottle caps, and sells seeds, rope, stew and bandages. Look at it and press E.",
+    done: (v) => v.count('coin') > 0,
+    toward: { props: ['merchant_stall'] },
   },
   {
     id: 'haul',
@@ -88,6 +127,7 @@ interface Saved {
   done: string[]
   closed?: boolean
   hauled?: boolean
+  drank?: boolean
 }
 
 function load(storage: Storage | null): Saved {
@@ -103,9 +143,16 @@ function load(storage: Storage | null): Saved {
 
 /** Steps done so far, never fewer than before (progress only moves forward). */
 export function progress(view: StepView, saved: Saved): string[] {
+  // A scrapper who already made a haul is past the whole list, the steps added since included.
+  if (saved.done.includes('haul')) return FIRST_STEPS.map((s) => s.id)
   const done = new Set(saved.done)
   for (const step of FIRST_STEPS) if (step.done(view)) done.add(step.id)
   return FIRST_STEPS.map((s) => s.id).filter((id) => done.has(id))
+}
+
+/** Where a step's waypoint points for what the player holds now (no target: undefined). */
+export function towardOf(step: FirstStep, view: StepView): Toward | undefined {
+  return typeof step.toward === 'function' ? step.toward(view) : step.toward
 }
 
 export class FirstSteps {
@@ -114,7 +161,7 @@ export class FirstSteps {
 
   constructor(
     root: HTMLElement,
-    private readonly read: () => Omit<StepView, 'hauled'>,
+    private readonly read: () => Omit<StepView, 'hauled' | 'drank'>,
     private readonly storage: Storage | null = safeStorage(),
   ) {
     this.saved = load(storage)
@@ -134,13 +181,25 @@ export class FirstSteps {
 
   /** Re-check the steps (inventory or skills changed). */
   update(): void {
-    const view = { ...this.read(), hauled: !!this.saved.hauled }
+    const view = this.view()
     const done = progress(view, this.saved)
     if (done.length !== this.saved.done.length) {
       this.saved.done = done
       this.save()
     }
     this.render()
+  }
+
+  /** What the steps read: the client's state and the flags this browser keeps. */
+  view(): StepView {
+    return { ...this.read(), hauled: !!this.saved.hauled, drank: !!this.saved.drank }
+  }
+
+  /** The server confirmed a drink of water. */
+  onDrink(): void {
+    if (this.saved.drank) return
+    this.saved.drank = true
+    this.update()
   }
 
   /** The step being worked on, or null when all are done or the panel was closed. */
