@@ -27,6 +27,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **NPCs look like people.** Wardens, townsfolk and Rustjaw thugs wear the players' own low-poly avatar, so they
+  walk, turn and flinch like players. Each is dressed by its archetype (wardens in denim or slate, Rustjaw in rust
+  with beards and buzz cuts, townsfolk in everyday colours) and varied by its id. Dust hares are small faceted hares.
+  Every NPC was a tinted box with a box head.
 - **NPCs in the map, and 26 on Scrap Island.** The v2 map document has `npcs` (an archetype and a ground position),
   and the editor's Entity tool places them: City warden, Townsfolk, Dust hare and Rustjaw thug. A map with NPCs
   replaces the content's seven spawns, which were laid out for the procedural world and stood Rustjaw thugs just
