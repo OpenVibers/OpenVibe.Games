@@ -10,6 +10,8 @@ import {
   type MapFileV2,
   type ParsedMap,
 } from './mapFileV2.js'
+import { NPC_SPAWNS, npcSpawnsFor } from './defs/npcs.js'
+import { setMapOverride } from './terrain.js'
 
 const SUB = 8
 
@@ -442,5 +444,41 @@ describe('map-authored zones', () => {
     const again = parseMapFile(JSON.parse(canonicalizeMapFile(r.map)))
     expect(again.ok).toBe(true)
     if (again.ok) expect(again.map.zones[0]).toEqual(r.map.zones[0])
+  })
+})
+
+describe('map-authored NPCs', () => {
+  it('an older map with no npcs reads as none, and a new one starts with none', () => {
+    const raw = JSON.parse(JSON.stringify(emptyMapV2())) as Record<string, unknown>
+    delete raw.npcs
+    const parsed = parseMapFile(raw)
+    expect(parsed.ok && parsed.map.npcs).toEqual([])
+    expect(emptyMapV2().npcs).toEqual([])
+  })
+
+  it('compiles NPC spawns into the override, and npcSpawnsFor prefers them to the content', () => {
+    const map: MapFileV2 = {
+      ...emptyMapV2(),
+      npcs: [{ id: 'npc-1', npc: 'dust_hare', pos: [12, 0, -4] }],
+    }
+    expect(validateMapFile(map)).toEqual([])
+    const override = compileMapFileV2(map)
+    expect(override.npcs).toEqual([{ id: 'npc-1', npc: 'dust_hare', pos: [12, 0, -4] }])
+    setMapOverride(override)
+    try {
+      expect(npcSpawnsFor()).toEqual([{ archetype: 'dust_hare', pos: [12, 0, -4] }])
+    } finally {
+      setMapOverride(null)
+    }
+    expect(npcSpawnsFor()).toBe(NPC_SPAWNS)
+  })
+
+  it('an NPC id may not repeat another object id', () => {
+    const map: MapFileV2 = {
+      ...emptyMapV2(),
+      nodes: [{ id: 'x', node: 'oak_tree', pos: [0, 0, 0] }],
+      npcs: [{ id: 'x', npc: 'townsfolk', pos: [1, 0, 1] }],
+    }
+    expect(validateMapFile(map).some((i) => i.includes('"x"'))).toBe(true)
   })
 })

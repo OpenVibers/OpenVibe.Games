@@ -943,6 +943,57 @@ export function generateScrapIsland(seed = 20261019): MapFileV2 {
     prop(pick(['wooden_crate', 'supply_crate', 'storage_box']), cx, cz, yaw)
   }
 
+  // Who lives here. Wardens keep the gates and the square by the spawn; townsfolk walk the avenues and the ring road
+  // (lots and the plaza's stalls stay clear); hares graze the farm and the fields; Rustjaw thugs hold the far end of the
+  // scrapyard, the deep forest and Rust Ridge, all beyond a leash's reach of a gate.
+  const npcs: MapFileV2['npcs'] = []
+  const npc = (id: string, archetype: string, x: number, z: number): void => {
+    npcs.push({ id, npc: archetype, pos: [x, 0, z] })
+  }
+  npc('warden-north', 'city_warden', 2.5, 32)
+  npc('warden-south', 'city_warden', -2.5, -32)
+  npc('warden-east', 'city_warden', 32, -2.5)
+  npc('warden-west', 'city_warden', -32, 2.5)
+  npc('warden-square', 'city_warden', 7.5, -19)
+  for (const [i, [x, z]] of (
+    [
+      [2.5, 18],
+      [-2.5, -19],
+      [18.5, -2.5],
+      [-18.5, 2.5],
+      [26.5, 12],
+      [-26.5, -14],
+    ] as const
+  ).entries())
+    npc(`townsfolk-${i + 1}`, 'townsfolk', x, z)
+  const [fx, fz] = ISLAND.farm.center
+  for (const [i, [x, z]] of (
+    [
+      [fx - 8, fz + 8],
+      [fx + 8, fz - 8],
+      [fx + 6, fz + 10],
+      [fx - 6, fz - 10],
+      [60, 50],
+      [70, 40],
+      [-30, 80],
+      [30, 85],
+      [-50, -30],
+    ] as const
+  ).entries())
+    npc(`hare-${i + 1}`, 'dust_hare', x, z)
+  const [rx, rz] = ISLAND.ridge.center
+  for (const [i, [x, z]] of (
+    [
+      [ISLAND.scrapyard.max[0] - 8, 14],
+      [ISLAND.scrapyard.max[0] - 6, -16],
+      [-140, 34],
+      [-128, -6],
+      [rx - 12, rz + 6],
+      [rx + 16, rz - 4],
+    ] as const
+  ).entries())
+    npc(`rustjaw-${i + 1}`, 'rustjaw_thug', x, z)
+
   const terrain: MapFileV2['terrains'][number] = {
     id: 'island',
     name: 'Scrap Island',
@@ -970,6 +1021,7 @@ export function generateScrapIsland(seed = 20261019): MapFileV2 {
     statics,
     nodes,
     props,
+    npcs,
     lights,
     zones: [
       {

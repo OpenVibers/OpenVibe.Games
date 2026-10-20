@@ -159,6 +159,11 @@ export const MapFileV2Schema = z.object({
     )
     .max(20_000)
     .default([]),
+  /** NPC spawn points: an archetype id (`npc`) and the ground position it lives around. */
+  npcs: z
+    .array(z.object({ id: documentId, npc: z.string(), pos: finiteVec3 }))
+    .max(2000)
+    .default([]),
   lights: z.array(MapLightSchemaV2).max(256).default([]),
   /** Map-authored zones; they augment the base world's content zones. */
   zones: z.array(MapZoneSchemaV2).max(512).default([]),
@@ -188,6 +193,7 @@ export type MapLightV2 = z.infer<typeof MapLightSchemaV2>
 export type MapZoneV2 = z.infer<typeof MapZoneSchemaV2>
 export type MapNodeV2 = MapFileV2['nodes'][number]
 export type MapPropV2 = MapFileV2['props'][number]
+export type MapNpcV2 = MapFileV2['npcs'][number]
 export type MapModelV2 = MapFileV2['models'][number]
 
 /** The synthetic document id for the spawn point (stored top-level on the wire). */
@@ -201,6 +207,7 @@ export function emptyMapV2(): MapFileV2 {
     statics: [],
     nodes: [],
     props: [],
+    npcs: [],
     lights: [],
     zones: [],
     models: [],
@@ -216,6 +223,7 @@ const ID_KINDS = [
   ['props', 'pr'],
   ['lights', 'light'],
   ['zones', 'zone'],
+  ['npcs', 'npc'],
 ] as const
 
 /**
@@ -344,6 +352,7 @@ export function validateMapFile(map: MapFileV2): string[] {
   }
   for (const n of map.nodes) claim(n.id, 'node')
   for (const p of map.props) claim(p.id, 'prop')
+  for (const n of map.npcs) claim(n.id, 'npc')
   for (const l of map.lights) claim(l.id, 'light')
   for (const z0 of map.zones) claim(z0.id, 'zone')
   if (seen.has(SPAWN_OBJECT_ID)) issues.push(`"${SPAWN_OBJECT_ID}" is reserved for the spawn point`)
@@ -409,6 +418,7 @@ export function compileMapFileV2(map: MapFileV2): MapOverride {
       ...(t.surface?.base.uv ? { uv: t.surface.base.uv as FaceStyle } : {}),
     })),
     nodes: map.nodes.map((n) => ({ id: n.id, node: n.node, pos: n.pos })),
+    npcs: map.npcs.map((n) => ({ id: n.id, npc: n.npc, pos: n.pos })),
     props: map.props.map((p) => ({
       id: p.id,
       item: p.item,

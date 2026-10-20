@@ -71,6 +71,7 @@ export function creatorMapIssues(map: MapFileV2, bytes: number): string[] {
   limit('props', map.props.length)
   limit('lights', map.lights.length)
   limit('zones', map.zones.length)
+  if (map.npcs.length > 0) issues.push('npcs: creator worlds have no NPCs yet')
   if (map.models.length > 0)
     issues.push('models: uploaded models are not available in creator worlds yet')
   if (map.textures.length > 0)

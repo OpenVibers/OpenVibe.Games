@@ -1,4 +1,6 @@
 import type { FactionDef, NpcArchetype } from '../schema/npc.js'
+import type { WorldDef } from '../schema/world.js'
+import { getMapOverride } from '../terrain.js'
 
 /**
  * NPC content: factions, archetypes, and world spawn points. Behavior is
@@ -108,8 +110,25 @@ export const NPC_ARCHETYPES: NpcArchetype[] = [
   },
 ]
 
+export interface NpcSpawn {
+  archetype: string
+  pos: [number, number, number]
+}
+
+/**
+ * Where a world's NPCs live: the map's own NPC spawns when it places any (the
+ * editor owns them), else NPC_SPAWNS. Those were laid out for the procedural
+ * world, so on a map of its own they stood in odd places — Rustjaw thugs just
+ * outside Scrap City's wall, seven NPCs on a whole island.
+ */
+export function npcSpawnsFor(world?: WorldDef): NpcSpawn[] {
+  const mapped = getMapOverride(world)?.npcs ?? []
+  if (mapped.length) return mapped.map((n) => ({ archetype: n.npc, pos: n.pos }))
+  return NPC_SPAWNS
+}
+
 /** World NPC spawn points (positions are terrain-relative, like props). */
-export const NPC_SPAWNS: { archetype: string; pos: [number, number, number] }[] = [
+export const NPC_SPAWNS: NpcSpawn[] = [
   // Rustjaw ambushers haunt the scrapyard and the deep forest.
   { archetype: 'rustjaw_thug', pos: [43, 0, -40] },
   { archetype: 'rustjaw_thug', pos: [40, 0, 48] },

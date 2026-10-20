@@ -4,7 +4,7 @@
  * disconnect save lands after an earlier checkpoint of the same character; shutdown drains.
  */
 import { describe, expect, it } from 'vitest'
-import { createContent } from '@openvibe/content'
+import { NPC_SPAWNS, createContent, setMapOverride } from '@openvibe/content'
 import { openTestStore } from '@openvibe/persistence/testing'
 import type {
   ConstraintDto,
@@ -414,6 +414,57 @@ describe('write-behind flusher', () => {
     // restoreDirty puts a failed flush's ids back.
     npcs.restoreDirty(changed.map((d) => d.id))
     expect(npcs.takeDirty(1000).map((d) => d.id)).toEqual([victim])
+  })
+
+  it("(i) NPCs follow the map's own spawns: the content's go, saved rows and all, and a restart keeps the map's", async () => {
+    const store = await openTestStore()
+    const content = createContent()
+    const forgotten: string[] = []
+    const world = {
+      content,
+      forgetPersisted: (id: string) => forgotten.push(id),
+    } as unknown as GameWorld
+    const hooks = { onAttackPlayer: () => {}, soundsThisTick: () => [], hostilesNear: () => [] }
+    const first = new NpcManager(world, new RegionTracker(32), hooks, log)
+    await first.seedOrRestore(store)
+    const contentRows = first.takeDirty(1000)
+    expect(contentRows.length).toBe(NPC_SPAWNS.length)
+    await store.worldEntities.upsertMany(contentRows)
+
+    setMapOverride({
+      terrains: [],
+      npcs: [
+        { id: 'w', npc: 'city_warden', pos: [3, 0, -13] },
+        { id: 'h', npc: 'dust_hare', pos: [60, 0, 50] },
+        { id: 'x', npc: 'no_such_npc', pos: [0, 0, 0] },
+      ],
+    })
+    try {
+      first.reconcileSpawns()
+      expect(forgotten.sort()).toEqual(contentRows.map((r) => r.id).sort())
+      const mapRows = first.takeDirty(1000)
+      expect(mapRows.map((r) => [r.defId, r.pos[0], r.pos[2]])).toEqual([
+        ['city_warden', 3, -13],
+        ['dust_hare', 60, 50],
+      ])
+      expect(first.counts()).toEqual([0, 2])
+      // Reconciling again changes nothing.
+      first.reconcileSpawns()
+      expect(first.takeDirty(1000)).toEqual([])
+      await store.worldEntities.deleteMany(forgotten)
+      await store.worldEntities.upsertMany(mapRows)
+
+      const restarted = new NpcManager(world, new RegionTracker(32), hooks, log)
+      await restarted.seedOrRestore(store)
+      expect(
+        restarted
+          .takeDirty(1000)
+          .map((r) => r.id)
+          .sort(),
+      ).toEqual(mapRows.map((r) => r.id).sort())
+    } finally {
+      setMapOverride(null)
+    }
   })
 })
 

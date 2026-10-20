@@ -841,6 +841,7 @@ async function main(): Promise<void> {
           room.world.reconcileMapZones()
           room.world.reconcileMapNodes()
           room.world.reconcileMapProps()
+          room.game.reconcileMapNpcs()
           room.game.broadcastMapReload()
         }
         editors.broadcastSaved(revision)

@@ -7,7 +7,7 @@ import {
   type NpcState,
   type PerceptionCandidate,
 } from '@openvibe/gameplay'
-import { NPC_SPAWNS, terrainHeight } from '@openvibe/content'
+import { npcSpawnsFor, terrainHeight } from '@openvibe/content'
 import { CollisionLayer, type BodyId } from '@openvibe/physics'
 import type { PersistenceStore, WorldEntityDto } from '@openvibe/persistence'
 import {
@@ -63,7 +63,7 @@ export class NpcManager {
     private readonly log: Logger,
   ) {}
 
-  /** Boot: restore persisted NPCs, then seed content spawns not yet known. */
+  /** Boot: restore persisted NPCs, then match them to the world's spawns. */
   async seedOrRestore(store: PersistenceStore): Promise<void> {
     const rows = (await store.worldEntities.loadAll()).filter((r) => r.kind === 'npc')
     for (const row of rows) {
@@ -86,16 +86,44 @@ export class NpcManager {
         respawnAt: typeof s.respawnAt === 'number' ? s.respawnAt : 0,
       })
     }
-    // Content spawns missing from the save (fresh world or new content).
-    for (const [index, spawn] of NPC_SPAWNS.entries()) {
-      const arch = this.world.content.npc(spawn.archetype)
-      if (!arch) continue
-      const known = [...this.states.values()].some(
+    this.reconcileSpawns()
+    this.log.info('npcs ready', { count: this.states.size })
+  }
+
+  /**
+   * Make the NPCs match the world's spawns (npcSpawnsFor: the map's own, or
+   * the content's): an NPC whose home no spawn claims goes, saved row and all,
+   * and a spawn with nobody home gets its NPC. Boot runs it, and so does a live
+   * map save, so an NPC placed, moved or deleted in the editor shows up at once.
+   * An NPC is its spawn's while it has the archetype and a home within 2 m.
+   */
+  reconcileSpawns(): void {
+    const spawns = npcSpawnsFor(this.world.content.world).filter((s) =>
+      this.world.content.npc(s.archetype),
+    )
+    const claimed = new Set<string>()
+    const homeOf = (spawn: (typeof spawns)[number]): NpcState | undefined =>
+      [...this.states.values()].find(
         (s) =>
+          !claimed.has(s.id) &&
           s.archetype === spawn.archetype &&
           Math.hypot(s.homeX - spawn.pos[0], s.homeZ - spawn.pos[2]) < 2,
       )
-      if (known) continue
+    const missing: [number, (typeof spawns)[number]][] = []
+    for (const [index, spawn] of spawns.entries()) {
+      const npc = homeOf(spawn)
+      if (npc) claimed.add(npc.id)
+      else missing.push([index, spawn])
+    }
+    for (const npc of [...this.states.values()]) {
+      if (claimed.has(npc.id)) continue
+      if (this.bodies.has(npc.id)) this.dematerialize(npc)
+      this.states.delete(npc.id)
+      this.dirtyIds.delete(npc.id)
+      this.world.forgetPersisted(asEntityId(npc.id))
+    }
+    for (const [index, spawn] of missing) {
+      const arch = this.world.content.npc(spawn.archetype)!
       const id = newEntityId()
       this.states.set(id, {
         id,
@@ -113,7 +141,6 @@ export class NpcManager {
       })
       this.dirtyIds.add(id)
     }
-    this.log.info('npcs ready', { count: this.states.size })
   }
 
   /** Counts for metrics: [full-sim, abstract]. */

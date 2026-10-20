@@ -121,6 +121,13 @@ export interface MapPropSpawn {
   yaw?: number
 }
 
+/** An editor-placed NPC: where an archetype (`npc`) lives and wanders from. */
+export interface MapNpcSpawn {
+  id: string
+  npc: string
+  pos: [number, number, number]
+}
+
 export interface TerrainPatchData {
   id: string
   origin: [number, number, number]
@@ -168,6 +175,11 @@ export interface MapOverride {
   nodes?: MapNodeSpawn[]
   /** Editor-placed initial props merged into fresh-world seeding. */
   props?: MapPropSpawn[]
+  /**
+   * Editor-placed NPCs. A map with any replaces the content's NPC_SPAWNS,
+   * which were laid out for the procedural world (see npcSpawnsFor).
+   */
+  npcs?: MapNpcSpawn[]
   /** Every terrain object in the map. May be empty. */
   terrains: TerrainPatchData[]
   /**

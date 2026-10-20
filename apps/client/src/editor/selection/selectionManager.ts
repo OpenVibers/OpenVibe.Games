@@ -12,7 +12,8 @@
  */
 
 /** Everything the editor can select. Face selection is separate. */
-export type EditorObjectKind = 'static' | 'model' | 'terrain' | 'node' | 'prop' | 'spawn' | 'light'
+export type EditorObjectKind =
+  'static' | 'model' | 'terrain' | 'node' | 'prop' | 'npc' | 'spawn' | 'light'
 
 export interface SelectionSnapshot {
   primaryId: string | null

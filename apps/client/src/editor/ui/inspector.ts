@@ -148,6 +148,8 @@ export function fieldsFor(kind: EditorObjectKind, object: EditorObject | null): 
       return [{ key: 'node', label: 'Resource', type: 'readonly', section: 'Node' }, ...common]
     case 'prop':
       return [{ key: 'item', label: 'Item', type: 'readonly', section: 'Prop' }, ...common]
+    case 'npc':
+      return [{ key: 'npc', label: 'NPC', type: 'readonly', section: 'NPC' }, ...common]
     case 'spawn':
       return common
     case 'light': {

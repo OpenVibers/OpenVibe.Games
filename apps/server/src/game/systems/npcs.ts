@@ -66,6 +66,11 @@ export class NpcSystem implements System {
     await this.npcs.seedOrRestore(this.ctx.store)
   }
 
+  /** A live map save: NPCs follow the map's spawns. */
+  reconcileSpawns(): void {
+    this.npcs.reconcileSpawns()
+  }
+
   /** One NPC simulation step; the sound buffer is cleared once a second. */
   tick(ctx: ServerContext, _dt: number): void {
     this.npcs.step(Date.now(), ctx.clock.tick, ctx.config.tickRate)

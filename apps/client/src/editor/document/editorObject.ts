@@ -61,6 +61,14 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
     rotatable: true,
     scalable: false,
   },
+  npc: {
+    label: 'NPC',
+    group: 'Gameplay',
+    icon: '🧍',
+    transformable: true,
+    rotatable: false,
+    scalable: false,
+  },
   light: {
     label: 'Light',
     group: 'Lights',
@@ -103,6 +111,8 @@ export function displayName(kind: EditorObjectKind, object: EditorObject): strin
       return (object as { node: string }).node
     case 'prop':
       return (object as { item: string }).item
+    case 'npc':
+      return (object as { npc: string }).npc
     case 'light':
       return `${(object as MapLightV2).type} light`
     case 'spawn':
@@ -194,6 +204,7 @@ export function transformOf(doc: EditorDocument, id: string): EditorTransform | 
       )
     }
     case 'node':
+    case 'npc':
       return transformFromEuler([...(o as { pos: [number, number, number] }).pos], [0, 0, 0])
     case 'prop': {
       const p = o as { pos: [number, number, number]; yaw?: number }
@@ -263,7 +274,8 @@ export function setTransform(doc: EditorDocument, id: string, t: EditorTransform
       })
       return
     case 'node':
-      // Nodes sit ON the ground; only their footprint is authored.
+    case 'npc':
+      // Nodes and NPC homes sit ON the ground; only their footprint is authored.
       doc.update(id, { pos: [pos[0], 0, pos[2]] })
       return
     case 'prop':

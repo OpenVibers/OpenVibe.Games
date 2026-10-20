@@ -26,6 +26,7 @@ import {
   type MapTextureEntry,
   type MapLightV2,
   type MapNodeV2,
+  type MapNpcV2,
   type MapPropV2,
   type MapZoneV2,
   type StaticObjectV2,
@@ -50,6 +51,7 @@ export interface EditorObjectByKind {
   static: StaticObjectV2
   node: MapNodeV2
   prop: MapPropV2
+  npc: MapNpcV2
   light: MapLightV2
   zone: MapZoneV2
   spawn: SpawnObjectV2
@@ -64,6 +66,7 @@ const ARRAY_KINDS = [
   ['static', 'statics'],
   ['node', 'nodes'],
   ['prop', 'props'],
+  ['npc', 'npcs'],
   ['light', 'lights'],
   ['zone', 'zones'],
 ] as const satisfies readonly (readonly [EditorObjectKind, keyof MapFileV2])[]
