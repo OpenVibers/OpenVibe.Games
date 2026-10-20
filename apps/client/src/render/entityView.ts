@@ -16,6 +16,7 @@ import type { ServerSnapshot, WireEntity } from '@openvibe/protocol'
 import { quat, vec3, wrapAngle } from '@openvibe/shared'
 import type { ClientState } from '../state/clientState.js'
 import { Avatar } from './avatar/avatar.js'
+import { buildPropLook } from './propLooks.js'
 import { buildCritter, npcAppearance } from './npcLooks.js'
 import { materialFor, meshForShape } from './sceneSetup.js'
 
@@ -118,6 +119,7 @@ export class EntityView {
       const rep = this.content.worldRepOf(e.def)
       mesh =
         buildPropVisual(this.scene, e.id, e.def) ??
+        buildPropLook(this.scene, e.id, e.def, rep.color) ??
         meshForShape(this.scene, `prop:${e.id}`, rep.shape, rep.color)
       bodyId = this.physics.addBody({
         shape: toPhysicsShape(rep.shape),

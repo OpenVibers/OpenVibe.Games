@@ -27,6 +27,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The town's props look like things.** Merchant stalls have a counter, posts, a striped awning in the stall's colour
+  and goods on top. Crates have edge boards, barrels have hoops and a bung, and the storage box has a lid and a latch.
+  The workbench has legs, a shelf, a vise and a saw, the still has a dome and a pipe, planters grow, and the campfire
+  is logs in a ring of stones under an unlit flame. Every prop was its collision shape in one flat colour (the plaza's
+  stalls were purple boxes). Each look is one vertex-coloured mesh, so a prop is still one draw call.
 - **NPCs look like people.** Wardens, townsfolk and Rustjaw thugs wear the players' own low-poly avatar, so they
   walk, turn and flinch like players. Each is dressed by its archetype (wardens in denim or slate, Rustjaw in rust
   with beards and buzz cuts, townsfolk in everyday colours) and varied by its id. Dust hares are small faceted hares.
