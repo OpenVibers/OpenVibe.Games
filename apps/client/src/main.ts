@@ -18,7 +18,9 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Appearance } from '@openvibe/protocol'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Scene } from '@babylonjs/core/scene.js'
-import { WATER_LEVEL } from '@openvibe/content'
+import { WATER_LEVEL, terrainHeight } from '@openvibe/content'
+import { DEFAULT_MOVEMENT } from '@openvibe/gameplay'
+import { Sfx, footstepSurface, materialForVisual } from './audio/sfx.js'
 import { InteractionController } from './game/interactionController.js'
 import { LocalPlayer } from './game/localPlayer.js'
 import { InputTracker } from './input/inputTracker.js'
@@ -348,6 +350,41 @@ async function start(): Promise<void> {
     fpBody.triggerSwing()
   }
 
+  // Sounds. Browsers start audio only after a gesture: the first click or key.
+  const sfx = new Sfx()
+  const unlockAudio = (): void => sfx.unlock()
+  window.addEventListener('pointerdown', unlockAudio)
+  window.addEventListener('keydown', unlockAudio)
+  hud.volume = () => sfx.getVolume()
+  hud.onVolumeChange = (v) => sfx.setVolume(v)
+  interact.onMelee = (target) => {
+    sfx.swing()
+    if (!target) return
+    const material =
+      target.kind === 'resource'
+        ? materialForVisual(content.nodeType(target.def ?? '')?.visual)
+        : target.kind === 'player' || target.kind === 'npc'
+          ? 'flesh'
+          : target.def && content.item(target.def)?.health
+            ? 'wood'
+            : null
+    // The blow lands mid-swing, after the whoosh starts.
+    if (material) setTimeout(() => sfx.hit(material), 90)
+  }
+  let packCount = -1
+  state.events.on('inventory', () => {
+    const count = (state.inventory?.slots ?? []).reduce((n, s) => n + (s.stack?.count ?? 0), 0)
+    if (packCount >= 0 && count > packCount) sfx.pickup()
+    packCount = count
+  })
+  state.events.on('levelUp', () => sfx.levelUp())
+  state.events.on('fx', ({ kind, id }) => {
+    if (id === state.myEntityId && (kind === 'hurt' || kind === 'death')) sfx.hurt()
+  })
+  let stride = 0
+  let wasGrounded = true
+  let fallSpeed = 0
+
   hud.onUiCaptureChange = (captured) => {
     input.uiCapture = captured
     touchControls.setUiCapture(captured)
@@ -377,6 +414,7 @@ async function start(): Promise<void> {
         }
         interact.onHotbarChanged()
         hud.renderHotbar()
+        sfx.click()
         return
       }
       default:
@@ -459,6 +497,7 @@ async function start(): Promise<void> {
     if (msg.t === 'time') {
       environment.setDayFraction(msg.frac)
       environment.setWeather(msg.weather)
+      sfx.setWeather(msg.weather)
     }
     if (msg.t === 'snap') {
       player.onSnapshot(msg)
@@ -583,6 +622,31 @@ async function start(): Promise<void> {
     viewmodel.setItem(state.activeItemDef())
     viewmodel.update(elapsed, speed, player.move.grounded, look.dx, look.dy)
 
+    // Footsteps on the viewmodel's bob (one step per half bob cycle), a jump, a landing.
+    const grounded = player.move.grounded
+    if (grounded) {
+      if (!wasGrounded && fallSpeed > 3) sfx.land((fallSpeed - 3) / 9)
+      stride += speed * elapsed
+      if (speed < 0.3) stride = STEP_METRES * 0.7
+      if (stride >= STEP_METRES) {
+        stride -= STEP_METRES
+        const pos = player.move.pos
+        sfx.footstep(
+          footstepSurface(
+            pos.y - DEFAULT_MOVEMENT.capsuleHeight / 2,
+            terrainHeight(content.world, pos.x, pos.z),
+            WATER_LEVEL,
+          ),
+          speed > DEFAULT_MOVEMENT.maxGroundSpeed + 0.5,
+        )
+      }
+    } else {
+      if (wasGrounded && player.move.vel.y > 1) sfx.jump()
+      fallSpeed = Math.max(0, -player.move.vel.y)
+    }
+    wasGrounded = grounded
+    sfx.update(elapsed, environment.daylight)
+
     // Beams (modular: any weapon whose module declares firesBeam gets this
     // muzzle-anchored beam pipeline). Mine fires whenever the trigger is
     // held (dim searching ray → bright latched beam anchored to the exact
@@ -647,6 +711,7 @@ async function start(): Promise<void> {
     // haze yields via environment.underwater).
     const submerged = player.camera.position.y < WATER_LEVEL
     environment.underwater = submerged
+    sfx.setUnderwater(submerged)
     if (submerged !== wasSubmerged) {
       wasSubmerged = submerged
       if (submerged) {
@@ -664,6 +729,9 @@ async function start(): Promise<void> {
     )
   }
 }
+
+/** Metres walked per footstep: the viewmodel bobs once per step at this stride (phase += speed * 1.6). */
+const STEP_METRES = Math.PI / 1.6
 
 const _beamEnd = { x: 0, y: 0, z: 0 }
 const _beamEndV = new Vector3()

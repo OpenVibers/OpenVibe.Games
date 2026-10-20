@@ -62,6 +62,8 @@ export class InteractionController {
   rotating = false
   /** Cosmetic hook: a swing was sent (viewmodel + body animation). */
   onSwing: (() => void) | null = null
+  /** Cosmetic hook: a melee swing went out, at what (null: the air). Sounds read it. */
+  onMelee: ((target: AimTarget | null) => void) | null = null
   /** True when the last 'use' this client sent targeted another player. */
   lastTargetWasPlayer = false
   /** Hook: player pressed E on a trading post (entity id passed along). */
@@ -405,6 +407,7 @@ export class InteractionController {
     // crosshair. Resources gather (use); the rest is an attack.
     this.onSwing?.()
     const target = this.aim()
+    this.onMelee?.(target)
     if (!target) return
     if (target.kind === 'resource') {
       this.lastTargetWasPlayer = false
