@@ -6,6 +6,7 @@ import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js'
 import { PointLight } from '@babylonjs/core/Lights/pointLight.js'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh.js'
 import { bakeUvs, batchMapStatics, unbatchMapStatics } from './staticBatches.js'
 
 let engine: NullEngine
@@ -31,8 +32,8 @@ function staticAt(id: string, x: number, y: number, z: number, yaw = 0): Mesh {
 }
 const freeze = (m: Mesh) => [m, ...m.getChildMeshes()].forEach((c) => c.freezeWorldMatrix())
 const batches = () => scene.meshes.filter((m) => m.name.startsWith('mapstatic:batch:'))
-const contains = (m: Mesh, p: Vector3) => {
-  m.refreshBoundingInfo()
+const contains = (m: AbstractMesh, p: Vector3) => {
+  m.refreshBoundingInfo(false, false)
   const { minimumWorld: lo, maximumWorld: hi } = m.getBoundingInfo().boundingBox
   return (
     p.x >= lo.x - 0.01 &&
