@@ -48,6 +48,9 @@ export class Hud {
   onUiCaptureChange: ((captured: boolean) => void) | null = null
   /** Applies a new graphics quality to the running engine and scene (wired in main.ts). */
   onQualityChange: ((override: QualityOverride) => void) | null = null
+  /** The sound volume, 0 to 1, and where a change goes (wired in main.ts to the sounds). */
+  volume: () => number = () => 0.6
+  onVolumeChange: ((v: number) => void) | null = null
 
   constructor(
     root: HTMLElement,
@@ -685,8 +688,40 @@ export class Hud {
     }
     sync()
     row.append(head, seg, hint)
-    wrap.appendChild(row)
+    wrap.append(row, this.volumeRow())
     this.menuBodyEl.appendChild(wrap)
+  }
+
+  /** Settings: sound volume (footsteps, hits, wind and birds), saved for next time. */
+  private volumeRow(): HTMLElement {
+    const row = document.createElement('div')
+    row.className = 'skill-row'
+    const head = document.createElement('div')
+    head.className = 'skill-head'
+    const title = document.createElement('label')
+    title.htmlFor = 'volume-range'
+    title.textContent = 'Sound'
+    const now = document.createElement('span')
+    now.className = 'skill-level'
+    head.append(title, now)
+    const range = document.createElement('input')
+    range.type = 'range'
+    range.id = 'volume-range'
+    range.className = 'volume-range'
+    range.min = '0'
+    range.max = '100'
+    range.step = '5'
+    range.value = String(Math.round(this.volume() * 100))
+    const show = (): void => {
+      now.textContent = range.value === '0' ? 'Off' : `${range.value}%`
+    }
+    range.addEventListener('input', () => {
+      show()
+      this.onVolumeChange?.(Number(range.value) / 100)
+    })
+    show()
+    row.append(head, range)
+    return row
   }
 
   /** Faction standings: who likes you, who wants you dead. */

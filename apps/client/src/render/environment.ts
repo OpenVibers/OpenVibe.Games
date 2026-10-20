@@ -57,6 +57,8 @@ export class Environment {
   private readonly moon: Mesh
   private readonly moonMat: StandardMaterial
   private t = DAY_SECONDS * 0.34
+  /** The sun's height, 0 from sunset to sunrise and 1 at noon (sounds read it: birds by day, crickets at night). */
+  daylight = 1
   private targetT: number | null = null
 
   constructor(
@@ -248,6 +250,7 @@ export class Environment {
     // dimmed under weather.
     const day = Math.max(0, elevation)
     const night = Math.max(0, -elevation)
+    this.daylight = day
     const dim = 1 - this.weatherDim * 0.65
     this.sun.intensity = (day * 1.25 + night * 0.35 + 0.03) * dim
     this.sun.diffuse.set(

@@ -737,6 +737,15 @@ body:has(#ovg-frame-toggle:not([hidden])) .status {
   color: #f0b040;
 }
 
+/* Settings: the sound volume slider, tall enough to drag with a thumb. */
+.volume-range {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin: 2px 0 6px;
+  accent-color: #f0b040;
+}
+
 .segmented-option:focus-visible {
   outline: 2px solid #f0b040;
   outline-offset: 1px;

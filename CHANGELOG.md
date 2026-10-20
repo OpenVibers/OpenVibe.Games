@@ -27,6 +27,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Sound.** Scraplandia had none. Every sound is synthesised in the browser, so there are no files to load:
+  - footsteps on grass, stone and water;
+  - a jump and a landing as hard as the fall;
+  - a swing's whoosh;
+  - the hit: a thunk on wood, a clack on stone, a ring on scrap, a thud on people;
+  - a blip when something goes into the pack, and a chime on a level-up;
+  - wind that gusts and rises in a storm, rain, birds by day and crickets at night.
+
+  Under water everything is muffled. Settings has a volume slider (saved; 0 is off). Audio starts on the first click
+  or key, as browsers require.
 - **First steps.** A new scrapper gets a checklist in the corner:
   - gather branches and stones (piles just inside every city gate);
   - craft a Stone Axe;
