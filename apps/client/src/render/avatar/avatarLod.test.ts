@@ -44,7 +44,7 @@ describe('avatar level of detail', () => {
     expect(lod).not.toBeNull()
     expect(lod.isVerticesDataPresent(VertexBuffer.ColorKind)).toBe(true)
     // It stands on its feet at its root, a person's height (each part placed once, not through its joints twice).
-    lod.refreshBoundingInfo()
+    lod.refreshBoundingInfo(false, false)
     const box = lod.getBoundingInfo().boundingBox
     expect(box.minimumWorld.y).toBeGreaterThan(-0.05)
     expect(box.minimumWorld.y).toBeLessThan(0.15)
