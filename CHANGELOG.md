@@ -8,6 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Touch play's HUD was buried under the controls.** On a phone, the stick (bottom left) and the button grid (bottom
+  right) covered the first-steps panel, and the HP, food, water and stamina bars sat on the hotbar. While the touch
+  controls show:
+  - the hotbar sits above the buttons, in smaller slots;
+  - the bars sit above the stick;
+  - the waypoint sits under the OpenVibe button;
+  - the first-steps panel sits at the top right and shows only the step in progress;
+  - the debug status line hides.
 - **An empty pile kept saying "E — gather".** When a node had nothing left (the gate piles empty fast when several new
   scrappers arrive together), its prompt still offered to gather and E did nothing. It now says so, for example
   "Loose Stones — picked clean, back within 2 mins" or "Oak Tree — felled, grows back within … mins". A production

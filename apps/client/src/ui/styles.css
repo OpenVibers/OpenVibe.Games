@@ -1091,6 +1091,46 @@ body:has(#ovg-frame-toggle:not([hidden])) .status {
   }
 }
 
+/*
+ * Touch play: the stick (bottom-left, 144 px) and the button grid (bottom-right, ~230 px) own the bottom of the
+ * screen. The hotbar, the vitals and the first-steps panel used to sit under them, and the bars covered the hotbar.
+ */
+body:has(.ov-touch:not([hidden])) .hotbar {
+  bottom: 244px;
+  gap: 4px;
+}
+body:has(.ov-touch:not([hidden])) .slot {
+  width: 46px;
+  height: 46px;
+}
+body:has(.ov-touch:not([hidden])) .slot-icon {
+  width: 42px;
+  height: 42px;
+}
+body:has(.ov-touch:not([hidden])) .vitals {
+  bottom: 156px;
+  left: 12px;
+  width: 136px;
+}
+body:has(.ov-touch:not([hidden])) .status {
+  display: none;
+}
+body:has(.ov-touch:not([hidden])) .waypoint {
+  top: 52px;
+  font-size: 12px;
+}
+body:has(.ov-touch:not([hidden])) .first-steps {
+  top: 92px;
+  bottom: auto;
+  right: 8px;
+  width: min(250px, calc(100vw - 16px));
+  font-size: 12px;
+}
+/* Only the step in progress: the list would cover a phone's view. */
+body:has(.ov-touch:not([hidden])) .first-steps li:not(.current) {
+  display: none;
+}
+
 /* ── Death screen ─────────────────────────────────────────────────── */
 .death-screen {
   position: absolute;
