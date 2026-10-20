@@ -8,6 +8,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Townsfolk in the Salvage Rush arena.** The 90-second scrap round ran the content's seven NPC spawns, laid out for
+  the procedural world: townsfolk and a warden wandered inside the arena and Rustjaw thugs stood just past its edge.
+  A world definition can now name its own NPCs (`npcSpawns`; `[]` is none), and the arena has none. A map's own NPCs
+  still win.
 - **Touch play's HUD was buried under the controls.** On a phone, the stick (bottom left) and the button grid (bottom
   right) covered the first-steps panel, and the HP, food, water and stamina bars sat on the hotbar. While the touch
   controls show:

@@ -17,6 +17,9 @@ export const SALVAGE_RUSH_PACK: ContentPackV2 = {
     ],
     resourceNodes: [],
     initialProps: [],
+    // A 90-second scrap round: no NPCs. The content's spawns put townsfolk and a warden inside the arena and Rustjaw
+    // thugs just past its edge.
+    npcSpawns: [],
     zones: [
       {
         id: 'arena',

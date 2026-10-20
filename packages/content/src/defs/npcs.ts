@@ -124,6 +124,7 @@ export interface NpcSpawn {
 export function npcSpawnsFor(world?: WorldDef): NpcSpawn[] {
   const mapped = getMapOverride(world)?.npcs ?? []
   if (mapped.length) return mapped.map((n) => ({ archetype: n.npc, pos: n.pos }))
+  if (world?.npcSpawns) return world.npcSpawns
   return NPC_SPAWNS
 }
 
