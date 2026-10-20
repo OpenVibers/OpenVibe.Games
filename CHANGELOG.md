@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **"City Warden — LMB attack".** Looking at a friendly warden or townsperson now shows just their name, so the prompt
+  no longer invites you to hit them; a swing still lands. Wildlife says "LMB hunt", and Rustjaw thugs keep "⚠ — LMB
+  attack".
 - **Scrap City drew every static on its own.** It is several hundred static meshes (walls, wall plates, buildings,
   roofs, doors, stalls), and each textured one had a material of its own because its texture's scale follows its size.
   That came to 165 draw calls in view and 298 shadow casters, with 525 materials.
