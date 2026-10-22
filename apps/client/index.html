@@ -59,6 +59,9 @@
         --text-dim: var(--text-secondary, #96a7c2);
         --text-faint: var(--text-muted, #7386a3);
       }
+      /* Light themes (theme-loader sets data-theme-mode): the cyan is text on tags and achievements, and #22d3ee on a light
+         page read at 1.7:1; this deeper cyan reads at 5:1 (axe, 2026-10-22). */
+      :root[data-theme-mode="light"] { --secondary: #0e7490; }
       html,
       body {
         min-height: 100%;
