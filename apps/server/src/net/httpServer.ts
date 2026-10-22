@@ -29,7 +29,8 @@ import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore
 import type { GamesActorLimits } from './actorLimits.js'
 import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
-import { discoveryHandler, homeJsonLdTags } from './discovery.js'
+import { discoveryHandler, homeJsonLdTags, jsonLdTagsOf } from './discovery.js'
+import type { HomeParts } from './portalHome.js'
 import { legalHandler } from './legalPages.js'
 import { updatesHandler } from './updatesPage.js'
 import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
@@ -48,6 +49,16 @@ export function portalHtml(filePath: string): string {
     : raw
   portalMemo = { path: filePath, mtimeMs, html }
   return html
+}
+
+/** The portal with its live parts (portalHome.ts) in place of the build's markers, and their JSON-LD in the head. */
+export function portalPage(filePath: string, parts: HomeParts | null): string {
+  const html = portalHtml(filePath)
+  if (!parts) return html
+  return html
+    .replace('<!--ov:home-stats-->', () => parts.stats)
+    .replace('<!--ov:home-sections-->', () => parts.sections)
+    .replace('</head>', () => `${jsonLdTagsOf(parts.jsonLd)}\n  </head>`)
 }
 import { handleWsTicketRequest, type WsTicketStore } from './wsTicket.js'
 import { casualGameOf, casualPageHtml } from '../casual/page.js'
@@ -151,6 +162,8 @@ export interface HttpPlatformHooks {
   limits?: GamesActorLimits
   /** Trusted-proxy-aware client address (./clientAddress.ts); the socket address when absent. */
   clientAddress?: (req: IncomingMessage) => string
+  /** The home page's live sections (./portalHome.ts); the static portal alone when absent. */
+  homeSections?: () => Promise<HomeParts>
 }
 
 /** The token endpoint's answer, for both the code and the jwt-bearer grant. */
@@ -818,11 +831,16 @@ export function createHttpServer(
     // The portal is a static build, so its JSON-LD is injected as the page is served: the same
     // openvibe-shared/seo builders every OpenVibe site uses, one response for every crawler.
     if (pageAlias === 'index.html' || url === '/index.html') {
-      res.writeHead(200, {
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'no-cache',
+      const live = platform?.homeSections
+      void (live ? live().catch(() => null) : Promise.resolve(null)).then((parts) => {
+        const body = portalPage(filePath, parts)
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-cache',
+          'content-length': String(Buffer.byteLength(body)),
+        })
+        res.end(req.method === 'HEAD' ? undefined : body)
       })
-      res.end(portalHtml(filePath))
       return
     }
     const type = MIME[extname(filePath)] ?? 'application/octet-stream'

@@ -82,7 +82,8 @@ import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
 import { createPlayBoards } from './platform/playBoards.js'
 import { createCasualRoutes } from './casual/routes.js'
-import { pruneCasualActions } from './casual/store.js'
+import { casualLeaderboard, pruneCasualActions } from './casual/store.js'
+import { createPortalHome, readPlayTitles } from './net/portalHome.js'
 import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 import { CreatorWorldHost } from './worlds/worldHost.js'
 import { createWorldHubStarter } from './worlds/startWorldHub.js'
@@ -819,6 +820,33 @@ async function main(): Promise<void> {
     events: { db, sink, siteUrl: gamesSiteUrl },
     ...(worldSearch ? { search: worldSearch } : {}),
   })
+  // The home page's live sections (net/portalHome.ts): players online, Play's boards and achievements, Vibe Heroes'
+  // furthest teams, creator worlds and Steam's lists, built at most once a minute.
+  const playTitlesUrl = config.platform.playUrl
+  const homeSections = createPortalHome(
+    {
+      online: () => {
+        const byPlace = router.onlineByPlace()
+        let worlds = 0
+        for (const count of worldHost.online().values()) worlds += count
+        return {
+          scraplandia: byPlace.get('scraplandia') ?? 0,
+          salvageRush: byPlace.get('salvage-rush') ?? 0,
+          worlds,
+        }
+      },
+      titles: () => (playTitlesUrl ? readPlayTitles(playTitlesUrl) : Promise.resolve([])),
+      board: async (game, period) => (await playBoards(game, period, 1, '127.0.0.1')).entries.slice(0, 5),
+      heroes: () => casualLeaderboard(db, 'vibe-heroes', 5),
+      worlds: () => creatorWorlds.listPublished(60, 0),
+      steam: () => steamCatalog.lists(),
+    },
+    {
+      site: gamesSiteUrl,
+      playSite: config.oauth?.playUrl ?? 'https://play.openvibe.games',
+      log: log.child({ system: 'home' }),
+    },
+  )
   // The casual games' JSON API (plan T22).
   const serveCasual = createCasualRoutes({
     db,
@@ -1053,6 +1081,7 @@ async function main(): Promise<void> {
       onAssetStored: (asset) => mirror?.enqueue(asset),
       limits: actorLimits,
       clientAddress,
+      homeSections,
     },
     ticketStore,
     createGamesIndexNow(

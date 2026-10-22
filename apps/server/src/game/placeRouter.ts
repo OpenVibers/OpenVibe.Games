@@ -115,6 +115,11 @@ export class PlaceRouter {
     return this.allHubs().flatMap((hub) => hub.activeRooms)
   }
 
+  /** Players connected to each built-in place now (creator worlds count theirs in worldHost.online()). */
+  onlineByPlace(): Map<string, number> {
+    return new Map([...this.hubs].map(([id, hub]) => [id, hub.onlineCount]))
+  }
+
   get onlineCount(): number {
     return this.allHubs().reduce((total, hub) => total + hub.onlineCount, 0)
   }
