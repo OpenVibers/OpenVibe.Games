@@ -210,6 +210,13 @@ function publicPageDocs(): PublicPageDoc[] {
       priority: 0.7,
     },
     {
+      title: 'On Steam right now',
+      url: `${SITE}/steam`,
+      note: "Steam's top sellers, deals and new releases with Steam's prices, each linked to its store page",
+      text: "Steam's featured lists as the store shows them: top sellers in the store's order, the deals Steam features and the new releases, with Steam's own US dollar prices and a link to every game's store page. Read from the Steam store's public storefront lists every few hours through OpenVibe.Sources.",
+      priority: 0.6,
+    },
+    {
       title: 'What shipped',
       url: `${SITE}/updates`,
       note: 'every change deployed to OpenVibe.Games, newest first',
@@ -312,6 +319,11 @@ export function homeJsonLd(): unknown[] {
       siteUrl: SITE,
     }),
   ]
+}
+
+/** Any JSON-LD nodes as `<script>` tags, through the shared kit's escaping (the home's live parts use it). */
+export function jsonLdTagsOf(nodes: unknown[]): string {
+  return nodes.map((node) => seo.jsonLdTag(node)).join('\n')
 }
 
 /** The home page's JSON-LD as `<script>` tags, ready to inject before `</head>`. */

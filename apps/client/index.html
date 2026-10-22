@@ -6,10 +6,10 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/app-icons/games-192.png" />
-    <title>OpenVibe.Games — browser games on the OpenVibe network</title>
+    <title>Free browser games, no download · OpenVibe.Games</title>
     <meta
       name="description"
-      content="Play Scraplandia, Salvage Rush and Vibe Heroes in your browser: survival-building together, 90-second scrap rounds and an idle hero collector. No download."
+      content="Play Scraplandia, Salvage Rush and Vibe Heroes free in your browser, join worlds players built, and see Steam's top sellers, deals and new releases."
     />
     <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
     <!-- Deferred: a slow or unreachable openvibe.network never holds the first paint (the inline colours above cover it). -->
@@ -20,7 +20,7 @@
     <meta name="robots" content="index, follow" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="OpenVibe.Games" />
-    <meta property="og:title" content="OpenVibe.Games — browser games on the OpenVibe network" />
+    <meta property="og:title" content="Free browser games, no download · OpenVibe.Games" />
     <meta
       property="og:description"
       content="Play Scraplandia, Salvage Rush or Vibe Heroes in your browser, no download: survival-building in Scrap City, timed scrap-collecting rounds, or an idle hero collector for your phone. One OpenVibe account across the whole network."
@@ -30,10 +30,10 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="OpenVibe.Games — browser games on the OpenVibe network" />
+    <meta name="twitter:title" content="Free browser games, no download · OpenVibe.Games" />
     <meta
       name="twitter:description"
-      content="Play Scraplandia — multiplayer survival-building in your browser, no download."
+      content="Play Scraplandia, Salvage Rush and Vibe Heroes free in your browser, and see what's selling and on sale on Steam."
     />
     <meta name="twitter:image" content="https://openvibe.games/og-image.png" />
     <!-- JSON-LD (WebSite + the game as the site's primary type) is injected as this page is served,
@@ -99,7 +99,7 @@
         padding: clamp(48px, 9vh, 96px) 20px 30px;
       }
       .hero-title {
-        font-size: clamp(42px, 8vw, 88px);
+        font-size: clamp(42px, 7vw, 76px);
         font-weight: 900;
         letter-spacing: 0.01em;
         line-height: 1;
@@ -121,6 +121,65 @@
         background-clip: text;
         color: transparent;
         filter: drop-shadow(0 6px 34px rgba(var(--accent-rgb, 59, 130, 246), 0.35));
+      }
+      .hero-h1 {
+        margin: 18px auto 0;
+        max-width: 22ch;
+        font-size: clamp(24px, 3.6vw, 38px);
+        font-weight: 850;
+        line-height: 1.15;
+        text-wrap: balance;
+        animation: rise 0.9s 0.06s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 12px 24px;
+        margin-top: 26px;
+      }
+      .hero-actions .play-cta {
+        margin-top: 0;
+        align-self: center;
+      }
+      .hero-link {
+        color: var(--accent-light);
+        font-weight: 700;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(var(--accent-rgb, 59, 130, 246), 0.4);
+      }
+      .hero-link:hover {
+        border-bottom-color: var(--accent-light);
+      }
+      /* The figures under the hero (server-rendered, net/portalHome.ts): real counts only. */
+      .home-stats {
+        list-style: none;
+        padding: 0;
+        margin: 30px auto 0;
+        max-width: 980px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(128px, 100%), 1fr));
+        gap: 10px;
+      }
+      .home-stats li {
+        padding: 14px 12px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg-card);
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .home-stats b {
+        font-size: 26px;
+        font-weight: 900;
+        color: var(--text);
+      }
+      .home-stats span {
+        font-size: 13px;
+        color: var(--text-dim);
+        overflow-wrap: anywhere;
       }
       .hero-sub {
         margin: 18px auto 0;
@@ -225,6 +284,7 @@
         gap: 12px;
       }
       .badge {
+        text-transform: uppercase;
         align-self: flex-start;
         font-size: 11px;
         font-weight: 800;
@@ -242,8 +302,13 @@
         letter-spacing: 0.02em;
       }
       .game-body h3 {
-        font-size: 20px;
-        font-weight: 800;
+        font-size: 22px;
+        font-weight: 850;
+        letter-spacing: 0.01em;
+      }
+      .game-card.featured h3 {
+        font-size: clamp(26px, 3.4vw, 38px);
+        font-weight: 900;
       }
       .game-body p {
         color: var(--text-dim);
@@ -328,6 +393,288 @@
         50% {
           box-shadow: 0 8px 48px rgba(var(--accent-rgb, 59, 130, 246), 0.7);
         }
+      }
+      /* ── live sections (net/portalHome.ts renders them on the server) ── */
+      .home-sec {
+        max-width: 1100px;
+        margin: 0 auto 64px;
+        padding: 0 20px;
+      }
+      .home-sec + .games {
+        margin-top: -40px;
+      }
+      .home-sec h2 {
+        font-size: clamp(24px, 3vw, 32px);
+        font-weight: 900;
+        margin-bottom: 8px;
+      }
+      .home-lede {
+        color: var(--text-dim);
+        line-height: 1.6;
+        max-width: 70ch;
+        margin-bottom: 20px;
+      }
+      .home-sub {
+        font-size: 17px;
+        font-weight: 800;
+        margin: 22px 0 12px;
+        color: var(--text-dim);
+      }
+      .home-more {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 24px;
+      }
+      .board-grid,
+      .ach-grid,
+      .world-grid,
+      .steam-cols {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+        gap: 16px;
+        list-style: none;
+        padding: 0;
+      }
+      .board-card,
+      .world-card,
+      .steam-col,
+      .ach {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+        min-width: 0;
+      }
+      .board-card h3 {
+        font-size: 18px;
+        font-weight: 850;
+        margin-bottom: 12px;
+      }
+      .board-card h3 small {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-faint);
+        margin-top: 2px;
+      }
+      .board-rows {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 14px;
+      }
+      .board-rows li {
+        display: grid;
+        grid-template-columns: 28px 1fr auto;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 0;
+        border-top: 1px solid var(--border);
+      }
+      .board-rows li:first-child {
+        border-top: 0;
+      }
+      .board-rows .rank {
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+        font-size: 13px;
+        background: rgba(var(--accent-rgb, 59, 130, 246), 0.16);
+        color: var(--text);
+      }
+      .board-rows .who {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-weight: 700;
+      }
+      .board-rows .score {
+        color: var(--text-dim);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .ach-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+        gap: 12px;
+      }
+      .ach {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 14px 16px;
+      }
+      .ach.earned {
+        border-color: rgba(46, 204, 113, 0.45);
+      }
+      .ach-game {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--secondary);
+      }
+      .ach b {
+        font-size: 16px;
+      }
+      .ach-how,
+      .ach-reward {
+        font-size: 14px;
+        color: var(--text-dim);
+        line-height: 1.45;
+      }
+      .ach-reward {
+        color: var(--accent-light);
+      }
+      .ach-count {
+        margin-top: auto;
+        padding-top: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-faint);
+      }
+      .ach.earned .ach-count {
+        color: var(--success, #2ecc71);
+      }
+      .world-card h3 {
+        font-size: 17px;
+        overflow-wrap: anywhere;
+      }
+      .world-card h3 a {
+        color: inherit;
+        text-decoration: none;
+      }
+      .world-card h3 a:hover {
+        color: var(--accent-light);
+      }
+      .world-card p {
+        margin: 6px 0;
+        color: var(--text-dim);
+        font-size: 14px;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+      }
+      .world-meta {
+        font-size: 13px;
+        color: var(--text-faint);
+      }
+      .steam-col h3 {
+        font-size: 17px;
+        font-weight: 850;
+        margin-bottom: 10px;
+      }
+      .steam-list {
+        list-style: none;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .steam-list a {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        color: inherit;
+        text-decoration: none;
+        border-radius: 10px;
+        padding: 4px;
+        min-width: 0;
+      }
+      .steam-list a:hover,
+      .steam-list a:focus-visible {
+        background: rgba(var(--accent-rgb, 59, 130, 246), 0.1);
+      }
+      .steam-list img,
+      .steam-art {
+        width: 104px;
+        height: 49px;
+        flex: none;
+        border-radius: 6px;
+        object-fit: cover;
+        background: var(--bg-raised);
+      }
+      .steam-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .steam-text b {
+        font-size: 14px;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+      .steam-price {
+        font-size: 13px;
+        color: var(--text-dim);
+      }
+      .steam-price s {
+        color: var(--text-faint);
+      }
+      .steam-price .off {
+        display: inline-block;
+        padding: 0 6px;
+        border-radius: 6px;
+        background: #15803d;
+        color: #fff;
+        font-weight: 800;
+      }
+      .how-steps {
+        list-style: none;
+        padding: 0;
+        counter-reset: how;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
+        gap: 14px;
+      }
+      .how-steps li {
+        counter-increment: how;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--bg-card);
+      }
+      .how-steps li::before {
+        content: counter(how);
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-weight: 900;
+        background: var(--accent-strong, #2563eb);
+        color: var(--on-accent-strong, #fff);
+      }
+      .how-steps span {
+        color: var(--text-dim);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      .faq {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 820px;
+      }
+      .faq details {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg-card);
+        padding: 0 18px;
+      }
+      .faq summary {
+        cursor: pointer;
+        padding: 15px 0;
+        font-weight: 750;
+      }
+      .faq details p {
+        padding: 0 0 16px;
+        color: var(--text-dim);
+        line-height: 1.6;
       }
       /* ── accounts ────────────────────────────────────────────────── */
       .account {
@@ -448,15 +795,29 @@
     </nav>
 
     <header>
-      <h1 class="hero-title">Open<b>Vibe.Games</b></h1>
+      <p class="hero-title">Open<b>Vibe.Games</b></p>
+      <h1 class="hero-h1">Free games that start in a browser tab</h1>
       <p class="hero-sub">
-        Multiplayer games that start in a browser tab. No installs, no launchers. Jump in as a
-        guest, or sign in with your OpenVibe account to keep your character, your base and your name
-        across the whole network.
+        Build and survive with other players, race for scrap in 90-second rounds, grow a team of
+        heroes on your phone or join a world another player built. Nothing to install: play as a
+        guest, or sign in to keep your character across OpenVibe.
       </p>
+      <div class="hero-actions">
+        <a class="play-cta" href="https://play.openvibe.games" data-dev-href="/play"
+          >▶ Play Scraplandia</a
+        >
+        <a class="hero-link" href="#play-now">See every game</a>
+      </div>
+      <!--ov:home-stats-->
     </header>
 
-    <section class="games">
+    <section class="home-sec" aria-labelledby="play-now">
+      <h2 id="play-now">Play now</h2>
+      <p class="home-lede">
+        Every game here runs in the browser, on a computer or a phone. Press play and you are in.
+      </p>
+    </section>
+    <section class="games" aria-label="Games">
       <!-- ── Featured: Scraplandia ── -->
       <div class="game-card featured">
         <div
@@ -559,8 +920,8 @@
           </svg>
         </div>
         <div class="game-body">
-          <span class="badge live">● LIVE NOW</span>
-          <h2>SCRAPLANDIA</h2>
+          <span class="badge live">● Live now</span>
+          <h3 class="game-name">Scraplandia</h3>
           <p>
             Scrappy multiplayer survival-building in and around <b>Scrap City</b>. Physgun anything,
             weld it to anything else, cook at a burn barrel, chase supply drops in the wilds — and
@@ -574,7 +935,7 @@
           </div>
           <div class="cta-row">
             <a class="play-cta" href="https://play.openvibe.games" data-dev-href="/play"
-              >▶ PLAY — NO DOWNLOAD</a
+              >▶ Play now, no download</a
             >
             <a class="card-link" href="/leaderboard.html?game=scraplandia">Haul leaderboard →</a>
           </div>
@@ -665,8 +1026,8 @@
           </svg>
         </div>
         <div class="game-body">
-          <span class="badge live">● LIVE NOW</span>
-          <h3>SALVAGE RUSH</h3>
+          <span class="badge live">● Live now</span>
+          <h3>Salvage Rush</h3>
           <p>
             Collect scrap around a compact arena in 90-second on-foot rounds. The server scores each
             pickup; rounds have a public leaderboard and three achievements that give items worn
@@ -676,7 +1037,7 @@
             <span>timed rounds</span><span>on-foot</span><span>leaderboard</span>
           </div>
           <div class="cta-row">
-            <a class="play-cta" href="/play?game=salvage-rush">▶ PLAY A ROUND</a>
+            <a class="play-cta" href="/play?game=salvage-rush">▶ Play a round</a>
             <a class="card-link" href="/leaderboard.html?game=salvage-rush">Leaderboard →</a>
           </div>
         </div>
@@ -698,8 +1059,8 @@
           />
         </div>
         <div class="game-body">
-          <span class="badge live">● NEW</span>
-          <h3>VIBE HEROES</h3>
+          <span class="badge live">● New</span>
+          <h3>Vibe Heroes</h3>
           <p>
             An idle hero collector made for your phone. Your team battles on its own: fuse heroes
             from shards, star them up and push through 100 stages, even while you are away. Summons
@@ -709,7 +1070,7 @@
             <span>idle</span><span>hero collector</span><span>phone-first</span>
           </div>
           <div class="cta-row">
-            <a class="play-cta" href="/play/vibe-heroes">▶ PLAY NOW</a>
+            <a class="play-cta" href="/play/vibe-heroes">▶ Play now</a>
           </div>
         </div>
       </div>
@@ -777,8 +1138,8 @@
           </svg>
         </div>
         <div class="game-body">
-          <span class="badge live">● NEW</span>
-          <h3>CREATOR WORLDS</h3>
+          <span class="badge live">● New</span>
+          <h3>Creator worlds</h3>
           <p>
             Build your own world in the map editor: terrain, buildings, lights, zones and props.
             Publish it and anyone can join from their browser, or browse what other players made.
@@ -787,7 +1148,7 @@
             <span>map editor</span><span>publish</span><span>multiplayer</span>
           </div>
           <div class="cta-row">
-            <a class="play-cta" href="/worlds">▶ BROWSE &amp; BUILD</a>
+            <a class="play-cta" href="/worlds">▶ Browse and build</a>
           </div>
         </div>
       </div>
@@ -832,8 +1193,8 @@
           </svg>
         </div>
         <div class="game-body">
-          <span class="badge live">● NEW</span>
-          <h3>ON STEAM RIGHT NOW</h3>
+          <span class="badge live">● New</span>
+          <h3>On Steam right now</h3>
           <p>
             What sells on Steam, what's on sale and what just came out, with Steam's own prices, refreshed through the
             day. Every game opens its store page.
@@ -842,11 +1203,13 @@
             <span>top sellers</span><span>deals</span><span>new releases</span>
           </div>
           <div class="cta-row">
-            <a class="play-cta" href="/steam">▶ SEE THE LISTS</a>
+            <a class="play-cta" href="/steam">▶ See the lists</a>
           </div>
         </div>
       </div>
     </section>
+
+    <!--ov:home-sections-->
 
     <section class="account">
       <div class="account-inner">
