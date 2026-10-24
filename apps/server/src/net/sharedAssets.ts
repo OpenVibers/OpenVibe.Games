@@ -16,17 +16,28 @@ interface SharedFiles {
 }
 interface SharedServe {
   hashOf(name: string): string
+  handler(): (req: IncomingMessage & { path: string }, res: ServerResponse, next: (err?: unknown) => void) => void
 }
 
 export function sharedAssetsHandler(req: NodeRequire = createRequire(import.meta.url)) {
   const files = req('openvibe-shared/files') as SharedFiles
   const serve = req('openvibe-shared/serve') as SharedServe
+  const shared = serve.handler()
   return (rq: IncomingMessage, res: ServerResponse): boolean => {
     if (rq.method !== 'GET' && rq.method !== 'HEAD') return false
     const url = new URL(rq.url ?? '/', 'http://games.local')
     if (!url.pathname.startsWith('/shared/')) return false
     const name = url.pathname.slice('/shared/'.length)
-    if (!files.isBrowserFile(name)) return false
+    // The rest openvibe-shared serves goes to its own handler: the web app manifest and touch icon its page shell links
+    // on /steam, /updates and world pages (manifest/games.webmanifest, icons/games-192.png), and the social cards.
+    if (!files.isBrowserFile(name)) {
+      let handled = true
+      shared(Object.assign(rq, { path: `/${name}` }), res, (err) => {
+        if (err) res.destroy()
+        else handled = false
+      })
+      return handled
+    }
     const hash = serve.hashOf(name)
     const headers = {
       'content-type': 'application/javascript; charset=utf-8',
