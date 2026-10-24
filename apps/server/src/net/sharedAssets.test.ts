@@ -40,6 +40,24 @@ describe('/shared (D42)', () => {
     expect(r.status).toBe(304)
   })
 
+  it('serves the web app manifest and touch icon the shared page shell links (/steam, /updates, world pages)', async () => {
+    const shell = req('openvibe-shared/serve') as { manifestUrl(s: string): string | null }
+    const url = shell.manifestUrl('games')
+    expect(url).toMatch(/^\/shared\/manifest\/games\.webmanifest\?v=/)
+    const r = await fetch(base + url)
+    expect(r.status).toBe(200)
+    expect(r.headers.get('content-type')).toMatch(/manifest\+json/)
+    expect(r.headers.get('cache-control')).toMatch(/immutable/)
+    const m = (await r.json()) as { name?: string; icons?: { src: string }[] }
+    expect(m.name).toBeTruthy()
+    const icon = m.icons?.[0]?.src ?? ''
+    expect(icon).toMatch(/^\/shared\/icons\//)
+    const ir = await fetch(base + icon)
+    expect(ir.status).toBe(200)
+    expect(ir.headers.get('content-type')).toMatch(/image\/png/)
+    expect((await fetch(`${base}/shared/manifest/no-such-site.webmanifest`)).status).toBe(404)
+  })
+
   it('serves only the browser files openvibe-shared lists', async () => {
     for (const p of [
       '/shared/serve.js',
