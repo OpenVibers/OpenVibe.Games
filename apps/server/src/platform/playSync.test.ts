@@ -4,7 +4,7 @@ import { openTestStore } from '@openvibe/persistence/testing'
 import { loadPlatformConfig } from '../config.js'
 import { recordHaul, recordJoined, recordRound } from '../game/progression.js'
 import { createPlatformClient } from './serviceClient.js'
-import { PLAY_TITLES, PlaySync, toPlayer } from './playSync.js'
+import { HEROES_MILESTONES, PLAY_TITLES, PlaySync, toPlayer } from './playSync.js'
 
 const subject = 'usr_01JABCDEFGHJKMNPQRSTVWXYZ0'
 const guest = `guest:${'a'.repeat(64)}`
@@ -137,7 +137,7 @@ describe('PlaySync (OpenVibe.Play, ADR-0007 decision 10)', () => {
 
     // Nothing new: the second pass posts nothing and does not register the titles again.
     const before = fake.posts.length
-    expect(await sync.syncOnce()).toEqual({ rounds: 0, hauls: 0, unlocks: 0, adoptions: 0 })
+    expect(await sync.syncOnce()).toEqual({ rounds: 0, hauls: 0, heroes: 0, unlocks: 0, adoptions: 0 })
     expect(fake.posts.length).toBe(before)
   })
 
@@ -171,5 +171,33 @@ describe('PlaySync (OpenVibe.Play, ADR-0007 decision 10)', () => {
     )
     expect(adopts.every((p) => p.body.person === subject)).toBe(true)
     expect((await sync.syncOnce()).adoptions).toBe(0)
+  })
+
+  it('posts Vibe Heroes progress: the furthest stage, and the milestones it reaches, once each', async () => {
+    const { store, fake, sync } = await setup()
+    const save = (key: string, name: string | null, stage: number, at: number) =>
+      store.db.exec(sql`
+        INSERT INTO casual_saves (game_id, account_key, state, version, player_name, stage, power, created_at, updated_at)
+        VALUES ('vibe-heroes', ${key}, '{}'::jsonb, 1, ${name}, ${stage}, 100, ${at}, ${at})
+        ON CONFLICT (game_id, account_key) DO UPDATE SET stage = excluded.stage, updated_at = excluded.updated_at
+      `)
+    await save(subject, 'Hero', 12, 5000)
+    await save('not-a-player', 'Nobody', 40, 5001)
+    const vh = await sync.syncOnce()
+    expect(vh.heroes).toBe(2)
+    const title = fake.posts.find((p) => p.method === 'PUT' && p.path === '/titles/vibe-heroes')!.body
+    expect(title.boards).toEqual([{ id: 'stage', name: 'Furthest stage', kind: 'best' }])
+    expect((title.achievements as { id: string }[]).map((a) => a.id)).toEqual(HEROES_MILESTONES.map((m) => m.id))
+    const scores = fake.posts.filter((p) => p.path === '/titles/vibe-heroes/scores')
+    expect(scores.map((p) => p.body)).toEqual([
+      { board: 'stage', ref: 'stage-12', at: 5000, entries: [{ player: subject, name: 'Hero', score: 12 }] },
+    ])
+    const unlocks = fake.posts.filter((p) => p.path === '/titles/vibe-heroes/unlocks')
+    expect(unlocks.map((p) => p.body.achievements)).toEqual([['first-win', 'chapter-one']])
+    expect((await sync.syncOnce()).heroes).toBe(0)
+    await save(subject, 'Hero', 26, 6000)
+    expect((await sync.syncOnce()).heroes).toBe(1)
+    const later = fake.posts.filter((p) => p.path === '/titles/vibe-heroes/unlocks').at(-1)!
+    expect(later.body).toEqual({ player: subject, achievements: ['first-win', 'chapter-one', 'stage-25'], at: 6000 })
   })
 })
