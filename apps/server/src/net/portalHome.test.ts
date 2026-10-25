@@ -11,6 +11,7 @@ import {
   readPlayTitles,
   renderHome,
   renderStats,
+  yourStuffSection,
   type HomeData,
   type HomeSources,
 } from './portalHome.js'
@@ -201,5 +202,18 @@ describe('the home page live sections', () => {
     expect(html).toContain('<section id="s">$&</section>')
     expect(html).toContain('"@type":"FAQPage"')
     expect(html).not.toContain('<!--ov:home')
+  })
+})
+
+describe('your stuff across OpenVibe', () => {
+  it('is a hidden section the shared profile panel fills for whoever is signed in', () => {
+    const html = yourStuffSection(true)
+    expect(html).toContain('id="your-stuff" data-ov-profile-section hidden')
+    expect(html).toContain('<div data-ov-profile="me">')
+    expect(html).toContain('src="/shared/profile-panel.js')
+    expect(html).toContain('href="/shared/profile-panel.css')
+  })
+  it('is left out until the pinned openvibe-shared serves the panel', () => {
+    expect(yourStuffSection(false)).toBe('')
   })
 })

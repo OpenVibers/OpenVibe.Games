@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module'
 import { SCRAPLANDIA_PACK } from '@openvibe/content'
 import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
 import type { CreatorWorld } from '@openvibe/persistence'
@@ -17,6 +18,14 @@ import type { SteamGame } from '../steam/steamCatalog.js'
  * and adds the FAQ and game list JSON-LD. One build is kept for CACHE_MS and served while the next one is made, so a
  * slow Play or database never holds the page: the first request after boot waits at most FIRST_WAIT_MS.
  */
+
+// openvibe-shared's profile panel (4.13: profile-panel.js, data-ov-profile="me"): served at /shared/ once the pinned
+// openvibe-shared has it, and only then does the home carry "Your stuff".
+interface SharedFiles { isBrowserFile(name: string): boolean }
+interface SharedServe { hashOf(name: string): string }
+const sharedRequire = createRequire(import.meta.url)
+const sharedFiles = sharedRequire('openvibe-shared/files') as SharedFiles
+const sharedServe = sharedRequire('openvibe-shared/serve') as SharedServe
 
 const CACHE_MS = 60_000
 const FIRST_WAIT_MS = 2_500
@@ -426,6 +435,26 @@ export function homeExtraJsonLd(site: string, playSite: string): unknown[] {
   ]
 }
 
+/**
+ * "Your stuff across OpenVibe" (the owner, 2026-10-25: see your inventory anywhere, Steam-style): the signed-in
+ * person's items, badges and achievements in every game, drawn in the browser by openvibe-shared's profile panel for
+ * whoever this site's /auth/me names. The page is one cached build for everyone, so the section ships hidden and the
+ * panel shows it once drawn; for someone signed out it stays hidden. Left out until the pinned openvibe-shared has it.
+ */
+export function yourStuffSection(hasPanel = sharedFiles.isBrowserFile('profile-panel.js')): string {
+  if (!hasPanel) return ''
+  const v = (name: string): string => {
+    try { return `?v=${sharedServe.hashOf(name)}` } catch { return '' }
+  }
+  return `<section class="home-sec" id="your-stuff" data-ov-profile-section hidden aria-labelledby="your-stuff-h">
+<h2 id="your-stuff-h">Your stuff across OpenVibe</h2>
+<p class="home-lede">Your items, badges and achievements in every game, the same on every OpenVibe site.</p>
+<div data-ov-profile="me"><a href="https://openvibe.network/my">Your account</a></div>
+<link rel="stylesheet" href="/shared/profile-panel.css${v('profile-panel.css')}">
+<script src="/shared/profile-panel.js${v('profile-panel.js')}" defer></script>
+</section>`
+}
+
 export function renderHome(
   d: HomeData,
   now: number,
@@ -435,6 +464,7 @@ export function renderHome(
   return {
     stats: renderStats(d),
     sections: [
+      yourStuffSection(),
       boardsSection(d),
       achievementsSection(d),
       worldsSection(d, now),
