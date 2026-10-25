@@ -19,6 +19,7 @@ import { Avatar } from './avatar/avatar.js'
 import { buildPropLook } from './propLooks.js'
 import { buildCritter, npcAppearance } from './npcLooks.js'
 import { materialFor, meshForShape } from './sceneSetup.js'
+import { motionScale } from '../ui/theme.js'
 
 /**
  * Maintains the renderable + collidable view of replicated entities:
@@ -353,7 +354,7 @@ export class EntityView {
       // Chop/mine feedback: brief wobble on the hit node.
       if (v.shakeT > 0 && v.mesh) {
         v.shakeT = Math.max(0, v.shakeT - dt)
-        const k = v.shakeT / 0.3
+        const k = (v.shakeT / 0.3) * motionScale()
         v.mesh.rotation.z = Math.sin(localTime * 55) * 0.045 * k
         v.mesh.rotation.x = Math.sin(localTime * 47 + 1.3) * 0.03 * k
       }

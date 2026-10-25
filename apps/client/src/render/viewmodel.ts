@@ -15,6 +15,7 @@ import { createHeldItemNode, type HeldItemNode } from './heldItem.js'
 import { outfitColor, skinTone } from './avatar/palettes.js'
 import { createTaperedBox } from './avatar/taperedBox.js'
 import { materialFor } from './sceneSetup.js'
+import { motionScale } from '../ui/theme.js'
 
 /**
  * First-person viewmodel: the equipped tool rendered at the camera with
@@ -291,13 +292,14 @@ export class Viewmodel {
     this.equipT = Math.min(1, this.equipT + dt * 3.1)
     if (this.swingT > 0) this.swingT = Math.max(0, this.swingT - dt)
 
-    // Sway: lag behind the view with exponential decay.
-    this.swayYaw += (mouseDx * 0.6 - this.swayYaw) * Math.min(1, dt * 10)
-    this.swayPitch += (mouseDy * 0.6 - this.swayPitch) * Math.min(1, dt * 10)
+    // Sway: lag behind the view with exponential decay. Calm motion (the player's OpenVibe setting) keeps a fifth of it.
+    const keep = motionScale()
+    this.swayYaw += (mouseDx * 0.6 * keep - this.swayYaw) * Math.min(1, dt * 10)
+    this.swayPitch += (mouseDy * 0.6 * keep - this.swayPitch) * Math.min(1, dt * 10)
 
     // Bob while moving on the ground.
     if (grounded && speed > 0.3) this.bobPhase += dt * Math.min(speed, 8) * 1.6
-    const bobAmp = grounded ? Math.min(speed / 7.2, 1) * 0.012 : 0
+    const bobAmp = grounded ? Math.min(speed / 7.2, 1) * 0.012 * keep : 0
     const bobY = Math.abs(Math.sin(this.bobPhase)) * -bobAmp
     const bobX = Math.sin(this.bobPhase * 0.5) * bobAmp * 0.6
 
