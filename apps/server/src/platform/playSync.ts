@@ -1,11 +1,14 @@
 /**
  * OpenVibe.Play (ADR-0007 decision 10): Games' titles, scores and unlocks on the platform's game services.
  *
- * At start Games registers its two titles (Scraplandia and Salvage Rush: their achievements from the packs, and one
- * board each). Every SYNC_MS it posts what the local tables recorded after its last position, stream by stream:
+ * At start Games registers its titles (Scraplandia and Salvage Rush: their achievements from the packs, and one board
+ * each; Vibe Heroes: its stage milestones and a furthest-stage board). Every SYNC_MS it posts what the local tables
+ * recorded after its last position, stream by stream:
  *
  *   rounds    game_round_results → salvage-rush / best   (a round's id is the ref)
  *   hauls     game_hauls         → scraplandia / haul    (an extraction's id is the ref; the board sums them)
+ *   heroes    casual_saves       → vibe-heroes / stage, and the stage milestones reached (stage-<n> is the ref, so each
+ *                                  stage a player reaches is one row and the board keeps their best)
  *   unlocks   game_achievements  → the game's unlocks (only achievements the title defines)
  *   adoptions identity_adoptions (guest) → the guest's rows in Play become the person's, in both titles
  *
@@ -22,6 +25,19 @@
 import { sql, type Db } from 'openvibe-sdk/db'
 import { SCRAPLANDIA_PACK } from '@openvibe/content'
 import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
+
+/**
+ * Vibe Heroes' achievements: milestones of stages cleared (100 stages, a boss every tenth), so each is a fact the save
+ * records, unlocked in Play as soon as the save shows it.
+ */
+export const HEROES_MILESTONES = [
+  { id: 'first-win', stage: 1, name: 'First win', description: 'Clear the first stage.' },
+  { id: 'chapter-one', stage: 10, name: 'Chapter one', description: "Beat the first chapter's boss on stage 10." },
+  { id: 'stage-25', stage: 25, name: 'A quarter of the way', description: 'Clear stage 25.' },
+  { id: 'stage-50', stage: 50, name: 'Halfway there', description: 'Clear stage 50.' },
+  { id: 'stage-75', stage: 75, name: 'Almost there', description: 'Clear stage 75.' },
+  { id: 'champion', stage: 100, name: 'Vibe Champion', description: 'Clear all 100 stages.' },
+] as const
 
 const AUDIENCE = 'openvibe.play'
 const SCOPE = 'play.title.manage play.result.write'
@@ -53,6 +69,13 @@ export const PLAY_TITLES = {
       description: a.description,
     })),
     boards: [{ id: 'best', name: 'Best round', kind: 'best' as const }],
+  },
+  'vibe-heroes': {
+    name: 'Vibe Heroes',
+    url: 'https://openvibe.games/play/vibe-heroes',
+    summary: 'Collect heroes, fuse their shards and push through 100 stages, even while you are away.',
+    achievements: HEROES_MILESTONES.map((m) => ({ id: m.id, name: m.name, description: m.description })),
+    boards: [{ id: 'stage', name: 'Furthest stage', kind: 'best' as const }],
   },
 }
 
@@ -214,6 +237,39 @@ export class PlaySync {
     return rows.length
   }
 
+  /** Vibe Heroes saves → vibe-heroes/stage (the stages cleared) and the milestones they reach. */
+  private async syncHeroes(): Promise<number> {
+    const c = await this.cursor('heroes')
+    const rows = await this.opts.db.many<{
+      account_key: string
+      player_name: string | null
+      stage: number
+      updated_at: number | string
+    }>(sql`
+      SELECT account_key, player_name, stage, updated_at FROM casual_saves
+      WHERE game_id = 'vibe-heroes' AND stage > 0
+        AND (updated_at > ${c.at} OR (updated_at = ${c.at} AND account_key > ${c.key}))
+      ORDER BY updated_at, account_key LIMIT ${BATCH}
+    `)
+    for (const r of rows) {
+      const player = toPlayer(r.account_key)
+      const stage = Number(r.stage)
+      if (player) {
+        await this.call('POST', '/titles/vibe-heroes/scores', {
+          board: 'stage',
+          ref: `stage-${stage}`,
+          at: Number(r.updated_at),
+          entries: [{ player, name: (r.player_name ?? '').slice(0, 40) || 'Player', score: stage }],
+        })
+        const reached = HEROES_MILESTONES.filter((m) => stage >= m.stage).map((m) => m.id)
+        if (reached.length)
+          await this.call('POST', '/titles/vibe-heroes/unlocks', { player, achievements: reached, at: Number(r.updated_at) })
+      }
+      await this.advance('heroes', { at: Number(r.updated_at), key: r.account_key })
+    }
+    return rows.length
+  }
+
   /** Unlocked achievements of both games. */
   private async syncUnlocks(): Promise<number> {
     const c = await this.cursor('unlocks')
@@ -269,13 +325,14 @@ export class PlaySync {
     return rows.length
   }
 
-  /** One pass over the four streams; a failure stops the pass where it was (the next tick resumes there). */
-  async syncOnce(): Promise<{ rounds: number; hauls: number; unlocks: number; adoptions: number }> {
+  /** One pass over the five streams; a failure stops the pass where it was (the next tick resumes there). */
+  async syncOnce(): Promise<{ rounds: number; hauls: number; heroes: number; unlocks: number; adoptions: number }> {
     if (!this.defined) await this.defineTitles()
     const rounds = await this.syncRounds()
     const hauls = await this.syncHauls()
+    const heroes = await this.syncHeroes()
     const unlocks = await this.syncUnlocks()
-    return { rounds, hauls, unlocks, adoptions: await this.syncAdoptions() }
+    return { rounds, hauls, heroes, unlocks, adoptions: await this.syncAdoptions() }
   }
 
   start(): void {
