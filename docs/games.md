@@ -18,6 +18,7 @@ Scraplandia's world is **Scrap Island**, a map document like any the editor save
 
 The generator is `apps/server/src/maps/scrapIsland.ts`. It is deterministic, and it refuses to overwrite an existing
 file without `--force`, because that file may hold staff edits.
+
 - **Terrain**: one 420 m heightfield (2 m cells) above the sea at `WATER_LEVEL`, painted grass, rock (slopes, heights)
   and sand (shores) over a dirt base. The dirt shows on the roads.
 - **Scrap City** (the safe zone `scrap-city`, walls at ±38.5): the plaza and fountain, four market stalls, a workbench,
@@ -87,6 +88,12 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
 - **Sandbox:** characters are read but never saved in a creator world (`worlds/sandboxStore.ts`), and the room has
   no NPCs, world events, rewards, boards or events. Nothing gathered, crafted, traded or dropped in somebody's world
   reaches Scraplandia, the leaderboards or the Inventory. The world's own rows (props, constraints, clock) persist.
+- **Remix:** `POST /api/worlds/:id/remix` copies a published world (or one of your own) into a new draft of yours,
+  titled "… (remix)", within your world limit. It is yours to change and publish. The copy keeps the credit
+  (`remixed_from`, with the title and owner as they were when copied; migration 0013), shown on its page and cards,
+  and the original counts `remixes` from other people. A world page's **Remix it** link goes through
+  `/worlds?remix=<id>`, which signs you in first if needed and opens the copy in the editor (owner, 2026-10-27: "other
+  people can make games just like the same way you can copy our game").
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
   cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event

@@ -124,6 +124,56 @@ describe('/api/worlds', () => {
     expect(parseIfMatch('')).toBeNull()
   })
 
+  it("remixes a published world into a new draft of the remixer's own, credited and counted", async () => {
+    const { call } = await setup(2)
+    const made = await call('POST', '/api/worlds', 'kim', {
+      title: 'Moon base',
+      summary: 'Low gravity vibes',
+    })
+    const id = String(made.body.id)
+    const map = await call('GET', `/api/worlds/${id}/map`, 'kim')
+    const next: MapFileV2 = { ...emptyMapV2(), spawn: [7, 1, 7] }
+    await call('PUT', `/api/worlds/${id}/map`, 'kim', next, { 'if-match': map.etag ?? '' })
+
+    // Signed in only, and never someone else's draft.
+    expect((await call('POST', `/api/worlds/${id}/remix`)).status).toBe(401)
+    expect((await call('POST', `/api/worlds/${id}/remix`, 'guest')).status).toBe(401)
+    expect((await call('POST', `/api/worlds/${id}/remix`, 'lee')).status).toBe(404)
+    expect((await call('POST', '/api/worlds/wnothere0000/remix', 'lee')).status).toBe(404)
+
+    await call('PATCH', `/api/worlds/${id}`, 'kim', { status: 'published' })
+    const remix = await call('POST', `/api/worlds/${id}/remix`, 'lee')
+    expect(remix.status).toBe(201)
+    const rid = String(remix.body.id)
+    expect(rid).not.toBe(id)
+    expect(remix.body).toMatchObject({
+      title: 'Moon base (remix)',
+      summary: 'Low gravity vibes',
+      status: 'draft',
+      edit_url: `/editor?world=${rid}`,
+      remixed_from: { id, title: 'Moon base', owner: 'kim', url: `/worlds/${id}` },
+      remixes: 0,
+    })
+    // The copy is the remixer's: the same map, editable by them, not by the original's owner.
+    const copy = await call('GET', `/api/worlds/${rid}/map`, 'lee')
+    expect(copy.status).toBe(200)
+    expect((copy.body as unknown as MapFileV2).spawn).toEqual([7, 1, 7])
+    expect((await call('GET', `/api/worlds/${rid}/map`, 'kim')).status).toBe(404)
+    // The original counts it, publicly.
+    const listed = (await call('GET', '/api/worlds')).body.worlds ?? []
+    expect(listed.find((w) => w.id === id)).toMatchObject({ remixes: 1, remixed_from: null })
+
+    // Remixing your own world makes a copy without counting; the per-person limit still holds.
+    const own = await call('POST', `/api/worlds/${id}/remix`, 'kim')
+    expect(own.status).toBe(201)
+    expect(
+      ((await call('GET', '/api/worlds')).body.worlds ?? []).find((w) => w.id === id),
+    ).toMatchObject({ remixes: 1 })
+    const full = await call('POST', `/api/worlds/${id}/remix`, 'kim')
+    expect(full.status).toBe(409)
+    expect(full.body.error).toBe('world_limit')
+  })
+
   it('lets a signed-in person make, save, publish and delete a world; staff take one down', async () => {
     const { call, calls } = await setup()
     expect((await call('POST', '/api/worlds', undefined, { title: 'x' })).status).toBe(401)

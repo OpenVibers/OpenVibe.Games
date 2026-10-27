@@ -124,6 +124,16 @@ function publicView(world: CreatorWorld, online: number) {
     published_at: world.publishedAt === null ? null : new Date(world.publishedAt).toISOString(),
     updated_at: new Date(world.updatedAt).toISOString(),
     play_url: `/play?world=${world.id}`,
+    // A remix credits the world it copied (as it was then); remixes counts how often others copied this one.
+    remixed_from: world.remixedFrom
+      ? {
+          id: world.remixedFrom.id,
+          title: world.remixedFrom.title,
+          owner: world.remixedFrom.owner,
+          url: `/worlds/${world.remixedFrom.id}`,
+        }
+      : null,
+    remixes: world.remixes,
   }
 }
 
@@ -299,6 +309,38 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         now: now(),
       })
       opts.log.info('creator world created', { world: world.id })
+      send(res, 201, ownerView(world, 0))
+      return
+    }
+
+    // POST /api/worlds/:id/remix: a published world (or one of your own) copied into a new draft of yours, credited
+    // (owner, 2026-10-27: "other people can make games just like the same way you can copy our game"). The copy is
+    // yours to change and publish; the original is untouched and counts the remix.
+    const remix = /^\/api\/worlds\/([^/]+)\/remix$/.exec(path)
+    if (remix && method === 'POST') {
+      const user = await signedIn(req)
+      if (!(await opts.limits.worldWrite(req, res, `world:${user.subjectId}`))) return
+      const source = await opts.store.get(remix[1] ?? '')
+      const own = !!source && source.ownerSubject === user.subjectId
+      if (!source || (source.status !== 'published' && !own)) fail(404, 'not_found')
+      if ((await opts.store.countByOwner(user.subjectId)) >= opts.perPerson)
+        fail(409, 'world_limit', {
+          detail: `You can keep ${opts.perPerson} worlds. Delete one to make another.`,
+        })
+      const stored = await opts.store.map((source as CreatorWorld).id)
+      if (!stored) fail(404, 'not_found')
+      const src = source as CreatorWorld
+      const world = await opts.store.create({
+        ownerSubject: user.subjectId,
+        ownerName: user.name,
+        title: `${src.title.slice(0, TITLE_MAX - 8).trimEnd()} (remix)`,
+        summary: src.summary,
+        map: (stored as { map: unknown }).map,
+        now: now(),
+        remixedFrom: { id: src.id, title: src.title, owner: src.ownerName },
+      })
+      if (!own) await opts.store.countRemix(src.id)
+      opts.log.info('creator world remixed', { world: world.id, from: src.id })
       send(res, 201, ownerView(world, 0))
       return
     }

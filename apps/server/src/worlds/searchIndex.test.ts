@@ -128,6 +128,8 @@ describe('creator worlds in OpenVibe.Search', () => {
         createdAt: 1,
         updatedAt: 2,
         publishedAt: 2,
+        remixedFrom: null,
+        remixes: 0,
       },
       'https://openvibe.games',
       shell,
@@ -138,5 +140,30 @@ describe('creator worlds in OpenVibe.Search', () => {
     expect(html).toContain('href="/play?world=wk3j9x0a2bq"')
     expect(html).toContain('<link rel="canonical" href="https://openvibe.games/worlds/wk3j9x0a2bq"')
     expect(html).toContain('1 visit')
+    expect(html).toContain('href="/worlds?remix=wk3j9x0a2bq"')
+    expect(html).not.toContain('Remix of')
+    const remix = worldPageHtml(
+      {
+        id: 'wremix00001',
+        ownerSubject: KIM,
+        ownerName: 'lee',
+        title: 'Moon (remix)',
+        summary: '',
+        status: 'published',
+        revision: 'r',
+        plays: 0,
+        createdAt: 1,
+        updatedAt: 2,
+        publishedAt: 2,
+        remixedFrom: { id: 'wk3j9x0a2bq', title: 'Moon <script>', owner: 'kim <b>' },
+        remixes: 2,
+      },
+      'https://openvibe.games',
+      shell,
+    )
+    expect(remix).toContain(
+      'Remix of <a href="/worlds/wk3j9x0a2bq">Moon &lt;script&gt;</a> by kim &lt;b&gt;',
+    )
+    expect(remix).toContain('0 visits · 2 remixes')
   })
 })

@@ -38,7 +38,11 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
   const description =
     world.summary ||
     `A creator world by ${world.ownerName} on OpenVibe.Games. Join it from your browser.`
-  const visits = `${world.plays.toLocaleString('en-US')} ${world.plays === 1 ? 'visit' : 'visits'}`
+  const visits = `${world.plays.toLocaleString('en-US')} ${world.plays === 1 ? 'visit' : 'visits'}${
+    world.remixes
+      ? ` · ${world.remixes.toLocaleString('en-US')} ${world.remixes === 1 ? 'remix' : 'remixes'}`
+      : ''
+  }`
   const links = [
     { label: 'Creator worlds', href: '/worlds' },
     { label: 'Play Scraplandia', href: '/play' },
@@ -73,14 +77,17 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
   <p class="eyebrow">CREATOR WORLD</p>
   <h1>${escapeHtml(world.title)}</h1>
   <p class="by">by ${escapeHtml(world.ownerName)}</p>
+  ${world.remixedFrom ? `<p class="by">Remix of <a href="/worlds/${escapeHtml(world.remixedFrom.id)}">${escapeHtml(world.remixedFrom.title)}</a> by ${escapeHtml(world.remixedFrom.owner)}</p>` : ''}
   ${world.summary ? `<p class="summary">${escapeHtml(world.summary)}</p>` : ''}
   <p class="stats">${escapeHtml(visits)}</p>
   <div class="row">
     <a class="play" href="/play?world=${world.id}">▶ Join this world</a>
+    <a class="more" href="/worlds?remix=${world.id}">Remix it</a>
     <a class="more" href="/worlds">More worlds</a>
   </div>
   <p class="note">Plays in your browser with no download, as a guest or with your OpenVibe account. A world is a
-  sandbox: what you gather or build inside it stays in it.</p>
+  sandbox: what you gather or build inside it stays in it. Remix it to start a world of your own from this one; the
+  remix credits it.</p>
 </main>`,
   })
 }
