@@ -134,6 +134,18 @@ export class CreatorWorldHost implements DynamicPlaces {
     await this.stop(id)
   }
 
+  /**
+   * The world's scripts changed: a running world tells its players and stops, so the next join starts it with the new
+   * scripts (main.ts drops its cached def set first).
+   */
+  async scriptsChanged(id: string): Promise<void> {
+    const current = this.running.get(id)
+    if (!current) return
+    for (const room of current.hub.activeRooms)
+      room.game.announce("This world's scripts were updated. Join again to play the new version.")
+    await this.stop(id)
+  }
+
   /** One pass of the idle sweep (main.ts runs it in the router's admission chain every 30 s). */
   async sweep(): Promise<void> {
     const now = this.now()

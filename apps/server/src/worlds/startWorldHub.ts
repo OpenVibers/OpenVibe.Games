@@ -1,5 +1,10 @@
-import type { ContentRegistry } from '@openvibe/content'
-import { InstanceRegistry, openPgStore, type InstanceLease } from '@openvibe/persistence'
+import type { ContentRegistry, ScriptCapability } from '@openvibe/content'
+import {
+  InstanceRegistry,
+  openPgStore,
+  type InstanceLease,
+  type PersistenceStore,
+} from '@openvibe/persistence'
 import { createRapierWorld, type RapierModule } from '@openvibe/physics/rapier'
 import type { Logger } from '@openvibe/shared'
 import type { Db } from 'openvibe-sdk/db'
@@ -7,6 +12,8 @@ import type { ServerConfig } from '../config.js'
 import { GameServer } from '../game/gameServer.js'
 import { GameWorld } from '../game/gameWorld.js'
 import { InstanceHub } from '../game/instanceHub.js'
+import { ScriptModHost } from '../mods/script/host.js'
+import { PgScriptStorage } from '../mods/script/storage.js'
 import type { ServerMetrics } from '../observability/metrics.js'
 import { sandboxStore } from './sandboxStore.js'
 import type { StartWorldHub } from './worldHost.js'
@@ -17,8 +24,42 @@ export interface WorldHubDeps {
   config: ServerConfig
   metrics: ServerMetrics
   log: Logger
-  /** The creator pack's def set for a world (the one /api/v1/content?world= reports). */
-  contentFor: (worldId: string) => ContentRegistry
+  /** The creator pack's def set for a world, with its scripts when they run (the one /api/v1/content?world= reports). */
+  contentFor: (worldId: string) => ContentRegistry | Promise<ContentRegistry>
+  /**
+   * The QuickJS host for one room of a world with scripts (main.ts, GAMES_CREATOR_SCRIPTS), or undefined: no scripts
+   * run there. Its storage is the world's own place.
+   */
+  scriptsFor?: (
+    content: ContentRegistry,
+    placeId: string,
+    slot: number,
+    store: PersistenceStore,
+  ) => Promise<ScriptModHost | undefined>
+}
+
+/**
+ * The QuickJS host for a room of a world with scripts (GAMES_CREATOR_SCRIPTS): each mod has what it asked for (all four
+ * capabilities are scoped to the room and the world's own storage); budgets and strikes are the host's own.
+ */
+export function worldScriptsFactory(log: Logger): NonNullable<WorldHubDeps['scriptsFor']> {
+  return async (content, placeId, slot, store) => {
+    const { createQuickJsSandboxFactory } = await import('../mods/script/quickjs.js')
+    const grants = Object.fromEntries(
+      content.allMods().map((mod) => [mod.id, mod.granted ?? ['players.read', 'world.emit']]),
+    ) as Record<string, ScriptCapability[]>
+    return new ScriptModHost(
+      content.allMods(),
+      createQuickJsSandboxFactory(),
+      log.child({ placeId, slot, creator: true }),
+      undefined,
+      {
+        placeSeed: slot === 0 ? placeId : `${placeId}:${slot}`,
+        grants,
+        storage: new PgScriptStorage(store.mods, placeId, log),
+      },
+    )
+  }
 }
 
 /**
@@ -29,7 +70,7 @@ export interface WorldHubDeps {
 export function createWorldHubStarter(deps: WorldHubDeps): StartWorldHub {
   const { db, rapier, config, metrics, log } = deps
   return async (world, placeId) => {
-    const worldContent = deps.contentFor(world.id)
+    const worldContent = await deps.contentFor(world.id)
     const worldRegistry = new InstanceRegistry(db, placeId)
     const worldLog = log.child({ system: 'world', place: placeId })
     const createWorldRoom = async (slot: number, lease: InstanceLease) => {
@@ -46,6 +87,10 @@ export function createWorldHubStarter(deps: WorldHubDeps): StartWorldHub {
       await roomWorld.seedOrRestore(roomStore)
       roomWorld.reconcileMapNodes()
       roomWorld.reconcileMapProps()
+      const scripts =
+        worldContent.allMods().length > 0
+          ? await deps.scriptsFor?.(worldContent, placeId, slot, roomStore)
+          : undefined
       const roomGame = new GameServer(
         {
           ...config,
@@ -58,14 +103,17 @@ export function createWorldHubStarter(deps: WorldHubDeps): StartWorldHub {
         roomStore,
         metrics,
         log.child({ system: 'game', place: placeId }),
-        {},
+        scripts ? { scripts } : {},
       )
       await roomGame.load()
+      await scripts?.start()
       return {
         lease,
         game: roomGame,
         world: roomWorld,
         dispose: async () => {
+          await scripts?.flushWrites()
+          scripts?.dispose()
           roomPhysics.dispose()
         },
       }

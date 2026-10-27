@@ -94,6 +94,9 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   and the original counts `remixes` from other people. A world page's **Remix it** link goes through
   `/worlds?remix=<id>`, which signs you in first if needed and opens the copy in the editor (owner, 2026-10-27: "other
   people can make games just like the same way you can copy our game").
+- **Scripts:** a world's own `games-quickjs@1` mods, written at `/worlds` → **Scripts**, checked like an installed
+  pack's within the creator limits, and run in its rooms when `GAMES_CREATOR_SCRIPTS=1` (off by default); see
+  `mods.md` "Scripts in creator worlds".
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
   cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event

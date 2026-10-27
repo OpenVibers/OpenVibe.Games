@@ -39,6 +39,7 @@ async function setup(perPerson = 2) {
     changed: [] as (string | null)[],
     removed: [] as string[],
     events: [] as EventInput[],
+    scripts: [] as string[],
   }
   const handler = createWorldRoutes({
     store,
@@ -47,6 +48,9 @@ async function setup(perPerson = 2) {
       applyMap: (id) => calls.applied.push(id),
       changed: async (world: CreatorWorld | null, id: string) => {
         calls.changed.push(world ? `${id}:${world.status}` : null)
+      },
+      scriptsChanged: async (id) => {
+        calls.scripts.push(id)
       },
       remove: async (id, within) => {
         calls.removed.push(id)
@@ -122,6 +126,55 @@ describe('/api/worlds', () => {
     expect(parseIfMatch('"abc123"')).toBe('abc123')
     expect(parseIfMatch(undefined)).toBeNull()
     expect(parseIfMatch('')).toBeNull()
+  })
+
+  it("keeps a world's scripts: the owner saves them through the content checks, staff read them, a save restarts it", async () => {
+    const { call, calls } = await setup(2)
+    const id = String((await call('POST', '/api/worlds', 'kim', { title: 'Scripted' })).body.id)
+    const hello = {
+      format: 'games-quickjs@1',
+      id: 'hello',
+      version: '1.0.0',
+      entry: 'main.js',
+      source: 'export function onPlayerJoin(p) { emit("welcome", { id: p.id }) }',
+      capabilities: ['players.read', 'world.emit'],
+      hooks: ['onPlayerJoin'],
+    }
+    expect((await call('GET', `/api/worlds/${id}/scripts`)).status).toBe(401)
+    expect((await call('GET', `/api/worlds/${id}/scripts`, 'lee')).status).toBe(404)
+    const empty = await call('GET', `/api/worlds/${id}/scripts`, 'kim')
+    expect(empty.body).toMatchObject({ scripts: [], limits: { mods: 4 }, running: false })
+
+    // The content package's checks, and the creator limits.
+    const bad = await call('PUT', `/api/worlds/${id}/scripts`, 'kim', {
+      scripts: [{ ...hello, hooks: ['onEverything'] }],
+    })
+    expect(bad.status).toBe(422)
+    expect(bad.body.issues?.some((i) => i.startsWith('scripts[0].hooks'))).toBe(true)
+    const twice = await call('PUT', `/api/worlds/${id}/scripts`, 'kim', { scripts: [hello, hello] })
+    expect(twice.body.issues).toEqual(['scripts[1].id: hello is used twice'])
+    const five = await call('PUT', `/api/worlds/${id}/scripts`, 'kim', {
+      scripts: [1, 2, 3, 4, 5].map((n) => ({ ...hello, id: `s${n}` })),
+    })
+    expect(five.body.issues?.[0]).toMatch(/more than the 4 a creator world takes/)
+    expect(
+      (await call('PUT', `/api/worlds/${id}/scripts`, 'lee', { scripts: [hello] })).status,
+    ).toBe(404)
+    expect(calls.scripts).toEqual([])
+
+    // A good save: stored as written (the server's `granted` never comes from the creator), the world restarts.
+    const ok = await call('PUT', `/api/worlds/${id}/scripts`, 'kim', {
+      scripts: [{ ...hello, granted: ['storage.kv', 'player.message'] }],
+    })
+    expect(ok.status).toBe(200)
+    expect(ok.body.scripts).toEqual([hello])
+    expect(calls.scripts).toEqual([id])
+    expect((await call('GET', `/api/worlds/${id}/scripts`, 'kim')).body.scripts).toEqual([hello])
+    expect((await call('GET', `/api/worlds/${id}/scripts`, 'staff')).body.scripts).toEqual([hello])
+    // An empty list takes them out.
+    expect(
+      (await call('PUT', `/api/worlds/${id}/scripts`, 'kim', { scripts: [] })).body.scripts,
+    ).toEqual([])
   })
 
   it("remixes a published world into a new draft of the remixer's own, credited and counted", async () => {

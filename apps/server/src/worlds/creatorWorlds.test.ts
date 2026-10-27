@@ -1,5 +1,6 @@
 import {
   createContent,
+  creatorScriptsOf,
   creatorWorldPack,
   emptyMapV2,
   SCRAPLANDIA_PACK,
@@ -24,7 +25,7 @@ import { GameWorld } from '../game/gameWorld.js'
 import { InstanceHub } from '../game/instanceHub.js'
 import { PlaceRouter } from '../game/placeRouter.js'
 import { ServerMetrics } from '../observability/metrics.js'
-import { createWorldHubStarter } from './startWorldHub.js'
+import { createWorldHubStarter, worldScriptsFactory } from './startWorldHub.js'
 import { CreatorWorldHost, mayJoin } from './worldHost.js'
 
 const log = createConsoleLogger({ app: 'creator-worlds-test' }, 'error')
@@ -219,3 +220,83 @@ it('starts a published creator world on the first join, sandboxes characters, re
     await router.shutdown()
   }
 })
+
+it("runs a world's own scripts in its room, each with only what it asked for (GAMES_CREATOR_SCRIPTS)", async () => {
+  const db = await openTestDb()
+  const rapier = await loadRapier()
+  const config = loadConfig({ GAMES_PLACE_ID: 'scraplandia', GAMES_CREATOR_SCRIPTS: '1' })
+  expect(config.creatorScripts).toBe(true)
+  const worlds = createCreatorWorldStore(db)
+  const world = await worlds.create({
+    ownerSubject: KIM,
+    ownerName: 'kim',
+    title: 'Scripted',
+    summary: '',
+    map: emptyMapV2(),
+    now: 1,
+  })
+  await worlds.update(world.id, { status: 'published' }, 2)
+  // Two scripts as a creator saves them: one greets the player (asked for players.read and player.message), one tries
+  // to message without asking (the host gives it no game.message, so its hook fails and nothing reaches the player).
+  await worlds.saveScripts(
+    world.id,
+    [
+      {
+        format: 'games-quickjs@1',
+        id: 'greet',
+        version: '1.0.0',
+        entry: 'greet.js',
+        hooks: ['onPlayerJoin'],
+        capabilities: ['players.read', 'player.message'],
+        source: `function onPlayerJoin(e) { game.message(e.player.id, 'hi ' + e.player.name + ', welcome to my world') }`,
+      },
+      {
+        format: 'games-quickjs@1',
+        id: 'sneaky',
+        version: '1.0.0',
+        entry: 'sneaky.js',
+        hooks: ['onPlayerJoin'],
+        source: `function onPlayerJoin(e) { game.message(e.player.id, 'not allowed') }`,
+      },
+    ],
+    3,
+  )
+  const { scripts, issues } = creatorScriptsOf(await worlds.scripts(world.id))
+  expect(issues).toEqual([])
+  const content = createContent([{ mods: scripts }], creatorWorldPack(world.id))
+  const start = createWorldHubStarter({
+    db,
+    rapier,
+    config,
+    metrics: new ServerMetrics(),
+    log,
+    contentFor: async () => content,
+    scriptsFor: worldScriptsFactory(log),
+  })
+  const hub = await start(world as CreatorWorld, `world:${world.id}`)
+  if (!hub) throw new Error('the world did not start')
+  const inbox: ServerMessage[] = []
+  const conn: GameConnection = {
+    identity: { guestKeyHash: 'e'.repeat(64) },
+    send: (raw) => inbox.push(JSON.parse(raw) as ServerMessage),
+    close: () => undefined,
+  }
+  try {
+    hub.onMessage(conn, {
+      t: 'hello',
+      v: PROTOCOL_VERSION,
+      place: `world:${world.id}`,
+      contentDigest: content.digest,
+      slot: 0,
+      name: 'ana',
+      appearance: defaultAppearance(),
+    })
+    await until(() => inbox.some((m) => m.t === 'announce'))
+    const said = inbox.filter((m) => m.t === 'announce').map((m) => (m as { text: string }).text)
+    expect(said).toContain('hi ana, welcome to my world')
+    expect(said).not.toContain('not allowed')
+  } finally {
+    hub.onDisconnect(conn)
+    await hub.shutdown()
+  }
+}, 30_000)

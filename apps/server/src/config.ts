@@ -79,6 +79,12 @@ export interface ServerConfig {
   creatorWorldIdleSeconds: number
   /** GAMES_CREATOR_WORLD_PLAYERS: players per creator world. */
   creatorWorldPlayers: number
+  /**
+   * GAMES_CREATOR_SCRIPTS=1: run creator worlds' own games-quickjs@1 scripts in their rooms (QuickJS sandbox, the
+   * creator limits). Off by default: worlds keep their scripts either way, and with this off a world's def set and
+   * digest have none, exactly as before scripts existed.
+   */
+  creatorScripts: boolean
   maxPlayers: number
   persistFlushSeconds: number
   metricsLogSeconds: number
@@ -228,6 +234,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     creatorWorldsPerPerson: positiveIntEnv(env, 'GAMES_CREATOR_WORLDS_PER_PERSON', 5),
     creatorWorldIdleSeconds: positiveIntEnv(env, 'GAMES_CREATOR_WORLD_IDLE_SECONDS', 180),
     creatorWorldPlayers: positiveIntEnv(env, 'GAMES_CREATOR_WORLD_PLAYERS', 16),
+    creatorScripts: env.GAMES_CREATOR_SCRIPTS === '1' || env.GAMES_CREATOR_SCRIPTS === 'true',
   }
 }
 

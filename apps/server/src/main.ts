@@ -8,6 +8,7 @@ import {
   compileMapFileV2,
   createContent,
   creatorWorldPack,
+  creatorScriptsOf,
   parseMapFile,
   SCRAPLANDIA_PACK,
   setMapOverride,
@@ -86,7 +87,7 @@ import { casualLeaderboard, pruneCasualActions } from './casual/store.js'
 import { createPortalHome, readPlayTitles } from './net/portalHome.js'
 import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 import { CreatorWorldHost } from './worlds/worldHost.js'
-import { createWorldHubStarter } from './worlds/startWorldHub.js'
+import { createWorldHubStarter, worldScriptsFactory } from './worlds/startWorldHub.js'
 import { createWorldRoutes } from './worlds/worldRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
 import { createSteamCatalog } from './steam/steamCatalog.js'
@@ -599,12 +600,27 @@ async function main(): Promise<void> {
   // A creator world is the place `world:<id>` with the plain creator pack and its map as the override. Its room is
   // sandboxed: no NPCs, no world events, no rewards, no events, and characters are never saved there.
   const creatorWorlds = createCreatorWorldStore(db)
-  const creatorContent = new Map<string, ContentRegistry>()
-  const contentForWorld = (worldId: string): ContentRegistry => {
+  // A world's def set: the creator pack, plus its own scripts when they run here (GAMES_CREATOR_SCRIPTS). The client
+  // builds the same set from /api/v1/content?world= (its packs carry the same mods), so the digests agree.
+  const creatorContent = new Map<string, Promise<ContentRegistry>>()
+  const worldScriptMods = async (worldId: string) => {
+    if (!config.creatorScripts) return []
+    const stored = await creatorWorlds.scripts(worldId).catch(() => null)
+    const checked = creatorScriptsOf(stored ?? [])
+    if (checked.issues.length) {
+      log.warn('creator world scripts refused at load', { world: worldId, issues: checked.issues.length })
+      return []
+    }
+    return checked.scripts
+  }
+  const contentForWorld = (worldId: string): Promise<ContentRegistry> => {
     let built = creatorContent.get(worldId)
     if (!built) {
       if (creatorContent.size >= 256) creatorContent.clear()
-      built = createContent([], creatorWorldPack(worldId))
+      built = worldScriptMods(worldId).then((mods) =>
+        createContent(mods.length ? [{ mods }] : [], creatorWorldPack(worldId)),
+      )
+      built.catch(() => creatorContent.delete(worldId))
       creatorContent.set(worldId, built)
     }
     return built
@@ -616,6 +632,7 @@ async function main(): Promise<void> {
     metrics,
     log,
     contentFor: contentForWorld,
+    ...(config.creatorScripts ? { scriptsFor: worldScriptsFactory(scriptLog) } : {}),
   })
   const worldHost = new CreatorWorldHost({
     store: creatorWorlds,
@@ -808,7 +825,13 @@ async function main(): Promise<void> {
             await within?.(t)
           })
         }),
+      scriptsChanged: (id) =>
+        router.serialize(async () => {
+          creatorContent.delete(id)
+          await worldHost.scriptsChanged(id)
+        }),
     },
+    scriptsRun: config.creatorScripts,
     resolveUser: (token) =>
       config.networkAuthUrl
         ? resolveNetworkUser(config.networkAuthUrl, token)
@@ -921,14 +944,23 @@ async function main(): Promise<void> {
               res.end('{"error":"world_not_found"}')
               return true
             }
-            res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-            res.end(
-              JSON.stringify({
-                digest: contentForWorld(requestedWorld).digest,
-                game: 'creator',
-                world: requestedWorld,
-                packs: [],
-              }),
+            void contentForWorld(requestedWorld).then(
+              (worldContent) => {
+                const mods = worldContent.allMods()
+                res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+                res.end(
+                  JSON.stringify({
+                    digest: worldContent.digest,
+                    game: 'creator',
+                    world: requestedWorld,
+                    packs: mods.length ? [{ mods }] : [],
+                  }),
+                )
+              },
+              () => {
+                res.writeHead(503, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+                res.end('{"error":"content_unavailable"}')
+              },
             )
             return true
           }
