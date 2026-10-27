@@ -203,3 +203,24 @@ first implementation.
 
 Script storage writes are durable after the write-behind queue drains; a
 database failure is logged and retried twice.
+
+## Scripts in creator worlds
+
+A creator world can carry its own `games-quickjs@1` mods, written by its owner (owner, 2026-10-27: an open, moddable
+game engine like Garry's Mod, s&box or Roblox).
+
+- **Writing them:** `/worlds` → your world → **Scripts**. Each script has a name, its hooks, what it may do (the four
+  capabilities: see the players, message a player, announce and give items, remember things) and its code. The API
+  is `GET`/`PUT /api/worlds/:id/scripts` (`{ scripts: [...] }`); the owner saves, staff can read.
+- **Checks:** `creatorScriptsOf` (`packages/content/src/packs/creatorWorld.ts`) runs each through the same
+  `ScriptModSchema` as an installed pack (hooks, capabilities, budgets under their ceilings, imports inside the mod),
+  and the creator limits: at most `CREATOR_SCRIPT_LIMITS.mods` (4) scripts and 128 KiB together. `granted` is never
+  the creator's: the server sets it to what each script asked for. Scripts are stored as written (migration 0014,
+  `creator_worlds.scripts`) and checked again when they load.
+- **Running:** only with `GAMES_CREATOR_SCRIPTS=1` (off by default). Then a world's def set is the creator pack plus a
+  pack of its scripts, `/api/v1/content?world=` sends that pack so the client builds the same digest, and each room runs
+  them in its own QuickJS host (`worldScriptsFactory`, `apps/server/src/worlds/startWorldHub.ts`) with the world's own
+  script storage. Everything a script does goes through the gameplay modules, as in any place, and a creator world is
+  still a sandbox: nothing reaches characters, Scraplandia or Inventory.
+- **Saving while it runs:** a save tells the players in the world that its scripts changed and stops it; the next join
+  starts it with the new scripts. With the flag off, worlds keep their scripts and their def set has none.

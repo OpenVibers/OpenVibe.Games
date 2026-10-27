@@ -3,7 +3,9 @@ import { createContent } from '../index.js'
 import { emptyMapV2, type MapFileV2 } from '../mapFileV2.js'
 import {
   CREATOR_MAP_LIMITS,
+  CREATOR_SCRIPT_LIMITS,
   creatorMapIssues,
+  creatorScriptsOf,
   creatorPlaceId,
   creatorWorldOf,
   creatorWorldPack,
@@ -64,5 +66,43 @@ describe('creator worlds', () => {
       ],
     } as unknown as MapFileV2
     expect(creatorMapIssues(painted, 10).some((i) => i.startsWith('statics:'))).toBe(true)
+  })
+
+  it("checks a world's scripts like an installed pack's, within the creator limits, and grants what each asks", () => {
+    const mod = {
+      format: 'games-quickjs@1',
+      id: 'hello',
+      version: '1.0.0',
+      entry: 'main.js',
+      source: 'export function onTick() {}',
+      hooks: ['onTick'],
+    }
+    expect(creatorScriptsOf([])).toEqual({ scripts: [], issues: [] })
+    expect(creatorScriptsOf('nope').issues).toEqual(['scripts: a list of games-quickjs@1 mods'])
+    const one = creatorScriptsOf([
+      { ...mod, capabilities: ['storage.kv'], granted: ['player.message'] },
+    ])
+    expect(one.issues).toEqual([])
+    expect(one.scripts[0]?.granted).toEqual(['storage.kv'])
+    expect(creatorScriptsOf([mod]).scripts[0]?.granted).toEqual(['players.read', 'world.emit'])
+    expect(creatorScriptsOf([{ ...mod, budgets: { cpuMs: 9999 } }]).issues[0]).toMatch(
+      /^scripts\[0\]\.budgets\.cpuMs/,
+    )
+    expect(creatorScriptsOf([{ ...mod, extra: 1 }]).issues.length).toBeGreaterThan(0)
+    expect(
+      creatorScriptsOf([
+        { ...mod, source: undefined, files: { 'main.js': "import x from 'fs'" } },
+      ]).issues.some((i) => i.includes('fs')),
+    ).toBe(true)
+    const many = Array.from({ length: CREATOR_SCRIPT_LIMITS.mods + 1 }, (_, i) => ({
+      ...mod,
+      id: `m${i}`,
+    }))
+    expect(creatorScriptsOf(many).issues[0]).toMatch(/more than the 4/)
+    expect(creatorScriptsOf(many).scripts).toEqual([])
+    // A world with scripts is a def set with them, on both sides.
+    const content = createContent([{ mods: one.scripts }], creatorWorldPack('wk3j9x0a2bq'))
+    expect(content.allMods().map((m) => m.id)).toEqual(['hello'])
+    expect(content.digest).not.toBe(createContent([], creatorWorldPack('wk3j9x0a2bq')).digest)
   })
 })

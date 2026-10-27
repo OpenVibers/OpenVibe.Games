@@ -1,8 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   CREATOR_MAP_LIMITS,
+  CREATOR_SCRIPT_LIMITS,
   CREATOR_WORLD_ID,
   creatorMapIssues,
+  creatorScriptsOf,
   emptyMapV2,
   parseMapFile,
   type MapFileV2,
@@ -46,6 +48,8 @@ export interface WorldHostView {
    * that removes it (a staff deletion's moderation event).
    */
   remove(id: string, within?: (t: Tx) => Promise<void>): Promise<void>
+  /** The world's scripts changed: a running world says so and stops, and the next join runs the new ones. */
+  scriptsChanged(id: string): Promise<void>
 }
 
 export interface WorldRouteOptions {
@@ -64,6 +68,8 @@ export interface WorldRouteOptions {
   events?: { db: Db; sink: EventSink; siteUrl: string }
   /** Published worlds in OpenVibe.Search (searchIndex.ts), synced in the same transaction as the events. */
   search?: WorldSearchIndex
+  /** Whether worlds' scripts run here (GAMES_CREATOR_SCRIPTS); they are kept either way. */
+  scriptsRun?: boolean
   now?: () => number
 }
 
@@ -342,6 +348,41 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       if (!own) await opts.store.countRemix(src.id)
       opts.log.info('creator world remixed', { world: world.id, from: src.id })
       send(res, 201, ownerView(world, 0))
+      return
+    }
+
+    // GET/PUT /api/worlds/:id/scripts: the world's own games-quickjs@1 mods (docs/mods.md "Scripts in creator worlds"),
+    // the owner's to change and staff's to read. A save that passes the content package's checks stops a running world
+    // (it says so first) so the next join runs the new scripts. `running` says whether this server runs them at all.
+    const scriptsMatch = /^\/api\/worlds\/([^/]+)\/scripts$/.exec(path)
+    if (scriptsMatch && (method === 'GET' || method === 'PUT')) {
+      const user = await signedIn(req)
+      const sid = scriptsMatch[1] ?? ''
+      if (method === 'GET') {
+        const world = CREATOR_WORLD_ID.test(sid) ? await opts.store.get(sid) : null
+        if (!world || (world.ownerSubject !== user.subjectId && !isStaff(user)))
+          fail(404, 'world_not_found')
+        send(res, 200, {
+          scripts: (await opts.store.scripts(sid)) ?? [],
+          limits: CREATOR_SCRIPT_LIMITS,
+          running: opts.scriptsRun === true,
+        })
+        return
+      }
+      await owned(sid, user)
+      if (!(await limited('mapSave', req, res, `world:${user.subjectId}`))) return
+      const { text } = await readBody(req, CREATOR_SCRIPT_LIMITS.bytes + 16 * 1024)
+      const body = parseJson(text) as { scripts?: unknown } | null
+      const checked = creatorScriptsOf(body?.scripts)
+      if (checked.issues.length)
+        fail(422, 'scripts_invalid', { issues: checked.issues.slice(0, 40) })
+      // Stored as the creator wrote them; the server sets `granted` when it loads them.
+      const stored = checked.scripts.map(({ granted: _granted, ...mod }) => mod)
+      const saved = await opts.store.saveScripts(sid, stored, now())
+      if (!saved) fail(404, 'world_not_found')
+      await opts.host.scriptsChanged(sid)
+      opts.log.info('creator world scripts saved', { world: sid, scripts: stored.length })
+      send(res, 200, { scripts: stored, running: opts.scriptsRun === true })
       return
     }
 

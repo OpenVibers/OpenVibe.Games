@@ -1,5 +1,6 @@
 import type { ContentPackV2 } from '../pack.js'
 import type { MapFileV2 } from '../mapFileV2.js'
+import { ScriptModSchema, type ScriptMod } from '../schema/scriptMod.js'
 
 /**
  * Creator worlds: a place a signed-in player builds in /editor and publishes at /worlds. The server and
@@ -89,4 +90,54 @@ export function creatorMapIssues(map: MapFileV2, bytes: number): string[] {
   )
     issues.push('statics: painted surfaces are not available in creator worlds yet')
   return issues
+}
+
+/**
+ * What a creator world's scripts may be: its own `games-quickjs@1` mods (docs/mods.md), at most four, together at
+ * most 128 KiB of source. Each passes the content package's script schema, so a creator gets exactly the checks an
+ * installed pack gets (hooks, capabilities, budgets under their ceilings, module imports inside the mod). The server
+ * grants what each asks for: the capabilities are all scoped to the world's own room and storage.
+ */
+export const CREATOR_SCRIPT_LIMITS = { mods: 4, bytes: 128 * 1024 } as const
+
+/** A world's scripts, validated: the mods to run, or the reasons they cannot (an empty list is fine: no scripts). */
+export function creatorScriptsOf(raw: unknown): { scripts: ScriptMod[]; issues: string[] } {
+  if (!Array.isArray(raw))
+    return { scripts: [], issues: ['scripts: a list of games-quickjs@1 mods'] }
+  const issues: string[] = []
+  if (raw.length > CREATOR_SCRIPT_LIMITS.mods)
+    issues.push(
+      `scripts: ${raw.length} is more than the ${CREATOR_SCRIPT_LIMITS.mods} a creator world takes`,
+    )
+  const bytes = new TextEncoder().encode(JSON.stringify(raw)).length
+  if (bytes > CREATOR_SCRIPT_LIMITS.bytes)
+    issues.push(
+      `scripts: ${bytes} bytes is more than the ${CREATOR_SCRIPT_LIMITS.bytes} a creator world takes`,
+    )
+  const scripts: ScriptMod[] = []
+  const ids = new Set<string>()
+  raw.slice(0, CREATOR_SCRIPT_LIMITS.mods).forEach((item, i) => {
+    // `granted` is the server's to set, never the creator's.
+    const { granted: _granted, ...asked } = (
+      item && typeof item === 'object' ? item : {}
+    ) as Record<string, unknown>
+    const parsed = ScriptModSchema.safeParse(asked)
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues)
+        issues.push(
+          `scripts[${i}]${issue.path.length ? `.${issue.path.join('.')}` : ''}: ${issue.message}`,
+        )
+      return
+    }
+    if (ids.has(parsed.data.id)) {
+      issues.push(`scripts[${i}].id: ${parsed.data.id} is used twice`)
+      return
+    }
+    ids.add(parsed.data.id)
+    scripts.push({
+      ...parsed.data,
+      granted: parsed.data.capabilities ?? ['players.read', 'world.emit'],
+    })
+  })
+  return { scripts: issues.length ? [] : scripts, issues }
 }

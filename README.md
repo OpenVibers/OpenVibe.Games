@@ -249,6 +249,7 @@ Platform environment (all optional; service calls need `OV_OAUTH_CLIENT_SECRET`)
 | `GAMES_CREATOR_WORLDS_PER_PERSON`  | Worlds one account keeps (default 5)                                                       |
 | `GAMES_CREATOR_WORLD_IDLE_SECONDS` | An empty creator world stops after this long (default 180)                                 |
 | `GAMES_CREATOR_WORLD_PLAYERS`      | Players per creator world (default 16)                                                     |
+| `GAMES_CREATOR_SCRIPTS`            | `1` runs creator worlds' own scripts in their rooms (QuickJS sandbox; off by default)      |
 
 ## Capabilities
 

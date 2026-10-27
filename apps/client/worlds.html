@@ -294,6 +294,54 @@
       #more-row {
         margin-top: 14px;
       }
+      /* The scripts editor (worlds.ts openScripts). */
+      dialog.scripts {
+        width: min(760px, calc(100vw - 32px));
+        max-height: calc(100vh - 48px);
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      dialog.scripts::backdrop {
+        background: rgba(0, 0, 0, 0.55);
+      }
+      .script-list {
+        display: grid;
+        gap: 12px;
+        margin: 12px 0;
+      }
+      fieldset.script {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+      }
+      label.check {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 500;
+      }
+      label.check input {
+        width: auto;
+      }
+      fieldset.script > button {
+        justify-self: start;
+      }
+      textarea.code {
+        min-height: 160px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+      }
     </style>
     <script type="module" src="/src/pages/worlds.ts"></script>
   </head>

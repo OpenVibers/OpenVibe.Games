@@ -106,6 +106,10 @@ export interface CreatorWorldStore {
   get(id: string): Promise<CreatorWorld | null>
   /** The stored map document and its revision. */
   map(id: string): Promise<{ map: unknown; revision: string } | null>
+  /** The world's scripts as stored (validated before they were saved; migration 0014). Null when the world is gone. */
+  scripts(id: string): Promise<unknown[] | null>
+  /** Replaces the world's scripts (callers validate them first). Answers the world, or null when it is gone. */
+  saveScripts(id: string, scripts: unknown[], now: number): Promise<CreatorWorld | null>
   countByOwner(ownerSubject: string): Promise<number>
   listByOwner(ownerSubject: string): Promise<CreatorWorld[]>
   /** Published worlds, newest first. */
@@ -158,6 +162,20 @@ export function createCreatorWorldStore(db: Db): CreatorWorldStore {
         sql`SELECT map, revision FROM creator_worlds WHERE id = ${id}`,
       )
       return row ? { map: row.map, revision: row.revision } : null
+    },
+    async scripts(id) {
+      const row = await db.maybe<{ scripts: unknown }>(
+        sql`SELECT scripts FROM creator_worlds WHERE id = ${id}`,
+      )
+      if (!row) return null
+      return Array.isArray(row.scripts) ? row.scripts : []
+    },
+    async saveScripts(id, scripts, now) {
+      const row = await db.maybe<Row>(sql`
+        UPDATE creator_worlds SET scripts = ${sql.json(scripts)}, updated_at = ${now}
+        WHERE id = ${id} RETURNING ${COLUMNS}
+      `)
+      return row ? fromRow(row) : null
     },
     async countByOwner(ownerSubject) {
       const row = await db.one<{ n: number | string }>(

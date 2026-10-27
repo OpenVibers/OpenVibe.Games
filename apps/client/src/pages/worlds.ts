@@ -205,6 +205,7 @@ function mineCard(world: World): HTMLElement {
   if (status === 'published')
     actions.append(button('Unpublish', (b) => void change(b, world.id, { status: 'draft' })))
   actions.append(
+    button('Scripts', () => void openScripts(world)),
     button('Rename', (b) => {
       const title = prompt('New title (up to 60 characters)', world.title)
       if (title !== null && title.trim() && title !== world.title)
@@ -234,6 +235,155 @@ function mineCard(world: World): HTMLElement {
 
 let staff = false
 let page = 1
+
+// ── Scripts: a world's own games-quickjs@1 mods (docs/mods.md "Scripts in creator worlds") ──
+interface WorldScript {
+  format: 'games-quickjs@1'
+  id: string
+  version: string
+  entry: string
+  source: string
+  /** A multi-file mod made through the API: the editor shows (and saves) its entry file as the script. */
+  files?: Record<string, string>
+  hooks: string[]
+  capabilities?: string[]
+}
+const HOOKS = ['onTick', 'onPlayerJoin', 'onPlayerLeave']
+const CAPABILITIES: [string, string][] = [
+  ['players.read', 'See the players'],
+  ['player.message', 'Message a player'],
+  ['world.emit', 'Announce and give items'],
+  ['storage.kv', 'Remember things'],
+]
+const STARTER = `// Runs in your world's sandbox. game.message(id, text) needs "Message a player".
+function onPlayerJoin(e) {
+  game.message(e.player.id, 'Welcome, ' + e.player.name + '!')
+}
+`
+
+function checkbox(label: string, checked: boolean): [HTMLLabelElement, HTMLInputElement] {
+  const box = el('input')
+  box.type = 'checkbox'
+  box.checked = checked
+  const wrap = el('label', { className: 'check' }, box, document.createTextNode(` ${label}`))
+  return [wrap, box]
+}
+
+/** The scripts editor for one of your worlds: each script's name, hooks, what it may do and its code, then Save. */
+async function openScripts(world: World): Promise<void> {
+  let data: { scripts: WorldScript[]; running: boolean; limits: { mods: number } }
+  try {
+    data = await api(`/api/worlds/${world.id}/scripts`)
+  } catch (err) {
+    mineStatus.textContent = err instanceof Error ? err.message : 'Scripts could not be loaded.'
+    return
+  }
+  const dialog = el('dialog', { className: 'scripts' })
+  const list = el('div', { className: 'script-list' })
+  const status = el('p', { className: 'status' })
+  const rows: (() => WorldScript)[] = []
+  const addRow = (script: WorldScript) => {
+    const name = el('input')
+    name.value = script.id
+    name.maxLength = 40
+    name.setAttribute('aria-label', 'Script name')
+    const hooks = HOOKS.map((h) => checkbox(h, script.hooks.includes(h)))
+    const caps = CAPABILITIES.map(([c, label]) =>
+      checkbox(label, (script.capabilities ?? []).includes(c)),
+    )
+    const code = el('textarea', { className: 'code' })
+    code.value = script.source ?? script.files?.[script.entry] ?? ''
+    code.spellcheck = false
+    code.setAttribute('aria-label', 'Script code')
+    const card = el(
+      'fieldset',
+      { className: 'script' },
+      el('label', { text: 'Name (a-z, 0-9, - and _)' }, name),
+      el('div', { className: 'checks' }, ...hooks.map(([w]) => w)),
+      el('div', { className: 'checks' }, ...caps.map(([w]) => w)),
+      code,
+    )
+    const read = (): WorldScript => ({
+      format: 'games-quickjs@1',
+      id: name.value.trim(),
+      version: script.version || '1.0.0',
+      entry: script.entry || `${name.value.trim() || 'main'}.js`,
+      source: code.value,
+      hooks: HOOKS.filter((_, i) => hooks[i]?.[1].checked),
+      capabilities: CAPABILITIES.filter((_, i) => caps[i]?.[1].checked).map(([c]) => c),
+    })
+    const remove = button('Remove this script', () => {
+      card.remove()
+      rows.splice(rows.indexOf(read), 1)
+    })
+    card.append(remove)
+    rows.push(read)
+    list.append(card)
+  }
+  data.scripts.forEach(addRow)
+  const add = button('Add a script', () => {
+    if (rows.length >= data.limits.mods) {
+      status.textContent = `A world takes at most ${data.limits.mods} scripts.`
+      return
+    }
+    addRow({
+      format: 'games-quickjs@1',
+      id: `script-${rows.length + 1}`,
+      version: '1.0.0',
+      entry: `script-${rows.length + 1}.js`,
+      source: STARTER,
+      hooks: ['onPlayerJoin'],
+      capabilities: ['players.read', 'player.message'],
+    })
+  })
+  const save = button(
+    'Save scripts',
+    (b) =>
+      void (async () => {
+        b.disabled = true
+        status.textContent = 'Saving…'
+        try {
+          // A script's entry follows its name, so renaming one keeps it loadable.
+          const scripts = rows
+            .map((read) => read())
+            .map((s) => ({ ...s, entry: `${s.id || 'main'}.js` }))
+          await api(`/api/worlds/${world.id}/scripts`, {
+            method: 'PUT',
+            body: JSON.stringify({ scripts }),
+          })
+          status.textContent = data.running
+            ? 'Saved. Anyone in the world now was asked to join again; the new scripts run from the next join.'
+            : 'Saved. Scripts are kept with your world and run once this server switches creator scripts on.'
+        } catch (err) {
+          status.textContent = err instanceof Error ? err.message : 'That did not work.'
+        } finally {
+          b.disabled = false
+        }
+      })(),
+    'primary',
+  )
+  dialog.append(
+    el('h2', { text: `Scripts for ${world.title}` }),
+    el('p', {
+      className: 'status',
+      text: data.running
+        ? 'Scripts run in your world when someone joins it, in a sandbox, each with only what you tick for it.'
+        : 'Scripts are not switched on for creator worlds on this server yet. You can write and save them now.',
+    }),
+    list,
+    el(
+      'div',
+      { className: 'row' },
+      add,
+      save,
+      button('Close', () => dialog.close()),
+    ),
+    status,
+  )
+  dialog.addEventListener('close', () => dialog.remove())
+  document.body.append(dialog)
+  dialog.showModal()
+}
 
 async function change(
   b: HTMLButtonElement,
