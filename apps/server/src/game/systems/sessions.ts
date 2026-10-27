@@ -141,8 +141,8 @@ export class SessionsSystem implements System {
     let authIat: number | null = null
     let rank: 'owner' | 'admin' | 'moderator' | null = null
     if ('subject' in id) {
-      // A signed-in account is keyed by its canonical subject (3 slots,
-      // follows you across devices).
+      // A signed-in account is keyed by its canonical subject (its characters
+      // follow it across devices).
       subjectId = id.subject
       token = id.subject
       authIat = id.authIat
@@ -164,15 +164,10 @@ export class SessionsSystem implements System {
           ctx.log.info('guest character kept: account slots full', { subject: subjectId })
       }
     } else {
-      // Guests get ONE character bound to the hashed guest key the ticket
+      // A guest's characters are bound to the hashed guest key the ticket
       // carried. The raw token never reaches the server here: `guest:` +
       // sha256hex is exactly the account_key the repository stores, so
       // hello's `token` is ignored entirely (ADR-0007 decision 8).
-      if (slot > 0) {
-        conn.send(encodeServerMessage({ t: 'reject', reason: 'guest_one_character' }))
-        conn.close(4010, 'guest_one_character')
-        return
-      }
       token = `guest:${id.guestKeyHash}`
     }
     // A disconnect save of this character may still be queued: read after it lands, not before.

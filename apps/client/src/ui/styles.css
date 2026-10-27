@@ -1197,10 +1197,6 @@ body:has(.ov-touch:not([hidden])) .first-steps li:not(.current) {
   font-size: calc(12px * var(--ov-text-scale, 1));
 }
 
-.char-locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
 .char-upsell {
   margin-top: 14px;
   padding: 12px 14px;

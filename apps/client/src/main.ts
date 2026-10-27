@@ -586,7 +586,7 @@ async function start(): Promise<void> {
           hud.setStatus('could not join — try signing in again from the home page')
         }
       } else if (msg.reason === 'guest_one_character') {
-        hud.setStatus('guests get one character — sign in with OpenVibe for 3 slots')
+        hud.setStatus('this server keeps one character per guest — sign in with OpenVibe to keep more')
       } else if (msg.reason === 'auth_failed' || msg.reason === 'signed_out') {
         localStorage.removeItem('ovg_sso')
         hud.setStatus(

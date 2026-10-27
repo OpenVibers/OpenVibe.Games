@@ -162,7 +162,7 @@ export function customizeScreen(
               ? '<div class="cust-guest-note">⚠️ You are creating a <b>guest</b> scrapper. ' +
                 'It lives on this connection and can be lost. ' +
                 '<a href="/auth/login">Sign in with OpenVibe</a> to save your progress ' +
-                'for good — and get 3 character slots.</div>'
+                'for good, on every device.</div>'
               : ''
           }
         </div>
