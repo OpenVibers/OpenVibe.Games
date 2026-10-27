@@ -194,6 +194,8 @@ export class Environment {
   private ownsFog = false
   /** Set by main each frame; underwater fog wins over weather haze. */
   underwater = false
+  /** Distance haze; off for a world seen from above, where the camera is far from everything it shows. */
+  hazeFog = true
   private weatherDim = 0
   private weatherDimTarget = 0
   private weatherHaze = 0
@@ -276,7 +278,7 @@ export class Environment {
     // fog (main.ts) always wins while submerged.
     if (this.underwater) {
       this.ownsFog = false
-    } else if (this.weatherHaze > 0.02) {
+    } else if (this.weatherHaze > 0.02 && this.hazeFog) {
       this.scene.fogMode = FOGMODE_EXP2
       this.scene.fogDensity = this.weatherHaze * 0.028
       const fogTint = 0.55 * (0.35 + day * 0.65)

@@ -18,6 +18,8 @@ const BODY_BACK_OFFSET = 0.15
 
 export class FirstPersonBody {
   private readonly avatar: Avatar
+  /** The whole body, head, arms and held tool, where it stands: a world seen from above shows it like anyone else. */
+  private thirdPerson = false
 
   constructor(
     scene: Scene,
@@ -35,8 +37,15 @@ export class FirstPersonBody {
 
   setAppearance(appearance: Appearance): void {
     this.avatar.setAppearance(appearance)
-    this.avatar.setHeadVisible(false)
-    this.avatar.setArmsVisible(false)
+    this.avatar.setHeadVisible(this.thirdPerson)
+    this.avatar.setArmsVisible(this.thirdPerson)
+  }
+
+  /** Draws the whole body where the player stands (top-down view), or the first-person body again. */
+  setThirdPerson(on: boolean): void {
+    this.thirdPerson = on
+    this.avatar.setHeadVisible(on)
+    this.avatar.setArmsVisible(on)
   }
 
   triggerSwing(): void {
@@ -65,7 +74,9 @@ export class FirstPersonBody {
     // Prone pitches the torso forward from the hips — slide the whole body
     // back so the chest doesn't engulf the camera.
     const proneBack = move.stance === 2 ? 1.15 : 0
-    const back = BODY_BACK_OFFSET + Math.max(0, -pitch) * 0.12 + speedNorm * 0.06 + proneBack
+    const back = this.thirdPerson
+      ? 0
+      : BODY_BACK_OFFSET + Math.max(0, -pitch) * 0.12 + speedNorm * 0.06 + proneBack
     this.avatar.update({
       dt,
       time,
@@ -79,7 +90,7 @@ export class FirstPersonBody {
       grounded: move.grounded,
       // The screen-space viewmodel represents the tool in first person; a
       // second copy in the body's hand would wave in front of the camera.
-      itemDef: undefined,
+      itemDef: this.thirdPerson ? (this.state.activeItemDef() ?? undefined) : undefined,
       beamActive,
     })
   }

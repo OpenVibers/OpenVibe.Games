@@ -15,6 +15,8 @@ export class InputTracker {
   private locked = false
   /** UI-open state suppresses look/keys feeding the simulation. */
   uiCapture = false
+  /** False for a world seen from above: the pointer stays visible and aims instead of turning the view. */
+  pointerLock = true
 
   onAction: ((action: InputAction) => void) | null = null
   onWheel: ((delta: number) => void) | null = null
@@ -46,7 +48,7 @@ export class InputTracker {
     canvas.addEventListener('pointerdown', (e) => {
       // Touch never locks the pointer: TouchControls owns touch pointers.
       if (e.pointerType === 'touch') return
-      if (!this.uiCapture && !this.locked) {
+      if (!this.uiCapture && !this.locked && this.pointerLock) {
         canvas.requestPointerLock()
       }
     })
@@ -168,7 +170,7 @@ export class InputTracker {
 
   /** Re-engage pointer lock (used when closing menus — needs a user gesture). */
   requestLock(): void {
-    if (!this.locked && !this.uiCapture) this.canvas.requestPointerLock()
+    if (!this.locked && !this.uiCapture && this.pointerLock) this.canvas.requestPointerLock()
   }
 
   /** Test harness only: headless browsers cannot pointer-lock. */

@@ -26,6 +26,7 @@ import { InteractionController } from './game/interactionController.js'
 import { LocalPlayer } from './game/localPlayer.js'
 import { InputTracker } from './input/inputTracker.js'
 import { KeyboardInputSource, SwitchableInputSource } from './input/inputSource.js'
+import { TopDownInputSource } from './input/topDownInputSource.js'
 import { TouchControls } from './input/touchControls.js'
 import { TouchInputSource, TouchPad } from './input/touchInputSource.js'
 import { Connection, gameSocketUrl, getIdentity, saveName } from './net/connection.js'
@@ -95,6 +96,17 @@ async function start(): Promise<void> {
       ...(token ? { headers: { authorization: `Bearer ${token}` } } : {}),
     })
   }
+  // How a creator world is seen (migration 0017): 'top' looks straight down on the player, a 2D view of the same world.
+  const ssoToken = localStorage.getItem('ovg_sso')
+  const worldView: Promise<'3d' | 'top'> = worldId
+    ? fetch(`/api/worlds/${worldId}`, {
+        cache: 'no-store',
+        ...(ssoToken ? { headers: { authorization: `Bearer ${ssoToken}` } } : {}),
+      })
+        .then((r) => (r.ok ? (r.json() as Promise<{ view?: string }>) : {}))
+        .then((w: { view?: string }) => (w.view === 'top' ? 'top' : '3d'))
+        .catch(() => '3d' as const)
+    : Promise.resolve('3d')
   // Fetch the active definition set before constructing game systems or sending hello.
   // A fresh client can join after a staff script install or reload changed the digest.
   let content = createContent()
@@ -312,10 +324,24 @@ async function start(): Promise<void> {
   const touchPad = new TouchPad()
   const touchSource = new TouchInputSource(touchPad)
   const touchControls = new TouchControls(uiRoot, canvas, touchPad)
-  const inputSource = new SwitchableInputSource(keyboardSource)
+  const switchable = new SwitchableInputSource(keyboardSource)
+  // From above, WASD (or the stick) moves along the screen and the mouse aims; see topDownInputSource.ts.
+  const topDown = (await worldView) === 'top'
+  const pointerOffset = { x: 0, y: 0, known: false }
+  if (topDown)
+    canvas.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch') return
+      const rect = canvas.getBoundingClientRect()
+      pointerOffset.x = e.clientX - (rect.left + rect.width / 2)
+      pointerOffset.y = e.clientY - (rect.top + rect.height / 2)
+      pointerOffset.known = true
+    })
+  const inputSource = topDown
+    ? new TopDownInputSource(switchable, () => (pointerOffset.known ? pointerOffset : null))
+    : switchable
   const useTouch = (touch: boolean): void => {
     const next = touch ? touchSource : keyboardSource
-    if (inputSource.current === next) return
+    if (switchable.current === next) return
     if (touch) {
       touchPad.yaw = input.yaw
       touchPad.pitch = input.pitch
@@ -324,7 +350,8 @@ async function start(): Promise<void> {
       input.yaw = touchPad.yaw
       input.pitch = touchPad.pitch
     }
-    inputSource.current = next
+    switchable.current = next
+    if (touch) pointerOffset.known = false
     touchControls.setActive(touch)
   }
   useTouch(matchMedia('(pointer: coarse)').matches)
@@ -369,6 +396,15 @@ async function start(): Promise<void> {
   }
   const fpBody = new FirstPersonBody(scene, content, appearance, player, state)
   const viewmodel = new Viewmodel(scene, content, player.camera, appearance)
+  if (topDown) {
+    // About 20 m of the world from the top of the screen to the bottom: the player, what is in reach, and the way on.
+    player.setTopDown(20)
+    input.pointerLock = false
+    fpBody.setThirdPerson(true)
+    viewmodel.setEnabled(false)
+    environment.hazeFog = false
+    hud.setCrosshair(false)
+  }
   const beams = new BeamRenderer(scene)
   const constraintLines = new ConstraintLineRenderer(scene, state, view)
   const ghost = new PlacementGhost(scene, physics, content)
@@ -442,7 +478,7 @@ async function start(): Promise<void> {
     touchControls.setUiCapture(captured)
     if (captured) input.exitLock()
     // Straight back into the game when the menu closes; touch never locks.
-    else if (inputSource.current === keyboardSource) input.requestLock()
+    else if (switchable.current === keyboardSource) input.requestLock()
   }
   input.onAction = (action) => {
     switch (action.kind) {
@@ -729,7 +765,7 @@ async function start(): Promise<void> {
       _viewFwdV.set(_viewFwd.x, _viewFwd.y, _viewFwd.z)
       if (heldPos) {
         activeBeams.set(state.myEntityId, {
-          from: viewmodel.beamOrigin(),
+          from: topDown ? fpBody.beamOrigin() : viewmodel.beamOrigin(),
           to: heldPos,
           tangent: _viewFwdV,
           latched: true,
@@ -738,7 +774,7 @@ async function start(): Promise<void> {
         interact.beamTarget(_beamEnd)
         _beamEndV.set(_beamEnd.x, _beamEnd.y, _beamEnd.z)
         activeBeams.set(state.myEntityId, {
-          from: viewmodel.beamOrigin(),
+          from: topDown ? fpBody.beamOrigin() : viewmodel.beamOrigin(),
           to: _beamEndV,
           tangent: _viewFwdV,
           latched: false,
@@ -768,7 +804,7 @@ async function start(): Promise<void> {
 
     // Underwater: dense teal fog while the camera is submerged (weather
     // haze yields via environment.underwater).
-    const submerged = player.camera.position.y < WATER_LEVEL
+    const submerged = !topDown && player.eye.y < WATER_LEVEL
     environment.underwater = submerged
     sfx.setUnderwater(submerged)
     if (submerged !== wasSubmerged) {

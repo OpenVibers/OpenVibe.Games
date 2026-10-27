@@ -276,6 +276,11 @@ export class Viewmodel {
     for (const m of this.physgunMeshes) m.isVisible = visible
   }
 
+  /** Hidden for a world seen from above: the body holds the tool there. */
+  setEnabled(on: boolean): void {
+    this.rig.setEnabled(on)
+  }
+
   triggerSwing(): void {
     this.swingT = 0.32
     if (this.currentItem === null) {

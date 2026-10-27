@@ -10,7 +10,12 @@ import {
   parseMapFile,
   type MapFileV2,
 } from '@openvibe/content'
-import type { CreatorWorld, CreatorWorldStatus, CreatorWorldStore } from '@openvibe/persistence'
+import type {
+  CreatorWorld,
+  CreatorWorldStatus,
+  CreatorWorldStore,
+  CreatorWorldView,
+} from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
 import type { Db, Tx } from 'openvibe-sdk/db'
 import type { EventInput } from 'openvibe-sdk/events'
@@ -35,7 +40,7 @@ import type { WorldSearchIndex } from './searchIndex.js'
  *   GET    /api/worlds/:id            one world (published, or the caller's, or staff)
  *   GET    /api/worlds/:id/map        its map document, ETag = revision
  *   PUT    /api/worlds/:id/map        the owner saves (If-Match: revision); a running world reloads at once
- *   PATCH  /api/worlds/:id            { title?, summary?, status? } owner: draft|published; staff: hidden|published
+ *   PATCH  /api/worlds/:id            { title?, summary?, status?, view? } owner: draft|published, 3d|top; staff: hidden|published
  *   DELETE /api/worlds/:id            the owner or games staff
  */
 
@@ -145,6 +150,8 @@ function publicView(world: CreatorWorld, online: number) {
         }
       : null,
     remixes: world.remixes,
+    // '3d' (first person) or 'top' (straight down on the player, a 2D view; migration 0017).
+    view: world.view,
   }
 }
 
@@ -359,6 +366,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         map: (stored as { map: unknown }).map,
         now: now(),
         remixedFrom: { id: src.id, title: src.title, owner: src.ownerName },
+        view: src.view,
       })
       if (!own) await opts.store.countRemix(src.id)
       opts.log.info('creator world remixed', { world: world.id, from: src.id })
@@ -556,7 +564,12 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       const world = CREATOR_WORLD_ID.test(id) ? await opts.store.get(id) : null
       const mine = !!world && world.ownerSubject === user.subjectId
       if (!world || (!mine && !isStaff(user))) return fail(404, 'world_not_found')
-      const patch: { title?: string; summary?: string; status?: CreatorWorldStatus } = {}
+      const patch: {
+        title?: string
+        summary?: string
+        status?: CreatorWorldStatus
+        view?: CreatorWorldView
+      } = {}
       if (body?.title !== undefined) {
         if (!mine) fail(403, 'owner_only')
         const title = cleanText(body.title, TITLE_MAX)
@@ -570,6 +583,12 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         if (summary === null)
           fail(422, 'invalid_summary', { detail: `At most ${SUMMARY_MAX} characters.` })
         patch.summary = summary as string
+      }
+      if (body?.view !== undefined) {
+        if (!mine) fail(403, 'owner_only')
+        if (body.view !== '3d' && body.view !== 'top')
+          fail(422, 'invalid_view', { detail: 'A view is 3d or top.' })
+        patch.view = body.view as CreatorWorldView
       }
       if (body?.status !== undefined) {
         const status = body.status

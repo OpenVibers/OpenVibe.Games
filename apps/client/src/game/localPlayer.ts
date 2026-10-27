@@ -1,3 +1,4 @@
+import { Camera } from '@babylonjs/core/Cameras/camera.js'
 import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera.js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Scene } from '@babylonjs/core/scene.js'
@@ -18,6 +19,8 @@ import type { InputSource } from '../input/inputSource.js'
 import type { ClientState } from '../state/clientState.js'
 
 const HALF_PI = Math.PI / 2
+/** How far above the player a top-down camera sits (it is orthographic, so this only has to clear the scenery). */
+const TOP_DOWN_ABOVE = 120
 
 /**
  * Client-side prediction of the local player.
@@ -51,6 +54,11 @@ export class LocalPlayer {
   /** Vertical step-up smoothing: stairs move the FEET instantly but the
    * EYES glide (Source's smoothed stair climb). */
   private stepOffset = 0
+  /** Where the eyes are: the aim ray's origin, kept apart from the camera because a top-down camera is far above. */
+  private readonly eyePos = new Vector3()
+  /** Metres of world shown top to bottom when seen from above (a creator world's `view: 'top'`); null in first person. */
+  private topDown: number | null = null
+  private readonly firstPersonClip: { minZ: number; maxZ: number }
 
   /** New room: old prediction commands belong to the previous simulation. */
   onTransfer(): void {
@@ -76,6 +84,7 @@ export class LocalPlayer {
     )
     this.camera.minZ = 0.05
     this.camera.fov = 1.1
+    this.firstPersonClip = { minZ: this.camera.minZ, maxZ: this.camera.maxZ }
     // We drive the camera entirely from simulation + mouse; Babylon's own
     // camera inputs stay detached.
     this.camera.inputs.clear()
@@ -196,6 +205,21 @@ export class LocalPlayer {
     if (this.corr.length() > 1.5) this.corr.setAll(0)
   }
 
+  /**
+   * Sees the world straight down on the player, north up, without perspective: a map-like 2D view of the same world
+   * (`height` metres from the top of the screen to the bottom), or first person again with null.
+   */
+  setTopDown(height: number | null): void {
+    this.topDown = height
+    this.camera.mode = height === null ? Camera.PERSPECTIVE_CAMERA : Camera.ORTHOGRAPHIC_CAMERA
+    this.camera.minZ = height === null ? this.firstPersonClip.minZ : 1
+    this.camera.maxZ = height === null ? this.firstPersonClip.maxZ : TOP_DOWN_ABOVE * 2
+  }
+
+  get isTopDown(): boolean {
+    return this.topDown !== null
+  }
+
   /** Per-frame: camera follows interpolated predicted position. */
   frameUpdate(alpha: number, dt: number): void {
     const x = this.prevPos.x + (this.currPos.x - this.prevPos.x) * alpha
@@ -207,8 +231,20 @@ export class LocalPlayer {
     this.renderPos.set(x + this.corr.x, y + this.corr.y + this.stepOffset, z + this.corr.z)
     const targetEye = eyeOffsetFor(this.move.stance)
     this.eyeSmooth += (targetEye - this.eyeSmooth) * Math.min(1, dt * 9)
-    this.camera.position.set(this.renderPos.x, this.renderPos.y + this.eyeSmooth, this.renderPos.z)
-    this.camera.rotation.set(-this.input.pitch, this.input.yaw, 0)
+    this.eyePos.set(this.renderPos.x, this.renderPos.y + this.eyeSmooth, this.renderPos.z)
+    if (this.topDown === null) {
+      this.camera.position.copyFrom(this.eyePos)
+      this.camera.rotation.set(-this.input.pitch, this.input.yaw, 0)
+      return
+    }
+    const half = this.topDown / 2
+    const aspect = this.camera.getEngine().getAspectRatio(this.camera)
+    this.camera.orthoTop = half
+    this.camera.orthoBottom = -half
+    this.camera.orthoLeft = -half * aspect
+    this.camera.orthoRight = half * aspect
+    this.camera.position.set(this.renderPos.x, this.renderPos.y + TOP_DOWN_ABOVE, this.renderPos.z)
+    this.camera.rotation.set(HALF_PI, 0, 0)
   }
 
   get viewYaw(): number {
@@ -220,7 +256,7 @@ export class LocalPlayer {
   }
 
   get eye(): Vector3 {
-    return this.camera.position
+    return this.eyePos
   }
 
   viewDir(out: { x: number; y: number; z: number }): void {
