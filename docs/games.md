@@ -76,6 +76,10 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
 
 - **Storage:** `creator_worlds` (migration 0010) holds the title, summary, status (`draft`, `published`, `hidden`)
   and the editor's v2 map document; `revision` is its hash and the editor's `If-Match`.
+- **Starter ground:** a new world's map is `starterCreatorMap()`: one flat, sculptable grass terrain patch over the whole
+  play area (160 m square in 2 m cells, id `ground`). A map's terrain objects are its ground; a blank map has only the
+  safety floor, 1.5 m under the sea, so worlds made before 2026-10-27 from an empty map put their players in the water
+  until a terrain patch is added in the editor.
 - **Editing:** the owner alone, over `PUT /api/worlds/:id/map`, with no collaboration socket (`/editor-ws` stays
   staff-only). Creator maps use the built-in materials: no uploaded textures, models or paint masks (they wait for
   the Pics safety pipeline), and smaller limits than staff maps (`CREATOR_MAP_LIMITS`: 2 MB, 4,000 statics, 16
@@ -121,8 +125,9 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   orthographic camera (about 20 m of the world top to bottom, north up), so the world plays like a 2D game. WASD (or
   the touch stick) moves along the screen, and the mouse sets the way the character faces, which is what E and the tools
   reach (`input/topDownInputSource.ts`). With no mouse, it faces the way it walks. The pointer is never locked, there
-  is no crosshair, and the player's own body is drawn whole. The world, its map, server, physics and rules are the same
-  in both views, and a remix keeps the view.
+  is no crosshair, and the player's own body is drawn whole, on a ring with a notch the way it faces (yours blue,
+  others white; `render/topDownMarkers.ts`). The world, its map, server, physics and rules are the same in both views,
+  and a remix keeps the view.
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
   cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event

@@ -6,7 +6,7 @@ import {
   CREATOR_WORLD_ID,
   creatorMapIssues,
   creatorScriptsOf,
-  emptyMapV2,
+  starterCreatorMap,
   parseMapFile,
   type MapFileV2,
 } from '@openvibe/content'
@@ -333,7 +333,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         ownerName: user.name,
         title: title as string,
         summary: summary as string,
-        map: emptyMapV2(),
+        map: starterCreatorMap(),
         now: now(),
       })
       opts.log.info('creator world created', { world: world.id })

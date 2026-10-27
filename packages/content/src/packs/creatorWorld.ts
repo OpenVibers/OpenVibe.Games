@@ -1,5 +1,5 @@
 import type { ContentPackV2 } from '../pack.js'
-import type { MapFileV2 } from '../mapFileV2.js'
+import { blankHeights, emptyMapV2, type MapFileV2 } from '../mapFileV2.js'
 import { ScriptModSchema, type ScriptMod } from '../schema/scriptMod.js'
 
 /**
@@ -38,6 +38,32 @@ export function creatorWorldPack(worldId: string): ContentPackV2 {
       initialProps: [],
       zones: [],
     },
+  }
+}
+
+/** The starter ground's id in a new world's map. */
+export const STARTER_GROUND_ID = 'ground'
+
+/**
+ * A new creator world's map: flat grass over the whole play area (one sculptable terrain patch, 160 m square in 2 m
+ * cells), so there is ground to stand on before anything is built. A map's terrain objects are its ground (a blank map
+ * has only the safety floor, 1.5 m under the sea), and worlds made from emptyMapV2() put their players in the water.
+ */
+export function starterCreatorMap(): MapFileV2 {
+  const sub = 80
+  return {
+    ...emptyMapV2(),
+    terrains: [
+      {
+        id: STARTER_GROUND_ID,
+        name: 'Ground',
+        pos: [0, 0, 0],
+        halfExtent: 80,
+        sub,
+        heights: blankHeights(sub),
+        surface: { base: { tex: 'leafy_grass' } },
+      },
+    ],
   }
 }
 
