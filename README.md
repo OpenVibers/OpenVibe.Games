@@ -288,3 +288,10 @@ Script mods run in isolated QuickJS sandboxes with only their approved bindings.
 nginx keeps `/api/ready` off the public vhosts and `/metrics` answers direct loopback callers only. `OV_OAUTH_CLIENT_SECRET`, `GAMES_EVENTS_SECRET` (signed
 Events deliveries) and `OV_NETWORK_AUTH_URL` live in `/etc/openvibe/games.env`, by name only; there are no shared keys
 between services.
+
+<!-- versions:start -->
+- openvibe-contracts: v0.214.1
+- openvibe-sdk: v0.65.0
+- openvibe-shared: v4.15.2
+- openvibe-publishing: v1.4.0
+<!-- versions:end -->
