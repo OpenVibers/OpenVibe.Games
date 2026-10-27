@@ -116,6 +116,13 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   (worlds keep their copy); staff take one down (`asset.hidden`, `asset.restored`, `asset.deleted` as
   `games.moderation.action`). Assets and uses follow account export, merge and deletion. Uploaded models, textures
   and sounds wait for the Pics safety pipeline, and paid assets for the owner's prices.
+- **View (2D):** the owner shows a world in first person (`3d`, the default) or **top-down** (`top`, migration 0017;
+  `PATCH /api/worlds/:id {view}`, `/worlds` → **Switch to top-down**). Top-down looks straight down on the player with an
+  orthographic camera (about 20 m of the world top to bottom, north up), so the world plays like a 2D game. WASD (or
+  the touch stick) moves along the screen, and the mouse sets the way the character faces, which is what E and the tools
+  reach (`input/topDownInputSource.ts`). With no mouse, it faces the way it walks. The pointer is never locked, there
+  is no crosshair, and the player's own body is drawn whole. The world, its map, server, physics and rules are the same
+  in both views, and a remix keeps the view.
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
   cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event

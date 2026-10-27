@@ -51,6 +51,21 @@ describe('creator worlds store', () => {
       remixedFrom: { id: world.id, title: 'Moon base', owner: 'kim' },
     })
     expect(remix.remixedFrom).toEqual({ id: world.id, title: 'Moon base', owner: 'kim' })
+    // Seen in first person unless the owner chooses from above (migration 0017); a remix can carry the view.
+    expect(world.view).toBe('3d')
+    expect((await store.update(world.id, { view: 'top' }, 1002))?.view).toBe('top')
+    const topRemix = await store.create({
+      ownerSubject: KIM,
+      ownerName: 'kim',
+      title: 'Top',
+      summary: '',
+      map: MAP,
+      now: 1003,
+      view: 'top',
+    })
+    expect(topRemix.view).toBe('top')
+    await store.remove(topRemix.id)
+    await store.update(world.id, { view: '3d' }, 1004)
     await store.countRemix(world.id)
     expect((await store.get(world.id))?.remixes).toBe(1)
     await store.remove(remix.id)

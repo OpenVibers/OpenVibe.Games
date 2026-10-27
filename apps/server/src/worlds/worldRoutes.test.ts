@@ -252,6 +252,24 @@ describe('/api/worlds', () => {
     ).toEqual([])
   })
 
+  it('lets the owner show a world from above (2D) or in first person; a remix keeps the view', async () => {
+    const { call } = await setup(2)
+    const id = String((await call('POST', '/api/worlds', 'kim', { title: 'Maze' })).body.id)
+    expect((await call('GET', `/api/worlds/${id}`, 'kim')).body.view).toBe('3d')
+    expect((await call('PATCH', `/api/worlds/${id}`, 'kim', { view: 'side' })).body.error).toBe(
+      'invalid_view',
+    )
+    const top = await call('PATCH', `/api/worlds/${id}`, 'kim', { view: 'top' })
+    expect(top.body.view).toBe('top')
+    // Staff take worlds down; they do not change how one is seen.
+    expect((await call('PATCH', `/api/worlds/${id}`, 'staff', { view: '3d' })).status).toBe(403)
+    await call('PATCH', `/api/worlds/${id}`, 'kim', { status: 'published' })
+    expect((await call('GET', `/api/worlds/${id}`)).body.view).toBe('top')
+    const copy = await call('POST', `/api/worlds/${id}/remix`, 'lee')
+    expect(copy.body.view).toBe('top')
+    expect((await call('PATCH', `/api/worlds/${id}`, 'kim', { view: '3d' })).body.view).toBe('3d')
+  })
+
   it("remixes a published world into a new draft of the remixer's own, credited and counted", async () => {
     const { call } = await setup(2)
     const made = await call('POST', '/api/worlds', 'kim', {

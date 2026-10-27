@@ -218,6 +218,12 @@ export class Hud {
   private lastHp = 100
   private hitmarkerTimer: ReturnType<typeof setTimeout> | null = null
 
+  /** No crosshair in a world seen from above: the middle of the screen is the player, and the mouse aims. */
+  setCrosshair(visible: boolean): void {
+    const el = this.root.querySelector<HTMLElement>('.crosshair')
+    if (el) el.style.display = visible ? '' : 'none'
+  }
+
   /** Brief crosshair X when a melee hit lands on another player. */
   flashHitmarker(): void {
     const el = this.byId('hitmarker')

@@ -23,6 +23,8 @@ interface World {
   remixes?: number
   /** 'editor' on a world of someone else's team (migration 0015). */
   role?: 'owner' | 'editor'
+  /** '3d' (first person) or 'top' (seen from above, a 2D view; migration 0017). */
+  view?: '3d' | 'top'
 }
 
 interface Mine {
@@ -126,6 +128,7 @@ function stats(world: World): string {
   const parts = [count(world.plays, 'visit', 'visits')]
   if (world.online > 0) parts.unshift(`${world.online} playing now`)
   if (world.remixes) parts.push(count(world.remixes, 'remix', 'remixes'))
+  if (world.view === 'top') parts.push('top-down')
   return parts.join(' · ')
 }
 
@@ -212,6 +215,11 @@ function mineCard(world: World): HTMLElement {
   actions.append(
     button('Scripts', () => void openScripts(world)),
     button('Team', () => void openTeam(world)),
+    // First person, or straight down on the player like a 2D game: same world, map and rules, another camera.
+    button(
+      world.view === 'top' ? 'Switch to first person' : 'Switch to top-down',
+      (b) => void change(b, world.id, { view: world.view === 'top' ? '3d' : 'top' }),
+    ),
     button('Rename', (b) => {
       const title = prompt('New title (up to 60 characters)', world.title)
       if (title !== null && title.trim() && title !== world.title)

@@ -70,6 +70,9 @@ Already here:
    - Uploaded models and textures wait on the Pics safety pipeline, as the editor's limits already note.
    - Paid assets come later, priced in Vibes through Billing, with items in Inventory (ADR-054). The owner sets the prices.
 6. **2D.** The casual kit is the 2D path. Next, a 2D world type made from the same editor and pack format, so a 2D game is a world too.
+   - Started (migration 0017): a world can be **top-down**, seen straight down without perspective, with screen-relative
+     movement and mouse aim; same editor, map, pack and server. Next: sprite looks for pieces and characters, so a
+     top-down world can also look drawn rather than modelled.
 7. **The instant-play funnel.** `/play/<game>` already opens with no download and as a guest. To add:
    - campaign landing links with attribution (plan T22);
    - a first load kept under about 8 MB for 3D and the casual budget for 2D;

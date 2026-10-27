@@ -10,6 +10,8 @@ import { idList } from './sqlUtils.js'
  */
 
 export type CreatorWorldStatus = 'draft' | 'published' | 'hidden'
+/** How the world is seen (migration 0017): first person, or straight down on the player (2D). */
+export type CreatorWorldView = '3d' | 'top'
 
 export interface CreatorWorld {
   id: string
@@ -27,6 +29,7 @@ export interface CreatorWorld {
   remixedFrom: { id: string; title: string; owner: string } | null
   /** How often other people remixed this world. */
   remixes: number
+  view: CreatorWorldView
 }
 
 interface Row {
@@ -45,9 +48,10 @@ interface Row {
   remixed_from_title: string | null
   remixed_from_owner: string | null
   remixes: number | string | null
+  view: CreatorWorldView | null
 }
 
-const COLUMNS = sql`id, owner_subject, owner_name, title, summary, status, revision, plays, created_at, updated_at, published_at, remixed_from, remixed_from_title, remixed_from_owner, remixes`
+const COLUMNS = sql`id, owner_subject, owner_name, title, summary, status, revision, plays, created_at, updated_at, published_at, remixed_from, remixed_from_title, remixed_from_owner, remixes, view`
 
 function fromRow(row: Row): CreatorWorld {
   return {
@@ -70,6 +74,7 @@ function fromRow(row: Row): CreatorWorld {
         }
       : null,
     remixes: Number(row.remixes ?? 0),
+    view: row.view === 'top' ? 'top' : '3d',
   }
 }
 
@@ -109,6 +114,7 @@ export interface CreatorWorldStore {
     now: number
     /** A remix: the world it copies, as it is now (kept as the credit). */
     remixedFrom?: { id: string; title: string; owner: string }
+    view?: CreatorWorldView
   }): Promise<CreatorWorld>
   get(id: string): Promise<CreatorWorld | null>
   /** The stored map document and its revision. */
@@ -133,7 +139,12 @@ export interface CreatorWorldStore {
   ): Promise<CreatorWorld | 'conflict' | null>
   update(
     id: string,
-    patch: { title?: string; summary?: string; status?: CreatorWorldStatus },
+    patch: {
+      title?: string
+      summary?: string
+      status?: CreatorWorldStatus
+      view?: CreatorWorldView
+    },
     now: number,
   ): Promise<CreatorWorld | null>
   /** The owner's display name follows the Network's (set at each signed-in write). */
@@ -166,10 +177,10 @@ export function createCreatorWorldStore(db: Db): CreatorWorldStore {
       const from = input.remixedFrom ?? null
       const row = await db.one<Row>(sql`
         INSERT INTO creator_worlds (id, owner_subject, owner_name, title, summary, map, revision, created_at, updated_at,
-                                    remixed_from, remixed_from_title, remixed_from_owner)
+                                    remixed_from, remixed_from_title, remixed_from_owner, view)
         VALUES (${id}, ${input.ownerSubject}, ${input.ownerName}, ${input.title}, ${input.summary},
                 ${sql.json(input.map)}, ${mapRevision(input.map)}, ${input.now}, ${input.now},
-                ${from ? from.id : null}, ${from ? from.title : null}, ${from ? from.owner : null})
+                ${from ? from.id : null}, ${from ? from.title : null}, ${from ? from.owner : null}, ${input.view ?? '3d'})
         RETURNING ${COLUMNS}
       `)
       return fromRow(row)
@@ -235,6 +246,7 @@ export function createCreatorWorldStore(db: Db): CreatorWorldStore {
       const sets = [sql`updated_at = ${now}`]
       if (patch.title !== undefined) sets.push(sql`title = ${patch.title}`)
       if (patch.summary !== undefined) sets.push(sql`summary = ${patch.summary}`)
+      if (patch.view !== undefined) sets.push(sql`view = ${patch.view}`)
       if (patch.status !== undefined) {
         sets.push(sql`status = ${patch.status}`)
         // The first publication dates the listing; unpublishing and publishing again keeps the date.
@@ -342,7 +354,7 @@ export async function exportCreatorWorlds(
   subject: string,
 ): Promise<Record<string, unknown>[]> {
   return db.many<Record<string, unknown>>(sql`
-    SELECT id, owner_name, title, summary, status, revision, plays, created_at, updated_at, published_at, map
+    SELECT id, owner_name, title, summary, status, view, revision, plays, created_at, updated_at, published_at, map
     FROM creator_worlds WHERE owner_subject = ${subject} ORDER BY created_at
   `)
 }

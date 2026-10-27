@@ -15,6 +15,7 @@ export {
   type CreatorWorld,
   type CreatorWorldStatus,
   type CreatorWorldStore,
+  type CreatorWorldView,
 } from './pg/creatorWorlds.js'
 export {
   createCreatorAssetStore,
