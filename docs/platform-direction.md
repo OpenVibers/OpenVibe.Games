@@ -65,6 +65,8 @@ Already here:
    - Moderation: staff can switch a world's scripts off.
 4. **Teams.** A world gets editors besides its owner. The collaboration socket (`/editor-ws`, staff-only today) opens to a world's team.
 5. **The asset store.** Creators publish models, materials, sounds and scripts for others to use and remix, free first.
+   - Done for builds and scripts (migration 0016): pieces placed in the editor and `games-quickjs@1` mods, shared from
+     the editor's Store tab or a world's Scripts, used in any world you build (see `games.md` "Asset store").
    - Uploaded models and textures wait on the Pics safety pipeline, as the editor's limits already note.
    - Paid assets come later, priced in Vibes through Billing, with items in Inventory (ADR-054). The owner sets the prices.
 6. **2D.** The casual kit is the 2D path. Next, a 2D world type made from the same editor and pack format, so a 2D game is a world too.

@@ -178,6 +178,7 @@ describe('account export and deletion (ADR-033)', () => {
       identity_rows: 1,
       casual_saves: 2,
       creator_worlds: 0,
+      creator_assets: 0,
     })
     expect(
       await store.db.many(sql`SELECT account_key FROM casual_ledger ORDER BY account_key`),
@@ -199,6 +200,7 @@ describe('account export and deletion (ADR-033)', () => {
       identity_rows: 0,
       casual_saves: 0,
       creator_worlds: 0,
+      creator_assets: 0,
     })
   })
 })

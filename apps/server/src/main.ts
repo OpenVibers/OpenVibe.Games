@@ -17,6 +17,7 @@ import {
 import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
 import {
   InstanceRegistry,
+  createCreatorAssetStore,
   createCreatorWorldStore,
   openPgStore,
   type InstanceLease,
@@ -89,6 +90,7 @@ import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 import { CreatorWorldHost } from './worlds/worldHost.js'
 import { createWorldHubStarter, worldScriptsFactory } from './worlds/startWorldHub.js'
 import { createWorldRoutes } from './worlds/worldRoutes.js'
+import { createAssetRoutes } from './worlds/assetRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
 import { createSteamCatalog } from './steam/steamCatalog.js'
 import { createSteamRoutes } from './steam/steamPage.js'
@@ -114,7 +116,11 @@ async function main(): Promise<void> {
   // method and status class each minute, stored in telemetry_samples; rows older than 14 days go daily.
   // (openvibe-sdk 0.46's service and telemetry typings disagree on whether a sample's `service` is optional.)
   const telemetrySink = createPgTelemetrySink({ db, log: console })
-  telemetry.init({ service: 'games', sink: (samples) => telemetrySink(samples as Parameters<typeof telemetrySink>[0]), intervalMs: 60_000 })
+  telemetry.init({
+    service: 'games',
+    sink: (samples) => telemetrySink(samples as Parameters<typeof telemetrySink>[0]),
+    intervalMs: 60_000,
+  })
   const telemetryRetention = startTelemetryRetention({ db, log: console, olderThanDays: 14 })
   const registry = new InstanceRegistry(db, config.placeId)
   let primaryLease: InstanceLease
@@ -608,7 +614,10 @@ async function main(): Promise<void> {
     const stored = await creatorWorlds.scripts(worldId).catch(() => null)
     const checked = creatorScriptsOf(stored ?? [])
     if (checked.issues.length) {
-      log.warn('creator world scripts refused at load', { world: worldId, issues: checked.issues.length })
+      log.warn('creator world scripts refused at load', {
+        world: worldId,
+        issues: checked.issues.length,
+      })
       return []
     }
     return checked.scripts
@@ -843,6 +852,20 @@ async function main(): Promise<void> {
     events: { db, sink, siteUrl: gamesSiteUrl },
     ...(worldSearch ? { search: worldSearch } : {}),
   })
+  // The asset store's JSON API (worlds/assetRoutes.ts): builds and scripts creators publish for others' worlds.
+  const serveAssets = createAssetRoutes({
+    store: createCreatorAssetStore(db),
+    worlds: creatorWorlds,
+    resolveUser: (token) =>
+      config.networkAuthUrl
+        ? resolveNetworkUser(config.networkAuthUrl, token)
+        : Promise.resolve(null),
+    limits: actorLimits,
+    address: clientAddress,
+    log: log.child({ system: 'assets' }),
+    perPerson: config.creatorAssetsPerPerson,
+    events: { db, sink },
+  })
   // The home page's live sections (net/portalHome.ts): players online, Play's boards and achievements, Vibe Heroes'
   // furthest teams, creator worlds and Steam's lists, built at most once a minute.
   const playTitlesUrl = config.platform.playUrl
@@ -859,7 +882,8 @@ async function main(): Promise<void> {
         }
       },
       titles: () => (playTitlesUrl ? readPlayTitles(playTitlesUrl) : Promise.resolve([])),
-      board: async (game, period) => (await playBoards(game, period, 1, '127.0.0.1')).entries.slice(0, 5),
+      board: async (game, period) =>
+        (await playBoards(game, period, 1, '127.0.0.1')).entries.slice(0, 5),
       heroes: () => casualLeaderboard(db, 'vibe-heroes', 5),
       worlds: () => creatorWorlds.listPublished(60, 0),
       steam: () => steamCatalog.lists(),
@@ -947,7 +971,10 @@ async function main(): Promise<void> {
             void contentForWorld(requestedWorld).then(
               (worldContent) => {
                 const mods = worldContent.allMods()
-                res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+                res.writeHead(200, {
+                  'content-type': 'application/json',
+                  'cache-control': 'no-store',
+                })
                 res.end(
                   JSON.stringify({
                     digest: worldContent.digest,
@@ -958,7 +985,10 @@ async function main(): Promise<void> {
                 )
               },
               () => {
-                res.writeHead(503, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+                res.writeHead(503, {
+                  'content-type': 'application/json',
+                  'cache-control': 'no-store',
+                })
                 res.end('{"error":"content_unavailable"}')
               },
             )
@@ -986,6 +1016,7 @@ async function main(): Promise<void> {
         }
         if (serveCasual(req, res)) return true
         if (serveWorlds(req, res)) return true
+        if (serveAssets(req, res)) return true
         if (serveWorldPage(req, res)) return true
         if (serveSteam(req, res)) return true
         if (
@@ -1243,7 +1274,13 @@ async function main(): Promise<void> {
       await progressWriter.stop()
       inventoryRewards?.stop()
       playSync.stop()
-      await within(1000, (async () => { await telemetryRetention.stop(); await telemetry.stop() })())   // request telemetry flushes first
+      await within(
+        1000,
+        (async () => {
+          await telemetryRetention.stop()
+          await telemetry.stop()
+        })(),
+      ) // request telemetry flushes first
       await store.close()
       await valkey?.close()
       log.info('stopped', {

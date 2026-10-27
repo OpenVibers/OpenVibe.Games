@@ -119,6 +119,7 @@ describe('account export and deletion (ADR-033)', () => {
       identity_rows: 0,
       casual_saves: 0,
       creator_worlds: 0,
+      creator_assets: 0,
     })
     expect(conf.body.retained).toEqual({ structures_unowned: 0 })
     expect(await data.apply(del)).toBe('unchanged')

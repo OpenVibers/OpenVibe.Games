@@ -22,10 +22,14 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh.js'
 import {
   createContent,
   emptyMapV2,
+  CREATOR_ASSET_ID,
   parseMapFile,
+  placePrefab,
+  prefabFromObjects,
   setMapOverride,
   type MapFileV2,
   type MapTextureEntry,
+  type PrefabBody,
 } from '@openvibe/content'
 import { Environment } from '../render/environment.js'
 import { registerCustomTextures } from '../render/mapStyle.js'
@@ -78,6 +82,7 @@ import { ActionRouter } from './input/actionRouter.js'
 import { ACTIONS, loadBindings, type Binding } from './bindings.js'
 import { editorPerf } from './perf/editorProfiler.js'
 import { installEditorProbe } from './devProbe.js'
+import { StorePanel } from './assets/storePanel.js'
 
 const content = createContent()
 
@@ -861,6 +866,75 @@ export async function bootEditor(): Promise<void> {
     },
   })
 
+  // ── The asset store (Store tab, /editor?asset=<id>) ─────────────────
+  /** Where the camera looks: what the editor picks at the middle of the view, else the ground ahead. */
+  const lookPoint = (): [number, number, number] => {
+    const hit = scene.pick(engine.getRenderWidth() / 2, engine.getRenderHeight() / 2, (m) =>
+      pickable(m),
+    )
+    if (hit?.hit && hit.pickedPoint)
+      return [hit.pickedPoint.x, hit.pickedPoint.y, hit.pickedPoint.z]
+    const dir = camera.getDirection(Vector3.Forward())
+    const along = dir.y < -0.05 ? -camera.position.y / dir.y : -1
+    const p = camera.position.add(dir.scale(along > 0 && along < 400 ? along : 18))
+    return [p.x, along > 0 && along < 400 ? 0 : Math.max(0, p.y), p.z]
+  }
+  /** A build from the store, with new ids, where the camera looks: one undo step, then selected. */
+  const placeBuild = (body: PrefabBody, title: string): void => {
+    const [x, y, z] = lookPoint()
+    const snap = (v: number) => Math.round(v * 2) / 2
+    const placed = placePrefab(body, [snap(x), y, snap(z)], newId)
+    if (placed.length === 0) return
+    history.apply({
+      label: `place ${title}`,
+      execute: (d) => placed.forEach((m) => d.add(m.kind, m.object as never)),
+      undo: (d) => placed.forEach((m) => d.remove(m.object.id)),
+    })
+    selection.replaceMany(placed.map((m) => m.object.id))
+    ui.refreshAll()
+    ui.setMessage(
+      `🧱 "${title}" placed (${placed.length} pieces) — move it with the gizmo, Save to keep it`,
+    )
+  }
+  const store = new StorePanel(shell.dockPanels['store']!, {
+    worldId: endpoints.worldId,
+    token: editorToken,
+    place: placeBuild,
+    selectionBuild: () => {
+      const pick = <K extends 'static' | 'node' | 'prop' | 'light'>(kind: K) =>
+        selection
+          .ids()
+          .filter((id) => doc.typeOf(id) === kind)
+          .map((id) => doc.snapshot(id))
+          .filter((o): o is NonNullable<typeof o> => o !== null) as never[]
+      const body = prefabFromObjects({
+        statics: pick('static'),
+        nodes: pick('node'),
+        props: pick('prop'),
+        lights: pick('light'),
+      })
+      const pieces =
+        body.statics.length + body.nodes.length + body.props.length + body.lights.length
+      return pieces
+        ? { body, pieces }
+        : {
+            error:
+              'Select the boxes, nodes, props and lights to share first (terrain and zones stay in your world).',
+          }
+    },
+    setMessage: (m) => ui.setMessage(m),
+  })
+  store.show()
+  /** /editor?world=<id>&asset=<id> (the store's "Use in a world"): places that build once the map is ready. */
+  const placeAssetFromUrl = async (): Promise<void> => {
+    const params = new URLSearchParams(location.search)
+    const asset = params.get('asset')
+    if (!asset || !CREATOR_ASSET_ID.test(asset)) return
+    params.delete('asset')
+    window.history.replaceState(null, '', `${location.pathname}?${params.toString()}`)
+    await store.use(asset)
+  }
+
   // ── Actions ─────────────────────────────────────────────────────────
   const router = new ActionRouter(ACTIONS, bindingOf, (id) => runAction(id))
 
@@ -1010,7 +1084,7 @@ export async function bootEditor(): Promise<void> {
   // Offer any unsaved work from a previous session. Never automatic: a
   // crash recovering itself into everyone else's world would be worse than
   // losing it, so this restores locally and leaves the map dirty.
-  void saveController.restoreDraftIfAny()
+  void saveController.restoreDraftIfAny().then(() => placeAssetFromUrl())
 
   // ── Probe (harness only; NOT a public API) ──────────────────────────
   installEditorProbe({

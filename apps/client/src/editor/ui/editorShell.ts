@@ -267,6 +267,7 @@ export function buildShell(
   const dockPanels: Record<string, HTMLElement> = {}
   for (const [id, title] of [
     ['assets', 'Assets'],
+    ['store', 'Store'],
     ['issues', 'Issues'],
     ['history', 'History'],
     ['scene', 'Scene'],

@@ -42,7 +42,9 @@
       }
       /* Light themes (theme-loader sets data-theme-mode): the cyan is text on tags and achievements, and #22d3ee on a light
          page read at 1.7:1; this deeper cyan reads at 5:1 (axe, 2026-10-22). */
-      :root[data-theme-mode="light"] { --secondary: #0e7490; }
+      :root[data-theme-mode='light'] {
+        --secondary: #0e7490;
+      }
       * {
         box-sizing: border-box;
       }
@@ -355,6 +357,30 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 13px;
       }
+      /* The asset store (worlds.ts loadAssets). */
+      .badge.prefab {
+        color: var(--good);
+        border-color: rgba(52, 211, 153, 0.45);
+      }
+      .badge.script {
+        color: var(--accent-light);
+        border-color: var(--accent-light);
+      }
+      .kinds button[aria-pressed='true'] {
+        border-color: var(--accent-light);
+        color: var(--accent-light);
+      }
+      #assets {
+        margin-top: 14px;
+      }
+      #assets-more-row {
+        margin-top: 14px;
+      }
+      .row.pick {
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border);
+      }
     </style>
     <script type="module" src="/src/pages/worlds.ts"></script>
   </head>
@@ -410,6 +436,24 @@
       <p class="status" id="published-status" role="status">Loading worlds…</p>
       <div class="row" id="more-row" hidden>
         <button type="button" id="more">More worlds</button>
+      </div>
+
+      <h2 id="assets-title">Asset store</h2>
+      <p class="lede">
+        Builds and scripts other creators share, free. Use one in a world you build: a build lands
+        where you look in the editor, a script joins the world's scripts. Share your own from the
+        editor (select pieces, then Store) or from a world's Scripts.
+      </p>
+      <div class="row kinds" role="group" aria-label="Show">
+        <button type="button" data-kind="all" aria-pressed="true">Everything</button>
+        <button type="button" data-kind="prefab" aria-pressed="false">Builds</button>
+        <button type="button" data-kind="script" aria-pressed="false">Scripts</button>
+        <button type="button" data-kind="mine" aria-pressed="false" hidden>Yours</button>
+      </div>
+      <div class="grid" id="assets" aria-labelledby="assets-title"></div>
+      <p class="status" id="assets-status" role="status">Loading assets…</p>
+      <div class="row" id="assets-more-row" hidden>
+        <button type="button" id="assets-more">More assets</button>
       </div>
 
       <p class="note">

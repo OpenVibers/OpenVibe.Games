@@ -19,6 +19,7 @@ import {
   exportWorldTeams,
   moveCreatorWorlds,
 } from './creatorWorlds.js'
+import { eraseCreatorAssets, exportCreatorAssets, moveCreatorAssets } from './creatorAssets.js'
 
 /** The character places of one account, in order (protocol MAX_CHARACTERS). */
 const SLOTS = Array.from({ length: MAX_CHARACTERS }, (_, i) => i)
@@ -174,6 +175,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         }
         await moveProgress(from, into)
         await moveCreatorWorlds(db, from, into)
+        await moveCreatorAssets(db, from, into)
         await recordAdoption(key, into, 'merge', moved, kept, now)
         return { moved, kept, already: false }
       })
@@ -204,6 +206,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
       const casual = await exportCasual(db, subject)
       const creatorWorlds = await exportCreatorWorlds(db, subject)
       const creatorWorldTeams = await exportWorldTeams(db, subject)
+      const creatorAssets = await exportCreatorAssets(db, subject)
       return {
         characters: characters.map(withoutAccountKey),
         structures,
@@ -215,6 +218,8 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         casualLedger: casual.ledger,
         creatorWorlds,
         creatorWorldTeams,
+        creatorAssets: creatorAssets.assets,
+        creatorAssetUses: creatorAssets.uses,
       }
     },
 
@@ -226,6 +231,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
           identity_rows: 0,
           casual_saves: 0,
           creator_worlds: 0,
+          creator_assets: 0,
         }
         if (!subjects.length) return out
         const ids = (
@@ -251,6 +257,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         await db.exec(sql`DELETE FROM game_hauls WHERE account_key IN (${idList(subjects)})`)
         out.casual_saves = await eraseCasual(db, subjects)
         out.creator_worlds = await eraseCreatorWorlds(db, subjects)
+        out.creator_assets = await eraseCreatorAssets(db, subjects)
         return out
       })
     },

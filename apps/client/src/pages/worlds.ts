@@ -4,6 +4,7 @@ export {}
  * /worlds: the published creator worlds, and the signed-in player's own (make, publish, edit, delete, remix). A remix
  * copies a published world into a new draft of yours, credited (owner, 2026-10-27: "the same way you can copy our
  * game"); /worlds?remix=<id> (a world page's Remix link) makes one and opens it in the editor, after sign-in if needed.
+ * The asset store (migration 0016) lists the builds and scripts creators share; using one puts it in a world you build.
  */
 
 interface World {
@@ -321,7 +322,11 @@ async function openScripts(world: World): Promise<void> {
       card.remove()
       rows.splice(rows.indexOf(read), 1)
     })
-    card.append(remove)
+    const share = button(
+      'Share in the asset store',
+      (b) => void shareScript(world, read(), b, status),
+    )
+    card.append(el('div', { className: 'row' }, remove, share))
     rows.push(read)
     list.append(card)
   }
@@ -617,8 +622,10 @@ async function loadMine(): Promise<void> {
   try {
     const mine = await api<Mine>('/api/worlds/mine')
     staff = mine.staff
+    myWorlds = [...mine.worlds, ...(mine.team ?? [])]
     signedOut.hidden = true
     signedIn.hidden = false
+    yoursButton.hidden = false
     mineGrid.replaceChildren(...mine.worlds.map(mineCard), ...(mine.team ?? []).map(teamCard))
     const full = mine.worlds.length >= mine.max
     createButton.disabled = full
@@ -653,6 +660,285 @@ async function loadPublished(reset = false): Promise<void> {
     publishedStatus.textContent = 'Worlds could not be loaded. Refresh to try again.'
   }
 }
+
+// ── The asset store (migration 0016): builds and scripts creators share for anyone's worlds ──
+interface Asset {
+  id: string
+  kind: 'prefab' | 'script'
+  title: string
+  summary: string
+  owner: string
+  uses: number
+  contents: { pieces?: number; hooks?: string[]; capabilities?: string[] }
+  from_world: { id: string; title: string; url: string } | null
+  created_at: string
+  /** Only on your own (and to staff). */
+  status?: 'published' | 'hidden'
+}
+
+const assetsGrid = $('assets')
+const assetsStatus = $('assets-status')
+const assetsMoreRow = $('assets-more-row')
+const assetsMore = $<HTMLButtonElement>('assets-more')
+const kindButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('.kinds button'))
+const yoursButton = kindButtons.find((b) => b.dataset['kind'] === 'mine') as HTMLButtonElement
+let assetKind = 'all'
+let assetPage = 1
+/** The worlds you build (yours and your teams'): where an asset can go. */
+let myWorlds: World[] = []
+
+function assetStats(asset: Asset): string {
+  const used = asset.uses ? `used by ${count(asset.uses, 'person', 'people')}` : 'not used yet'
+  if (asset.kind === 'prefab')
+    return `${count(asset.contents.pieces ?? 0, 'piece', 'pieces')} · ${used}`
+  const hooks = (asset.contents.hooks ?? []).join(', ')
+  return `${hooks || 'no hooks'} · ${used}`
+}
+
+function assetCard(asset: Asset, own: boolean): HTMLElement {
+  const hidden = asset.status === 'hidden'
+  const card = el(
+    'article',
+    { className: 'card' },
+    el('span', {
+      className: `badge ${hidden ? 'hidden' : asset.kind}`,
+      text: hidden ? 'Taken down' : asset.kind === 'prefab' ? 'Build' : 'Script',
+    }),
+    el('h3', { text: asset.title }),
+    el('p', { className: 'by', text: `by ${asset.owner}` }),
+  )
+  if (asset.from_world) {
+    const from = el('p', { className: 'stats' }, document.createTextNode('from '))
+    from.append(link(asset.from_world.title, asset.from_world.url, false, 'title'))
+    card.append(from)
+  }
+  if (asset.summary) card.append(el('p', { className: 'summary', text: asset.summary }))
+  card.append(el('p', { className: 'stats', text: assetStats(asset) }))
+  const actions = el('div', { className: 'actions' })
+  if (!hidden) {
+    if (token())
+      actions.append(
+        button(
+          asset.kind === 'prefab' ? 'Use in a world' : 'Add to a world',
+          () => void useAsset(asset),
+          'primary',
+        ),
+      )
+    else actions.append(link('Sign in to use it', '/auth/login?next=%2Fworlds', true))
+  }
+  if (own)
+    actions.append(
+      button('Rename', (b) => {
+        const title = prompt('New title (up to 60 characters)', asset.title)
+        if (title !== null && title.trim() && title !== asset.title)
+          void changeAsset(b, asset.id, { title })
+      }),
+      button(
+        'Delete',
+        (b) =>
+          void (async () => {
+            if (
+              !confirm(
+                `Delete “${asset.title}” from the asset store? Worlds that use it keep their copy.`,
+              )
+            )
+              return
+            b.disabled = true
+            try {
+              await api(`/api/assets/${asset.id}`, { method: 'DELETE' })
+              await loadAssets(true)
+            } catch (err) {
+              b.disabled = false
+              alert(err instanceof Error ? err.message : 'That did not work. Try again.')
+            }
+          })(),
+        'danger',
+      ),
+    )
+  else if (staff)
+    actions.append(
+      hidden
+        ? button('Put back', (b) => void changeAsset(b, asset.id, { status: 'published' }))
+        : button(
+            'Take down',
+            (b) =>
+              void changeAsset(
+                b,
+                asset.id,
+                { status: 'hidden' },
+                'Take this asset down for everyone?',
+              ),
+            'danger',
+          ),
+    )
+  card.append(actions)
+  return card
+}
+
+async function changeAsset(
+  b: HTMLButtonElement,
+  id: string,
+  patch: Record<string, string>,
+  confirmText?: string,
+): Promise<void> {
+  if (confirmText && !confirm(confirmText)) return
+  b.disabled = true
+  try {
+    await api(`/api/assets/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+    await loadAssets(true)
+  } catch (err) {
+    b.disabled = false
+    alert(err instanceof Error ? err.message : 'That did not work. Try again.')
+  }
+}
+
+/** Which of your worlds an asset goes into: a small list to pick from. */
+function pickWorld(asset: Asset): Promise<World | null> {
+  return new Promise((resolve) => {
+    const dialog = el('dialog', { className: 'scripts' })
+    let chosen: World | null = null
+    const list = el('div')
+    for (const world of myWorlds)
+      list.append(
+        el(
+          'div',
+          { className: 'row pick' },
+          el('span', { text: world.role === 'editor' ? `${world.title} (team)` : world.title }),
+          button(
+            asset.kind === 'prefab' ? 'Open in the editor' : 'Add here',
+            () => {
+              chosen = world
+              dialog.close()
+            },
+            'primary',
+          ),
+        ),
+      )
+    dialog.append(
+      el('h2', {
+        text: asset.kind === 'prefab' ? `Use “${asset.title}” in…` : `Add “${asset.title}” to…`,
+      }),
+      myWorlds.length
+        ? list
+        : el('p', { className: 'status', text: 'Make a world first (above), then come back.' }),
+      el(
+        'div',
+        { className: 'row' },
+        button('Cancel', () => dialog.close()),
+      ),
+    )
+    dialog.addEventListener('close', () => {
+      dialog.remove()
+      resolve(chosen)
+    })
+    document.body.append(dialog)
+    dialog.showModal()
+  })
+}
+
+/** A build opens in the editor of the world you pick (it lands where you look); a script joins that world's scripts. */
+async function useAsset(asset: Asset): Promise<void> {
+  const world = await pickWorld(asset)
+  if (!world) return
+  if (asset.kind === 'prefab') {
+    location.href = `/editor?world=${world.id}&asset=${asset.id}`
+    return
+  }
+  assetsStatus.textContent = `Adding “${asset.title}” to ${world.title}…`
+  try {
+    const current = await api<{ scripts: WorldScript[]; limits: { mods: number } }>(
+      `/api/worlds/${world.id}/scripts`,
+    )
+    if (current.scripts.length >= current.limits.mods) {
+      assetsStatus.textContent = `${world.title} already has ${current.limits.mods} scripts, the most a world takes. Remove one in its Scripts first.`
+      return
+    }
+    const used = await api<{ body: WorldScript }>(`/api/assets/${asset.id}/use`, { method: 'POST' })
+    // Two scripts in a world never share a name: a second "welcome" becomes "welcome-2".
+    const taken = new Set(current.scripts.map((s) => s.id))
+    let id = used.body.id
+    for (let n = 2; taken.has(id); n++) id = `${used.body.id.slice(0, 36)}-${n}`
+    const script = { ...used.body, id, entry: `${id}.js` }
+    await api(`/api/worlds/${world.id}/scripts`, {
+      method: 'PUT',
+      body: JSON.stringify({ scripts: [...current.scripts, script] }),
+    })
+    await loadAssets(true)
+    assetsStatus.textContent = `Added “${asset.title}” to ${world.title} as the script “${id}”. Change it in that world's Scripts.`
+  } catch (err) {
+    assetsStatus.textContent = err instanceof Error ? err.message : 'That did not work.'
+  }
+}
+
+/** A world's script shared in the asset store, credited to the world. */
+async function shareScript(
+  world: World,
+  script: WorldScript,
+  b: HTMLButtonElement,
+  status: HTMLElement,
+): Promise<void> {
+  const title = prompt('Its title in the asset store (up to 60 characters)', script.id)
+  if (title === null || !title.trim()) return
+  b.disabled = true
+  status.textContent = 'Sharing…'
+  try {
+    await api('/api/assets', {
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'script',
+        title,
+        body: { ...script, entry: `${script.id || 'main'}.js` },
+        from_world: world.id,
+      }),
+    })
+    status.textContent = `Shared “${title.trim()}” in the asset store.`
+    void loadAssets(true)
+  } catch (err) {
+    status.textContent = err instanceof Error ? err.message : 'That did not work.'
+  } finally {
+    b.disabled = false
+  }
+}
+
+async function loadAssets(reset = false): Promise<void> {
+  if (reset) assetPage = 1
+  try {
+    if (assetKind === 'mine') {
+      const data = await api<{ assets: Asset[]; max: number }>('/api/assets/mine')
+      assetsGrid.replaceChildren(...data.assets.map((a) => assetCard(a, true)))
+      assetsMoreRow.hidden = true
+      assetsStatus.textContent = data.assets.length
+        ? ''
+        : 'You have not shared anything yet. Select pieces in the editor and open Store, or share a script from a world.'
+      return
+    }
+    const kind = assetKind === 'all' ? '' : `&kind=${assetKind}`
+    const data = await api<{ assets: Asset[]; more: boolean }>(
+      `/api/assets?page=${assetPage}${kind}`,
+    )
+    const cards = data.assets.map((a) => assetCard(a, false))
+    if (assetPage === 1) assetsGrid.replaceChildren(...cards)
+    else assetsGrid.append(...cards)
+    assetsMoreRow.hidden = !data.more
+    assetsStatus.textContent =
+      assetPage === 1 && data.assets.length === 0
+        ? 'Nothing shared here yet. Yours could be the first.'
+        : ''
+  } catch {
+    assetsStatus.textContent = 'The asset store could not be loaded. Refresh to try again.'
+  }
+}
+
+for (const b of kindButtons)
+  b.addEventListener('click', () => {
+    assetKind = b.dataset['kind'] ?? 'all'
+    for (const other of kindButtons) other.setAttribute('aria-pressed', String(other === b))
+    void loadAssets(true)
+  })
+assetsMore.addEventListener('click', () => {
+  assetPage++
+  void loadAssets()
+})
 
 createForm.addEventListener('submit', (event) => {
   event.preventDefault()
@@ -708,5 +994,5 @@ void loadMine().then(() => {
           'Sign in with your OpenVibe account to remix that world into one of your own.'
     }
   }
-  return loadPublished(true)
+  return Promise.all([loadPublished(true), loadAssets(true)])
 })
