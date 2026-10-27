@@ -13,7 +13,12 @@ import type {
 import type { IdentityRepository, MediaMirrorRepository, ModRepository } from '../repositories.js'
 import { idList } from './sqlUtils.js'
 import { eraseCasual, exportCasual, moveCasualSaves } from './casualData.js'
-import { eraseCreatorWorlds, exportCreatorWorlds, moveCreatorWorlds } from './creatorWorlds.js'
+import {
+  eraseCreatorWorlds,
+  exportCreatorWorlds,
+  exportWorldTeams,
+  moveCreatorWorlds,
+} from './creatorWorlds.js'
 
 /** The character places of one account, in order (protocol MAX_CHARACTERS). */
 const SLOTS = Array.from({ length: MAX_CHARACTERS }, (_, i) => i)
@@ -198,6 +203,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
       )
       const casual = await exportCasual(db, subject)
       const creatorWorlds = await exportCreatorWorlds(db, subject)
+      const creatorWorldTeams = await exportWorldTeams(db, subject)
       return {
         characters: characters.map(withoutAccountKey),
         structures,
@@ -208,6 +214,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         casualSaves: casual.saves,
         casualLedger: casual.ledger,
         creatorWorlds,
+        creatorWorldTeams,
       }
     },
 

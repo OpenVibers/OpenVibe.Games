@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   CREATOR_MAP_LIMITS,
@@ -74,6 +75,10 @@ export interface WorldRouteOptions {
 }
 
 const PAGE_SIZE = 24
+/** A world's editors besides its owner; an invite link works this long (owner, 2026-10-27: "make teams"). */
+const TEAM_MAX = 8
+const INVITE_MS = 7 * 24 * 60 * 60 * 1000
+const inviteHash = (token: string): string => createHash('sha256').update(token).digest('hex')
 const META_BYTES = 16 * 1024
 const TITLE_MAX = 60
 const SUMMARY_MAX = 280
@@ -242,16 +247,20 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
     if (!world) return fail(404, 'world_not_found')
     if (world.status === 'published' || isStaff(user) || world.ownerSubject === user?.subjectId)
       return world
+    if (user?.subjectId && (await opts.store.isMember(world.id, user.subjectId))) return world
     return fail(404, 'world_not_found')
   }
 
-  const owned = async (
+  /** A world the caller may build: theirs, or one whose team they are on. */
+  const editable = async (
     id: string,
     user: NetworkUser & { subjectId: string },
-  ): Promise<CreatorWorld> => {
+  ): Promise<{ world: CreatorWorld; role: 'owner' | 'editor' }> => {
     const world = CREATOR_WORLD_ID.test(id) ? await opts.store.get(id) : null
-    if (!world || world.ownerSubject !== user.subjectId) return fail(404, 'world_not_found')
-    return world
+    if (!world) return fail(404, 'world_not_found')
+    if (world.ownerSubject === user.subjectId) return { world, role: 'owner' }
+    if (await opts.store.isMember(world.id, user.subjectId)) return { world, role: 'editor' }
+    return fail(404, 'world_not_found')
   }
 
   const limited = (
@@ -281,8 +290,11 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
     if (path === '/api/worlds/mine' && method === 'GET') {
       const user = await signedIn(req)
       const worlds = await opts.store.listByOwner(user.subjectId)
+      const team = await opts.store.listByMember(user.subjectId)
       send(res, 200, {
         worlds: worlds.map((w) => ownerView(w, online(w.id))),
+        // Worlds on someone else's team: edit and try them; their owner publishes, renames and deletes.
+        team: team.map((w) => ({ ...ownerView(w, online(w.id)), role: 'editor' })),
         max: opts.perPerson,
         limits: CREATOR_MAP_LIMITS,
         staff: isStaff(user),
@@ -360,7 +372,8 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       const sid = scriptsMatch[1] ?? ''
       if (method === 'GET') {
         const world = CREATOR_WORLD_ID.test(sid) ? await opts.store.get(sid) : null
-        if (!world || (world.ownerSubject !== user.subjectId && !isStaff(user)))
+        const onTeam = !!world && (await opts.store.isMember(world.id, user.subjectId))
+        if (!world || (world.ownerSubject !== user.subjectId && !onTeam && !isStaff(user)))
           fail(404, 'world_not_found')
         send(res, 200, {
           scripts: (await opts.store.scripts(sid)) ?? [],
@@ -369,7 +382,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         })
         return
       }
-      await owned(sid, user)
+      await editable(sid, user)
       if (!(await limited('mapSave', req, res, `world:${user.subjectId}`))) return
       const { text } = await readBody(req, CREATOR_SCRIPT_LIMITS.bytes + 16 * 1024)
       const body = parseJson(text) as { scripts?: unknown } | null
@@ -384,6 +397,92 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
       opts.log.info('creator world scripts saved', { world: sid, scripts: stored.length })
       send(res, 200, { scripts: stored, running: opts.scriptsRun === true })
       return
+    }
+
+    // ── The team (migration 0015): editors besides the owner, who join through the owner's invite link ──
+    //   GET    /api/worlds/:id/team             → { owner, members, invite_expires_at? } (owner and editors)
+    //   POST   /api/worlds/:id/invite           → { token, url, expires_at } (owner; a new link replaces the old)
+    //   DELETE /api/worlds/:id/invite           → stops the link (owner)
+    //   POST   /api/worlds/join { token }       → joins the team; answers the world as its editor sees it
+    //   DELETE /api/worlds/:id/team/:subject    → the owner removes an editor, or an editor leaves
+    if (path === '/api/worlds/join' && method === 'POST') {
+      const user = await signedIn(req)
+      if (!(await opts.limits.worldWrite(req, res, `world:${user.subjectId}`))) return
+      const body = parseJson((await readBody(req, META_BYTES)).text) as { token?: unknown } | null
+      const token = typeof body?.token === 'string' ? body.token : ''
+      const world = /^[A-Za-z0-9_-]{20,64}$/.test(token)
+        ? await opts.store.byInvite(inviteHash(token), now())
+        : null
+      if (!world)
+        fail(404, 'invite_not_found', { detail: 'That invite link has run out or was stopped.' })
+      const w = world as CreatorWorld
+      if (w.ownerSubject !== user.subjectId) {
+        const members = await opts.store.members(w.id)
+        if (!members.some((m) => m.subject === user.subjectId) && members.length >= TEAM_MAX)
+          fail(409, 'team_full', {
+            detail: `A world's team takes ${TEAM_MAX} people besides its owner.`,
+          })
+        await opts.store.addMember(w.id, user.subjectId, user.name, now())
+        opts.log.info('creator world team joined', { world: w.id })
+      }
+      send(res, 200, {
+        ...ownerView(w, online(w.id)),
+        role: w.ownerSubject === user.subjectId ? 'owner' : 'editor',
+      })
+      return
+    }
+    const teamMatch = /^\/api\/worlds\/([^/]+)\/(team|invite)(?:\/([^/]+))?$/.exec(path)
+    if (teamMatch) {
+      const user = await signedIn(req)
+      const [, tid = '', what, who] = teamMatch
+      const { world, role } = await editable(tid, user)
+      if (what === 'team' && method === 'GET' && who === undefined) {
+        const members = await opts.store.members(world.id)
+        send(res, 200, {
+          owner: world.ownerName,
+          role,
+          max: TEAM_MAX,
+          members: members.map((m) => ({
+            subject: m.subject,
+            name: m.name,
+            added_at: new Date(m.addedAt).toISOString(),
+          })),
+          ...(role === 'owner'
+            ? {
+                invite_expires_at: await opts.store
+                  .inviteExpires(world.id, now())
+                  .then((at) => (at ? new Date(at).toISOString() : null)),
+              }
+            : {}),
+        })
+        return
+      }
+      if (what === 'team' && method === 'DELETE' && who !== undefined) {
+        // `me` is the caller (an editor leaving); the owner removes anyone by subject.
+        const target = who === 'me' ? user.subjectId : who
+        if (role !== 'owner' && target !== user.subjectId) fail(404, 'not_found')
+        await opts.store.removeMember(world.id, target)
+        send(res, 200, { ok: true })
+        return
+      }
+      if (what === 'invite' && who === undefined && (method === 'POST' || method === 'DELETE')) {
+        if (role !== 'owner') fail(404, 'not_found')
+        if (method === 'DELETE') {
+          await opts.store.setInvite(world.id, null, null)
+          send(res, 200, { ok: true })
+          return
+        }
+        const token = randomBytes(24).toString('base64url')
+        const expires = now() + INVITE_MS
+        await opts.store.setInvite(world.id, inviteHash(token), expires)
+        send(res, 201, {
+          token,
+          url: `/worlds?join=${token}`,
+          expires_at: new Date(expires).toISOString(),
+        })
+        return
+      }
+      fail(404, 'not_found')
     }
 
     const match = /^\/api\/worlds\/([^/]+)(\/map)?$/.exec(path)
@@ -403,7 +502,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
 
     if (isMap && (method === 'PUT' || method === 'POST')) {
       const user = await signedIn(req)
-      await owned(id, user)
+      await editable(id, user)
       if (!(await limited('mapSave', req, res, `world:${user.subjectId}`))) return
       const { text, bytes } = await readBody(req, CREATOR_MAP_LIMITS.bytes + 64 * 1024)
       const parsed = parseMapFile(parseJson(text))

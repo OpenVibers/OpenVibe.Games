@@ -128,6 +128,81 @@ describe('/api/worlds', () => {
     expect(parseIfMatch('')).toBeNull()
   })
 
+  it('builds a world as a team: an invite link adds editors who save its map and scripts; the owner keeps the rest', async () => {
+    const { call, store } = await setup(2)
+    const id = String((await call('POST', '/api/worlds', 'kim', { title: 'Team base' })).body.id)
+
+    // Not yet on the team: the draft, its map and its team are not lee's to see.
+    expect((await call('GET', `/api/worlds/${id}/map`, 'lee')).status).toBe(404)
+    expect((await call('GET', `/api/worlds/${id}/team`, 'lee')).status).toBe(404)
+    expect((await call('POST', `/api/worlds/${id}/invite`, 'lee')).status).toBe(404)
+
+    // The owner makes a link; anyone signed in who opens it joins (a guest cannot).
+    const invite = await call('POST', `/api/worlds/${id}/invite`, 'kim')
+    expect(invite.status).toBe(201)
+    const token = String(invite.body.token)
+    expect(invite.body.url).toBe(`/worlds?join=${token}`)
+    expect((await call('POST', '/api/worlds/join', 'guest', { token })).status).toBe(401)
+    expect((await call('POST', '/api/worlds/join', 'lee', { token: 'x'.repeat(32) })).status).toBe(
+      404,
+    )
+    const joined = await call('POST', '/api/worlds/join', 'lee', { token })
+    expect(joined.body).toMatchObject({ id, role: 'editor', edit_url: `/editor?world=${id}` })
+    expect((await call('GET', '/api/worlds/mine', 'lee')).body.team).toMatchObject([
+      { id, role: 'editor' },
+    ])
+
+    // An editor builds: the map (the revision still guards two saves at once) and the scripts.
+    const map = await call('GET', `/api/worlds/${id}/map`, 'lee')
+    expect(map.status).toBe(200)
+    const next: MapFileV2 = { ...emptyMapV2(), spawn: [5, 1, 5] }
+    expect(
+      (await call('PUT', `/api/worlds/${id}/map`, 'lee', next, { 'if-match': map.etag ?? '' }))
+        .status,
+    ).toBe(200)
+    expect(
+      (await call('PUT', `/api/worlds/${id}/map`, 'kim', next, { 'if-match': map.etag ?? '' }))
+        .status,
+    ).toBe(409)
+    expect((await call('PUT', `/api/worlds/${id}/scripts`, 'lee', { scripts: [] })).status).toBe(
+      200,
+    )
+    // The owner keeps publishing, renaming, deleting and the team.
+    expect((await call('PATCH', `/api/worlds/${id}`, 'lee', { status: 'published' })).status).toBe(
+      404,
+    )
+    expect((await call('DELETE', `/api/worlds/${id}`, 'lee')).status).toBe(404)
+    expect((await call('POST', `/api/worlds/${id}/invite`, 'lee')).status).toBe(404)
+    const team = await call('GET', `/api/worlds/${id}/team`, 'kim')
+    expect(team.body).toMatchObject({
+      owner: 'kim',
+      role: 'owner',
+      members: [{ subject: LEE, name: 'lee' }],
+    })
+    expect(team.body.invite_expires_at).toBeTruthy()
+    expect(
+      (await call('GET', `/api/worlds/${id}/team`, 'lee')).body.invite_expires_at,
+    ).toBeUndefined()
+
+    // An editor leaves; the owner can remove one; a stopped link adds nobody.
+    expect((await call('DELETE', `/api/worlds/${id}/team/me`, 'lee')).status).toBe(200)
+    expect((await call('GET', `/api/worlds/${id}/map`, 'lee')).status).toBe(404)
+    await call('POST', '/api/worlds/join', 'lee', { token })
+    expect((await call('DELETE', `/api/worlds/${id}/team/${LEE}`, 'kim')).status).toBe(200)
+    expect((await call('DELETE', `/api/worlds/${id}/invite`, 'kim')).status).toBe(200)
+    expect((await call('POST', '/api/worlds/join', 'lee', { token })).status).toBe(404)
+
+    // A link that ran out adds nobody; a full team (8 besides the owner) takes no one new.
+    const fresh = String((await call('POST', `/api/worlds/${id}/invite`, 'kim')).body.token)
+    for (let i = 0; i < 8; i++)
+      await store.addMember(id, `usr_${String(i).padStart(26, '0')}`, `m${i}`, 1)
+    const full = await call('POST', '/api/worlds/join', 'lee', { token: fresh })
+    expect(full.status).toBe(409)
+    expect(full.body.error).toBe('team_full')
+    await store.setInvite(id, 'gone', 1)
+    expect((await call('POST', '/api/worlds/join', 'lee', { token: fresh })).status).toBe(404)
+  })
+
   it("keeps a world's scripts: the owner saves them through the content checks, staff read them, a save restarts it", async () => {
     const { call, calls } = await setup(2)
     const id = String((await call('POST', '/api/worlds', 'kim', { title: 'Scripted' })).body.id)

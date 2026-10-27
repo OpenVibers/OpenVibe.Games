@@ -211,6 +211,10 @@
         color: var(--bad);
         border-color: rgba(248, 113, 113, 0.45);
       }
+      .badge.team {
+        color: var(--accent-light);
+        border-color: var(--accent-light);
+      }
       .button,
       button {
         display: inline-flex;
@@ -333,6 +337,15 @@
       }
       label.check input {
         width: auto;
+      }
+      .row.member {
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .invite {
+        display: grid;
+        gap: 8px;
       }
       fieldset.script > button {
         justify-self: start;

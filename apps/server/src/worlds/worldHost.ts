@@ -34,11 +34,12 @@ interface Running {
 }
 
 /** Who may join a world that is not published: its owner, and staff. */
-export function mayJoin(world: CreatorWorld, conn: GameConnection): boolean {
+export function mayJoin(world: CreatorWorld, conn: GameConnection, onTeam = false): boolean {
   if (world.status === 'published') return true
   const identity = conn.identity
   if (!identity || !('subject' in identity)) return false
-  if (identity.subject === world.ownerSubject) return world.status === 'draft'
+  // A draft is its builders': its owner and its team (migration 0015).
+  if (identity.subject === world.ownerSubject || onTeam) return world.status === 'draft'
   return identity.rank === 'owner' || identity.rank === 'admin'
 }
 
@@ -76,7 +77,14 @@ export class CreatorWorldHost implements DynamicPlaces {
     if (!id) return null
     await this.stopping.get(id)
     const world = await this.opts.store.get(id)
-    if (!world || !mayJoin(world, conn)) return null
+    const identity = conn.identity
+    const onTeam =
+      !!world &&
+      world.status === 'draft' &&
+      !!identity &&
+      'subject' in identity &&
+      (await this.opts.store.isMember(id, identity.subject))
+    if (!world || !mayJoin(world, conn, onTeam)) return null
     const current = this.running.get(id)
     if (current) {
       current.activeAt = this.now()

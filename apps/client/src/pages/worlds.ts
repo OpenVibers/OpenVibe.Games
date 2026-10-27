@@ -20,10 +20,14 @@ interface World {
   edit_url?: string
   remixed_from?: { id: string; title: string; owner: string; url: string } | null
   remixes?: number
+  /** 'editor' on a world of someone else's team (migration 0015). */
+  role?: 'owner' | 'editor'
 }
 
 interface Mine {
   worlds: World[]
+  /** Worlds on someone else's team. */
+  team?: World[]
   max: number
   staff: boolean
 }
@@ -206,6 +210,7 @@ function mineCard(world: World): HTMLElement {
     actions.append(button('Unpublish', (b) => void change(b, world.id, { status: 'draft' })))
   actions.append(
     button('Scripts', () => void openScripts(world)),
+    button('Team', () => void openTeam(world)),
     button('Rename', (b) => {
       const title = prompt('New title (up to 60 characters)', world.title)
       if (title !== null && title.trim() && title !== world.title)
@@ -385,6 +390,195 @@ async function openScripts(world: World): Promise<void> {
   dialog.showModal()
 }
 
+/** A world on someone else's team: build it, try it, edit its scripts, or leave the team. */
+function teamCard(world: World): HTMLElement {
+  const card = el(
+    'article',
+    { className: 'card' },
+    el('span', { className: 'badge team', text: 'Team' }),
+    titleOf(world),
+    el('p', { className: 'by', text: `by ${world.owner}` }),
+    el('p', { className: 'stats', text: stats(world) }),
+  )
+  const actions = el('div', { className: 'actions' })
+  if (world.edit_url) actions.append(link('Edit', world.edit_url, true))
+  if ((world.status ?? 'draft') !== 'hidden') actions.append(link('Try it', world.play_url))
+  actions.append(
+    button('Scripts', () => void openScripts(world)),
+    button(
+      'Leave',
+      (b) =>
+        void (async () => {
+          if (!confirm(`Leave the team of “${world.title}”?`)) return
+          b.disabled = true
+          try {
+            await api(`/api/worlds/${world.id}/team/me`, { method: 'DELETE' })
+          } catch (err) {
+            mineStatus.textContent = err instanceof Error ? err.message : 'That did not work.'
+          } finally {
+            await loadMine()
+          }
+        })(),
+      'danger',
+    ),
+  )
+  card.append(actions)
+  return card
+}
+
+/** Your world's team: who builds it with you, and the invite link that adds people. */
+async function openTeam(world: World): Promise<void> {
+  const dialog = el('dialog', { className: 'scripts' })
+  const body = el('div', { className: 'script-list' })
+  const status = el('p', { className: 'status' })
+  const draw = async () => {
+    let data: {
+      owner: string
+      members: { subject: string; name: string; added_at: string }[]
+      max: number
+      invite_expires_at?: string | null
+    }
+    try {
+      data = await api(`/api/worlds/${world.id}/team`)
+    } catch (err) {
+      status.textContent = err instanceof Error ? err.message : 'The team could not be loaded.'
+      return
+    }
+    const rows = data.members.map((m) =>
+      el(
+        'div',
+        { className: 'row member' },
+        el('span', { text: m.name }),
+        button(
+          'Remove',
+          (b) =>
+            void (async () => {
+              b.disabled = true
+              await api(`/api/worlds/${world.id}/team/${encodeURIComponent(m.subject)}`, {
+                method: 'DELETE',
+              })
+              await draw()
+            })(),
+          'danger',
+        ),
+      ),
+    )
+    const invite = el('div', { className: 'invite' })
+    const showLink = (url: string, expires: string) => {
+      const field = el('input')
+      field.readOnly = true
+      field.value = new URL(url, location.origin).toString()
+      field.setAttribute('aria-label', 'Invite link')
+      invite.replaceChildren(
+        el(
+          'label',
+          { text: `Invite link (works until ${new Date(expires).toLocaleDateString()})` },
+          field,
+        ),
+        el(
+          'div',
+          { className: 'row' },
+          button('Copy link', () => {
+            field.select()
+            void navigator.clipboard
+              ?.writeText(field.value)
+              .then(() => (status.textContent = 'Link copied.'))
+          }),
+          button(
+            'Stop the link',
+            (b) =>
+              void (async () => {
+                b.disabled = true
+                await api(`/api/worlds/${world.id}/invite`, { method: 'DELETE' })
+                await draw()
+              })(),
+          ),
+        ),
+      )
+    }
+    const make = button(
+      data.invite_expires_at ? 'Make a new invite link' : 'Make an invite link',
+      (b) =>
+        void (async () => {
+          b.disabled = true
+          try {
+            const made = await api<{ url: string; expires_at: string }>(
+              `/api/worlds/${world.id}/invite`,
+              {
+                method: 'POST',
+              },
+            )
+            showLink(made.url, made.expires_at)
+            status.textContent =
+              'Send this link to the people you want to build with. Anyone signed in who opens it joins.'
+          } finally {
+            b.disabled = false
+          }
+        })(),
+      'primary',
+    )
+    invite.replaceChildren(
+      el('p', {
+        className: 'status',
+        text: data.invite_expires_at
+          ? `An invite link works until ${new Date(data.invite_expires_at).toLocaleDateString()}. For safety it is shown only when made; make a new one to share it again.`
+          : 'No invite link yet.',
+      }),
+      el('div', { className: 'row' }, make),
+    )
+    if (data.invite_expires_at) {
+      invite.querySelector('.row')?.append(
+        button(
+          'Stop the link',
+          (b) =>
+            void (async () => {
+              b.disabled = true
+              await api(`/api/worlds/${world.id}/invite`, { method: 'DELETE' })
+              await draw()
+            })(),
+        ),
+      )
+    }
+    body.replaceChildren(
+      el('p', {
+        className: 'status',
+        text: `Your team edits this world's map and scripts with you (up to ${data.max} people). You alone publish, rename and delete it.`,
+      }),
+      ...(rows.length ? rows : [el('p', { className: 'status', text: 'Nobody on the team yet.' })]),
+      invite,
+    )
+  }
+  dialog.append(
+    el('h2', { text: `Team for ${world.title}` }),
+    body,
+    el(
+      'div',
+      { className: 'row' },
+      button('Close', () => dialog.close()),
+    ),
+    status,
+  )
+  dialog.addEventListener('close', () => dialog.remove())
+  document.body.append(dialog)
+  dialog.showModal()
+  await draw()
+}
+
+/** Join a team from an invite link, then open the world in the editor. */
+async function joinTeam(token: string): Promise<void> {
+  mineStatus.textContent = 'Joining the team…'
+  try {
+    const world = await api<World>('/api/worlds/join', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    })
+    mineStatus.textContent = ''
+    if (world.edit_url) location.href = world.edit_url
+  } catch (err) {
+    mineStatus.textContent = err instanceof Error ? err.message : 'That invite did not work.'
+  }
+}
+
 async function change(
   b: HTMLButtonElement,
   id: string,
@@ -425,7 +619,7 @@ async function loadMine(): Promise<void> {
     staff = mine.staff
     signedOut.hidden = true
     signedIn.hidden = false
-    mineGrid.replaceChildren(...mine.worlds.map(mineCard))
+    mineGrid.replaceChildren(...mine.worlds.map(mineCard), ...(mine.team ?? []).map(teamCard))
     const full = mine.worlds.length >= mine.max
     createButton.disabled = full
     mineStatus.textContent = mine.worlds.length
@@ -485,6 +679,20 @@ moreButton.addEventListener('click', () => {
 })
 
 void loadMine().then(() => {
+  // An invite link: join the team and open the world, or sign in first and come back here to do it.
+  const joinToken = new URLSearchParams(location.search).get('join')
+  if (joinToken && /^[A-Za-z0-9_-]{20,64}$/.test(joinToken)) {
+    if (!signedIn.hidden) {
+      history.replaceState(null, '', '/worlds')
+      void joinTeam(joinToken)
+    } else {
+      const signIn = signedOut.querySelector<HTMLAnchorElement>('a.button')
+      if (signIn)
+        signIn.href = `/auth/login?next=${encodeURIComponent(`/worlds?join=${joinToken}`)}`
+      const note = signedOut.querySelector('.status')
+      if (note) note.textContent = "Sign in with your OpenVibe account to join this world's team."
+    }
+  }
   // A world page's Remix link: make the copy and open it, or sign in first and come back here to do it.
   const want = new URLSearchParams(location.search).get('remix')
   if (want && /^w[a-z0-9]{10}$/.test(want)) {
