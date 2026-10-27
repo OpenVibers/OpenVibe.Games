@@ -19,6 +19,21 @@ interface SharedServe {
   handler(): (req: IncomingMessage & { path: string }, res: ServerResponse, next: (err?: unknown) => void) => void
 }
 
+/**
+ * The file's type, as openvibe-shared/serve gives it: a stylesheet must be text/css, or the browser refuses it under
+ * nosniff (the profile panel's stylesheet went out as JavaScript and its panel drew unstyled on the home page,
+ * 2026-10-27).
+ */
+export function contentTypeOf(name: string): string {
+  if (name.endsWith('.css')) return 'text/css; charset=utf-8'
+  if (name.endsWith('.json')) return 'application/json; charset=utf-8'
+  if (name.endsWith('.svg')) return 'image/svg+xml'
+  if (name.endsWith('.png')) return 'image/png'
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg'
+  if (name.endsWith('.webp')) return 'image/webp'
+  return 'application/javascript; charset=utf-8'
+}
+
 export function sharedAssetsHandler(req: NodeRequire = createRequire(import.meta.url)) {
   const files = req('openvibe-shared/files') as SharedFiles
   const serve = req('openvibe-shared/serve') as SharedServe
@@ -40,7 +55,7 @@ export function sharedAssetsHandler(req: NodeRequire = createRequire(import.meta
     }
     const hash = serve.hashOf(name)
     const headers = {
-      'content-type': 'application/javascript; charset=utf-8',
+      'content-type': contentTypeOf(name),
       'cache-control':
         url.searchParams.get('v') === hash
           ? 'public, max-age=31536000, immutable'
