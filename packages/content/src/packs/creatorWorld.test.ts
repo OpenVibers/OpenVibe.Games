@@ -9,7 +9,10 @@ import {
   creatorPlaceId,
   creatorWorldOf,
   creatorWorldPack,
+  starterCreatorMap,
+  STARTER_GROUND_ID,
 } from './creatorWorld.js'
+import { parseMapFile } from '../mapFileV2.js'
 
 describe('creator worlds', () => {
   it('maps world ids to places and back, refusing anything else', () => {
@@ -29,6 +32,25 @@ describe('creator worlds', () => {
     expect(createContent().digest).not.toBe(a.digest)
     expect(a.world.id).toBe('creator_w0000000001')
     expect(a.world.zones).toEqual([])
+  })
+
+  it('starts a new world on flat ground over the whole play area, inside the creator limits', () => {
+    const map = starterCreatorMap()
+    const parsed = parseMapFile(JSON.parse(JSON.stringify(map)))
+    expect(parsed.ok).toBe(true)
+    const bytes = new TextEncoder().encode(JSON.stringify(map)).length
+    expect(creatorMapIssues(map, bytes)).toEqual([])
+    expect(bytes).toBeLessThan(64 * 1024)
+    const ground = map.terrains[0]
+    expect(map.terrains).toHaveLength(1)
+    expect(ground).toMatchObject({ id: STARTER_GROUND_ID, pos: [0, 0, 0], halfExtent: 80, sub: 80 })
+    // Every sample at height 0: the ground the spawn point (y 1.2) falls onto, above the sea.
+    const heights = new Float32Array(
+      Uint8Array.from(atob(ground?.heights ?? ''), (c) => c.charCodeAt(0)).buffer,
+    )
+    expect(heights.length).toBe(81 * 81)
+    expect(heights.every((h) => h === 0)).toBe(true)
+    expect(creatorWorldPack('w0000000001').map.groundHalfExtent).toBe(ground?.halfExtent)
   })
 
   it('takes a plain map and refuses uploads, paint and oversized maps', () => {

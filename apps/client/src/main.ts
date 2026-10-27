@@ -27,6 +27,7 @@ import { LocalPlayer } from './game/localPlayer.js'
 import { InputTracker } from './input/inputTracker.js'
 import { KeyboardInputSource, SwitchableInputSource } from './input/inputSource.js'
 import { TopDownInputSource } from './input/topDownInputSource.js'
+import { TopDownMarkers } from './render/topDownMarkers.js'
 import { TouchControls } from './input/touchControls.js'
 import { TouchInputSource, TouchPad } from './input/touchInputSource.js'
 import { Connection, gameSocketUrl, getIdentity, saveName } from './net/connection.js'
@@ -405,6 +406,8 @@ async function start(): Promise<void> {
     environment.hazeFog = false
     hud.setCrosshair(false)
   }
+  // From above, a ring under each player (yours blue) shows who is where and which way each one faces.
+  const markers = topDown ? new TopDownMarkers(scene, state, view, player) : null
   const beams = new BeamRenderer(scene)
   const constraintLines = new ConstraintLineRenderer(scene, state, view)
   const ghost = new PlacementGhost(scene, physics, content)
@@ -703,6 +706,7 @@ async function start(): Promise<void> {
     physics.step(0) // query-only world: refresh broadphase, no dynamics
     player.frameUpdate(timestep.alpha, elapsed)
     view.update(now / 1000)
+    markers?.update()
 
     // First-person presentation: body, viewmodel, beams.
     const selfHolding = [...state.heldBy.values()].includes(state.myEntityId)

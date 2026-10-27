@@ -252,6 +252,15 @@ describe('/api/worlds', () => {
     ).toEqual([])
   })
 
+  it('makes a new world on starter ground, not an empty map', async () => {
+    const { call } = await setup(2)
+    const id = String((await call('POST', '/api/worlds', 'kim', { title: 'Fresh' })).body.id)
+    const map = (await call('GET', `/api/worlds/${id}/map`, 'kim')).body as {
+      terrains: { id: string }[]
+    }
+    expect(map.terrains.map((t) => t.id)).toEqual(['ground'])
+  })
+
   it('lets the owner show a world from above (2D) or in first person; a remix keeps the view', async () => {
     const { call } = await setup(2)
     const id = String((await call('POST', '/api/worlds', 'kim', { title: 'Maze' })).body.id)

@@ -131,6 +131,11 @@ export class Avatar {
     return this.rig.joints.root.position
   }
 
+  /** The way the body faces (radians), as last updated. */
+  get yaw(): number {
+    return this.rig.joints.root.rotation.y
+  }
+
   /** Rebuilds the rig (customization preview edits). Preserves pose state loosely. */
   setAppearance(appearance: Appearance): void {
     this.appearance = appearance
