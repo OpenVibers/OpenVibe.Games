@@ -37,7 +37,23 @@ describe('creator worlds store', () => {
       revision: mapRevision(MAP),
       publishedAt: null,
       plays: 0,
+      remixedFrom: null,
+      remixes: 0,
     })
+    // A remix keeps its credit as it was copied; the original counts remixes.
+    const remix = await store.create({
+      ownerSubject: KIM,
+      ownerName: 'kim',
+      title: 'Moon base (remix)',
+      summary: '',
+      map: MAP,
+      now: 1001,
+      remixedFrom: { id: world.id, title: 'Moon base', owner: 'kim' },
+    })
+    expect(remix.remixedFrom).toEqual({ id: world.id, title: 'Moon base', owner: 'kim' })
+    await store.countRemix(world.id)
+    expect((await store.get(world.id))?.remixes).toBe(1)
+    await store.remove(remix.id)
     expect(await store.countByOwner(KIM)).toBe(1)
     expect(await store.listPublished(10, 0)).toEqual([])
 

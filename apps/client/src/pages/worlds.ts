@@ -1,6 +1,10 @@
 export {}
 
-/** /worlds: the published creator worlds, and the signed-in player's own (make, publish, edit, delete). */
+/**
+ * /worlds: the published creator worlds, and the signed-in player's own (make, publish, edit, delete, remix). A remix
+ * copies a published world into a new draft of yours, credited (owner, 2026-10-27: "the same way you can copy our
+ * game"); /worlds?remix=<id> (a world page's Remix link) makes one and opens it in the editor, after sign-in if needed.
+ */
 
 interface World {
   id: string
@@ -14,6 +18,8 @@ interface World {
   play_url: string
   status?: 'draft' | 'published' | 'hidden'
   edit_url?: string
+  remixed_from?: { id: string; title: string; owner: string; url: string } | null
+  remixes?: number
 }
 
 interface Mine {
@@ -114,7 +120,37 @@ const count = (n: number, one: string, many: string): string =>
 function stats(world: World): string {
   const parts = [count(world.plays, 'visit', 'visits')]
   if (world.online > 0) parts.unshift(`${world.online} playing now`)
+  if (world.remixes) parts.push(count(world.remixes, 'remix', 'remixes'))
   return parts.join(' · ')
+}
+
+/** "Remix of <title> by <owner>", the credit a remix carries (null for an original). */
+function credit(world: World): HTMLElement | null {
+  const from = world.remixed_from
+  if (!from) return null
+  return el(
+    'p',
+    { className: 'by' },
+    document.createTextNode('Remix of '),
+    link(from.title || 'a world', from.url, false, 'inline'),
+    document.createTextNode(` by ${from.owner}`),
+  )
+}
+
+const remixStatus = (): HTMLElement => (signedIn.hidden ? publishedStatus : createStatus)
+
+/** Copy a world into a new draft of yours and open it in the editor. */
+async function remixWorld(id: string, b?: HTMLButtonElement): Promise<void> {
+  if (b) b.disabled = true
+  remixStatus().textContent = 'Making your remix…'
+  try {
+    const world = await api<World>(`/api/worlds/${encodeURIComponent(id)}/remix`, { method: 'POST' })
+    remixStatus().textContent = ''
+    if (world.edit_url) location.href = world.edit_url
+  } catch (err) {
+    remixStatus().textContent = err instanceof Error ? err.message : 'That did not work.'
+    if (b) b.disabled = false
+  }
 }
 
 function publishedCard(world: World, staff: boolean): HTMLElement {
@@ -123,10 +159,14 @@ function publishedCard(world: World, staff: boolean): HTMLElement {
     { className: 'card' },
     titleOf(world),
     el('p', { className: 'by', text: `by ${world.owner}` }),
+    credit(world),
     world.summary ? el('p', { className: 'summary', text: world.summary }) : null,
     el('p', { className: 'stats', text: stats(world) }),
   )
   const actions = el('div', { className: 'actions' }, link('▶ Play', world.play_url, true))
+  // Anyone signed in may copy a published world into a world of their own; signed out, the link signs in first.
+  if (token()) actions.append(button('Remix', (b) => void remixWorld(world.id, b)))
+  else actions.append(link('Remix', `/auth/login?next=${encodeURIComponent(`/worlds?remix=${world.id}`)}`))
   if (staff)
     actions.append(
       button(
@@ -147,6 +187,7 @@ function mineCard(world: World): HTMLElement {
     { className: 'card' },
     el('span', { className: `badge ${status}`, text: label }),
     titleOf(world),
+    credit(world),
     world.summary ? el('p', { className: 'summary', text: world.summary }) : null,
     el('p', { className: 'stats', text: stats(world) }),
   )
@@ -288,4 +329,19 @@ moreButton.addEventListener('click', () => {
   void loadPublished()
 })
 
-void loadMine().then(() => loadPublished(true))
+void loadMine().then(() => {
+  // A world page's Remix link: make the copy and open it, or sign in first and come back here to do it.
+  const want = new URLSearchParams(location.search).get('remix')
+  if (want && /^w[a-z0-9]{10}$/.test(want)) {
+    if (!signedIn.hidden) {
+      history.replaceState(null, '', '/worlds')
+      void remixWorld(want)
+    } else {
+      const signIn = signedOut.querySelector<HTMLAnchorElement>('a.button')
+      if (signIn) signIn.href = `/auth/login?next=${encodeURIComponent(`/worlds?remix=${want}`)}`
+      const note = signedOut.querySelector('.status')
+      if (note) note.textContent = 'Sign in with your OpenVibe account to remix that world into one of your own.'
+    }
+  }
+  return loadPublished(true)
+})

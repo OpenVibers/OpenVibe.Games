@@ -23,6 +23,10 @@ export interface CreatorWorld {
   createdAt: number
   updatedAt: number
   publishedAt: number | null
+  /** The world this one was remixed from, as it was then (migration 0013); null for an original. */
+  remixedFrom: { id: string; title: string; owner: string } | null
+  /** How often other people remixed this world. */
+  remixes: number
 }
 
 interface Row {
@@ -37,9 +41,13 @@ interface Row {
   created_at: number | string
   updated_at: number | string
   published_at: number | string | null
+  remixed_from: string | null
+  remixed_from_title: string | null
+  remixed_from_owner: string | null
+  remixes: number | string | null
 }
 
-const COLUMNS = sql`id, owner_subject, owner_name, title, summary, status, revision, plays, created_at, updated_at, published_at`
+const COLUMNS = sql`id, owner_subject, owner_name, title, summary, status, revision, plays, created_at, updated_at, published_at, remixed_from, remixed_from_title, remixed_from_owner, remixes`
 
 function fromRow(row: Row): CreatorWorld {
   return {
@@ -54,6 +62,10 @@ function fromRow(row: Row): CreatorWorld {
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
     publishedAt: row.published_at === null ? null : Number(row.published_at),
+    remixedFrom: row.remixed_from
+      ? { id: row.remixed_from, title: row.remixed_from_title ?? '', owner: row.remixed_from_owner ?? '' }
+      : null,
+    remixes: Number(row.remixes ?? 0),
   }
 }
 
@@ -84,6 +96,8 @@ export interface CreatorWorldStore {
     summary: string
     map: unknown
     now: number
+    /** A remix: the world it copies, as it is now (kept as the credit). */
+    remixedFrom?: { id: string; title: string; owner: string }
   }): Promise<CreatorWorld>
   get(id: string): Promise<CreatorWorld | null>
   /** The stored map document and its revision. */
@@ -110,6 +124,8 @@ export interface CreatorWorldStore {
   /** The owner's display name follows the Network's (set at each signed-in write). */
   rename(ownerSubject: string, ownerName: string): Promise<void>
   countPlay(id: string): Promise<void>
+  /** One more remix of this world by someone else. */
+  countRemix(id: string): Promise<void>
   /** Removes the world and its place's rows. */
   remove(id: string): Promise<boolean>
 }
@@ -118,10 +134,13 @@ export function createCreatorWorldStore(db: Db): CreatorWorldStore {
   return {
     async create(input) {
       const id = newCreatorWorldId()
+      const from = input.remixedFrom ?? null
       const row = await db.one<Row>(sql`
-        INSERT INTO creator_worlds (id, owner_subject, owner_name, title, summary, map, revision, created_at, updated_at)
+        INSERT INTO creator_worlds (id, owner_subject, owner_name, title, summary, map, revision, created_at, updated_at,
+                                    remixed_from, remixed_from_title, remixed_from_owner)
         VALUES (${id}, ${input.ownerSubject}, ${input.ownerName}, ${input.title}, ${input.summary},
-                ${sql.json(input.map)}, ${mapRevision(input.map)}, ${input.now}, ${input.now})
+                ${sql.json(input.map)}, ${mapRevision(input.map)}, ${input.now}, ${input.now},
+                ${from ? from.id : null}, ${from ? from.title : null}, ${from ? from.owner : null})
         RETURNING ${COLUMNS}
       `)
       return fromRow(row)
@@ -191,6 +210,9 @@ export function createCreatorWorldStore(db: Db): CreatorWorldStore {
     },
     async countPlay(id) {
       await db.exec(sql`UPDATE creator_worlds SET plays = plays + 1 WHERE id = ${id}`)
+    },
+    async countRemix(id) {
+      await db.exec(sql`UPDATE creator_worlds SET remixes = remixes + 1 WHERE id = ${id}`)
     },
     async remove(id) {
       return db.tx(async () => {

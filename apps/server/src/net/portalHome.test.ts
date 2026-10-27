@@ -56,6 +56,8 @@ const world = (id: string, plays: number, publishedAt: number): CreatorWorld => 
   createdAt: publishedAt,
   updatedAt: publishedAt,
   publishedAt,
+  remixedFrom: null,
+  remixes: 0,
 })
 
 describe('the home page live sections', () => {
