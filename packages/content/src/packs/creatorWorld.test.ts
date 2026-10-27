@@ -50,7 +50,7 @@ describe('creator worlds', () => {
     )
     expect(heights.length).toBe(81 * 81)
     expect(heights.every((h) => h === 0)).toBe(true)
-    expect(creatorWorldPack('w0000000001').map.groundHalfExtent).toBe(ground?.halfExtent)
+    expect(creatorWorldPack('w0000000001').map?.groundHalfExtent).toBe(ground?.halfExtent)
   })
 
   it('takes a plain map and refuses uploads, paint and oversized maps', () => {
