@@ -91,13 +91,13 @@ type Problem = {
   revision?: string
 }
 
-class RouteError extends Error {
+export class RouteError extends Error {
   constructor(readonly problem: Problem) {
     super(problem.error)
   }
 }
 
-const fail = (
+export const fail = (
   status: number,
   error: string,
   extra: Omit<Problem, 'status' | 'error'> = {},
@@ -116,11 +116,11 @@ export function cleanText(value: unknown, max: number): string | null {
   return text.length > max ? null : text
 }
 
-function isStaff(user: NetworkUser | null): boolean {
+export function isStaff(user: NetworkUser | null): boolean {
   return user?.rank === 'owner' || user?.rank === 'admin' || user?.rank === 'moderator'
 }
 
-function isGamesStaff(user: NetworkUser | null): boolean {
+export function isGamesStaff(user: NetworkUser | null): boolean {
   return user?.rank === 'owner' || user?.rank === 'admin'
 }
 
@@ -168,7 +168,10 @@ export function parseIfMatch(header: string | string[] | undefined): string | nu
   return value || null
 }
 
-function readBody(req: IncomingMessage, max: number): Promise<{ text: string; bytes: number }> {
+export function readBody(
+  req: IncomingMessage,
+  max: number,
+): Promise<{ text: string; bytes: number }> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     let size = 0
@@ -188,7 +191,7 @@ function readBody(req: IncomingMessage, max: number): Promise<{ text: string; by
   })
 }
 
-function parseJson(text: string): unknown {
+export function parseJson(text: string): unknown {
   try {
     return JSON.parse(text) as unknown
   } catch {

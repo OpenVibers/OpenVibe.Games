@@ -75,6 +75,8 @@ export interface ServerConfig {
   creatorWorldsMax: number
   /** GAMES_CREATOR_WORLDS_PER_PERSON: worlds one person can keep. */
   creatorWorldsPerPerson: number
+  /** GAMES_CREATOR_ASSETS_PER_PERSON: builds and scripts one person keeps in the asset store. */
+  creatorAssetsPerPerson: number
   /** GAMES_CREATOR_WORLD_IDLE_SECONDS: an empty creator world stops after this long. */
   creatorWorldIdleSeconds: number
   /** GAMES_CREATOR_WORLD_PLAYERS: players per creator world. */
@@ -232,6 +234,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     scriptMods: env.GAMES_SCRIPT_MODS === '1' || env.GAMES_SCRIPT_MODS === 'true',
     creatorWorldsMax: intEnv(env, 'GAMES_CREATOR_WORLDS_MAX', 2),
     creatorWorldsPerPerson: positiveIntEnv(env, 'GAMES_CREATOR_WORLDS_PER_PERSON', 5),
+    creatorAssetsPerPerson: positiveIntEnv(env, 'GAMES_CREATOR_ASSETS_PER_PERSON', 50),
     creatorWorldIdleSeconds: positiveIntEnv(env, 'GAMES_CREATOR_WORLD_IDLE_SECONDS', 180),
     creatorWorldPlayers: positiveIntEnv(env, 'GAMES_CREATOR_WORLD_PLAYERS', 16),
     creatorScripts: env.GAMES_CREATOR_SCRIPTS === '1' || env.GAMES_CREATOR_SCRIPTS === 'true',

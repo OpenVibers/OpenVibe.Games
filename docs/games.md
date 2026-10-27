@@ -103,6 +103,19 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   team (`GET /api/worlds/:id/team`, `DELETE /api/worlds/:id/team/:subject`, an editor leaves with `…/team/me`).
   Two saves at once are still told apart by the map's revision (409). Team places follow account export, merge and
   deletion. `/api/worlds/mine` lists them as `team`.
+- **Asset store:** builds and scripts creators share, free, for anyone's worlds (migration 0016; `/api/assets`,
+  the **Asset store** section of `/worlds` and the editor's **Store** tab; up to `GAMES_CREATOR_ASSETS_PER_PERSON`
+  (50) each). A **build** is pieces chosen in the editor (boxes and other statics, resource nodes, props and lights)
+  with positions relative to the middle of their footprint at its lowest point (`prefabFromObjects`). It passes the
+  same checks as a creator map, with smaller limits (`CREATOR_ASSET_LIMITS`: 256 KB, 400 statics, 100 nodes and
+  props, 16 lights, within 256 m of its origin). A **script** is one `games-quickjs@1` mod checked as a world's own.
+  Sharing credits the world it came from (one you build). Using a build opens the editor of a world you build at
+  `/editor?world=<id>&asset=<id>`, which places it where the camera looks, with new ids, as one undo step. Using a
+  script adds it to the world's scripts, renamed `…-2` when the name is taken, within the world's four. A use counts
+  once per person (`POST /api/assets/:id/use`; never the creator's own). The creator renames or deletes an asset
+  (worlds keep their copy); staff take one down (`asset.hidden`, `asset.restored`, `asset.deleted` as
+  `games.moderation.action`). Assets and uses follow account export, merge and deletion. Uploaded models, textures
+  and sounds wait for the Pics safety pipeline, and paid assets for the owner's prices.
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
   cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event

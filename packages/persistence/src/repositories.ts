@@ -95,6 +95,10 @@ export interface IdentityRepository {
     creatorWorlds: Record<string, unknown>[]
     /** Worlds this person edits on someone else's team (migration 0015). */
     creatorWorldTeams: Record<string, unknown>[]
+    /** The builds and scripts this person published in the asset store (migration 0016), bodies included. */
+    creatorAssets: Record<string, unknown>[]
+    /** The assets this person used, once each. */
+    creatorAssetUses: Record<string, unknown>[]
   }>
   /**
    * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their
@@ -107,6 +111,7 @@ export interface IdentityRepository {
     identity_rows: number
     casual_saves: number
     creator_worlds: number
+    creator_assets: number
   }>
 }
 

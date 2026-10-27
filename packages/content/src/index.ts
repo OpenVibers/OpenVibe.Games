@@ -23,6 +23,7 @@ export * from './defs/skills.js'
 export * from './defs/resources.js'
 export * from './packs/scraplandia.js'
 export * from './packs/creatorWorld.js'
+export * from './packs/creatorAsset.js'
 
 import { ContentRegistry, type ContentDefs } from './registry.js'
 import { mergePackDefs, type ContentPackV2 } from './pack.js'

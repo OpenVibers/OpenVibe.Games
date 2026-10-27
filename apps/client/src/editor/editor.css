@@ -871,6 +871,52 @@ select:disabled {
 .dock-body.on {
   display: block;
 }
+/* The Store tab (assets/storePanel.ts): the asset store's builds, and sharing the selection. */
+.store-list {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0;
+}
+.store-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.store-what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.store-what small {
+  color: #9aa6b2;
+}
+.store-share {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #2a3340;
+}
+.store-share input {
+  background: #11161c;
+  color: #dde3ea;
+  border: 1px solid #2a3340;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.store-share .mini {
+  justify-self: start;
+}
+.store-hint,
+.store-status {
+  margin: 2px 0;
+  color: #9aa6b2;
+}
+.store-status:empty {
+  display: none;
+}
 .asset-tabs {
   display: flex;
   gap: 4px;

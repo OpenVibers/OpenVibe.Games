@@ -17,6 +17,7 @@ import {
 import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
 import {
   InstanceRegistry,
+  createCreatorAssetStore,
   createCreatorWorldStore,
   openPgStore,
   type InstanceLease,
@@ -89,6 +90,7 @@ import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 import { CreatorWorldHost } from './worlds/worldHost.js'
 import { createWorldHubStarter, worldScriptsFactory } from './worlds/startWorldHub.js'
 import { createWorldRoutes } from './worlds/worldRoutes.js'
+import { createAssetRoutes } from './worlds/assetRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
 import { createSteamCatalog } from './steam/steamCatalog.js'
 import { createSteamRoutes } from './steam/steamPage.js'
@@ -843,6 +845,20 @@ async function main(): Promise<void> {
     events: { db, sink, siteUrl: gamesSiteUrl },
     ...(worldSearch ? { search: worldSearch } : {}),
   })
+  // The asset store's JSON API (worlds/assetRoutes.ts): builds and scripts creators publish for others' worlds.
+  const serveAssets = createAssetRoutes({
+    store: createCreatorAssetStore(db),
+    worlds: creatorWorlds,
+    resolveUser: (token) =>
+      config.networkAuthUrl
+        ? resolveNetworkUser(config.networkAuthUrl, token)
+        : Promise.resolve(null),
+    limits: actorLimits,
+    address: clientAddress,
+    log: log.child({ system: 'assets' }),
+    perPerson: config.creatorAssetsPerPerson,
+    events: { db, sink },
+  })
   // The home page's live sections (net/portalHome.ts): players online, Play's boards and achievements, Vibe Heroes'
   // furthest teams, creator worlds and Steam's lists, built at most once a minute.
   const playTitlesUrl = config.platform.playUrl
@@ -986,6 +1002,7 @@ async function main(): Promise<void> {
         }
         if (serveCasual(req, res)) return true
         if (serveWorlds(req, res)) return true
+        if (serveAssets(req, res)) return true
         if (serveWorldPage(req, res)) return true
         if (serveSteam(req, res)) return true
         if (

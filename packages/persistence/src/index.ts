@@ -16,3 +16,13 @@ export {
   type CreatorWorldStatus,
   type CreatorWorldStore,
 } from './pg/creatorWorlds.js'
+export {
+  createCreatorAssetStore,
+  exportCreatorAssets,
+  eraseCreatorAssets,
+  moveCreatorAssets,
+  type CreatorAsset,
+  type CreatorAssetKind,
+  type CreatorAssetStatus,
+  type CreatorAssetStore,
+} from './pg/creatorAssets.js'
