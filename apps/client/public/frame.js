@@ -87,6 +87,8 @@
     var opts = {
       service: 'games',
       apiBase: NETWORK,
+      // OpenCoins and Vibes in the bar, as on Live (Shared 4.17.0; owner, 2026-10-27: "maybe we'll put it on games too").
+      wallet: true,
       token: sessionToken(),
       // Same-origin fallback: resolves the ovg_sso cookie server-side when the
       // token is not readable here (or the Network rejects it client-side).
