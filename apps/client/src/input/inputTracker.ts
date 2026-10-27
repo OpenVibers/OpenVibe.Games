@@ -17,6 +17,17 @@ export class InputTracker {
   uiCapture = false
   /** False for a world seen from above: the pointer stays visible and aims instead of turning the view. */
   pointerLock = true
+  /** Whether the current press started on the game canvas (not the HUD or a menu). */
+  private pressOnCanvas = false
+
+  /**
+   * Whether presses and the wheel act in the game: with pointer lock, while it is held; in a world seen from above
+   * (no lock), when the press is on the game canvas. A top-down player used to walk but never swing, gather or scroll
+   * the hotbar, because every press waited for a lock that never comes.
+   */
+  private engaged(onCanvas = this.pressOnCanvas): boolean {
+    return this.locked || (!this.pointerLock && onCanvas)
+  }
 
   onAction: ((action: InputAction) => void) | null = null
   onWheel: ((delta: number) => void) | null = null
@@ -36,7 +47,7 @@ export class InputTracker {
     // Releases always fire — a grab must never stick because pointer lock
     // or the menu state changed mid-hold. New presses are gameplay-gated.
     if (released & 1) this.onAction?.({ kind: 'primary_up' })
-    if (this.uiCapture || !this.locked) return
+    if (this.uiCapture || !this.engaged()) return
     if (pressed & 1) this.onAction?.({ kind: 'primary_down' })
     if (pressed & 2) this.onAction?.({ kind: 'rmb_down' })
   }
@@ -113,7 +124,8 @@ export class InputTracker {
     })
     document.addEventListener('pointerdown', (e) => {
       if (e.pointerType === 'touch') return
-      if (!this.locked || this.uiCapture) {
+      this.pressOnCanvas = e.target === this.canvas
+      if (!this.engaged() || this.uiCapture) {
         this.buttonsState = e.buttons
         return
       }
@@ -137,7 +149,8 @@ export class InputTracker {
     document.addEventListener(
       'wheel',
       (e) => {
-        if (this.locked && !this.uiCapture) this.onWheel?.(Math.sign(e.deltaY))
+        if (this.engaged(e.target === this.canvas) && !this.uiCapture)
+          this.onWheel?.(Math.sign(e.deltaY))
       },
       { passive: true },
     )
