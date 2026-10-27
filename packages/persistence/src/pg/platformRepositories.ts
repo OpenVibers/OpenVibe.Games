@@ -1,3 +1,4 @@
+import { MAX_CHARACTERS } from '@openvibe/protocol'
 import { sql, type Db } from 'openvibe-sdk/db'
 import { accountKey } from '../accountKey.js'
 import type {
@@ -13,6 +14,9 @@ import type { IdentityRepository, MediaMirrorRepository, ModRepository } from '.
 import { idList } from './sqlUtils.js'
 import { eraseCasual, exportCasual, moveCasualSaves } from './casualData.js'
 import { eraseCreatorWorlds, exportCreatorWorlds, moveCreatorWorlds } from './creatorWorlds.js'
+
+/** The character places of one account, in order (protocol MAX_CHARACTERS). */
+const SLOTS = Array.from({ length: MAX_CHARACTERS }, (_, i) => i)
 
 /**
  * PostgreSQL repositories for the platform-integration tables: the adoption ledger, the mod registry
@@ -120,7 +124,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         let moved = 0
         let slot: number | null = null
         for (const row of rows) {
-          const free = [0, 1, 2].find((s) => !taken.has(s))
+          const free = SLOTS.find((s) => !taken.has(s))
           if (free === undefined) break
           await moveToSlot(row.id, subjectId, subjectId, free)
           taken.add(free)
@@ -154,7 +158,7 @@ export function createIdentityRepository(db: Db): IdentityRepository {
         }
         let kept = 0
         for (const row of clashing) {
-          const slot = [0, 1, 2].find((s) => !taken.has(s))
+          const slot = SLOTS.find((s) => !taken.has(s))
           if (slot === undefined) {
             kept++
             continue

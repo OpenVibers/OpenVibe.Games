@@ -52,7 +52,7 @@ export interface PlayerSession {
    * sign-out everywhere after it closes the session (network.user.token_valid_after).
    */
   authIat: number | null
-  /** Character slot under the account token (0..2). */
+  /** Which of the account's characters this is (0 … MAX_CHARACTERS - 1). */
   charSlot: number
   /** openvibe.network rank; gates edit mode + moderation. */
   rank: 'owner' | 'admin' | 'moderator' | null

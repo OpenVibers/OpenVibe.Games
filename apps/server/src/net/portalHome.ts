@@ -94,7 +94,7 @@ export const HOME_FAQ: readonly { q: string; a: string }[] = Object.freeze([
   },
   {
     q: 'Do I need an account?',
-    a: 'No. You can play as a guest with one character tied to this browser. An OpenVibe account adds three character slots, keeps your progress across devices and puts your name on the leaderboards.',
+    a: 'No. You can play as a guest with one character tied to this browser. An OpenVibe account keeps your characters and progress on every device and puts your name on the leaderboards.',
   },
   {
     q: 'What do achievements give me?',
@@ -357,7 +357,7 @@ const HOW: readonly { title: string; text: string }[] = [
   },
   {
     title: 'Sign in to keep it',
-    text: 'An OpenVibe account adds three character slots, saves progress across devices and puts your name on the boards.',
+    text: 'An OpenVibe account keeps your characters and progress on every device and puts your name on the boards.',
   },
   {
     title: 'Earn and build',

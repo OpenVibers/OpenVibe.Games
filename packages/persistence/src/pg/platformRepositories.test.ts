@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { MAX_CHARACTERS } from '@openvibe/protocol'
 import { sql, type Db } from 'openvibe-sdk/db'
 import type { PlayerDto } from '../dto.js'
 import { openTestStore } from '../testing.js'
@@ -67,9 +68,8 @@ describe('guest conversion (WS-B task 8)', () => {
   it('keeps the guest character when every slot is taken, and does nothing without one', async () => {
     const store = await openTestStore()
     await store.players.upsertMany([
-      player('a0', SUBJECT, 0),
-      player('a1', SUBJECT, 1),
-      player('a2', SUBJECT, 2),
+      // Every place an account has (MAX_CHARACTERS; three were all there was before 2026-10-27).
+      ...Array.from({ length: MAX_CHARACTERS }, (_, i) => player(`a${i}`, SUBJECT, i)),
       player('g1', 'guestfull01', 0),
     ])
     expect(await store.identity.adoptGuestCharacter('guestfull01', SUBJECT, 1)).toEqual({
@@ -90,7 +90,7 @@ describe('account merge (ADR-029)', () => {
   const FROM = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2F8'
   it('moves the folded-in characters into free slots, keeps what does not fit, once per merge', async () => {
     const store = await openTestStore()
-    // The survivor has slot 0; the folded-in account has slots 0, 1 and 2.
+    // The survivor has slot 0; the folded-in account has slots 0, 1 and 2. Its 0 clashes and takes the next free place.
     await store.players.upsertMany([
       player('s0', SUBJECT, 0),
       player('f0', FROM, 0),
@@ -99,19 +99,31 @@ describe('account merge (ADR-029)', () => {
     ])
     expect(
       await store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 5),
-    ).toEqual({ moved: 2, kept: 1, already: false })
+    ).toEqual({ moved: 3, kept: 0, already: false })
     expect(
       (await store.players.listByToken(SUBJECT)).map((p) => [p.id, p.charSlot]).sort(),
     ).toEqual([
+      ['f0', 3],
       ['f1', 1],
       ['f2', 2],
       ['s0', 0],
     ])
-    expect((await store.players.listByToken(FROM)).map((p) => p.id)).toEqual(['f0'])
+    expect((await store.players.listByToken(FROM)).length).toBe(0)
     expect(
       await store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2G9', 6),
     ).toEqual({ moved: 0, kept: 0, already: true })
-    expect((await store.players.listByToken(FROM)).length).toBe(1)
+  })
+
+  it('keeps on the folded-in account what does not fit a full survivor', async () => {
+    const store = await openTestStore()
+    await store.players.upsertMany([
+      ...Array.from({ length: MAX_CHARACTERS }, (_, i) => player(`s${i}`, SUBJECT, i)),
+      player('f0', FROM, 0),
+    ])
+    expect(
+      await store.identity.mergeSubject(FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2H1', 5),
+    ).toEqual({ moved: 0, kept: 1, already: false })
+    expect((await store.players.listByToken(FROM)).map((p) => p.id)).toEqual(['f0'])
   })
 })
 

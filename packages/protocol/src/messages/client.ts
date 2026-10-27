@@ -3,6 +3,13 @@ import { ANGLE_Q_MAX, ANGLE_Q_MIN, PITCH_Q_MAX, intentMask } from '@openvibe/sha
 import { AppearanceSchema } from '../appearance.js'
 
 /**
+ * How many characters one account (or one guest browser) may keep in a game. Not a feature: a technical ceiling for the
+ * slot index. The platform used to sell "3 character slots" for signing in (owner, 2026-10-27: "the character slot …
+ * restriction thing … shouldn't be one of the built-in features of the site … more modular, open to modders").
+ */
+export const MAX_CHARACTERS = 24
+
+/**
  * Client -> server messages, defined as zod schemas because the server must
  * treat every inbound byte as hostile. Types are inferred from schemas so
  * validation and typing can never drift apart.
@@ -18,8 +25,8 @@ export const ClientHelloSchema = z.object({
     .optional(),
   /** Requested place. Older clients omit it and join the configured default. */
   place: z.string().min(1).max(64).optional(),
-  /** Character slot under this account (MMO-style, 3 max). */
-  slot: z.number().int().min(0).max(2).default(0),
+  /** Which of this account's characters (0 … MAX_CHARACTERS - 1); a game, not the platform, decides how many it uses. */
+  slot: z.number().int().min(0).max(MAX_CHARACTERS - 1).default(0),
   name: z.string().min(1).max(24),
   appearance: AppearanceSchema,
 })
