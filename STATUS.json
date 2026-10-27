@@ -6,7 +6,7 @@
   "runtime": "node 22, TypeScript (tsx), pnpm workspace; Babylon.js (client) + deterministic Rapier physics; PostgreSQL 18 via openvibe-sdk/db (pg, or embedded PGlite in development); Valkey optional",
   "port": 8000,
   "domain": "openvibe.games, play.openvibe.games",
-  "contracts": "openvibe-contracts v0.209.0, openvibe-sdk v0.62.0, openvibe-shared v4.9.0, openvibe-publishing v1.4.0 (apps/server/package.json)",
+  "contracts": "openvibe-contracts v0.214.0, openvibe-sdk v0.65.0, openvibe-shared v4.15.2, openvibe-publishing v1.4.0 (apps/server/package.json)",
   "capabilities": [
     "games.mod.manage",
     "games.mod.read",
@@ -29,6 +29,8 @@
     "Scraplandia and Salvage Rush in one Games process (M5), in separate place and instance registries; server-scored rounds, per-game achievements and all-time/week leaderboards",
     "scores, unlocks and guest adoptions posted to OpenVibe.Play (GAMES_PLAY_URL)",
     "creator worlds: a published world gets its own page (/worlds/<id>) and is in OpenVibe.Search (openvibe-publishing search-feed)",
+    "creators make games the way we do: characters belong to each game, remix a world (credited), its own games-quickjs@1 scripts (run when GAMES_CREATOR_SCRIPTS=1), a team of up to 8 editors by invite link, and a top-down (2D) view",
+    "the asset store: builds (pieces placed in the editor) and scripts shared free for anyone's worlds, placed from the editor's Store tab or added from /worlds",
     "Steam's featured lists (top sellers, new releases, specials) read from OpenVibe.Sources (GAMES_SOURCES_URL)",
     "the casual line (plan T22): packages/casual kit, server economy with ledger and idempotent actions, Vibe Heroes at /play/vibe-heroes (guest play, adoption on sign-in, earned-only summons, gem store; paid products wait for Billing)",
     "six achievement rewards granted as free OpenVibe.Inventory items, never sold or traded; GAMES_ITEMS=on/off and GAMES_INVENTORY_URL configure delivery",
@@ -41,5 +43,5 @@
     "the OpenVibe Frame from its own pinned copy",
     "per-actor limits on capability-boundary writes (openvibe-sdk/limits)"
   ],
-  "updated": "2026-10-23"
+  "updated": "2026-10-27"
 }

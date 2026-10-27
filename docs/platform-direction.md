@@ -75,7 +75,9 @@ Already here:
      top-down world can also look drawn rather than modelled.
 7. **The instant-play funnel.** `/play/<game>` already opens with no download and as a guest. To add:
    - campaign landing links with attribution (plan T22);
-   - a first load kept under about 8 MB for 3D and the casual budget for 2D;
+   - a first load kept under about 8 MB for 3D and the casual budget for 2D (measured 2026-10-27 on production, a fresh
+     profile to the character screen: 3.72 MB over 77 responses, 1.62 MB textures and the map, 1.08 MB physics wasm,
+     0.81 MB script; the casual entry is 26.5 KB gzip, under its 60 KB budget);
    - an X ads account and pixel, once the owner sets them up (O36).
 8. **Creators get paid.** Engagement-based payouts in Vibes, in the spirit of Roblox Creator Rewards: play time in a creator's published worlds, from the money Billing actually takes in. This needs the owner's decision on the share and the rules.
 
