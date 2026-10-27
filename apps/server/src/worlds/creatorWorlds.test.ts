@@ -52,8 +52,11 @@ it('decides who joins a world that is not published', () => {
   const admin = as({ subject: LEE, rank: 'admin', authIat: null })
   const guest = as({ guestKeyHash: 'a'.repeat(64) })
   expect([kim, lee, admin, guest].map((c) => mayJoin(world, c))).toEqual([true, false, true, false])
+  // On the world's team, a draft is lee's to try too (migration 0015); a hidden one is still not.
+  expect(mayJoin(world, lee, true)).toBe(true)
   const hidden = { ...world, status: 'hidden' } as CreatorWorld
   expect([kim, admin].map((c) => mayJoin(hidden, c))).toEqual([false, true])
+  expect(mayJoin(hidden, lee, true)).toBe(false)
   const published = { ...world, status: 'published' } as CreatorWorld
   expect(mayJoin(published, guest)).toBe(true)
 })

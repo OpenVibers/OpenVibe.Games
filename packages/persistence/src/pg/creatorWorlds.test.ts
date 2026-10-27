@@ -54,6 +54,22 @@ describe('creator worlds store', () => {
     await store.countRemix(world.id)
     expect((await store.get(world.id))?.remixes).toBe(1)
     await store.remove(remix.id)
+
+    // A team (migration 0015): editors, the worlds they edit, an invite that runs out.
+    await store.addMember(world.id, LEE, 'lee', 5)
+    await store.addMember(world.id, LEE, 'lee b', 6)
+    expect(await store.members(world.id)).toEqual([{ subject: LEE, name: 'lee b', addedAt: 5 }])
+    expect(await store.isMember(world.id, LEE)).toBe(true)
+    expect((await store.listByMember(LEE)).map((w) => w.id)).toEqual([world.id])
+    await store.setInvite(world.id, 'h1', 2000)
+    expect(await store.inviteExpires(world.id, 1500)).toBe(2000)
+    expect((await store.byInvite('h1', 1500))?.id).toBe(world.id)
+    expect(await store.byInvite('h1', 2500)).toBeNull()
+    expect(await store.inviteExpires(world.id, 2500)).toBeNull()
+    await store.setInvite(world.id, null, null)
+    expect(await store.byInvite('h1', 1500)).toBeNull()
+    expect(await store.removeMember(world.id, LEE)).toBe(true)
+    expect(await store.isMember(world.id, LEE)).toBe(false)
     expect(await store.countByOwner(KIM)).toBe(1)
     expect(await store.listPublished(10, 0)).toEqual([])
 
@@ -103,11 +119,41 @@ describe('creator worlds store', () => {
     expect(exported.creatorWorlds[0]).toMatchObject({ id: kims.id, title: 'A' })
     expect(exported.creatorWorlds[0]).not.toHaveProperty('owner_subject')
 
+    // Team places follow the account too (migration 0015): KIM edits ZED's world and LEE's world.
+    const ZED = 'usr_01J0000000000000000000000Z'
+    const zeds = await store.create({
+      ownerSubject: ZED,
+      ownerName: 'zed',
+      title: 'Z',
+      summary: '',
+      map: MAP,
+      now: 2,
+    })
+    const lees = await store.create({
+      ownerSubject: LEE,
+      ownerName: 'lee',
+      title: 'L',
+      summary: '',
+      map: MAP,
+      now: 3,
+    })
+    await store.addMember(zeds.id, KIM, 'kim', 4)
+    await store.addMember(lees.id, KIM, 'kim', 4)
+    expect(
+      (await identity.exportSubject(KIM)).creatorWorldTeams.map((t) => t.world_id).sort(),
+    ).toEqual([zeds.id, lees.id].sort())
+
     await identity.mergeSubject(KIM, LEE, 'merge-1', 10)
     expect((await store.get(kims.id))?.ownerSubject).toBe(LEE)
+    // KIM's place on ZED's team is LEE's now; on LEE's own world it is gone (an owner needs no team place).
+    expect((await store.members(zeds.id)).map((m) => m.subject)).toEqual([LEE])
+    expect(await store.members(lees.id)).toEqual([])
 
     const erased = await identity.eraseSubjects([LEE])
-    expect(erased.creator_worlds).toBe(1)
+    expect(erased.creator_worlds).toBe(2)
     expect(await store.get(kims.id)).toBeNull()
+    // Erased from every team, and ZED's world stays ZED's.
+    expect(await store.members(zeds.id)).toEqual([])
+    expect((await store.get(zeds.id))?.ownerSubject).toBe(ZED)
   })
 })

@@ -97,6 +97,12 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
 - **Scripts:** a world's own `games-quickjs@1` mods, written at `/worlds` → **Scripts**, checked like an installed
   pack's within the creator limits, and run in its rooms when `GAMES_CREATOR_SCRIPTS=1` (off by default); see
   `mods.md` "Scripts in creator worlds".
+- **Team:** an owner adds editors (up to 8) through an invite link (`POST /api/worlds/:id/invite` →
+  `/worlds?join=<token>`, the token kept only as its hash, good for 7 days until stopped or replaced; migration 0015).
+  Editors save the world's map and scripts and try its draft; the owner alone publishes, renames, deletes and runs the
+  team (`GET /api/worlds/:id/team`, `DELETE /api/worlds/:id/team/:subject`, an editor leaves with `…/team/me`).
+  Two saves at once are still told apart by the map's revision (409). Team places follow account export, merge and
+  deletion. `/api/worlds/mine` lists them as `team`.
 - **Who joins:** anyone for a published world; the owner for a draft; games staff for any. Staff
   (`staff.games.manage` or `staff.moderation.chat`) take a world down with `PATCH {status: "hidden"}`; the owner
   cannot publish it again. Deleting a world removes its place's rows. A world's first publication is the event

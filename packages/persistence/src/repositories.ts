@@ -93,6 +93,8 @@ export interface IdentityRepository {
     casualLedger: Record<string, unknown>[]
     /** The person's creator worlds, maps included. */
     creatorWorlds: Record<string, unknown>[]
+    /** Worlds this person edits on someone else's team (migration 0015). */
+    creatorWorldTeams: Record<string, unknown>[]
   }>
   /**
    * Erase these subjects (a deleted account and the accounts merged into it; ADR-033), in one transaction: their

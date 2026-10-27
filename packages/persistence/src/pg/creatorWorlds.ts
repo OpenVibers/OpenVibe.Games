@@ -92,6 +92,13 @@ function placeMatch(worldId: string) {
   return sql`(place_id = ${place} OR place_id LIKE ${`${place}:instance:%`})`
 }
 
+/** One of a world's editors besides its owner (migration 0015). */
+export interface CreatorWorldMember {
+  subject: string
+  name: string
+  addedAt: number
+}
+
 export interface CreatorWorldStore {
   create(input: {
     ownerSubject: string
@@ -134,6 +141,20 @@ export interface CreatorWorldStore {
   countPlay(id: string): Promise<void>
   /** One more remix of this world by someone else. */
   countRemix(id: string): Promise<void>
+  /** The world's editors besides its owner, longest-standing first. */
+  members(id: string): Promise<CreatorWorldMember[]>
+  isMember(id: string, subject: string): Promise<boolean>
+  /** Adds (or renames) an editor. */
+  addMember(id: string, subject: string, name: string, now: number): Promise<void>
+  removeMember(id: string, subject: string): Promise<boolean>
+  /** Worlds this person edits as a team member (not their own), most recently changed first. */
+  listByMember(subject: string): Promise<CreatorWorld[]>
+  /** Sets the world's invite (the hash of its token and when it stops working), or clears it. */
+  setInvite(id: string, hash: string | null, expires: number | null): Promise<void>
+  /** When the world's invite stops working, or null when it has none (or it has run out). */
+  inviteExpires(id: string, now: number): Promise<number | null>
+  /** The world an invite token's hash opens, while it still works. */
+  byInvite(hash: string, now: number): Promise<CreatorWorld | null>
   /** Removes the world and its place's rows. */
   remove(id: string): Promise<boolean>
 }
@@ -236,6 +257,57 @@ export function createCreatorWorldStore(db: Db): CreatorWorldStore {
     async countRemix(id) {
       await db.exec(sql`UPDATE creator_worlds SET remixes = remixes + 1 WHERE id = ${id}`)
     },
+    async members(id) {
+      const rows = await db.many<{ subject: string; name: string; added_at: number | string }>(
+        sql`SELECT subject, name, added_at FROM creator_world_members WHERE world_id = ${id} ORDER BY added_at, subject`,
+      )
+      return rows.map((r) => ({ subject: r.subject, name: r.name, addedAt: Number(r.added_at) }))
+    },
+    async isMember(id, subject) {
+      const row = await db.maybe<{ one: number }>(
+        sql`SELECT 1 AS one FROM creator_world_members WHERE world_id = ${id} AND subject = ${subject}`,
+      )
+      return !!row
+    },
+    async addMember(id, subject, name, now) {
+      await db.exec(sql`
+        INSERT INTO creator_world_members (world_id, subject, name, added_at) VALUES (${id}, ${subject}, ${name}, ${now})
+        ON CONFLICT (world_id, subject) DO UPDATE SET name = excluded.name
+      `)
+    },
+    async removeMember(id, subject) {
+      return (
+        (await db.exec(
+          sql`DELETE FROM creator_world_members WHERE world_id = ${id} AND subject = ${subject}`,
+        )) > 0
+      )
+    },
+    async listByMember(subject) {
+      const rows = await db.many<Row>(sql`
+        SELECT ${COLUMNS} FROM creator_worlds
+        WHERE id IN (SELECT world_id FROM creator_world_members WHERE subject = ${subject})
+        ORDER BY updated_at DESC
+      `)
+      return rows.map(fromRow)
+    },
+    async setInvite(id, hash, expires) {
+      await db.exec(
+        sql`UPDATE creator_worlds SET invite_hash = ${hash}, invite_expires = ${expires} WHERE id = ${id}`,
+      )
+    },
+    async inviteExpires(id, now) {
+      const row = await db.maybe<{ invite_expires: number | string | null }>(
+        sql`SELECT invite_expires FROM creator_worlds WHERE id = ${id} AND invite_hash IS NOT NULL`,
+      )
+      const at = row && row.invite_expires !== null ? Number(row.invite_expires) : null
+      return at !== null && at > now ? at : null
+    },
+    async byInvite(hash, now) {
+      const row = await db.maybe<Row>(sql`
+        SELECT ${COLUMNS} FROM creator_worlds WHERE invite_hash = ${hash} AND invite_expires > ${now}
+      `)
+      return row ? fromRow(row) : null
+    },
     async remove(id) {
       return db.tx(async () => {
         const gone = await db.exec(sql`DELETE FROM creator_worlds WHERE id = ${id}`)
@@ -275,9 +347,21 @@ export async function exportCreatorWorlds(
   `)
 }
 
-/** Erasure (ADR-033): the worlds go with their places. Answers how many. */
+/** The account export's team memberships (ADR-033): the worlds this person edits for someone else. */
+export async function exportWorldTeams(
+  db: Db,
+  subject: string,
+): Promise<Record<string, unknown>[]> {
+  return db.many<Record<string, unknown>>(sql`
+    SELECT m.world_id, w.title, m.name, m.added_at FROM creator_world_members m
+    JOIN creator_worlds w ON w.id = m.world_id WHERE m.subject = ${subject} ORDER BY m.added_at
+  `)
+}
+
+/** Erasure (ADR-033): the worlds go with their places, and the person leaves every team. Answers how many worlds. */
 export async function eraseCreatorWorlds(db: Db, subjects: readonly string[]): Promise<number> {
   if (!subjects.length) return 0
+  await db.exec(sql`DELETE FROM creator_world_members WHERE subject IN (${idList(subjects)})`)
   const ids = (
     await db.many<{ id: string }>(
       sql`SELECT id FROM creator_worlds WHERE owner_subject IN (${idList(subjects)})`,
@@ -289,10 +373,24 @@ export async function eraseCreatorWorlds(db: Db, subjects: readonly string[]): P
   return ids.length
 }
 
-/** Account merge (ADR-029): the folded-in account's worlds belong to the survivor. */
+/**
+ * Account merge (ADR-029): the folded-in account's worlds belong to the survivor, and so do its team places (one per
+ * world; none on a world the survivor now owns).
+ */
 export async function moveCreatorWorlds(db: Db, from: string, into: string): Promise<number> {
   if (from === into) return 0
-  return db.exec(
+  const moved = await db.exec(
     sql`UPDATE creator_worlds SET owner_subject = ${into} WHERE owner_subject = ${from}`,
   )
+  await db.exec(sql`
+    UPDATE creator_world_members m SET subject = ${into}
+    WHERE m.subject = ${from}
+      AND NOT EXISTS (SELECT 1 FROM creator_world_members o WHERE o.world_id = m.world_id AND o.subject = ${into})
+  `)
+  await db.exec(sql`DELETE FROM creator_world_members WHERE subject = ${from}`)
+  await db.exec(sql`
+    DELETE FROM creator_world_members m USING creator_worlds w
+    WHERE m.world_id = w.id AND m.subject = w.owner_subject
+  `)
+  return moved
 }
