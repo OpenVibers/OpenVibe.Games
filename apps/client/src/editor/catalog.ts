@@ -9,10 +9,15 @@ import type { StaticBody } from '@openvibe/content'
 
 export type Tool = 'terrain' | 'paint' | 'entity' | 'mesh' | 'select' | 'face' | 'light' | 'zone'
 
-/** Session-stable id generator for map objects (never array positions). */
+/**
+ * Session-stable id generator for map objects (never array positions). The time and counter alone repeat across
+ * sessions: two editors on one map (collaboration, or a team) placing in the same millisecond with the same count
+ * would mint the same id, so each session adds a random tag of its own.
+ */
 let idCounter = 0
+const SESSION_TAG = Math.random().toString(36).slice(2, 6).padEnd(4, '0')
 export const newId = (prefix: string): string =>
-  `${prefix}-${Date.now().toString(36)}-${(idCounter++).toString(36)}`
+  `${prefix}-${Date.now().toString(36)}${SESSION_TAG}-${(idCounter++).toString(36)}`
 
 export interface Placeable {
   name: string
