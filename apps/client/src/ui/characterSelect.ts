@@ -81,7 +81,3 @@ export function characterSelect(
     uiRoot.appendChild(overlay)
   })
 }
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
-}
