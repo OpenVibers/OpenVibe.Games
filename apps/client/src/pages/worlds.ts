@@ -144,7 +144,9 @@ async function remixWorld(id: string, b?: HTMLButtonElement): Promise<void> {
   if (b) b.disabled = true
   remixStatus().textContent = 'Making your remix…'
   try {
-    const world = await api<World>(`/api/worlds/${encodeURIComponent(id)}/remix`, { method: 'POST' })
+    const world = await api<World>(`/api/worlds/${encodeURIComponent(id)}/remix`, {
+      method: 'POST',
+    })
     remixStatus().textContent = ''
     if (world.edit_url) location.href = world.edit_url
   } catch (err) {
@@ -166,7 +168,10 @@ function publishedCard(world: World, staff: boolean): HTMLElement {
   const actions = el('div', { className: 'actions' }, link('▶ Play', world.play_url, true))
   // Anyone signed in may copy a published world into a world of their own; signed out, the link signs in first.
   if (token()) actions.append(button('Remix', (b) => void remixWorld(world.id, b)))
-  else actions.append(link('Remix', `/auth/login?next=${encodeURIComponent(`/worlds?remix=${world.id}`)}`))
+  else
+    actions.append(
+      link('Remix', `/auth/login?next=${encodeURIComponent(`/worlds?remix=${world.id}`)}`),
+    )
   if (staff)
     actions.append(
       button(
@@ -340,7 +345,9 @@ void loadMine().then(() => {
       const signIn = signedOut.querySelector<HTMLAnchorElement>('a.button')
       if (signIn) signIn.href = `/auth/login?next=${encodeURIComponent(`/worlds?remix=${want}`)}`
       const note = signedOut.querySelector('.status')
-      if (note) note.textContent = 'Sign in with your OpenVibe account to remix that world into one of your own.'
+      if (note)
+        note.textContent =
+          'Sign in with your OpenVibe account to remix that world into one of your own.'
     }
   }
   return loadPublished(true)

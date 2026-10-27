@@ -1,6 +1,7 @@
 # OpenVibe.Games as an open game platform
 
 The owner, 2026-10-27:
+
 - "we want to make it more modular open to modder it's more like Gary's mod or the new s&box game or Roblox … make more of a game engine both 3D and 2D … monetizable using openvibe systems";
 - instant-play browser games that "x.com or Twitter ads" link to, with cheap coin packs (the g123.jp model: no download, play on the site);
 - "other people can make games just like the same way you can copy our game … make teams … asset store".
@@ -8,28 +9,33 @@ The owner, 2026-10-27:
 ## What the market does (researched 2026-10-27)
 
 **s&box (Facepunch, Garry's Mod's successor)**
+
 - Launched on Steam on 2026-04-28. It runs on Source 2, has C# scripting, an editor and built-in multiplayer, and is MIT-licensed.
 - Facepunch had paid creators $500k by launch. A March 2026 Valve agreement lets editor projects ship as royalty-free standalone Steam games.
 - Reported since then: a move to free-to-play by the end of 2026, after paid access and cosmetics put players off; weak retention; open books showing a loss.
 - Lessons: openness and creator pay draw creators, but a paid door and a thin player base hurt.
 
 **Roblox**
+
 - Creators earn through engagement payouts (Creator Rewards, from the play time of Premium and ad-eligible users) as well as their own sales. Robux cash out through DevEx.
 - Payout rates rose 8.5% in September 2025. Third-party estimates put creator payouts at roughly 31% of revenue (unaudited).
 - Lesson: pay creators for engagement, not only for sales, so free games are worth building.
 
 **Poki and CrazyGames (instant web play)**
+
 - HTML5 games, curated, ad-funded.
 - Reported splits: Poki 100% to the developer for players they bring and 50/50 for players Poki brings. CrazyGames is cited at 60% of ad revenue and 70% of purchases (jam terms).
 - Poki asks for a first download under about 8 MB.
 - Lesson: a small first load and no install are the price of entry.
 
 **G123 (CTW, Japan)**
+
 - HTML5 anime games with no download, no install and no required sign-up. It reports over 500M users.
 - It is known for heavy social-media ads, and a UK ASA investigation in 2025 found some unsuitable. The Nasdaq stock is down about half since its IPO.
 - Lesson: the funnel works, but its ads damage the brand. Our rules already forbid what drew the complaints: nothing sexual with minor-looking characters, original characters only.
 
 Sources:
+
 - [GamingOnLinux, s&box launch](https://www.gamingonlinux.com/2026/04/facepunch-launches-s-box-the-highly-anticipated-successor-to-garrys-mod/page=1/)
 - [games.gg, s&box creator payouts](https://games.gg/nl/news/sbox-lanceert-op-steam-met-duurzame-uitbetalingen-aan-makers-en-kritiek-op-epic/)
 - [VGTimes, s&box going free](https://vgtimes.ru/gaming-news/171063-sbox-stanet-besplatnoy-naslednica-garrys-mod-otkazyvaetsya-ot-platnogo-vhoda.html)
@@ -41,6 +47,7 @@ Sources:
 ## Where Games stands
 
 Already here:
+
 - **Content packs and mods:** content packs (`games-content@2`, declarative mods with per-capability grants) and server script mods (`games-quickjs@1`, with capabilities and CPU, memory and stack budgets); see `mods.md`.
 - **Creator worlds:**
   - an editor, publishing, its own pages, Search and Quest events;

@@ -126,7 +126,10 @@ describe('/api/worlds', () => {
 
   it("remixes a published world into a new draft of the remixer's own, credited and counted", async () => {
     const { call } = await setup(2)
-    const made = await call('POST', '/api/worlds', 'kim', { title: 'Moon base', summary: 'Low gravity vibes' })
+    const made = await call('POST', '/api/worlds', 'kim', {
+      title: 'Moon base',
+      summary: 'Low gravity vibes',
+    })
     const id = String(made.body.id)
     const map = await call('GET', `/api/worlds/${id}/map`, 'kim')
     const next: MapFileV2 = { ...emptyMapV2(), spawn: [7, 1, 7] }
@@ -163,7 +166,9 @@ describe('/api/worlds', () => {
     // Remixing your own world makes a copy without counting; the per-person limit still holds.
     const own = await call('POST', `/api/worlds/${id}/remix`, 'kim')
     expect(own.status).toBe(201)
-    expect(((await call('GET', '/api/worlds')).body.worlds ?? []).find((w) => w.id === id)).toMatchObject({ remixes: 1 })
+    expect(
+      ((await call('GET', '/api/worlds')).body.worlds ?? []).find((w) => w.id === id),
+    ).toMatchObject({ remixes: 1 })
     const full = await call('POST', `/api/worlds/${id}/remix`, 'kim')
     expect(full.status).toBe(409)
     expect(full.body.error).toBe('world_limit')

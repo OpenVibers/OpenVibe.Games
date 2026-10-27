@@ -161,7 +161,9 @@ describe('creator worlds in OpenVibe.Search', () => {
       'https://openvibe.games',
       shell,
     )
-    expect(remix).toContain('Remix of <a href="/worlds/wk3j9x0a2bq">Moon &lt;script&gt;</a> by kim &lt;b&gt;')
+    expect(remix).toContain(
+      'Remix of <a href="/worlds/wk3j9x0a2bq">Moon &lt;script&gt;</a> by kim &lt;b&gt;',
+    )
     expect(remix).toContain('0 visits · 2 remixes')
   })
 })

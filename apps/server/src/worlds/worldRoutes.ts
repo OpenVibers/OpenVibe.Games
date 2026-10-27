@@ -126,7 +126,12 @@ function publicView(world: CreatorWorld, online: number) {
     play_url: `/play?world=${world.id}`,
     // A remix credits the world it copied (as it was then); remixes counts how often others copied this one.
     remixed_from: world.remixedFrom
-      ? { id: world.remixedFrom.id, title: world.remixedFrom.title, owner: world.remixedFrom.owner, url: `/worlds/${world.remixedFrom.id}` }
+      ? {
+          id: world.remixedFrom.id,
+          title: world.remixedFrom.title,
+          owner: world.remixedFrom.owner,
+          url: `/worlds/${world.remixedFrom.id}`,
+        }
       : null,
     remixes: world.remixes,
   }

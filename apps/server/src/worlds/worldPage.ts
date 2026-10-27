@@ -39,7 +39,9 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
     world.summary ||
     `A creator world by ${world.ownerName} on OpenVibe.Games. Join it from your browser.`
   const visits = `${world.plays.toLocaleString('en-US')} ${world.plays === 1 ? 'visit' : 'visits'}${
-    world.remixes ? ` · ${world.remixes.toLocaleString('en-US')} ${world.remixes === 1 ? 'remix' : 'remixes'}` : ''
+    world.remixes
+      ? ` · ${world.remixes.toLocaleString('en-US')} ${world.remixes === 1 ? 'remix' : 'remixes'}`
+      : ''
   }`
   const links = [
     { label: 'Creator worlds', href: '/worlds' },

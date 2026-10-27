@@ -63,7 +63,11 @@ function fromRow(row: Row): CreatorWorld {
     updatedAt: Number(row.updated_at),
     publishedAt: row.published_at === null ? null : Number(row.published_at),
     remixedFrom: row.remixed_from
-      ? { id: row.remixed_from, title: row.remixed_from_title ?? '', owner: row.remixed_from_owner ?? '' }
+      ? {
+          id: row.remixed_from,
+          title: row.remixed_from_title ?? '',
+          owner: row.remixed_from_owner ?? '',
+        }
       : null,
     remixes: Number(row.remixes ?? 0),
   }

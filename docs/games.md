@@ -18,6 +18,7 @@ Scraplandia's world is **Scrap Island**, a map document like any the editor save
 
 The generator is `apps/server/src/maps/scrapIsland.ts`. It is deterministic, and it refuses to overwrite an existing
 file without `--force`, because that file may hold staff edits.
+
 - **Terrain**: one 420 m heightfield (2 m cells) above the sea at `WATER_LEVEL`, painted grass, rock (slopes, heights)
   and sand (shores) over a dirt base. The dirt shows on the roads.
 - **Scrap City** (the safe zone `scrap-city`, walls at ±38.5): the plaza and fountain, four market stalls, a workbench,
