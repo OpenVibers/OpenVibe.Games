@@ -40,6 +40,14 @@ describe('/shared (D42)', () => {
     expect(r.status).toBe(304)
   })
 
+  it('serves a stylesheet as text/css (the profile panel drew unstyled when its CSS went out as JavaScript)', async () => {
+    const r = await fetch(`${base}/shared/profile-panel.css`)
+    expect(r.status).toBe(200)
+    expect(r.headers.get('content-type')).toMatch(/^text\/css/)
+    expect(r.headers.get('x-content-type-options')).toBe('nosniff')
+    expect((await fetch(`${base}/shared/profile-panel.js`)).headers.get('content-type')).toMatch(/javascript/)
+  })
+
   it('serves the web app manifest and touch icon the shared page shell links (/steam, /updates, world pages)', async () => {
     const shell = req('openvibe-shared/serve') as { manifestUrl(s: string): string | null }
     const url = shell.manifestUrl('games')
