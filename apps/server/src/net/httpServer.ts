@@ -740,8 +740,10 @@ export function createHttpServer(
         res.end(prometheusText(metrics.snapshot() as unknown as Record<string, unknown>))
         return
       }
+      // ?place=<id>: the world gauges of that place's rooms only (the process hosts several places).
+      const place = new URLSearchParams((req.url ?? '').split('?')[1] ?? '').get('place')
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify(metrics.snapshot()))
+      res.end(JSON.stringify(place && /^[a-z0-9-]{1,64}$/.test(place) ? metrics.placeSnapshot(place) : metrics.snapshot()))
       return
     }
     // Every API route has answered above; what is left under /api is unknown.

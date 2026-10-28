@@ -867,7 +867,7 @@ section('O. Live static reconciliation reaches the running server')
     /** Wait for the tick loop to publish, then read the live map counts. */
     const counts = async (): Promise<Record<string, number>> => {
       for (let i = 0; i < 40; i++) {
-        const m = (await (await fetch(`${root}/metrics`)).json()) as Record<string, number>
+        const m = (await (await fetch(`${root}/metrics?place=scraplandia`)).json()) as Record<string, number>
         if (m['tick']! > 0) return m
         await new Promise((r) => setTimeout(r, 100))
       }
@@ -1126,7 +1126,7 @@ section('U. Live reconciliation touches only what changed')
     const root = `http://127.0.0.1:${port}`
     const metrics = async (): Promise<Record<string, number>> => {
       for (let i = 0; i < 40; i++) {
-        const m = (await (await fetch(`${root}/metrics`)).json()) as Record<string, number>
+        const m = (await (await fetch(`${root}/metrics?place=scraplandia`)).json()) as Record<string, number>
         if (m['tick']! > 0) return m
         await new Promise((r) => setTimeout(r, 100))
       }
