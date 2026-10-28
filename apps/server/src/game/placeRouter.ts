@@ -124,8 +124,9 @@ export class PlaceRouter {
     return this.allHubs().reduce((total, hub) => total + hub.onlineCount, 0)
   }
 
-  step(): void {
-    for (const hub of this.allHubs()) hub.step()
+  /** `elapsedSeconds` is one scheduler slice; every hub advances its rooms at their own rates. */
+  step(elapsedSeconds?: number): void {
+    for (const hub of this.allHubs()) hub.step(elapsedSeconds)
   }
 
   async heartbeat(): Promise<void> {

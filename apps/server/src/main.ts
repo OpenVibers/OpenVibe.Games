@@ -26,8 +26,8 @@ import {
   type InstanceLease,
 } from '@openvibe/persistence'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
-import { createConsoleLogger } from '@openvibe/shared'
-import { loadConfig } from './config.js'
+import { SURF_TICK_RATE, createConsoleLogger } from '@openvibe/shared'
+import { SURF_ROOM_TIMING, loadConfig } from './config.js'
 import { openDb } from './db.js'
 import { telemetry } from 'openvibe-sdk/service'
 import { createPgTelemetrySink, startTelemetryRetention } from 'openvibe-sdk/telemetry'
@@ -381,7 +381,7 @@ async function main(): Promise<void> {
     scriptLog.info('script mods off for this place', { mods: content.allMods().length })
   }
   const game = new GameServer(
-    { ...config, instanceSlot: 0 },
+    { ...config, instanceSlot: 0, ...(primarySurf ? SURF_ROOM_TIMING : {}) },
     world,
     store,
     metrics,
@@ -452,7 +452,7 @@ async function main(): Promise<void> {
       roomWorld.reconcileMapProps()
       const roomScripts = await createScriptHost(slot)
       const roomGame = new GameServer(
-        { ...config, instanceSlot: slot },
+        { ...config, instanceSlot: slot, ...(primarySurf ? SURF_ROOM_TIMING : {}) },
         roomWorld,
         roomStore,
         metrics,
@@ -648,6 +648,7 @@ async function main(): Promise<void> {
       const roomGame = new GameServer(
         {
           ...config,
+          ...SURF_ROOM_TIMING,
           placeId: info.placeId,
           instanceSlot: slot,
           // A surf room has no survival, NPC population or world events; the
@@ -1341,15 +1342,19 @@ async function main(): Promise<void> {
     log.info('listening', { host: config.host, port: config.port })
   })
 
-  // Fixed-tick loop with drift correction — never tied to timers' jitter.
-  const tickMs = 1000 / config.tickRate
+  // Scheduler loop with drift correction — never tied to timers' jitter. It
+  // runs at the fastest room rate; each room's accumulator in InstanceHub
+  // turns a slice into its own 30/100 Hz fixed steps.
+  const schedulerRate = Math.max(config.tickRate, SURF_TICK_RATE)
+  const tickMs = 1000 / schedulerRate
+  const sliceSeconds = tickMs / 1000
   let nextTick = performance.now()
   let running = true
   const loop = (): void => {
     if (!running) return
     const now = performance.now()
     while (now >= nextTick) {
-      router.step()
+      router.step(sliceSeconds)
       nextTick += tickMs
       // If we fell far behind (debugger pause, EL stall), resync instead of
       // spiraling through hundreds of catch-up ticks.

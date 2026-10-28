@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { createMoveState, normalizeStats } from '@openvibe/gameplay'
 import { vec3 } from '@openvibe/shared'
+import { DEFAULT_ROOM_TIMING, SURF_ROOM_TIMING } from '../config.js'
 import { loadSurfOverride } from './surfMaps.js'
 import { setMapOverride } from '@openvibe/content'
 import { EnvironmentSystem } from './systems/environment.js'
@@ -54,8 +55,8 @@ function sessionFor(override: ReturnType<typeof loadSurfOverride>) {
 
 function ctxFor(session: any, respawns: string[], sent: unknown[]) {
   return {
-    clock: { tick: 30 },
-    config: { tickRate: 30, snapshotEvery: 2, placeId: 'surf-lagoon', instanceSlot: 0 },
+    clock: { tick: 0 },
+    config: { ...SURF_ROOM_TIMING, placeId: 'surf-lagoon', instanceSlot: 0 },
     env: {},
     regions: { update() {} },
     sessions: {
@@ -156,5 +157,34 @@ describe('surf place rules', () => {
     expect(session.move.vel).toEqual(vec3(0, 0, 0))
     const state = sent.find((m) => m.t === 'surf_state')
     expect(state).toMatchObject({ running: false, stage: 0 })
+  })
+})
+
+describe('surf room timing', () => {
+  it('is 100 Hz with 20–30 Hz snapshots; the default room stays at 30/15', () => {
+    expect(SURF_ROOM_TIMING.tickRate).toBe(100)
+    const surfSnapshotRate = SURF_ROOM_TIMING.tickRate / SURF_ROOM_TIMING.snapshotEvery
+    expect(surfSnapshotRate).toBeGreaterThanOrEqual(20)
+    expect(surfSnapshotRate).toBeLessThanOrEqual(30)
+    expect(surfSnapshotRate).toBe(25)
+
+    expect(DEFAULT_ROOM_TIMING.tickRate).toBe(30)
+    expect(DEFAULT_ROOM_TIMING.tickRate / DEFAULT_ROOM_TIMING.snapshotEvery).toBe(15)
+  })
+
+  it('emits surf_state at the room snapshot cadence, not every tick', () => {
+    const { override } = surfWorld()
+    const session = sessionFor(override)
+    const sent: any[] = []
+    const ctx = ctxFor(session, [], sent) as any
+    const surf = new SurfSystem(ctx)
+    surf.onJoin(session as any)
+    sent.length = 0
+
+    for (let tick = 1; tick <= 8; tick++) {
+      ctx.clock.tick = tick
+      surf.tick(ctx, 1 / SURF_ROOM_TIMING.tickRate)
+    }
+    expect(sent.filter((m) => m.t === 'surf_state')).toHaveLength(2)
   })
 })

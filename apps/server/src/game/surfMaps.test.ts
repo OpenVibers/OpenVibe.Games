@@ -109,12 +109,12 @@ describe.each(SURF_MAPS)('$name', (info) => {
       const compiled = compileMapFileV2(map)
       const run = new SurfRunState(
         surfRunMapOf(compiled.surf, compiled.zones ?? [], compiled.spawn, compiled.spawnYaw),
-        30,
+        100,
       )
       const move = createMoveState(vec3(run.map.spawn.x, run.map.spawn.y, run.map.spawn.z))
       const params = movementParamsFor('surf')
       let finished = false
-      for (let tick = 0; tick < 60 * 30 && !finished; tick++) {
+      for (let tick = 0; tick < 60 * 100 && !finished; tick++) {
         const next =
           run.reached < run.map.checkpoints.length
             ? run.map.checkpoints[run.reached]!
@@ -128,8 +128,8 @@ describe.each(SURF_MAPS)('$name', (info) => {
         const from = { x: move.pos.x, y: move.pos.y, z: move.pos.z }
         // A hop pulse clears the gaps between landings; the surf line itself
         // is a held forward run down the 50–60° ramps.
-        const buttons = tick % 20 < 2 ? Buttons.Jump : 0
-        stepMovement(move, { moveX: 0, moveZ: 1, yaw, pitch: 0, buttons }, params, queries, 1 / 30)
+        const buttons = tick % 67 < 2 ? Buttons.Jump : 0
+        stepMovement(move, { moveX: 0, moveZ: 1, yaw, pitch: 0, buttons }, params, queries, 1 / 100)
         const events = run.observe(tick, from, move.pos, yaw)
         for (const event of events) {
           if (event.type === 'failed' || event.type === 'restarted') {

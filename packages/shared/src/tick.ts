@@ -6,6 +6,16 @@
 export const SIM_TICK_RATE = 30
 export const SIM_DT = 1 / SIM_TICK_RATE
 
+/**
+ * Native CS:S surf rate. Surf rooms simulate at this rate with the unscaled
+ * Source air cap (0.762 m/s per tick); other rooms stay at SIM_TICK_RATE.
+ * The process scheduler runs at least this fast, and each room's accumulator
+ * decides how many of its own fixed steps to take.
+ */
+export const SURF_TICK_RATE = 100
+/** Snapshots every N surf ticks → 25 Hz, inside Source's 20–30 Hz range. */
+export const SURF_SNAPSHOT_EVERY = 4
+
 export class FixedTimestep {
   private accumulator = 0
   constructor(

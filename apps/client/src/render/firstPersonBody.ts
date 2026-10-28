@@ -66,7 +66,7 @@ export class FirstPersonBody {
     const speed = Math.hypot(move.vel.x, move.vel.z)
     const yaw = this.player.viewYaw
     const pitch = this.player.viewPitch
-    const feetY = renderPos.y - hullHeightFor(this.player.move.stance) / 2
+    const feetY = renderPos.y - hullHeightFor(this.player.move.stance, this.player.params) / 2
     // The camera pivots at the eyes; slide the body backward as the view
     // pitches down so looking down shows your chest and legs from above
     // instead of the inside of your own collar.

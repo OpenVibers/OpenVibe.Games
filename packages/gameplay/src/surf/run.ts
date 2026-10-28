@@ -9,9 +9,10 @@ import type { PlayerMoveState } from '../movement/simulate.js'
  * simulated input, and it returns what happened. No client time, no client
  * position and no wall clock participate in a run.
  *
- * Timing: the server ticks at 30 Hz, so a tick count alone is 33.3 ms coarse.
- * Every crossing is a slab intersection against the zone AABB, giving the
- * fraction of the segment at which it happened:
+ * Timing: the room ticks at its configured rate (100 Hz for surf, 30 Hz for
+ * the sandbox), and the run carries that rate. Every crossing is a slab
+ * intersection against the zone AABB, giving the fraction of the segment at
+ * which it happened:
  *
  *   timeMs = (endTick - startTick + fracEnd - fracStart) * (1000 / tickRate)
  *

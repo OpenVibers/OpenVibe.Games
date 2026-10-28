@@ -5,6 +5,8 @@ import {
   CraftQueue,
   createMoveState,
   eyeOffsetFor,
+  movementParamsFor,
+  movementStyleFor,
   normalizeStats,
   type PlayerMoveState,
   type SurfRunState,
@@ -207,8 +209,9 @@ export function createSession(init: SessionInit): PlayerSession {
 
 /** Eye position for view rays — stance-aware, matches the client camera. */
 export function eyePosition(session: PlayerSession, out: Vec3): Vec3 {
+  const params = movementParamsFor(movementStyleFor(session.content.world))
   out.x = session.move.pos.x
-  out.y = session.move.pos.y + eyeOffsetFor(session.move.stance)
+  out.y = session.move.pos.y + eyeOffsetFor(session.move.stance, params)
   out.z = session.move.pos.z
   return out
 }

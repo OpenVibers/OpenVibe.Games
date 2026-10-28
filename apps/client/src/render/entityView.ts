@@ -10,7 +10,12 @@ import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js'
 import { Mesh } from '@babylonjs/core/Meshes/mesh.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import type { ContentRegistry, WorldShape } from '@openvibe/content'
-import { DEFAULT_MOVEMENT, hullHeightFor } from '@openvibe/gameplay'
+import {
+  hullHeightFor,
+  movementParamsFor,
+  movementStyleFor,
+  type MovementParams,
+} from '@openvibe/gameplay'
 import { CollisionLayer, type BodyId, type PhysicsWorld, type ShapeDesc } from '@openvibe/physics'
 import type { ServerSnapshot, WireEntity } from '@openvibe/protocol'
 import { quat, vec3, wrapAngle } from '@openvibe/shared'
@@ -67,6 +72,8 @@ export class EntityView {
   /** EMA of (serverTime - localTime) for the interpolation clock. */
   private clockOffset: number | null = null
   private lastUpdateTime = 0
+  /** The room's movement preset, for remote-player mirror hulls and feet. */
+  private readonly movement: MovementParams
 
   constructor(
     private readonly scene: Scene,
@@ -74,6 +81,7 @@ export class EntityView {
     private readonly content: ContentRegistry,
     private readonly state: ClientState,
   ) {
+    this.movement = movementParamsFor(movementStyleFor(content.world))
     state.events.on('entityAdded', (e) => this.add(e))
     state.events.on('entityRemoved', (id) => this.remove(id))
     state.events.on('entityUpdated', (e) => this.applyAuthoritative(e))
@@ -206,11 +214,11 @@ export class EntityView {
 
   /** Static capsule matching the server's player body (short + lifted). */
   private addPlayerBody(pos: { x: number; y: number; z: number }, stance: number): BodyId {
-    const hull = hullHeightFor(stance as 0 | 1 | 2)
+    const hull = hullHeightFor(stance as 0 | 1 | 2, this.movement)
     return this.physics.addBody({
       shape: {
         type: 'capsule',
-        radius: DEFAULT_MOVEMENT.capsuleRadius,
+        radius: this.movement.capsuleRadius,
         height: Math.max(hull - 0.3, 0.4),
       },
       motion: 'static',
@@ -371,8 +379,12 @@ export class EntityView {
         // Blend FEET height, not capsule-center height: the center jumps
         // when the hull shrinks (crouch/prone) and blending centers sinks
         // the avatar through the floor mid-transition.
-        const feetA = a.pos[1] - (v.feetOffset ?? hullHeightFor((a.stance ?? 0) as 0 | 1 | 2) / 2)
-        const feetB = b.pos[1] - (v.feetOffset ?? hullHeightFor((b.stance ?? 0) as 0 | 1 | 2) / 2)
+        const feetA =
+          a.pos[1] -
+          (v.feetOffset ?? hullHeightFor((a.stance ?? 0) as 0 | 1 | 2, this.movement) / 2)
+        const feetB =
+          b.pos[1] -
+          (v.feetOffset ?? hullHeightFor((b.stance ?? 0) as 0 | 1 | 2, this.movement) / 2)
         const feetY = feetA + (feetB - feetA) * alpha
         // Keep the player collision mirror on the smooth pose; swap the hull
         // when their stance changes so crouched players are shorter to walk on.
