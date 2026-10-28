@@ -5,6 +5,7 @@ import {
   compileMapFileV2,
   parseMapFile,
   surfMap,
+  surfMapOfPlace,
   type MapFileV2,
 } from '@openvibe/content'
 import {
@@ -64,7 +65,7 @@ describe.each(SURF_MAPS)('$name', (info) => {
     const map = load(info.id)
     expect(map.movement).toBe('surf')
     expect(map.surf).toMatchObject({
-      title: info.name,
+      title: info.id,
       author: 'OpenVibe',
       tier: info.tier,
       stages: info.stages,
@@ -152,6 +153,19 @@ describe('surf map catalogue', () => {
     expect(SURF_MAPS.map((m) => m.id)).toEqual(['surf_lagoon', 'surf_canyon', 'surf_orbit'])
     expect(SURF_MAPS.map((m) => m.tier)).toEqual([1, 2, 4])
     expect(SURF_MAPS.map((m) => m.stages)).toEqual([3, 4, 6])
-    for (const info of SURF_MAPS) expect(surfMap(info.placeId)?.id).toBe(info.id)
+    // A Source map is its file name: the visible name, content id and place id
+    // are the same string, and the JSON title agrees.
+    expect(SURF_MAPS.every((m) => m.name === m.id && m.placeId === m.id)).toBe(true)
+    for (const info of SURF_MAPS) {
+      expect(surfMap(info.placeId)?.id).toBe(info.id)
+      expect(load(info.id).surf?.title).toBe(info.id)
+    }
+  })
+
+  it('resolves the old hyphenated id only as a redirect alias', () => {
+    expect(surfMap('surf-lagoon')).toMatchObject({ id: 'surf_lagoon', placeId: 'surf_lagoon' })
+    expect(surfMapOfPlace('surf-canyon')?.id).toBe('surf_canyon')
+    expect(surfMap('surf')?.id).toBe('surf_lagoon')
+    expect(surfMap('surf-missing')).toBeUndefined()
   })
 })

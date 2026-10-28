@@ -239,6 +239,13 @@ async function main(): Promise<void> {
     createSurfPlay({ url: config.platform.playUrl, tokens: platform?.tokens ?? null }),
     (message) => log.warn(message),
   )
+  // One-time: copy the local PBs onto the renamed Play boards (lagoon →
+  // surf_lagoon). It is idempotent, so a Play outage simply retries next boot.
+  void surfRecords
+    .migratePlayBoards()
+    .catch((error: unknown) =>
+      log.warn('surf Play board copy failed (will retry next boot)', { error: String(error) }),
+    )
   const platformLog = log.child({ system: 'platform' })
   const valkey = createValkey({ url: config.db.valkeyUrl ?? '', prefix: config.db.valkeyPrefix })
   let outbox: PgOutbox | null = null
@@ -753,7 +760,12 @@ async function main(): Promise<void> {
     maxRunning: config.creatorWorldsMax,
     idleMs: config.creatorWorldIdleSeconds * 1000,
   })
-  const router = new PlaceRouter(hubs, config.placeId, worldHost)
+  const router = new PlaceRouter(
+    hubs,
+    config.placeId,
+    worldHost,
+    (place) => surfMapOfPlace(place)?.placeId ?? null,
+  )
   // The idle sweep runs in the admission chain, so a world never stops under a join that is starting it.
   const worldSweepTimer = setInterval(() => {
     void router

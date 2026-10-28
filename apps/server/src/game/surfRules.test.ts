@@ -56,7 +56,7 @@ function sessionFor(override: ReturnType<typeof loadSurfOverride>) {
 function ctxFor(session: any, respawns: string[], sent: unknown[]) {
   return {
     clock: { tick: 0 },
-    config: { ...SURF_ROOM_TIMING, placeId: 'surf-lagoon', instanceSlot: 0 },
+    config: { ...SURF_ROOM_TIMING, placeId: 'surf_lagoon', instanceSlot: 0 },
     env: {},
     regions: { update() {} },
     sessions: {

@@ -60,6 +60,15 @@ describe('loadConfig migrationsDir', () => {
   })
 })
 
+describe('loadConfig surf place', () => {
+  it('names a surf place by its map id, including an old hyphenated env value', () => {
+    expect(loadConfig({ GAMES_PLACE_ID: 'surf_lagoon' }).placeId).toBe('surf_lagoon')
+    expect(loadConfig({ GAMES_PLACE_ID: 'surf-lagoon' }).placeId).toBe('surf_lagoon')
+    // Other games are untouched.
+    expect(loadConfig({ GAMES_PLACE_ID: 'salvage-rush' }).placeId).toBe('salvage-rush')
+  })
+})
+
 describe('loadConfig scriptMods', () => {
   it('is off unless the place enables it', () => {
     expect(loadConfig({}).scriptMods).toBe(false)

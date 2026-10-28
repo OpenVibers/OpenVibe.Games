@@ -7,15 +7,17 @@ import type { MovementStyle } from '../schema/world.js'
  * A surf map is an ordinary `MapFileV2` document (`content/surf/<id>.json`) with
  * the `surf` block, surf zones and `movement: "surf"`. These records are the
  * catalogue the client's `?map=` URL and the server's place router share; a
- * place id is `surf-<slug>` so the existing `/play?game=…` scheme carries it
- * unchanged. None of the maps, names or layouts are CS maps: they are authored
- * for this engine and this brief.
+ * place id is the map id (`surf_lagoon`), so `/surf/surf_lagoon` and
+ * `?game=surf_lagoon` name the same place. The old `surf-<slug>` place ids are
+ * accepted only as redirect aliases. None of the maps, names or layouts are CS
+ * maps: they are authored for this engine and this brief.
  */
 export interface SurfMapInfo {
   /** Stable map id, also the content world id (`surf_lagoon`). */
   id: `surf_${'lagoon' | 'canyon' | 'orbit'}`
-  /** Place id in the existing URL scheme (`surf-lagoon`). */
+  /** Place id, the same canonical form as the map id (`surf_lagoon`). */
   placeId: string
+  /** Visible name: the map id, as a Source map name is (`surf_lagoon`). */
   name: string
   /** Difficulty: 1 beginner, 2 intermediate, 4 advanced. */
   tier: number
@@ -31,8 +33,8 @@ export const SURF_AUTHOR = 'OpenVibe' as const
 export const SURF_MAPS: readonly SurfMapInfo[] = [
   {
     id: 'surf_lagoon',
-    placeId: 'surf-lagoon',
-    name: 'Surf Lagoon',
+    placeId: 'surf_lagoon',
+    name: 'surf_lagoon',
     tier: 1,
     stages: 3,
     author: SURF_AUTHOR,
@@ -40,8 +42,8 @@ export const SURF_MAPS: readonly SurfMapInfo[] = [
   },
   {
     id: 'surf_canyon',
-    placeId: 'surf-canyon',
-    name: 'Surf Canyon',
+    placeId: 'surf_canyon',
+    name: 'surf_canyon',
     tier: 2,
     stages: 4,
     author: SURF_AUTHOR,
@@ -49,8 +51,8 @@ export const SURF_MAPS: readonly SurfMapInfo[] = [
   },
   {
     id: 'surf_orbit',
-    placeId: 'surf-orbit',
-    name: 'Surf Orbit',
+    placeId: 'surf_orbit',
+    name: 'surf_orbit',
     tier: 4,
     stages: 6,
     author: SURF_AUTHOR,
@@ -64,9 +66,14 @@ export function isSurfMapId(value: string): value is SurfMapId {
   return SURF_MAPS.some((m) => m.id === value)
 }
 
-/** Resolve by map id or place id (`surf_lagoon` / `surf-lagoon`). */
+/**
+ * Resolve a map id, its old hyphenated alias (`surf_lagoon` / `surf-lagoon`), or
+ * the bare game selector `surf` (which has always meant the first map, Lagoon).
+ */
 export function surfMap(value: string): SurfMapInfo | undefined {
-  return SURF_MAPS.find((m) => m.id === value || m.placeId === value)
+  if (value === 'surf') return SURF_MAPS[0]
+  const canonical = value.replace(/-/g, '_')
+  return SURF_MAPS.find((m) => m.id === value || m.placeId === value || m.id === canonical)
 }
 
 export function surfPlaceId(mapId: SurfMapId): string {
@@ -78,9 +85,9 @@ export function surfPlaceOf(value: string | undefined): string | null {
   return value ? (surfMap(value)?.placeId ?? null) : null
 }
 
-/** The map id a place id maps to, or null. */
+/** The map a place id names, including the old hyphenated alias; null when it is not surf. */
 export function surfMapOfPlace(placeId: string): SurfMapInfo | null {
-  return SURF_MAPS.find((m) => m.placeId === placeId) ?? null
+  return SURF_MAPS.find((m) => m.placeId === placeId) ?? surfMap(placeId) ?? null
 }
 
 export function isSurfPlace(placeId: string): boolean {

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { SURF_MAPS, type SurfMapInfo } from '@openvibe/content'
+import { SURF_MAPS, surfMap, type SurfMapInfo } from '@openvibe/content'
 import type { Db } from 'openvibe-sdk/db'
 import { isGuestToken } from '../platform/accounts.js'
 import { PgSurfRecords } from '../platform/surfRuns.js'
@@ -41,6 +41,12 @@ function send(res: ServerResponse, status: number, body: unknown, cache: string)
 
 function noStore(res: ServerResponse, status: number, body: unknown): void {
   send(res, status, body, 'no-store')
+}
+
+/** A permanent redirect that keeps the query string (the canonical API id). */
+function movedPermanently(res: ServerResponse, path: string, query: string): void {
+  res.writeHead(308, { location: `${path}${query}`, 'cache-control': 'no-store' })
+  res.end()
 }
 
 function mapInfo(id: string): SurfMapInfo | undefined {
@@ -90,6 +96,17 @@ export function handleSurfRead(
 
   const info = mapInfo(id)
   if (!info) {
+    // The old `surf-lagoon` API names are aliases only: a permanent redirect to
+    // the Source-form id, ghost suffix and all.
+    const legacy = surfMap(id)
+    if (legacy) {
+      movedPermanently(
+        res,
+        url.pathname.replace(/^(\/api\/surf\/maps\/)[^/]+/, `$1${legacy.id}`),
+        url.search,
+      )
+      return true
+    }
     noStore(res, 404, { error: 'unknown_map' })
     return true
   }

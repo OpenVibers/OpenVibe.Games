@@ -1,3 +1,4 @@
+import { surfMap } from '@openvibe/content'
 import { MIGRATIONS_DIR } from '@openvibe/persistence'
 import { SIM_TICK_RATE, SURF_SNAPSHOT_EVERY, SURF_TICK_RATE } from '@openvibe/shared'
 import { parseProxyTrust, type ProxyTrust } from './net/clientAddress.js'
@@ -204,10 +205,14 @@ export function loadPlatformConfig(env: NodeJS.ProcessEnv): PlatformConfig {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
+  const requestedPlace = env.GAMES_PLACE_ID ?? 'scraplandia'
+  // A surf deployment's place id is its map id; the old `surf-lagoon` env value
+  // boots the canonical place rather than starting a second, aliased one.
+  const placeId = surfMap(requestedPlace)?.id ?? requestedPlace
   return {
     port: intEnv(env, 'PORT', 8000),
     host: env.HOST ?? '0.0.0.0',
-    placeId: env.GAMES_PLACE_ID ?? 'scraplandia',
+    placeId,
     db: {
       url: env.DATABASE_URL ?? null,
       directUrl: env.DATABASE_DIRECT_URL ?? null,
@@ -220,7 +225,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     staticDir: env.STATIC_DIR ?? null,
     mapPath:
       env.MAP_PATH ??
-      (env.GAMES_PLACE_ID === 'salvage-rush' ? 'data/salvage-rush-map.json' : 'data/map.json'),
+      (placeId === 'salvage-rush' ? 'data/salvage-rush-map.json' : 'data/map.json'),
     trustProxy: parseProxyTrust(env.TRUST_PROXY),
     /** openvibe.network auth endpoint; when set, editor tokens validate there. */
     networkAuthUrl:

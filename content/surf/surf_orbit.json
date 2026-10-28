@@ -2,7 +2,7 @@
   "v": 2,
   "movement": "surf",
   "surf": {
-    "title": "Surf Orbit",
+    "title": "surf_orbit",
     "author": "OpenVibe",
     "tier": 4,
     "stages": 6,
