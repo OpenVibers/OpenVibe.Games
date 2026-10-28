@@ -1,15 +1,16 @@
-/* The ~ console: a quiet full-width drawer over the game, not a HUD redesign. */
+/* The ~ console, as Source draws it: a dark panel that drops from the top over the game, the log above, the input
+   below, and completions as a list under the input. */
 .ovg-console {
   position: fixed;
   z-index: 200;
   left: 0;
   right: 0;
-  bottom: 0;
+  top: 0;
   display: flex;
   flex-direction: column;
   max-height: min(55vh, 34rem);
-  padding: 0.55rem 0.75rem calc(0.65rem + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--border, #2a3340);
+  padding: calc(0.55rem + env(safe-area-inset-top)) 0.75rem 0.65rem;
+  border-bottom: 1px solid var(--border, #2a3340);
   background: color-mix(in srgb, var(--bg-secondary, #0a0e12) 94%, transparent);
   color: var(--text-primary, #e6e6e6);
   font:
@@ -19,7 +20,19 @@
     Consolas,
     monospace;
   backdrop-filter: blur(8px);
-  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  animation: console-drop 0.14s ease-out;
+}
+@keyframes console-drop {
+  from {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ovg-console {
+    animation: none;
+  }
 }
 .ovg-console[hidden] {
   display: none;
@@ -87,24 +100,26 @@
 }
 .console-completions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin: 0.45rem 0 0;
-  padding: 0;
+  flex-direction: column;
+  max-height: 9.5rem;
+  overflow-y: auto;
+  margin: 0.35rem 0 0;
+  padding: 0.2rem 0;
   list-style: none;
+  border: 1px solid var(--border, #2a3340);
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--bg-primary, #05080b) 92%, transparent);
 }
 .console-completions[hidden] {
   display: none;
 }
 .console-completion {
-  padding: 0.05rem 0.35rem;
-  border: 1px solid var(--border, #2a3340);
-  border-radius: 0.3rem;
+  padding: 0.1rem 0.5rem;
   color: var(--text-secondary, #b0b0b8);
   cursor: pointer;
 }
 .console-completion.is-selected {
-  border-color: var(--g-accent, #f0b040);
+  background: color-mix(in srgb, var(--g-accent, #f0b040) 18%, transparent);
   color: var(--text-primary, #e6e6e6);
 }
 .console-completion:hover {
