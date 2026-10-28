@@ -8,6 +8,7 @@ import type { PlayerSession } from './playerSession.js'
 import { ServerContext } from './systems/context.js'
 import type { GameConnection, GameIntegrations, ServerSystems } from './systems/context.js'
 import {
+  ChatSystem,
   CombatSystem,
   EconomySystem,
   EditorSystem,
@@ -82,6 +83,7 @@ export class GameServer {
     )
     const ctx = this.ctx
     const sessions = new SessionsSystem(ctx)
+    const chat = new ChatSystem(ctx)
     const movement = new MovementSystem(ctx)
     // Runs see this tick's authoritative positions: construct after movement,
     // insert in the ordered list before replication.
@@ -107,6 +109,7 @@ export class GameServer {
 
     this.systems = {
       sessions,
+      chat,
       movement,
       surf,
       replication,
@@ -131,6 +134,7 @@ export class GameServer {
     ctx.systems = this.systems
     this.ordered = [
       sessions,
+      chat,
       movement,
       surf,
       replication,

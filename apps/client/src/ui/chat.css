@@ -1,0 +1,113 @@
+/* Source places chat lower-left. In Scraplandia the vitals already sit there,
+   so chat clears them; on a surf map the vitals are hidden and it drops to the
+   corner. As in Source, a closed chat lets each line fade a few seconds after it
+   arrives; opening it (Y or U) brings the history back on a dark panel. */
+.chat {
+  position: absolute;
+  z-index: 13;
+  left: 16px;
+  bottom: 132px;
+  width: min(30rem, calc(100vw - 2rem));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: calc(13px * var(--ov-text-scale, 1));
+  pointer-events: none;
+}
+
+.chat-lines {
+  max-height: 12rem;
+  overflow-y: auto;
+  list-style: none;
+  padding: 2px 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  scrollbar-width: thin;
+}
+
+.chat-line {
+  padding: 1px 4px;
+  overflow-wrap: anywhere;
+  background: rgba(8, 11, 15, 0.42);
+  border-radius: 3px;
+}
+
+.chat-line + .chat-line {
+  margin-top: 1px;
+}
+
+.chat-from {
+  margin-right: 0.35em;
+  font-weight: 700;
+}
+
+.chat-system {
+  color: var(--g-accent-text, #f0b040);
+}
+
+.chat-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(8, 11, 15, 0.86);
+  border: 1px solid var(--border, #2a3340);
+  border-radius: 5px;
+  pointer-events: auto;
+}
+
+.chat-form[hidden] {
+  display: none;
+}
+
+.chat-channel {
+  font-size: 0.75em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--g-accent-text, #f0b040);
+}
+
+.chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary, #e6e6e6);
+  font: inherit;
+}
+
+.ovg-surf .chat {
+  bottom: 18px;
+}
+
+.chat:not(.is-open) .chat-line {
+  animation: chat-line-fade 12s linear forwards;
+}
+
+@keyframes chat-line-fade {
+  0%, 75% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+.chat.is-open .chat-lines {
+  padding: 4px;
+  border-radius: 5px;
+  background: rgba(8, 11, 15, 0.55);
+  pointer-events: auto;
+}
+
+.chat.is-open .chat-line {
+  background: transparent;
+}
+
+.chat-team .chat-from {
+  color: var(--g-team-text, #7cc4ff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat:not(.is-open) .chat-line {
+    animation-timing-function: steps(1, end);
+  }
+}

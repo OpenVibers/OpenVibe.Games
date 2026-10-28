@@ -31,6 +31,15 @@ export interface SurfRecordOutcome {
   wrMs: number | null
 }
 
+/** One row of a map leaderboard (`!top`), already in time order. */
+export interface SurfLeaderboardRow {
+  id: string
+  name: string
+  timeMs: number
+  createdAt: number
+  isPb: boolean
+}
+
 /**
  * The persistence/ranking seam the surf system writes runs through. Games'
  * implementation is platform/surfRuns.ts; tests use a fake. The server never
@@ -44,5 +53,7 @@ export interface SurfRecords {
     accountKey: string,
   ): Promise<{ timeMs: number; splits: number[] } | null>
   wrMs(mapId: string): Promise<number | null>
+  /** The fastest runs on a map, ascending by time (chat `!top`, max 10 there). */
+  topRuns(mapId: string, limit: number): Promise<SurfLeaderboardRow[]>
   record(run: SurfRunRecord): Promise<SurfRecordOutcome>
 }

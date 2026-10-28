@@ -37,6 +37,8 @@ export const SurfStateSchema = z.object({
   wrMs: timeMs.nullable(),
   /** The PB's split times, for the per-split delta (absent until one exists). */
   pbSplits: splitList.optional(),
+  /** Practice mode is on: the run clock and PB writes are off. */
+  practice: z.boolean().optional(),
 })
 export type ServerSurfState = z.infer<typeof SurfStateSchema>
 
