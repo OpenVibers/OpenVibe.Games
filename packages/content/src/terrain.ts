@@ -1,5 +1,5 @@
 import type { SurfaceMaterialData } from './surface.js'
-import type { FaceStyle, StaticBody, WorldDef, ZoneDef } from './schema/world.js'
+import type { FaceStyle, LogicDef, PointDef, StaticBody, WorldDef, ZoneDef } from './schema/world.js'
 
 /**
  * Deterministic terrain heightfield shared by server physics, client
@@ -189,6 +189,10 @@ export interface MapOverride {
    * The base list is never mutated — see `ZoneIndex.setMapZones`.
    */
   zones?: ZoneDef[]
+  /** Named point entities (`info_target`, `info_teleport_destination`, cameras). */
+  points?: PointDef[]
+  /** Logic entities: relay, auto and timer. */
+  logic?: LogicDef[]
   /** Editor-placed spawn point (overrides the world def). */
   spawn?: [number, number, number]
   spawnYaw?: number

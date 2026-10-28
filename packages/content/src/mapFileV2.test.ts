@@ -449,6 +449,86 @@ describe('map-authored zones', () => {
   })
 })
 
+describe('trigger/I/O round trip', () => {
+  const mapWithIo = (): MapFileV2 => ({
+    ...emptyMapV2(),
+    zones: [
+      {
+        id: 'start',
+        name: 'Start',
+        min: [-2, 0, -2],
+        max: [2, 3, 2],
+        rules: { pvp: true, build: true, physgun: true },
+        trigger: {
+          wait: 0.2,
+          outputs: [{ event: 'OnStartTouch', target: 'relay', input: 'Trigger' }],
+        },
+      },
+      {
+        id: 'boost',
+        name: 'Boost',
+        min: [10, 0, 10],
+        max: [12, 3, 12],
+        rules: { pvp: true, build: true, physgun: true },
+        push: { dir: [0, 1, 0], speed: 800 },
+      },
+      {
+        id: 'tp',
+        name: 'Teleport',
+        min: [20, 0, 20],
+        max: [22, 3, 22],
+        rules: { pvp: true, build: true, physgun: true },
+        teleport: { to: 'dest', keepAngles: false },
+      },
+    ],
+    points: [{ id: 'dest', pos: [0, 1, 0], yaw: 1.5, class: 'teleport_destination' }],
+    logic: [
+      { id: 'relay', class: 'relay', outputs: [{ event: 'OnTrigger', target: 'boost', input: 'Enable' }] },
+      { id: 'auto1', class: 'auto', outputs: [{ event: 'OnMapSpawn', target: 'relay', input: 'Trigger' }] },
+    ],
+  })
+
+  it('parses, validates and compiles points/logic/trigger/push/teleport', () => {
+    const r = parseMapFile(mapWithIo())
+    expect(r.ok, r.ok ? '' : r.issues.join(', ')).toBe(true)
+    if (!r.ok) return
+    expect(validateMapFile(r.map)).toEqual([])
+    const override = compileMapFileV2(r.map)
+    expect(override.points).toEqual([
+      { id: 'dest', pos: [0, 1, 0], yaw: 1.5, class: 'teleport_destination' },
+    ])
+    expect(override.logic).toHaveLength(2)
+    expect(override.zones?.[0]?.trigger?.outputs).toHaveLength(1)
+    expect(override.zones?.[1]?.push?.speed).toBe(800)
+  })
+
+  it('survives a save/reload round trip', () => {
+    const r = parseMapFile(mapWithIo())
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    const again = parseMapFile(JSON.parse(canonicalizeMapFile(r.map)))
+    expect(again.ok).toBe(true)
+    if (again.ok) expect(again.map).toEqual(r.map)
+  })
+
+  it('rejects a missing output target and a missing teleport destination', () => {
+    const m = mapWithIo()
+    m.zones[0]!.trigger!.outputs[0]!.target = 'ghost'
+    const missingTarget = validateMapFile(m).join(' ')
+    expect(missingTarget).toContain('missing entity "ghost"')
+
+    const m2 = mapWithIo()
+    m2.zones[2]!.teleport!.to = 'nope'
+    expect(validateMapFile(m2).join(' ')).toContain('is not a point')
+  })
+
+  it('rejects an unknown input through the zod enum', () => {
+    const m = mapWithIo()
+    m.zones[0]!.trigger!.outputs[0]!.input = 'DoSomething' as never
+    expect(parseMapFile(m).ok).toBe(false)
+  })
+})
+
 describe('map-authored NPCs', () => {
   it('an older map with no npcs reads as none, and a new one starts with none', () => {
     const raw = JSON.parse(JSON.stringify(emptyMapV2())) as Record<string, unknown>

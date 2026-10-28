@@ -158,12 +158,14 @@ export class MovementSystem implements System {
     params: MovementParams,
     surfPlace: boolean,
   ): void {
+    // Always clear, even while driving: TriggersSystem reads these segments
+    // for every room, and a stale previous-tick segment must never re-fire.
+    session.moveSegments.length = 0
     if (session.driving) {
       ctx.systems.vehicles.driveVehicle(session)
       return
     }
     this.sweepSelf = ctx.sessions.bodyOf(session.playerId)
-    session.moveSegments.length = 0
     let simulated = 0
     for (const input of takeInputs(session, ctx.config.tickRate)) {
       session.lastInput = input
@@ -171,16 +173,13 @@ export class MovementSystem implements System {
       session.lastProcessedSeq = input.seq
       applyLookInput(session, input)
       session.buttons = input.intents
-      const from = surfPlace
-        ? vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z)
-        : null
+      const from = vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z)
       stepMovement(session.move, toMoveInput(session, input), params, this.moveQueries, dt)
-      if (from)
-        session.moveSegments.push({
-          from,
-          to: vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z),
-          yaw: session.yaw,
-        })
+      session.moveSegments.push({
+        from,
+        to: vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z),
+        yaw: session.yaw,
+      })
       simulated++
     }
     if (simulated === 0 && session.lastInput) {
@@ -191,9 +190,7 @@ export class MovementSystem implements System {
       if (session.starvedTicks > ctx.config.tickRate / 2) {
         // Zero MOVEMENT only: buttons stay held. Zeroing buttons fabricates release edges for toggle keys
         // (prone/crouch), and the server flapped stances.
-        const from = surfPlace
-          ? vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z)
-          : null
+        const from = vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z)
         stepMovement(
           session.move,
           toMoveInput(session, { ...session.lastInput, moveX: 0, moveZ: 0 }),
@@ -201,12 +198,11 @@ export class MovementSystem implements System {
           this.moveQueries,
           dt,
         )
-        if (from)
-          session.moveSegments.push({
-            from,
-            to: vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z),
-            yaw: session.yaw,
-          })
+        session.moveSegments.push({
+          from,
+          to: vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z),
+          yaw: session.yaw,
+        })
       }
     }
     let bodyId = ctx.sessions.bodyOf(session.playerId)

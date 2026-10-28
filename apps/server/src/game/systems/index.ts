@@ -20,6 +20,7 @@ export { SettingsSystem, canChangeServerCvars, SERVER_CVAR_ALLOWLIST } from './s
 export { ChatSystem } from '../chatCommands.js'
 export { MovementSystem, MOVE, MAX_INPUT_QUEUE } from './movement.js'
 export { SurfSystem } from './surf.js'
+export { TriggersSystem } from './triggers.js'
 export { ReplicationSystem } from './replication.js'
 export { ManipulationSystem } from './manipulation.js'
 export { CombatSystem } from './combat.js'

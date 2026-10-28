@@ -107,6 +107,10 @@ export interface PlayerSession {
   surfPbSplits: number[]
   /** This tick's authoritative movement segments (cleared by MovementSystem). */
   moveSegments: { from: Vec3; to: Vec3; yaw: number }[]
+  /** Per-trigger inside state, so OnStartTouch/OnEndTouch fire once per crossing. */
+  triggerTouches: Map<string, boolean>
+  /** Last tick a trigger fired OnStartTouch, for `trigger_multiple`'s `wait`. */
+  triggerStartTicks: Map<string, number>
   /** Tick of the last accepted use/swing (server-side swing cooldown). */
   lastUseTick: number
   /** Stance the kinematic physics body was last built for. */
@@ -196,6 +200,8 @@ export function createSession(init: SessionInit): PlayerSession {
     surfWr: null,
     surfPbSplits: [],
     moveSegments: [],
+    triggerTouches: new Map(),
+    triggerStartTicks: new Map(),
     lastUseTick: 0,
     bodyStance: 0,
     content: init.content,

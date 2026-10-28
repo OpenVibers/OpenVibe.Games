@@ -243,6 +243,7 @@ export function buildShell(
   zone.append(
     labelled('Size', slider('zone-size', 2, 80, 1, 16)),
     labelled('Height', slider('zone-height', 2, 60, 1, 12)),
+    labelled('Trigger', checkbox('zone-trigger')),
   )
 
   const face = el('div', 'strip', 'face-strip')
