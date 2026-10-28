@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
+import { Bindings } from '@openvibe/shared'
 import { InputTracker } from './inputTracker.js'
 
 function setup(pointerLock: boolean) {
@@ -19,7 +20,7 @@ function setup(pointerLock: boolean) {
     target.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, buttons: 0 }))
   const scroll = (target: Element) =>
     target.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 120 }))
-  return { canvas, hud, actions, wheel, press, release, scroll }
+  return { canvas, hud, input, actions, wheel, press, release, scroll }
 }
 
 describe('input tracker presses', () => {
@@ -45,5 +46,46 @@ describe('input tracker presses', () => {
     scroll(canvas)
     expect(actions).toEqual([])
     expect(wheel).toEqual([])
+  })
+
+  it('routes a bound key to onBind instead of the stock action table', () => {
+    const { input, actions } = setup(false)
+    input.bindings = new Bindings({ storage: null, defaults: { space: '+jump', r: '+restart' } })
+    const bound: [string, boolean][] = []
+    input.onBind = (command, down) => bound.push([command, down])
+    const press = (code: string) =>
+      document.body.dispatchEvent(
+        new KeyboardEvent('keydown', { code, key: code, bubbles: true, cancelable: true }),
+      )
+    const release = (code: string) =>
+      document.body.dispatchEvent(
+        new KeyboardEvent('keyup', { code, key: code, bubbles: true, cancelable: true }),
+      )
+    press('Space')
+    expect(bound).toEqual([['+jump', true]])
+    expect(input.keyDown('Space')).toBe(true)
+    release('Space')
+    expect(bound).toEqual([
+      ['+jump', true],
+      ['+jump', false],
+    ])
+    // R would normally reload; the bind wins, and no stock action fires.
+    press('KeyR')
+    expect(bound.at(-1)).toEqual(['+restart', true])
+    expect(actions).toEqual([])
+  })
+
+  it('ignores keys aimed at a text input, even with no UI capture', () => {
+    const { input, actions } = setup(false)
+    const field = document.createElement('input')
+    document.body.append(field)
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true }),
+    )
+    expect(input.keyDown('Space')).toBe(false)
+    field.dispatchEvent(
+      new KeyboardEvent('keydown', { code: 'KeyE', key: 'e', bubbles: true, cancelable: true }),
+    )
+    expect(actions).toEqual([])
   })
 })

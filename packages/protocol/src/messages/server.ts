@@ -29,6 +29,23 @@ export interface ServerWelcome {
   /** Present when multi-instance mode is enabled. */
   instanceId?: string
   instanceCount?: number
+  /** Current server-authoritative cvars in Source units (see cvar_state). */
+  cvars?: Record<string, number | boolean>
+  /** The cvar names this player's rank may change. */
+  cvarsWritable?: string[]
+}
+
+/** The room's authoritative cvar values, sent after a change and in reply to `cvar_set`. */
+export interface ServerCvarState {
+  t: 'cvar_state'
+  /** Source-unit values, keyed by canonical Source name. */
+  values: Record<string, number | boolean>
+  /** Names this session's rank may change (the same subset as welcome). */
+  writable: string[]
+  /** Echo of the request this answers, when it answers one. */
+  requestId?: number
+  /** Why a requested change was refused; values are still the authoritative ones. */
+  error?: string
 }
 
 export interface ServerTransferResult {
@@ -298,6 +315,7 @@ export type ServerMessage =
       scores: { name: string; score: number; rank: number }[]
     }
   | ServerWelcome
+  | ServerCvarState
   | ServerTransferResult
   | ServerReject
   | ServerSpawn

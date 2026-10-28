@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Intents } from '@openvibe/shared'
+import { Bindings, Intents } from '@openvibe/shared'
 import {
   KeyboardInputSource,
   SwitchableInputSource,
@@ -141,6 +141,26 @@ describe('input sources', () => {
     )
     // The stream really does exercise several distinct intents.
     expect(new Set(fromKeyboard).size).toBeGreaterThan(4)
+  })
+
+  it('reads intents from Source binds, and console + commands set the same bits', () => {
+    const keyboard = new FakeKeyboard()
+    const binds = new Bindings({ storage: null, defaults: { space: '+jump', ctrl: '+duck' } })
+    const source = new KeyboardInputSource(keyboard, binds)
+    keyboard.keys.add('Space')
+    expect(source.sample().intents).toBe(Intents.Jump)
+    keyboard.keys.add('ControlLeft')
+    expect(source.sample().intents).toBe(Intents.Jump | Intents.Crouch)
+    // Rebinding space mid-session takes effect on the next sample.
+    binds.bind('space', '+duck')
+    expect(source.sample().intents).toBe(Intents.Crouch)
+    // A console-typed +jump feeds the same intent bit.
+    source.setManualIntent('Jump', true)
+    expect(source.sample().intents).toBe(Intents.Crouch | Intents.Jump)
+    source.setManualIntent('Jump', false)
+    expect(source.sample().intents).toBe(Intents.Crouch)
+    binds.unbind('ctrl')
+    keyboard.keys.delete('ControlLeft')
   })
 
   it('the switchable source samples whichever device is current', () => {

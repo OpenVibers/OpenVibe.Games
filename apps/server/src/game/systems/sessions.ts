@@ -1,5 +1,11 @@
 import { STARTER_ITEMS, getMapOverride, worldSpawn } from '@openvibe/content'
-import { Inventory, SkillSet, movementParamsFor, movementStyleFor, type GameEntity } from '@openvibe/gameplay'
+import {
+  Inventory,
+  SkillSet,
+  movementParamsFor,
+  movementStyleFor,
+  type GameEntity,
+} from '@openvibe/gameplay'
 import { CollisionLayer } from '@openvibe/physics'
 import { PROTOCOL_VERSION, encodeServerMessage, type ClientHello } from '@openvibe/protocol'
 import { asPlayerId, newEntityId, newPlayerId, qfromYaw, quat, vec3 } from '@openvibe/shared'
@@ -188,12 +194,11 @@ export class SessionsSystem implements System {
     // position: resuming half-way would skip the clock (brief decision 4).
     const override = getMapOverride(world)
     const surfSpawn = override?.surf ? override.spawn : undefined
-    const spawn =
-      surfSpawn
-        ? vec3(surfSpawn[0], surfSpawn[1], surfSpawn[2])
-        : existing && existing.positionInPlace !== false
-          ? vec3(existing.pos[0], existing.pos[1], existing.pos[2])
-          : vec3(mapSpawn.pos[0], mapSpawn.pos[1], mapSpawn.pos[2])
+    const spawn = surfSpawn
+      ? vec3(surfSpawn[0], surfSpawn[1], surfSpawn[2])
+      : existing && existing.positionInPlace !== false
+        ? vec3(existing.pos[0], existing.pos[1], existing.pos[2])
+        : vec3(mapSpawn.pos[0], mapSpawn.pos[1], mapSpawn.pos[2])
     const inventory = existing
       ? Inventory.fromDto(existing.inventory, ctx.world.content)
       : new Inventory(INVENTORY_SIZE, HOTBAR_SIZE, ctx.world.content)
@@ -262,9 +267,13 @@ export class SessionsSystem implements System {
     // Kinematic capsule so props collide with players. Shorter than the
     // movement hull and lifted off the feet: standing ON a prop must not
     // press it down (that caused sink/jitter loops when prop-surfing).
-    const movement = movementParamsFor(movementStyleFor(world))
+    const movement = ctx.systems.settings.movementParams(movementParamsFor(movementStyleFor(world)))
     const bodyId = ctx.world.physics.addBody({
-      shape: { type: 'capsule', radius: movement.capsuleRadius, height: movement.capsuleHeight - 0.3 },
+      shape: {
+        type: 'capsule',
+        radius: movement.capsuleRadius,
+        height: movement.capsuleHeight - 0.3,
+      },
       motion: 'kinematic',
       pos: vec3(session.move.pos.x, session.move.pos.y + 0.15, session.move.pos.z),
       layer: CollisionLayer.Player,
@@ -272,6 +281,7 @@ export class SessionsSystem implements System {
     })
     ctx.sessions.setBody(playerId, bodyId)
 
+    const cvarState = ctx.systems.settings.wireFor(rank)
     // From here the client is in the game: chat is allowed only after this
     // flag, so a `say` racing the join (or sent before `hello`) is dropped.
     session.welcomed = true
@@ -285,6 +295,8 @@ export class SessionsSystem implements System {
       tick: ctx.clock.tick,
       tickRate: ctx.config.tickRate,
       snapshotRate: ctx.config.tickRate / ctx.config.snapshotEvery,
+      cvars: cvarState.values,
+      cvarsWritable: cvarState.writable,
       ...(ctx.config.instancesPerPlace > 1
         ? {
             instanceId: `${ctx.config.placeId}:${ctx.config.instanceSlot ?? 0}`,

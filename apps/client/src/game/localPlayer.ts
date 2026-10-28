@@ -76,7 +76,7 @@ export class LocalPlayer {
     private readonly state: ClientState,
     spawn: { x: number; y: number; z: number },
     /** The place's movement preset, resolved on both sides (surf vs default). */
-    readonly params: MovementParams = DEFAULT_MOVEMENT,
+    public params: MovementParams = DEFAULT_MOVEMENT,
   ) {
     this.move = createMoveState(spawn)
     this.eyeSmooth = eyeOffsetFor(Stance.Stand, params)
@@ -106,6 +106,11 @@ export class LocalPlayer {
     }
     this.prevPos.set(spawn.x, spawn.y, spawn.z)
     this.currPos.set(spawn.x, spawn.y, spawn.z)
+  }
+
+  /** Adopt an authoritative cvar change without resetting the predicted pose. */
+  setMovementParams(params: MovementParams): void {
+    this.params = params
   }
 
   /** One fixed simulation tick: capture, send, predict. */

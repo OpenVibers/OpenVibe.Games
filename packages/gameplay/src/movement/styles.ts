@@ -1,4 +1,5 @@
 import { getMapOverride, type MovementStyle, type WorldDef } from '@openvibe/content'
+import { SOURCE_MOVEMENT_CVARS, type CvarValue } from '@openvibe/shared'
 import { DEFAULT_MOVEMENT, type MovementParams } from './params.js'
 
 /**
@@ -92,4 +93,55 @@ export function movementParamsFor(style: MovementStyle): MovementParams {
  */
 export function movementStyleFor(world: WorldDef): MovementStyle {
   return getMapOverride(world)?.movement ?? world.movement ?? 'default'
+}
+
+/**
+ * The Source-unit values of a movement preset: what the console shows for
+ * `sv_gravity`, `sv_airaccelerate` and friends. Integers are rounded so the
+ * default 20.32 m/s² reads as 800, not 800.0000000000001.
+ */
+export function movementCvarValues(params: MovementParams): Record<string, number | boolean> {
+  const out: Record<string, number | boolean> = {}
+  for (const spec of SOURCE_MOVEMENT_CVARS) {
+    if (!spec.target) continue
+    const value = params[spec.target as keyof MovementParams]
+    if (typeof value === 'boolean') {
+      out[spec.name] = value
+    } else if (typeof value === 'number') {
+      const converted = value / (spec.scale ?? 1)
+      out[spec.name] =
+        spec.type === 'integer' ? Math.round(converted) : Number(converted.toFixed(6))
+    }
+  }
+  return out
+}
+
+/**
+ * Overlay authoritative Source-unit cvars onto a movement preset. Both the
+ * server simulation and the client's prediction call this with the same
+ * values, so a cvar change cannot desynchronise them.
+ */
+export function movementParamsWithCvars(
+  base: MovementParams,
+  values: Readonly<Record<string, CvarValue>>,
+): MovementParams {
+  const next: { -readonly [K in keyof MovementParams]: MovementParams[K] } = { ...base }
+  for (const spec of SOURCE_MOVEMENT_CVARS) {
+    if (!spec.target) continue
+    const value = values[spec.name]
+    if (value === undefined) continue
+    const target = spec.target as keyof MovementParams
+    if (typeof value === 'boolean') {
+      next[target] = value as never
+      continue
+    }
+    const numeric = typeof value === 'number' ? value : Number(value)
+    if (!Number.isFinite(numeric)) continue
+    const converted = numeric * (spec.scale ?? 1)
+    next[target] = converted as never
+    // CS has no sprint key: sv_maxspeed is the one run speed, so Shift must
+    // not clamp a raised limit back down on surf maps.
+    if (spec.target === 'maxGroundSpeed') next.maxSprintSpeed = converted
+  }
+  return next
 }

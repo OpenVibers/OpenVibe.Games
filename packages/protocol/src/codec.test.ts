@@ -27,6 +27,7 @@ describe('protocol codec', () => {
       { t: 'physgun', a: 'grab' },
       { t: 'physgun', a: 'rotate', dyaw: 0.1, dpitch: -0.1, snap: true },
       { t: 'physgun', a: 'grid', on: true },
+      { t: 'cvar_set', name: 'sv_gravity', value: 800, requestId: 3 },
       { t: 'say', text: 'hello room' },
       { t: 'say_team', text: 'team line' },
     ]
@@ -46,6 +47,8 @@ describe('protocol codec', () => {
         '{"t":"input","seq":1,"moveX":1e999,"moveZ":0,"yawQ":0,"pitchQ":0,"intents":0}',
       ),
     ).toBeNull()
+    expect(decodeClientMessage('{"t":"cvar_set","name":"../x","value":1}')).toBeNull()
+    expect(decodeClientMessage('{"t":"cvar_set","name":"sv_gravity","value":1e999}')).toBeNull()
     // out-of-range movement axes (speedhack attempt)
     expect(
       decodeClientMessage(

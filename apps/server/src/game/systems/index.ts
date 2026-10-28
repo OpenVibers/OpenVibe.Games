@@ -16,6 +16,7 @@ export { buildHandlerTable } from './system.js'
 export type { HandlerMap, MessageHandler, System } from './system.js'
 
 export { SessionsSystem } from './sessions.js'
+export { SettingsSystem, canChangeServerCvars, SERVER_CVAR_ALLOWLIST } from './settings.js'
 export { ChatSystem } from '../chatCommands.js'
 export { MovementSystem, MOVE, MAX_INPUT_QUEUE } from './movement.js'
 export { SurfSystem } from './surf.js'

@@ -144,7 +144,7 @@ export class MovementSystem implements System {
     // Resolve the place's movement once per tick, not once per player: the
     // style is room-wide, and instanceHub's per-tick budget is tight.
     const style = movementStyleFor(ctx.world.content.world)
-    const params = movementParamsFor(style)
+    const params = ctx.systems.settings.movementParams(movementParamsFor(style))
     const surfPlace = style === 'surf'
     for (const session of ctx.sessions.values()) {
       this.stepSession(ctx, session, dt, params, surfPlace)

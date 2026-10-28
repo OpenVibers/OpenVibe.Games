@@ -7,6 +7,8 @@
  * pointer is locked some browsers retarget events inconsistently, and a
  * document listener sees them regardless.
  */
+import type { Bindings } from '@openvibe/shared'
+
 export class InputTracker {
   yaw = 0
   pitch = 0
@@ -37,6 +39,10 @@ export class InputTracker {
   private lookDy = 0
   /** Last seen mouse `buttons` bitmask (chorded press/release detection). */
   private buttonsState = 0
+  /** Source-style key bindings; bound keys bypass the stock action table. */
+  bindings: Bindings | null = null
+  /** `+command` on press, `-command` on release. Intents are read by the input source. */
+  onBind: ((command: string, down: boolean) => void) | null = null
 
   /** Emits press/release actions from `buttons` bitmask transitions. */
   private diffButtons(e: MouseEvent): void {
@@ -100,7 +106,20 @@ export class InputTracker {
     })
     document.addEventListener('keydown', (e) => {
       if (e.repeat) return
+      // A focused input (the console, a name field) owns its keystrokes:
+      // typing must never add a held game key. The console also sets
+      // `uiCapture`, but this is true even before the callback runs.
+      if (isTypingTarget(e.target)) return
       this.keys.add(e.code)
+      // A bound key means exactly what the player bound it to. `+jump` and
+      // its siblings still reach the input source through `keys`; one-shot
+      // commands (`toggle_ghost`, `+restart`) go to onBind.
+      const bound = this.bindings?.commandForCode(e.code) ?? null
+      if (bound && !this.uiCapture) {
+        e.preventDefault()
+        this.onBind?.(bound, true)
+        return
+      }
       if (e.code === 'KeyE' && !this.uiCapture) {
         e.preventDefault()
         this.onAction?.({ kind: 'use_down' })
@@ -117,7 +136,14 @@ export class InputTracker {
       if (e.code === 'Tab') e.preventDefault()
     })
     document.addEventListener('keyup', (e) => {
-      this.keys.delete(e.code)
+      const wasDown = this.keys.delete(e.code)
+      if (isTypingTarget(e.target)) return
+      const bound = this.bindings?.commandForCode(e.code) ?? null
+      if (bound && wasDown && !this.uiCapture) {
+        e.preventDefault()
+        this.onBind?.(bound, false)
+        return
+      }
       if (e.code === 'KeyE' && !this.uiCapture) {
         this.onAction?.({ kind: 'use_up' })
       }
@@ -190,6 +216,16 @@ export class InputTracker {
   debugForceLock(): void {
     this.locked = true
   }
+}
+
+/** A key event aimed at an editable control is text, not a game input. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  )
 }
 
 export type InputAction =

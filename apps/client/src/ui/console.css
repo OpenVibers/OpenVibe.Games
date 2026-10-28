@@ -1,0 +1,137 @@
+/* The ~ console, as Source draws it: a dark panel that drops from the top over the game, the log above, the input
+   below, and completions as a list under the input. */
+.ovg-console {
+  position: fixed;
+  z-index: 200;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: min(55vh, 34rem);
+  padding: calc(0.55rem + env(safe-area-inset-top)) 0.75rem 0.65rem;
+  border-bottom: 1px solid var(--border, #2a3340);
+  background: color-mix(in srgb, var(--bg-secondary, #0a0e12) 94%, transparent);
+  color: var(--text-primary, #e6e6e6);
+  font:
+    400 0.82rem/1.45 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45);
+  animation: console-drop 0.14s ease-out;
+}
+@keyframes console-drop {
+  from {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ovg-console {
+    animation: none;
+  }
+}
+.ovg-console[hidden] {
+  display: none;
+}
+.console-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border, #2a3340) 70%, transparent);
+}
+.console-title {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--g-accent-text, #f0b040);
+}
+.console-keyhint {
+  color: var(--text-secondary, #b0b0b8);
+  font-size: 0.72rem;
+}
+.console-log {
+  flex: 1 1 auto;
+  min-height: 4rem;
+  overflow-y: auto;
+  padding: 0.4rem 0.1rem;
+  overscroll-behavior: contain;
+}
+.console-line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.console-line.is-error {
+  color: #ff8d8d;
+}
+.console-line.is-echo {
+  color: var(--text-secondary, #b0b0b8);
+}
+.console-form {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--border, #2a3340) 70%, transparent);
+}
+.console-prompt {
+  color: var(--g-accent-text, #f0b040);
+  font-weight: 700;
+}
+.console-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.18rem 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  caret-color: var(--g-accent-text, #f0b040);
+}
+.console-suggestion {
+  color: var(--text-secondary, #b0b0b8);
+  font-size: 0.7rem;
+}
+.console-completions {
+  display: flex;
+  flex-direction: column;
+  max-height: 9.5rem;
+  overflow-y: auto;
+  margin: 0.35rem 0 0;
+  padding: 0.2rem 0;
+  list-style: none;
+  border: 1px solid var(--border, #2a3340);
+  border-radius: 0.3rem;
+  background: color-mix(in srgb, var(--bg-primary, #05080b) 92%, transparent);
+}
+.console-completions[hidden] {
+  display: none;
+}
+.console-completion {
+  padding: 0.1rem 0.5rem;
+  color: var(--text-secondary, #b0b0b8);
+  cursor: pointer;
+}
+.console-completion.is-selected {
+  background: color-mix(in srgb, var(--g-accent, #f0b040) 18%, transparent);
+  color: var(--text-primary, #e6e6e6);
+}
+.console-completion:hover {
+  color: var(--text-primary, #e6e6e6);
+}
+
+@media (max-width: 640px) {
+  .ovg-console {
+    max-height: 62vh;
+    font-size: 0.78rem;
+  }
+  .console-keyhint {
+    display: none;
+  }
+}

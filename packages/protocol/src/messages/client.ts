@@ -30,7 +30,12 @@ export const ClientHelloSchema = z.object({
   /** Requested place. Older clients omit it and join the configured default. */
   place: z.string().min(1).max(64).optional(),
   /** Which of this account's characters (0 … MAX_CHARACTERS - 1); a game, not the platform, decides how many it uses. */
-  slot: z.number().int().min(0).max(MAX_CHARACTERS - 1).default(0),
+  slot: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_CHARACTERS - 1)
+    .default(0),
   name: z.string().min(1).max(24),
   appearance: AppearanceSchema,
 })
@@ -304,6 +309,23 @@ export const ClientContainerSortSchema = z.object({
 })
 
 /**
+ * Change one server-authoritative cvar. The server owns the allowlist, the
+ * rank check and the range check; this message is only a request. `requestId`
+ * is echoed in `cvar_state` so the console can tell its answer from another
+ * player's change.
+ */
+export const ClientCvarSetSchema = z.object({
+  t: z.literal('cvar_set'),
+  name: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z0-9_]+$/),
+  value: z.union([z.number().finite(), z.boolean()]),
+  requestId: z.number().int().nonnegative().max(1_000_000_000).optional(),
+})
+
+/**
  * Source's `say`: a public chat line. The server rate-limits it and treats the
  * text as plain text throughout — it is never interpreted as markup.
  */
@@ -350,6 +372,7 @@ export const ClientMessageSchema = z.union([
   ClientSaySchema,
   ClientSayTeamSchema,
   ClientSurfRestartSchema,
+  ClientCvarSetSchema,
 ])
 
 export type ClientHello = z.infer<typeof ClientHelloSchema>
@@ -380,6 +403,7 @@ export type ClientJobTurnIn = z.infer<typeof ClientJobTurnInSchema>
 export type ClientContainerOpen = z.infer<typeof ClientContainerOpenSchema>
 export type ClientContainerMove = z.infer<typeof ClientContainerMoveSchema>
 export type ClientContainerSort = z.infer<typeof ClientContainerSortSchema>
+export type ClientCvarSet = z.infer<typeof ClientCvarSetSchema>
 export type ClientSay = z.infer<typeof ClientSaySchema>
 export type ClientSayTeam = z.infer<typeof ClientSayTeamSchema>
 export type { ClientSurfRestart } from './surf.js'

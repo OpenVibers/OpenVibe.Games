@@ -17,7 +17,13 @@ import { SurfSystem } from './systems/surf.js'
  */
 function surfWorld() {
   const override = loadSurfOverride('surf_lagoon')
-  const world = { id: 'surf_lagoon', movement: 'surf', zones: [], spawnPoint: [0, 2, 0], spawnYaw: 0 }
+  const world = {
+    id: 'surf_lagoon',
+    movement: 'surf',
+    zones: [],
+    spawnPoint: [0, 2, 0],
+    spawnYaw: 0,
+  }
   setMapOverride(override, world.id)
   return { world, override }
 }
@@ -72,6 +78,7 @@ function ctxFor(session: any, respawns: string[], sent: unknown[]) {
       bodyOf: () => undefined,
     },
     systems: {
+      settings: { movementParams: (base: unknown) => base },
       vehicles: { driveVehicle() {} },
       combat: { respawn: (_s: unknown, died: boolean) => respawns.push(died ? 'died' : 'void') },
     },
