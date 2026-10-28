@@ -62,7 +62,15 @@
     <link rel="stylesheet" href="/src/ui/styles.css" />
     <script>
       window.__ovgFrame = { page: 'play', title: 'Scraplandia', collapsible: true }
+      // The iframe route (/surf/embed) is the canvas and HUD only: an
+      // embedding site owns the page around it.
+      if (new URLSearchParams(location.search).get('embed') === '1')
+        document.documentElement.classList.add('ov-embed')
     </script>
+    <style>
+      .ov-embed #navbar-mount, .ov-embed #ov-footer, .ov-embed .ovf, .ov-embed .ov-nav { display: none !important; }
+      .ov-embed, .ov-embed body, .ov-embed #stage { margin: 0; height: 100%; overflow: hidden; background: #070b12; }
+    </style>
     <script src="/frame.js" defer></script>
   </head>
   <body>

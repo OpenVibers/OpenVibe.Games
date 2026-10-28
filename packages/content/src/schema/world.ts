@@ -12,6 +12,16 @@ const vec3 = z.tuple([z.number(), z.number(), z.number()])
 const finiteVec3 = vec3.refine((v) => v.every(Number.isFinite), 'must be finite')
 
 /**
+ * How a place moves. The style name is content: both sides resolve it to the
+ * SAME MovementParams (gameplay/movement/styles.ts) and pass those to the one
+ * movement kernel, so a mismatch is a content-digest mismatch, not a feel
+ * difference. `default` is the sandbox controller; `surf` is the CS:S-like
+ * air-control preset used by the Ride maps.
+ */
+export const MovementStyleSchema = z.enum(['default', 'surf'])
+export type MovementStyle = z.infer<typeof MovementStyleSchema>
+
+/**
  * Canonical authored colour: lower-case six-digit hex. One definition shared
  * by every schema that carries a colour, so a value cannot be accepted by one
  * layer of the stack and rejected — or silently dropped — by another.
@@ -124,6 +134,29 @@ export const PropSpawnSchema = z.object({
   yaw: z.number().default(0),
 })
 
+/** What a surf zone means: the run's start, an ordered checkpoint, the finish, or a kill volume. */
+export const SurfZoneMetaSchema = z.object({
+  kind: z.enum(['start', 'checkpoint', 'finish', 'kill']),
+  /** 0 for the start, 1.. for checkpoints, the final stage for the finish. */
+  stage: z.number().int().min(0).max(63).default(0),
+  /** Checkpoint respawn (capsule centre) and yaw; the start uses the map spawn. */
+  spawn: finiteVec3.optional(),
+  yaw: z.number().optional(),
+})
+export type SurfZoneMeta = z.infer<typeof SurfZoneMetaSchema>
+
+/** Map-level surf metadata: the fail plane and the advertised run shape. */
+export const SurfMapMetaSchema = z.object({
+  title: z.string().min(1).max(80),
+  author: z.string().min(1).max(80),
+  tier: z.number().int().min(1).max(5),
+  /** Total stages, including the finish (checkpoints are stages - 1). */
+  stages: z.number().int().min(1).max(64),
+  /** Below this height (metres) the run fails to the last checkpoint. */
+  failY: z.number(),
+})
+export type SurfMapMeta = z.infer<typeof SurfMapMetaSchema>
+
 export const ZoneDefSchema = z.object({
   /**
    * Stable zone id. Dashes are permitted so the map editor can mint ids in the
@@ -140,6 +173,8 @@ export const ZoneDefSchema = z.object({
     build: z.boolean().default(true),
     physgun: z.boolean().default(true),
   }),
+  /** Surf trigger metadata; absent on ordinary rule zones. */
+  surf: SurfZoneMetaSchema.optional(),
 })
 
 export const WorldDefSchema = z.object({
@@ -151,6 +186,8 @@ export const WorldDefSchema = z.object({
   spawnYaw: z.number().default(0),
   /** Blank-slate world: terrain is a flat floor (map editor builds the rest). */
   flatTerrain: z.boolean().default(false),
+  /** Movement preset for this place; resolved to params on both sides (default when absent). */
+  movement: MovementStyleSchema.optional(),
   statics: z.array(StaticBodySchema),
   resourceNodes: z.array(ResourceNodeSpawnSchema),
   initialProps: z.array(PropSpawnSchema),

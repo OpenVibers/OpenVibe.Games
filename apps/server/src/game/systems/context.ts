@@ -27,6 +27,8 @@ import type { PhysicsSystem } from './physics.js'
 import type { ProductionSystem } from './production.js'
 import type { ReplicationSystem } from './replication.js'
 import type { SessionsSystem } from './sessions.js'
+import type { SurfSystem } from './surf.js'
+import type { SurfRecords } from '../surfRecords.js'
 import type { SocialSystem } from './social.js'
 import type { VehicleSystem } from './vehicles.js'
 import type { WorldEventSystem } from './worldEvents.js'
@@ -83,6 +85,8 @@ export interface GameIntegrations {
   scripts?: ScriptModHost
   /** The person's games.progress.summary user module on Network, written when a character leaves. */
   progressSummary?: ProgressSummaryWriter
+  /** Surf run persistence + Play ranking (absent outside surf places). */
+  surf?: SurfRecords
 }
 
 /** The mutable tick counter, shared by every system that reads cadence or cooldowns. */
@@ -188,6 +192,7 @@ export class SessionRegistry {
 export interface ServerSystems {
   sessions: SessionsSystem
   movement: MovementSystem
+  surf: SurfSystem
   replication: ReplicationSystem
   manipulation: ManipulationSystem
   combat: CombatSystem

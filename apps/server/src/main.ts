@@ -12,6 +12,9 @@ import {
   parseMapFile,
   SCRAPLANDIA_PACK,
   setMapOverride,
+  surfMapOfPlace,
+  surfPack,
+  SURF_MAPS,
   type ContentRegistry,
 } from '@openvibe/content'
 import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
@@ -30,6 +33,7 @@ import { telemetry } from 'openvibe-sdk/service'
 import { createPgTelemetrySink, startTelemetryRetention } from 'openvibe-sdk/telemetry'
 import { GameServer } from './game/gameServer.js'
 import { GameWorld } from './game/gameWorld.js'
+import { loadSurfOverride, surfMapPath } from './game/surfMaps.js'
 import { InstanceHub } from './game/instanceHub.js'
 import { PlaceRouter } from './game/placeRouter.js'
 import { attachEditorWs } from './net/editorWs.js'
@@ -83,6 +87,8 @@ import { GameProgressWriter, type Milestone } from './game/progression.js'
 import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
 import { createPlayBoards } from './platform/playBoards.js'
+import { PgSurfRecords, createSurfPlay, surfBoardId } from './platform/surfRuns.js'
+import { handleSurfRead } from './net/surfRoutes.js'
 import { createCasualRoutes } from './casual/routes.js'
 import { casualLeaderboard, pruneCasualActions } from './casual/store.js'
 import { createPortalHome, readPlayTitles } from './net/portalHome.js'
@@ -141,7 +147,12 @@ async function main(): Promise<void> {
   const packs = await loadDefinitionPacks(store.mods, (modId, reason) =>
     log.warn('mod definitions skipped', { mod: modId, reason }),
   )
-  const builtInPack = config.placeId === 'salvage-rush' ? SALVAGE_RUSH_PACK : SCRAPLANDIA_PACK
+  const primarySurf = surfMapOfPlace(config.placeId)
+  const builtInPack = primarySurf
+    ? surfPack(primarySurf.id)
+    : config.placeId === 'salvage-rush'
+      ? SALVAGE_RUSH_PACK
+      : SCRAPLANDIA_PACK
   const content = createContent(packs, builtInPack)
   let inventoryRewards: InventoryRewards | null = null
   const settleRewards = (subject: string): void => {
@@ -162,11 +173,12 @@ async function main(): Promise<void> {
   // Edited map (from /editor): heightfield + extra statics replace the
   // procedural terrain for EVERYTHING (physics, spawns, clients fetch the
   // same file over /map.json).
-  if (existsSync(config.mapPath)) {
+  const primaryMapPath = primarySurf ? surfMapPath(primarySurf.id) : config.mapPath
+  if (existsSync(primaryMapPath)) {
     try {
       // The document is v2; the RUNTIME representation is v2 compiled straight
       // through.
-      const parsed = parseMapFile(JSON.parse(readFileSync(config.mapPath, 'utf8')))
+      const parsed = parseMapFile(JSON.parse(readFileSync(primaryMapPath, 'utf8')))
       if (parsed.ok) {
         // The map's statics live in the override, NOT merged into
         // content.world.statics: that merge was permanent, so the map layer
@@ -220,6 +232,13 @@ async function main(): Promise<void> {
   playSync.start()
   // The in-game boards are Play's (public reads, no token).
   const playBoards = createPlayBoards({ url: config.platform.playUrl })
+  // Surf runs: local rows first (migration 0018), then Play's `time` board.
+  // A Play failure never fails a run.
+  const surfRecords = new PgSurfRecords(
+    db,
+    createSurfPlay({ url: config.platform.playUrl, tokens: platform?.tokens ?? null }),
+    (message) => log.warn(message),
+  )
   const platformLog = log.child({ system: 'platform' })
   const valkey = createValkey({ url: config.db.valkeyUrl ?? '', prefix: config.db.valkeyPrefix })
   let outbox: PgOutbox | null = null
@@ -389,6 +408,7 @@ async function main(): Promise<void> {
             },
           }
         : {}),
+      ...(primarySurf ? { surf: surfRecords } : {}),
     },
   )
   // Async boot: env, markets and the NPC population load before the tick loop starts.
@@ -461,6 +481,7 @@ async function main(): Promise<void> {
                 },
               }
             : {}),
+          ...(primarySurf ? { surf: surfRecords } : {}),
         },
       )
       await roomGame.load()
@@ -594,9 +615,97 @@ async function main(): Promise<void> {
     createSecondaryRoom,
     log.child({ system: 'instances', place: secondaryPlace }),
   )
+  // ── OpenVibe.Surf (openvibe.surf): one place per map, all in this process ──
+  // A surf place is ordinary content (the surf pack) plus an authored MapFileV2
+  // override; its GameServer runs the SurfSystem. Places are separate so each
+  // room's world has exactly one map, the same way Scraplandia and Salvage Rush
+  // are separate places. The primary place already hosts one when it is surf.
+  const extraHubs = new Map<string, InstanceHub>()
+  const surfContentByPlace = new Map<string, ContentRegistry>()
+  for (const info of SURF_MAPS) {
+    if (info.placeId === config.placeId || info.placeId === secondaryPlace) continue
+    const placeContent = createContent(packs, surfPack(info.id))
+    setMapOverride(loadSurfOverride(info.id), placeContent.world.id)
+    surfContentByPlace.set(info.placeId, placeContent)
+    const surfRegistry = new InstanceRegistry(db, info.placeId)
+    let surfPrimaryLease: InstanceLease
+    const createSurfRoom = async (slot: number, lease: InstanceLease) => {
+      const roomStore = openPgStore(db, {
+        placeId: info.placeId,
+        instanceSlot: slot,
+        leaseGuard: () =>
+          surfRegistry.assertHeld(slot === 0 ? surfPrimaryLease : lease, Date.now()),
+      })
+      await roomStore.ensurePlace()
+      const roomPhysics = createRapierWorld(rapier)
+      const roomWorld = new GameWorld(
+        placeContent,
+        roomPhysics,
+        log.child({ system: 'world', place: info.placeId, slot }),
+        config.interestCell,
+      )
+      await roomWorld.seedOrRestore(roomStore)
+      const roomGame = new GameServer(
+        {
+          ...config,
+          placeId: info.placeId,
+          instanceSlot: slot,
+          // A surf room has no survival, NPC population or world events; the
+          // run system owns falls and respawns.
+          sandbox: true,
+        },
+        roomWorld,
+        roomStore,
+        metrics,
+        log.child({ system: 'game', place: info.placeId, slot }),
+        { surf: surfRecords },
+      )
+      await roomGame.load()
+      return {
+        lease,
+        game: roomGame,
+        world: roomWorld,
+        dispose: async () => {
+          roomPhysics.dispose()
+        },
+      }
+    }
+    // The place row must exist before a lease can reference it (the same
+    // order the primary/secondary rooms use: ensurePlace, then claim).
+    const surfBootstrap = openPgStore(db, {
+      placeId: info.placeId,
+      instanceSlot: 0,
+      leaseGuard: async () => {},
+    })
+    await surfBootstrap.ensurePlace()
+    const surfClaim = await surfRegistry.claim(
+      0,
+      config.maxPlayers,
+      crypto.randomUUID(),
+      Date.now(),
+      60_000,
+    )
+    if (!surfClaim) throw new Error(`${info.placeId} primary instance slot is already leased`)
+    surfPrimaryLease = surfClaim
+    const surfPrimary = await createSurfRoom(0, surfClaim)
+    const surfRunning = await surfRegistry.renew(surfClaim, Date.now(), 15_000, 'running')
+    if (!surfRunning) throw new Error(`${info.placeId} primary lease expired during boot`)
+    surfPrimary.lease = surfRunning
+    surfPrimaryLease = surfRunning
+    const surfHub = new InstanceHub(
+      surfRegistry,
+      surfPrimary,
+      config.instancesPerPlace,
+      config.maxPlayers,
+      createSurfRoom,
+      log.child({ system: 'instances', place: info.placeId }),
+    )
+    extraHubs.set(info.placeId, surfHub)
+  }
   const hubs = new Map([
     [config.placeId, hub],
     [secondaryPlace, secondaryHub],
+    ...extraHubs,
   ])
   // ── Creator worlds (worlds/): players' own places, started on the first join, stopped when empty ──
   // A creator world is the place `world:<id>` with the plain creator pack and its map as the override. Its room is
@@ -654,6 +763,7 @@ async function main(): Promise<void> {
   const contentByPlace = new Map([
     [config.placeId, content],
     [secondaryPlace, secondaryContent],
+    ...surfContentByPlace,
   ])
   const heartbeatTimer = setInterval(() => void router.heartbeat(), 5_000)
   heartbeatTimer.unref()
@@ -1006,6 +1116,38 @@ async function main(): Promise<void> {
         if (serveWorldPage(req, res)) return true
         if (serveSteam(req, res)) return true
         if (
+          handleSurfRead(req, res, {
+            db,
+            networkAuthUrl: config.networkAuthUrl,
+            ...(config.platform.playUrl
+              ? {
+                  playBoard: async (mapId: string) => {
+                    const res = await fetch(
+                      `${config.platform.playUrl}/api/v1/titles/surf/boards/${surfBoardId(mapId)}?period=all&page=1`,
+                      {
+                        headers: { accept: 'application/json' },
+                        signal: AbortSignal.timeout(4_000),
+                      },
+                    )
+                    if (!res.ok) return null
+                    const body = (await res.json()) as {
+                      entries?: { rank: number; name: string; score: number }[]
+                    }
+                    return {
+                      entries: (body.entries ?? []).map((e) => ({
+                        rank: Number(e.rank),
+                        name: String(e.name),
+                        score: Number(e.score),
+                      })),
+                    }
+                  },
+                }
+              : {}),
+            log: (message) => log.warn(message),
+          })
+        )
+          return true
+        if (
           handleGameRead(req, res, {
             db,
             boards: playBoards,
@@ -1139,6 +1281,15 @@ async function main(): Promise<void> {
       log.child({ system: 'indexnow' }),
     ),
     config.placeId,
+    // One map document per place: surf maps are separate files, the rest
+    // share the configured editor map.
+    (place) => {
+      const surf = place ? surfMapOfPlace(place) : null
+      if (surf) return surfMapPath(surf.id)
+      if (!place || place === config.placeId)
+        return primarySurf ? surfMapPath(primarySurf.id) : config.mapPath
+      return undefined
+    },
   )
   const drainer = httpDrainer(http)
   world.reconcileMapNodes()

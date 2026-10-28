@@ -24,6 +24,7 @@ import {
   ReplicationSystem,
   SessionsSystem,
   SocialSystem,
+  SurfSystem,
   VehicleSystem,
   WorldEventSystem,
   buildHandlerTable,
@@ -82,6 +83,9 @@ export class GameServer {
     const ctx = this.ctx
     const sessions = new SessionsSystem(ctx)
     const movement = new MovementSystem(ctx)
+    // Runs see this tick's authoritative positions: construct after movement,
+    // insert in the ordered list before replication.
+    const surf = new SurfSystem(ctx)
     // The wire surface every system sends through.
     const replication = new ReplicationSystem(ctx)
     ctx.net = replication
@@ -104,6 +108,7 @@ export class GameServer {
     this.systems = {
       sessions,
       movement,
+      surf,
       replication,
       manipulation,
       combat,
@@ -127,6 +132,7 @@ export class GameServer {
     this.ordered = [
       sessions,
       movement,
+      surf,
       replication,
       manipulation,
       combat,
@@ -279,6 +285,9 @@ export class GameServer {
 
     // 1. Movement from queued inputs (server-simulated, never client positions).
     s.movement.tick(ctx, dt)
+    // 1b. Surf run state: timer, checkpoints, fails, finish (after movement,
+    //     before replication so surf_state travels in this tick's snapshot).
+    s.surf.tick(ctx, dt)
     if (this.rush) {
       const now = Date.now()
       const results = this.rush.tick(

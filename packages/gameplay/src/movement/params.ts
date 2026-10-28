@@ -29,6 +29,8 @@ export interface MovementParams {
   readonly eyeOffset: number
   /** Collision skin to keep the capsule from touching surfaces exactly. */
   readonly skin: number
+  /** Horizontal speed ceiling (m/s); Infinity means the engine's old unbounded rule. */
+  readonly maxHorizontalSpeed: number
   /** Hold-jump auto-hops when true (fun default for a sandbox). */
   readonly autoBhop: boolean
 }
@@ -49,5 +51,6 @@ export const DEFAULT_MOVEMENT: MovementParams = {
   capsuleRadius: 0.4,
   eyeOffset: 0.65,
   skin: 0.02,
+  maxHorizontalSpeed: Number.POSITIVE_INFINITY,
   autoBhop: true,
 }

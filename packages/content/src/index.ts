@@ -24,6 +24,7 @@ export * from './defs/resources.js'
 export * from './packs/scraplandia.js'
 export * from './packs/creatorWorld.js'
 export * from './packs/creatorAsset.js'
+export * from './packs/surf.js'
 
 import { ContentRegistry, type ContentDefs } from './registry.js'
 import { mergePackDefs, type ContentPackV2 } from './pack.js'

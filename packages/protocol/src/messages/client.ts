@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { ANGLE_Q_MAX, ANGLE_Q_MIN, PITCH_Q_MAX, intentMask } from '@openvibe/shared'
 import { AppearanceSchema } from '../appearance.js'
+import { ClientSurfRestartSchema } from './surf.js'
 
 /**
  * How many characters one account (or one guest browser) may keep in a game. Not a feature: a technical ceiling for the
@@ -328,6 +329,7 @@ export const ClientMessageSchema = z.union([
   ClientContainerOpenSchema,
   ClientContainerMoveSchema,
   ClientContainerSortSchema,
+  ClientSurfRestartSchema,
 ])
 
 export type ClientHello = z.infer<typeof ClientHelloSchema>
@@ -358,4 +360,5 @@ export type ClientJobTurnIn = z.infer<typeof ClientJobTurnInSchema>
 export type ClientContainerOpen = z.infer<typeof ClientContainerOpenSchema>
 export type ClientContainerMove = z.infer<typeof ClientContainerMoveSchema>
 export type ClientContainerSort = z.infer<typeof ClientContainerSortSchema>
+export type { ClientSurfRestart } from './surf.js'
 export type ClientMessage = z.infer<typeof ClientMessageSchema>

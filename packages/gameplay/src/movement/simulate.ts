@@ -507,4 +507,14 @@ export function stepMovement(
 
   // Terminal velocity guard.
   state.vel.y = clamp(state.vel.y, -50, 50)
+  // Horizontal ceiling (Source's sv_maxvelocity). The sandbox leaves it off;
+  // the surf style uses it so a long ramp cannot exceed CS's 3500 u/s.
+  if (Number.isFinite(params.maxHorizontalSpeed)) {
+    const speed = Math.hypot(state.vel.x, state.vel.z)
+    if (speed > params.maxHorizontalSpeed) {
+      const scale = params.maxHorizontalSpeed / speed
+      state.vel.x *= scale
+      state.vel.z *= scale
+    }
+  }
 }

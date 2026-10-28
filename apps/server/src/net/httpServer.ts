@@ -192,6 +192,8 @@ export function createHttpServer(
   tickets?: WsTicketStore,
   indexnow?: SharedIndexNow,
   defaultPlaceId = 'scraplandia',
+  /** Per-place map documents (surf places each have their own). */
+  mapPathFor?: (place: string | undefined) => string | undefined,
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
@@ -265,15 +267,16 @@ export function createHttpServer(
     if (serveLegal(req, res)) return
     if (!playHost && serveUpdates(req, res)) return
     const requestedMapPlace = new URL(req.url ?? '/', 'http://games.local').searchParams.get('game')
-    if (url === '/map.json' && requestedMapPlace && requestedMapPlace !== defaultPlaceId) {
+    const resolvedMapPath = mapPathFor ? mapPathFor(requestedMapPlace ?? defaultPlaceId) : mapPath
+    if (url === '/map.json' && requestedMapPlace && requestedMapPlace !== defaultPlaceId && !resolvedMapPath) {
       res.writeHead(404, { 'content-type': 'application/json', 'cache-control': 'no-store' })
       res.end('{"error":"no_editor_map"}')
       return
     }
-    if (url === '/map.json' && mapPath) {
+    if (url === '/map.json' && resolvedMapPath) {
       // The canonical v2 document, with its revision as an ETag. This IS the
       // wire format.
-      void loadMap(mapPath).then((rec) => {
+      void loadMap(resolvedMapPath).then((rec) => {
         res.writeHead(200, {
           'content-type': 'application/json',
           'cache-control': 'no-cache',
@@ -808,7 +811,9 @@ export function createHttpServer(
             ? 'editor.html'
             : url === '/worlds'
               ? 'worlds.html'
-              : null
+              : url === '/surf/embed'
+                ? 'play.html'
+                : null
 
     // Static files with path traversal guard.
     const safePath = normalize(pageAlias ?? url).replace(/^(\.\.[/\\])+/, '')
@@ -858,6 +863,11 @@ export function createHttpServer(
           : filePath.includes('/assets/')
             ? 'public, max-age=86400, stale-while-revalidate=604800'
             : 'public, max-age=3600',
+      // The embeddable surf route is frameable by openvibe.surf only; every
+      // other page keeps the deployment's no-CSP/no-frame-rule default.
+      ...(url === '/surf/embed'
+        ? { 'content-security-policy': "frame-ancestors https://openvibe.surf 'self'" }
+        : {}),
     })
     createReadStream(filePath)
       .on('error', (err) => {
