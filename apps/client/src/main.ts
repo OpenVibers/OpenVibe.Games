@@ -819,8 +819,13 @@ async function start(): Promise<void> {
 
   let wasSubmerged = false
 
-  // Fixed-timestep prediction; interpolated rendering.
-  const timestep = new FixedTimestep(1 / state.tickRate)
+  // Fixed-timestep prediction; interpolated rendering. A room's welcome carries
+  // its own rate (30 default, 100 surf), so a transfer/reset rebuilds the
+  // accumulator instead of keeping the previous room's step.
+  let timestep = new FixedTimestep(1 / state.tickRate)
+  state.events.on('welcome', () => {
+    if (timestep.dt !== 1 / state.tickRate) timestep = new FixedTimestep(1 / state.tickRate)
+  })
   gameLoop = () => {
     const now = performance.now()
     const elapsed = Math.min((now - last) / 1000, 0.25)

@@ -272,9 +272,14 @@ export class GameServer {
     return nearbyWorkstationKinds(session, this.ctx.world)
   }
 
+  /** This room's fixed simulation rate (100 surf, 30 everywhere else). */
+  get tickRate(): number {
+    return this.ctx.config.tickRate
+  }
+
   /**
-   * The simulation tick, 30 Hz. This is the ONE place the order is written down; the systems'
-   * internal cadence (1 Hz sweeps, every-2-tick snapshots) is their own.
+   * One simulation tick at the room's own rate. This is the ONE place the order is written down;
+   * the systems' internal cadence (1 Hz sweeps, every-N-tick snapshots) is their own.
    */
   step(): void {
     const ctx = this.ctx
@@ -333,7 +338,7 @@ export class GameServer {
     // 10. Once a second: resource respawn sweep.
     s.interaction.respawnResources()
 
-    // 11. Replication: interest diff + snapshot (every `snapshotEvery` ticks → 15 Hz).
+    // 11. Replication: interest diff + snapshot (every `snapshotEvery` ticks → 15 Hz default, 25 Hz surf).
     s.replication.tick(ctx, dt)
 
     // 12. Mods: reconcile installs (a revoked or disabled mod's effects are

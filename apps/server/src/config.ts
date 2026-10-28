@@ -1,4 +1,5 @@
 import { MIGRATIONS_DIR } from '@openvibe/persistence'
+import { SIM_TICK_RATE, SURF_SNAPSHOT_EVERY, SURF_TICK_RATE } from '@openvibe/shared'
 import { parseProxyTrust, type ProxyTrust } from './net/clientAddress.js'
 
 export interface DbConfig {
@@ -53,6 +54,10 @@ export interface ServerConfig {
    * is off until OV_OAUTH_CLIENT_SECRET (the same OAuth client as SSO) is set.
    */
   platform: PlatformConfig
+  /**
+   * The room's simulation rate. A room carries its own value: surf rooms use
+   * SURF_ROOM_TIMING, every other place keeps the default (and creator worlds).
+   */
   tickRate: number
   /** Send a snapshot every N ticks. */
   snapshotEvery: number
@@ -143,6 +148,24 @@ export interface PlatformConfig {
   eventsEndpoint: string | null
 }
 
+/** One room's fixed simulation cadence. */
+export interface RoomTiming {
+  readonly tickRate: number
+  readonly snapshotEvery: number
+}
+
+/** Scraplandia, Salvage Rush, creator worlds: 30 Hz, a snapshot every other tick (15 Hz). */
+export const DEFAULT_ROOM_TIMING: RoomTiming = {
+  tickRate: SIM_TICK_RATE,
+  snapshotEvery: 2,
+}
+
+/** Native CS:S surf: 100 Hz simulation, a snapshot every 4 ticks (25 Hz). */
+export const SURF_ROOM_TIMING: RoomTiming = {
+  tickRate: SURF_TICK_RATE,
+  snapshotEvery: SURF_SNAPSHOT_EVERY,
+}
+
 function trimSlash(v: string): string {
   return v.replace(/\/+$/, '')
 }
@@ -217,8 +240,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     platform: loadPlatformConfig(env),
     /** IndexNow is off until a key is configured; an empty key never mounts the key file. */
     indexnowKey: String(env.INDEXNOW_KEY ?? '').trim(),
-    tickRate: 30,
-    snapshotEvery: 2,
+    ...DEFAULT_ROOM_TIMING,
     interestRadius: positiveIntEnv(
       env,
       'GAMES_INTEREST_RADIUS',

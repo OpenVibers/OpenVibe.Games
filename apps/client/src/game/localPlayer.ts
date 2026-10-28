@@ -4,6 +4,7 @@ import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import {
   DEFAULT_MOVEMENT,
+  Stance,
   createMoveState,
   eyeOffsetFor,
   stepMovement,
@@ -75,13 +76,13 @@ export class LocalPlayer {
     private readonly state: ClientState,
     spawn: { x: number; y: number; z: number },
     /** The place's movement preset, resolved on both sides (surf vs default). */
-    private readonly params: MovementParams = DEFAULT_MOVEMENT,
+    readonly params: MovementParams = DEFAULT_MOVEMENT,
   ) {
     this.move = createMoveState(spawn)
-    this.eyeSmooth = params.eyeOffset
+    this.eyeSmooth = eyeOffsetFor(Stance.Stand, params)
     this.camera = new UniversalCamera(
       'cam',
-      new Vector3(spawn.x, spawn.y + params.eyeOffset, spawn.z),
+      new Vector3(spawn.x, spawn.y + this.eyeSmooth, spawn.z),
       scene,
     )
     this.camera.minZ = 0.05
@@ -231,7 +232,7 @@ export class LocalPlayer {
     this.corr.scaleInPlace(decay)
     this.stepOffset *= Math.exp(-dt * 14)
     this.renderPos.set(x + this.corr.x, y + this.corr.y + this.stepOffset, z + this.corr.z)
-    const targetEye = eyeOffsetFor(this.move.stance)
+    const targetEye = eyeOffsetFor(this.move.stance, this.params)
     this.eyeSmooth += (targetEye - this.eyeSmooth) * Math.min(1, dt * 9)
     this.eyePos.set(this.renderPos.x, this.renderPos.y + this.eyeSmooth, this.renderPos.z)
     if (this.topDown === null) {
