@@ -18,7 +18,11 @@ import {
   MapLightSchema,
   StaticBodySchema,
   ZoneDefSchema,
+  MovementStyleSchema,
+  SurfMapMetaSchema,
   type FaceStyle,
+  type MovementStyle,
+  type SurfMapMeta,
   type ZoneDef,
 } from './schema/world.js'
 import { decodeHeights, encodeHeights, type MapLight } from './mapFile.js'
@@ -182,6 +186,10 @@ export const MapFileV2Schema = z.object({
     )
     .max(512)
     .default([]),
+  /** Movement preset for this map (resolved on both sides; the world default if absent). */
+  movement: MovementStyleSchema.optional(),
+  /** Surf run metadata (kind: time trial): fail plane, stage count, author and tier. */
+  surf: SurfMapMetaSchema.optional(),
   spawn: finiteVec3.optional(),
   spawnYaw: z.number().optional(),
 })
@@ -195,6 +203,8 @@ export type MapNodeV2 = MapFileV2['nodes'][number]
 export type MapPropV2 = MapFileV2['props'][number]
 export type MapNpcV2 = MapFileV2['npcs'][number]
 export type MapModelV2 = MapFileV2['models'][number]
+export type MapMovementStyle = MovementStyle
+export type MapSurfMeta = SurfMapMeta
 
 /** The synthetic document id for the spawn point (stored top-level on the wire). */
 export const SPAWN_OBJECT_ID = 'spawn'
@@ -356,6 +366,40 @@ export function validateMapFile(map: MapFileV2): string[] {
   for (const l of map.lights) claim(l.id, 'light')
   for (const z0 of map.zones) claim(z0.id, 'zone')
   if (seen.has(SPAWN_OBJECT_ID)) issues.push(`"${SPAWN_OBJECT_ID}" is reserved for the spawn point`)
+  if (map.surf) issues.push(...surfIssues(map))
+  return issues
+}
+
+/** A surf map's zones must describe exactly one ordered run. */
+function surfIssues(map: MapFileV2): string[] {
+  const issues: string[] = []
+  const surf = map.surf
+  if (!surf) return issues
+  const zones = map.zones.filter((z) => z.surf)
+  const starts = zones.filter((z) => z.surf!.kind === 'start')
+  const finishes = zones.filter((z) => z.surf!.kind === 'finish')
+  if (starts.length !== 1) issues.push(`surf: expected one start zone, found ${starts.length}`)
+  if (finishes.length !== 1) issues.push(`surf: expected one finish zone, found ${finishes.length}`)
+  if (map.movement !== 'surf') issues.push('surf: a surf map must set movement to "surf"')
+  for (const zone of zones) {
+    const meta = zone.surf!
+    const maxStage = meta.kind === 'finish' ? surf.stages : surf.stages - 1
+    if (meta.stage > maxStage)
+      issues.push(`surf zone "${zone.id}": stage ${meta.stage} exceeds ${maxStage}`)
+    if (meta.kind === 'checkpoint' && !meta.spawn)
+      issues.push(`surf zone "${zone.id}": a checkpoint needs a respawn point`)
+  }
+  const checkpoints = zones.filter((z) => z.surf!.kind === 'checkpoint')
+  if (checkpoints.length !== surf.stages - 1)
+    issues.push(
+      `surf: ${checkpoints.length} checkpoints for ${surf.stages} stages (expected ${surf.stages - 1})`,
+    )
+  const stages = checkpoints.map((z) => z.surf!.stage).sort((a, b) => a - b)
+  for (let i = 0; i < stages.length; i++)
+    if (stages[i] !== i + 1) {
+      issues.push(`surf: checkpoint stages must be 1..${surf.stages - 1}, got ${stages.join(',')}`)
+      break
+    }
   return issues
 }
 
@@ -427,6 +471,8 @@ export function compileMapFileV2(map: MapFileV2): MapOverride {
     })),
     statics: map.statics.map((b) => ({ ...b })),
     zones: map.zones.map((z0): ZoneDef => ({ ...z0, min: [...z0.min], max: [...z0.max] })),
+    ...(map.movement ? { movement: map.movement } : {}),
+    ...(map.surf ? { surf: map.surf } : {}),
     ...(map.spawn ? { spawn: map.spawn } : {}),
     ...(map.spawnYaw !== undefined ? { spawnYaw: map.spawnYaw } : {}),
   }

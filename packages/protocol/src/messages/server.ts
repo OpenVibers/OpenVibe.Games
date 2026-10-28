@@ -7,6 +7,7 @@ import type {
   WirePlayerState,
   WirePlant,
 } from '../wire.js'
+import type { ServerSurfFinish, ServerSurfState } from './surf.js'
 
 /**
  * Server -> client messages. Plain types (no zod): the client trusts the
@@ -271,6 +272,8 @@ export interface ServerContainer {
 }
 
 export type ServerMessage =
+  | ServerSurfState
+  | ServerSurfFinish
   | {
       t: 'salvage_round'
       roundId: string

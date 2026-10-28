@@ -91,6 +91,21 @@ export class ServerMetrics {
     for (const k of ROOM_GAUGES) this[k] = totals[k]
   }
 
+  /**
+   * One place's view: the snapshot with the world gauges summed over that place's rooms only (`/metrics?place=`).
+   * The process also hosts other places (the second built-in place, one per surf map), whose maps add to the totals.
+   */
+  placeSnapshot(place: string): Record<string, number> {
+    const totals = Object.fromEntries(ROOM_GAUGES.map((k) => [k, 0])) as Record<keyof RoomGauges, number>
+    let rooms = 0
+    for (const [key, r] of this.rooms) {
+      if (!key.startsWith(`${place}:`)) continue
+      rooms++
+      for (const k of ROOM_GAUGES) totals[k] += r.gauges[k]
+    }
+    return { ...this.snapshot(), ...totals, rooms }
+  }
+
   /** How many rooms reported recently. */
   get roomCount(): number {
     return this.rooms.size

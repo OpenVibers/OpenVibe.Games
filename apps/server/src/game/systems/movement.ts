@@ -2,9 +2,12 @@ import {
   DEFAULT_MOVEMENT,
   applyDamage,
   hullHeightFor,
+  movementParamsFor,
+  movementStyleFor,
   stepMovement,
   type CollisionQueries,
   type MoveInput,
+  type MovementParams,
 } from '@openvibe/gameplay'
 import { CollisionLayer, type BodyId } from '@openvibe/physics'
 import type { ClientEditMode, ClientInput } from '@openvibe/protocol'
@@ -130,17 +133,29 @@ export class MovementSystem implements System {
   }
 
   tick(ctx: ServerContext, dt: number): void {
+    // Resolve the place's movement once per tick, not once per player: the
+    // style is room-wide, and instanceHub's per-tick budget is tight.
+    const style = movementStyleFor(ctx.world.content.world)
+    const params = movementParamsFor(style)
+    const surfPlace = style === 'surf'
     for (const session of ctx.sessions.values()) {
-      this.stepSession(ctx, session, dt)
+      this.stepSession(ctx, session, dt, params, surfPlace)
     }
   }
 
-  private stepSession(ctx: ServerContext, session: PlayerSession, dt: number): void {
+  private stepSession(
+    ctx: ServerContext,
+    session: PlayerSession,
+    dt: number,
+    params: MovementParams,
+    surfPlace: boolean,
+  ): void {
     if (session.driving) {
       ctx.systems.vehicles.driveVehicle(session)
       return
     }
     this.sweepSelf = ctx.sessions.bodyOf(session.playerId)
+    session.moveSegments.length = 0
     let simulated = 0
     for (const input of takeInputs(session)) {
       session.lastInput = input
@@ -148,7 +163,16 @@ export class MovementSystem implements System {
       session.lastProcessedSeq = input.seq
       applyLookInput(session, input)
       session.buttons = input.intents
-      stepMovement(session.move, toMoveInput(session, input), MOVE, this.moveQueries, dt)
+      const from = surfPlace
+        ? vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z)
+        : null
+      stepMovement(session.move, toMoveInput(session, input), params, this.moveQueries, dt)
+      if (from)
+        session.moveSegments.push({
+          from,
+          to: vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z),
+          yaw: session.yaw,
+        })
       simulated++
     }
     if (simulated === 0 && session.lastInput) {
@@ -159,13 +183,22 @@ export class MovementSystem implements System {
       if (session.starvedTicks > STALL_TICKS) {
         // Zero MOVEMENT only: buttons stay held. Zeroing buttons fabricates release edges for toggle keys
         // (prone/crouch), and the server flapped stances.
+        const from = surfPlace
+          ? vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z)
+          : null
         stepMovement(
           session.move,
           toMoveInput(session, { ...session.lastInput, moveX: 0, moveZ: 0 }),
-          MOVE,
+          params,
           this.moveQueries,
           dt,
         )
+        if (from)
+          session.moveSegments.push({
+            from,
+            to: vec3(session.move.pos.x, session.move.pos.y, session.move.pos.z),
+            yaw: session.yaw,
+          })
       }
     }
     let bodyId = ctx.sessions.bodyOf(session.playerId)
@@ -176,7 +209,7 @@ export class MovementSystem implements System {
       bodyId = ctx.world.physics.addBody({
         shape: {
           type: 'capsule',
-          radius: MOVE.capsuleRadius,
+          radius: params.capsuleRadius,
           height: Math.max(hull - 0.3, 0.4),
         },
         motion: 'kinematic',
@@ -195,7 +228,11 @@ export class MovementSystem implements System {
     }
     // Fall damage: track the hardest downward velocity while airborne and
     // cash it in on landing. ~13 m/s (≈2.5 story drop) is the free threshold.
-    if (!session.move.grounded) {
+    // A surf place is a time trial: misses teleport to the last checkpoint and
+    // the clock keeps running, so falls must not kill (brief decision 4).
+    if (surfPlace) {
+      session.fallVy = 0
+    } else if (!session.move.grounded) {
       session.fallVy = Math.min(session.fallVy, session.move.vel.y)
     } else if (session.fallVy < -13) {
       const dmg = Math.round((-session.fallVy - 13) * 3.5)

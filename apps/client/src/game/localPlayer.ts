@@ -9,6 +9,7 @@ import {
   stepMovement,
   type CollisionQueries,
   type MoveInput,
+  type MovementParams,
   type PlayerMoveState,
 } from '@openvibe/gameplay'
 import { CollisionLayer, type PhysicsWorld } from '@openvibe/physics'
@@ -33,8 +34,6 @@ const TOP_DOWN_ABOVE = 120
  * already are and nothing visibly changes.
  */
 
-const MOVE = DEFAULT_MOVEMENT
-
 export class LocalPlayer {
   readonly camera: UniversalCamera
   readonly move: PlayerMoveState
@@ -47,7 +46,7 @@ export class LocalPlayer {
   /** Interpolated render position (capsule center), updated each frame. */
   readonly renderPos = new Vector3()
   /** Smoothed eye height so stance changes glide instead of popping. */
-  private eyeSmooth = DEFAULT_MOVEMENT.eyeOffset
+  private eyeSmooth: number
   /** Reconciliation error, blended away over ~100ms instead of snapping —
    * this is what makes standing on moving props watchable. */
   private readonly corr = new Vector3()
@@ -75,11 +74,14 @@ export class LocalPlayer {
     private readonly connection: Connection,
     private readonly state: ClientState,
     spawn: { x: number; y: number; z: number },
+    /** The place's movement preset, resolved on both sides (surf vs default). */
+    private readonly params: MovementParams = DEFAULT_MOVEMENT,
   ) {
     this.move = createMoveState(spawn)
+    this.eyeSmooth = params.eyeOffset
     this.camera = new UniversalCamera(
       'cam',
-      new Vector3(spawn.x, spawn.y + MOVE.eyeOffset, spawn.z),
+      new Vector3(spawn.x, spawn.y + params.eyeOffset, spawn.z),
       scene,
     )
     this.camera.minZ = 0.05
@@ -147,7 +149,7 @@ export class LocalPlayer {
       pitch: dequantiseAngle(cmd.pitchQ),
       buttons: cmd.intents,
     }
-    stepMovement(this.move, input, MOVE, this.queries, 1 / this.state.tickRate)
+    stepMovement(this.move, input, this.params, this.queries, 1 / this.state.tickRate)
   }
 
   /** Reconcile against an authoritative snapshot. */

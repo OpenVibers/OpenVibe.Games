@@ -17,6 +17,7 @@ export type { HandlerMap, MessageHandler, System } from './system.js'
 
 export { SessionsSystem } from './sessions.js'
 export { MovementSystem, MOVE, MAX_INPUT_QUEUE } from './movement.js'
+export { SurfSystem } from './surf.js'
 export { ReplicationSystem } from './replication.js'
 export { ManipulationSystem } from './manipulation.js'
 export { CombatSystem } from './combat.js'

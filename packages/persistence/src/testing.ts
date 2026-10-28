@@ -41,6 +41,7 @@ const TABLES = [
   'event_outbox',
   'token_revocations',
   'steam_list_entries',
+  'surf_runs',
 ].join(', ')
 
 let shared: Db | null = null

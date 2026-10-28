@@ -7,6 +7,7 @@ import {
   eyeOffsetFor,
   normalizeStats,
   type PlayerMoveState,
+  type SurfRunState,
   type SurvivalStats,
 } from '@openvibe/gameplay'
 import type { ItemStack, ReputationDto } from '@openvibe/gameplay'
@@ -93,6 +94,15 @@ export interface PlayerSession {
   openContainer: EntityId | null
   /** Most negative airborne vertical velocity (fall-damage tracking). */
   fallVy: number
+  /** Surf run tracker; null outside a surf place. */
+  surf: SurfRunState | null
+  /** Cached personal best/world record shown in surf_state. */
+  surfPb: number | null
+  surfWr: number | null
+  /** The PB's split times (HUD deltas). */
+  surfPbSplits: number[]
+  /** This tick's authoritative movement segments (cleared by MovementSystem). */
+  moveSegments: { from: Vec3; to: Vec3; yaw: number }[]
   /** Tick of the last accepted use/swing (server-side swing cooldown). */
   lastUseTick: number
   /** Stance the kinematic physics body was last built for. */
@@ -174,6 +184,11 @@ export function createSession(init: SessionInit): PlayerSession {
     statsDirty: true,
     openContainer: null,
     fallVy: 0,
+    surf: null,
+    surfPb: null,
+    surfWr: null,
+    surfPbSplits: [],
+    moveSegments: [],
     lastUseTick: 0,
     bodyStance: 0,
     content: init.content,

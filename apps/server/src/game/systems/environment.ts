@@ -3,6 +3,7 @@ import {
   activeStatuses,
   ambientTemperature,
   precipitation,
+  movementStyleFor,
   stepEnvironment,
   tickSurvival,
   type WeatherKind,
@@ -45,11 +46,17 @@ export class EnvironmentSystem implements System {
     const ambientC = ambientTemperature(ctx.env)
     const raining = precipitation(ctx.env) > 0
     const nowMs = Date.now()
+    // A surf place is a time trial: no exposure/hunger simulation and no
+    // void rescue (a miss is the SurfSystem's checkpoint teleport). The void
+    // hook would otherwise yank a falling player to the world spawn once a
+    // second, before the run could fail them.
+    const surfPlace = movementStyleFor(ctx.world.content.world) === 'surf'
     // Region activation follows players (coarse, 1 Hz).
     ctx.regions.update(
       [...ctx.sessions.values()].map((s) => ({ x: s.move.pos.x, z: s.move.pos.z })),
     )
     for (const session of ctx.sessions.values()) {
+      if (surfPlace) continue
       const sprinting =
         (session.buttons & Buttons.Sprint) !== 0 &&
         Math.hypot(session.move.vel.x, session.move.vel.z) > 1

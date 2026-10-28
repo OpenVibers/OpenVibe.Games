@@ -1,0 +1,588 @@
+{
+  "v": 2,
+  "movement": "surf",
+  "surf": {
+    "title": "Surf Orbit",
+    "author": "OpenVibe",
+    "tier": 4,
+    "stages": 6,
+    "failY": 3.852
+  },
+  "spawn": [
+    0,
+    79,
+    3
+  ],
+  "spawnYaw": 0,
+  "terrains": [],
+  "statics": [
+    {
+      "id": "start-pad",
+      "shape": {
+        "type": "box",
+        "size": [
+          12.5,
+          1,
+          12
+        ]
+      },
+      "pos": [
+        0,
+        77.5,
+        6
+      ],
+      "color": "#285867"
+    },
+    {
+      "id": "practice-ramp",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          8.0
+        ]
+      },
+      "pos": [
+        0,
+        74.449,
+        -3.865
+      ],
+      "color": "#4aa3b5",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "practice-return",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          6
+        ]
+      },
+      "pos": [
+        0,
+        76.6,
+        -8
+      ],
+      "color": "#3d8b9c"
+    },
+    {
+      "id": "ramp-1",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          13
+        ]
+      },
+      "pos": [
+        0,
+        72.329,
+        15.19
+      ],
+      "color": "#2f6f7e",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "landing-1",
+      "shape": {
+        "type": "box",
+        "size": [
+          8.5,
+          1,
+          9
+        ]
+      },
+      "pos": [
+        0,
+        66.475,
+        23.389
+      ],
+      "color": "#21505d"
+    },
+    {
+      "id": "ramp-2",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          13
+        ]
+      },
+      "pos": [
+        0,
+        61.304,
+        31.079
+      ],
+      "color": "#3d8b9c",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "landing-2",
+      "shape": {
+        "type": "box",
+        "size": [
+          8.5,
+          1,
+          9
+        ]
+      },
+      "pos": [
+        0,
+        55.451,
+        39.278
+      ],
+      "color": "#21505d"
+    },
+    {
+      "id": "ramp-3",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          13
+        ]
+      },
+      "pos": [
+        0,
+        50.279,
+        46.968
+      ],
+      "color": "#285867",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "landing-3",
+      "shape": {
+        "type": "box",
+        "size": [
+          8.5,
+          1,
+          9
+        ]
+      },
+      "pos": [
+        0,
+        44.426,
+        55.167
+      ],
+      "color": "#21505d"
+    },
+    {
+      "id": "ramp-4",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          13
+        ]
+      },
+      "pos": [
+        0,
+        39.255,
+        62.857
+      ],
+      "color": "#4aa3b5",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "landing-4",
+      "shape": {
+        "type": "box",
+        "size": [
+          8.5,
+          1,
+          9
+        ]
+      },
+      "pos": [
+        0,
+        33.401,
+        71.056
+      ],
+      "color": "#21505d"
+    },
+    {
+      "id": "ramp-5",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          13
+        ]
+      },
+      "pos": [
+        0,
+        28.23,
+        78.746
+      ],
+      "color": "#21505d",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "landing-5",
+      "shape": {
+        "type": "box",
+        "size": [
+          8.5,
+          1,
+          9
+        ]
+      },
+      "pos": [
+        0,
+        22.377,
+        86.945
+      ],
+      "color": "#21505d"
+    },
+    {
+      "id": "ramp-6",
+      "shape": {
+        "type": "box",
+        "size": [
+          6.5,
+          0.6,
+          13
+        ]
+      },
+      "pos": [
+        0,
+        17.206,
+        94.635
+      ],
+      "color": "#5a7f8c",
+      "rot": [
+        1.012291,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "landing-6",
+      "shape": {
+        "type": "box",
+        "size": [
+          8.5,
+          1,
+          9
+        ]
+      },
+      "pos": [
+        0,
+        11.352,
+        102.834
+      ],
+      "color": "#21505d"
+    },
+    {
+      "id": "finish-gate-l",
+      "shape": {
+        "type": "box",
+        "size": [
+          0.4,
+          5,
+          0.4
+        ]
+      },
+      "pos": [
+        -4.05,
+        13.852,
+        107.334
+      ],
+      "color": "#f4cb65"
+    },
+    {
+      "id": "finish-gate-r",
+      "shape": {
+        "type": "box",
+        "size": [
+          0.4,
+          5,
+          0.4
+        ]
+      },
+      "pos": [
+        4.05,
+        13.852,
+        107.334
+      ],
+      "color": "#f4cb65"
+    },
+    {
+      "id": "transfer",
+      "shape": {
+        "type": "box",
+        "size": [
+          10,
+          0.6,
+          9
+        ]
+      },
+      "pos": [
+        -7.25,
+        13.052,
+        94.334
+      ],
+      "color": "#8e9ce9",
+      "rot": [
+        0.872665,
+        0,
+        0.314159
+      ]
+    },
+    {
+      "id": "transfer-pad",
+      "shape": {
+        "type": "box",
+        "size": [
+          8,
+          1,
+          8
+        ]
+      },
+      "pos": [
+        -12.25,
+        8.652,
+        87.334
+      ],
+      "color": "#8e9ce9"
+    }
+  ],
+  "nodes": [],
+  "props": [],
+  "npcs": [],
+  "lights": [],
+  "zones": [
+    {
+      "id": "start",
+      "name": "Start",
+      "min": [
+        -5.25,
+        77,
+        0
+      ],
+      "max": [
+        5.25,
+        82,
+        8
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "start",
+        "stage": 0
+      }
+    },
+    {
+      "id": "cp-1",
+      "name": "Checkpoint 1",
+      "min": [
+        -4.25,
+        65.975,
+        23.889
+      ],
+      "max": [
+        4.25,
+        70.975,
+        27.889
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "checkpoint",
+        "stage": 1,
+        "spawn": [
+          0,
+          67.975,
+          25.889
+        ],
+        "yaw": 0
+      }
+    },
+    {
+      "id": "cp-2",
+      "name": "Checkpoint 2",
+      "min": [
+        -4.25,
+        54.951,
+        39.778
+      ],
+      "max": [
+        4.25,
+        59.951,
+        43.778
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "checkpoint",
+        "stage": 2,
+        "spawn": [
+          0,
+          56.951,
+          41.778
+        ],
+        "yaw": 0
+      }
+    },
+    {
+      "id": "cp-3",
+      "name": "Checkpoint 3",
+      "min": [
+        -4.25,
+        43.926,
+        55.667
+      ],
+      "max": [
+        4.25,
+        48.926,
+        59.667
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "checkpoint",
+        "stage": 3,
+        "spawn": [
+          0,
+          45.926,
+          57.667
+        ],
+        "yaw": 0
+      }
+    },
+    {
+      "id": "cp-4",
+      "name": "Checkpoint 4",
+      "min": [
+        -4.25,
+        32.901,
+        71.556
+      ],
+      "max": [
+        4.25,
+        37.901,
+        75.556
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "checkpoint",
+        "stage": 4,
+        "spawn": [
+          0,
+          34.901,
+          73.556
+        ],
+        "yaw": 0
+      }
+    },
+    {
+      "id": "cp-5",
+      "name": "Checkpoint 5",
+      "min": [
+        -4.25,
+        21.877,
+        87.445
+      ],
+      "max": [
+        4.25,
+        26.877,
+        91.445
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "checkpoint",
+        "stage": 5,
+        "spawn": [
+          0,
+          23.877,
+          89.445
+        ],
+        "yaw": 0
+      }
+    },
+    {
+      "id": "finish",
+      "name": "Finish",
+      "min": [
+        -4.25,
+        10.852,
+        103.334
+      ],
+      "max": [
+        4.25,
+        15.852,
+        107.334
+      ],
+      "rules": {
+        "pvp": false,
+        "build": false,
+        "physgun": false
+      },
+      "surf": {
+        "kind": "finish",
+        "stage": 6,
+        "spawn": [
+          0,
+          12.852,
+          105.334
+        ],
+        "yaw": 0
+      }
+    }
+  ],
+  "models": [],
+  "textures": []
+}

@@ -192,6 +192,10 @@ export interface MapOverride {
   /** Editor-placed spawn point (overrides the world def). */
   spawn?: [number, number, number]
   spawnYaw?: number
+  /** Movement preset authored by the map (overrides the world def). */
+  movement?: 'default' | 'surf'
+  /** Surf run metadata authored by the map (fail plane, stages, tier, author). */
+  surf?: { title: string; author: string; tier: number; stages: number; failY: number }
 }
 
 let mapOverride: MapOverride | null = null

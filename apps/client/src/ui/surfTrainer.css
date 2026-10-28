@@ -1,0 +1,46 @@
+.surf-trainer {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.surf-trainer[hidden] { display: none; }
+.surf-trainer-look {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+.surf-trainer-strafe {
+  position: absolute;
+  bottom: max(1.2rem, env(safe-area-inset-bottom));
+  width: min(34vw, 11rem);
+  height: min(28vh, 9rem);
+  border: 2px solid color-mix(in srgb, var(--g-accent, #f0b040) 60%, transparent);
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--g-accent, #f0b040) 18%, rgba(8, 12, 20, 0.55));
+  color: var(--text-primary, #fff);
+  font: 800 calc(0.9rem * var(--ov-text-scale, 1)) / 1.2 system-ui, sans-serif;
+  pointer-events: auto;
+  touch-action: none;
+}
+.surf-trainer-left { left: max(1rem, env(safe-area-inset-left)); }
+.surf-trainer-right { right: max(1rem, env(safe-area-inset-right)); }
+.surf-trainer-strafe:active {
+  background: color-mix(in srgb, var(--g-accent, #f0b040) 45%, rgba(8, 12, 20, 0.5));
+}
+.surf-trainer-restart {
+  position: absolute;
+  top: max(0.8rem, env(safe-area-inset-top));
+  right: max(0.8rem, env(safe-area-inset-right));
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--border, #2a3340);
+  border-radius: 0.5rem;
+  background: var(--g-action, #2a5a8a);
+  color: var(--g-on-action, #fff);
+  font: 700 0.8rem system-ui, sans-serif;
+  pointer-events: auto;
+  touch-action: none;
+}

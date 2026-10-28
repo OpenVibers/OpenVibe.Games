@@ -9,7 +9,12 @@ import {
   emptyMapV2,
   type MapFileV2,
   parseMapFile,
+  surfMap,
+  surfMapOfPlace,
+  surfPack,
+  worldSpawn,
   type MapTextureEntry,
+  type SurfMapInfo,
 } from '@openvibe/content'
 import { MapLightLayer, mapDiff, staticWork, terrainWork } from './render/mapRuntimeLayers.js'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
@@ -19,7 +24,12 @@ import type { Appearance } from '@openvibe/protocol'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Scene } from '@babylonjs/core/scene.js'
 import { WATER_LEVEL, getMapOverride, terrainHeight } from '@openvibe/content'
-import { DEFAULT_MOVEMENT } from '@openvibe/gameplay'
+import {
+  DEFAULT_MOVEMENT,
+  decodeSurfTrack,
+  movementParamsFor,
+  movementStyleFor,
+} from '@openvibe/gameplay'
 import { Sfx, footstepSurface, materialForVisual } from './audio/sfx.js'
 import { HitChips } from './render/hitChips.js'
 import { InteractionController } from './game/interactionController.js'
@@ -82,11 +92,20 @@ async function start(): Promise<void> {
   // A creator world (/worlds): its own place, the plain creator pack and the world's map.
   const requestedWorld = params.get('world')
   const worldId = requestedWorld && CREATOR_WORLD_ID.test(requestedWorld) ? requestedWorld : null
+  // OpenVibe.Surf Ride: ?map=<id> (or ?game=surf&map=…). A map is a place
+  // (`surf-lagoon`), so the existing place URL scheme carries it unchanged.
+  const requestedMap = params.get('map')
+  const surfInfo: SurfMapInfo | null =
+    (requestedMap ? surfMap(requestedMap) : null) ??
+    (requestedGame === 'surf' ? surfMap('surf_lagoon') : null) ??
+    null
   const selectedPlace = worldId
     ? creatorPlaceId(worldId)
-    : requestedGame === 'salvage-rush' || requestedGame === 'scraplandia'
-      ? requestedGame
-      : undefined
+    : surfInfo
+      ? surfInfo.placeId
+      : requestedGame === 'salvage-rush' || requestedGame === 'scraplandia'
+        ? requestedGame
+        : undefined
   const placeQuery = worldId ? `?world=${worldId}` : selectedPlace ? `?game=${selectedPlace}` : ''
   // A draft world's map answers only its owner, so the map read carries the Network token when there is one.
   const mapRequest = (): Promise<Response> => {
@@ -120,12 +139,15 @@ async function start(): Promise<void> {
         packs?: Parameters<typeof createContent>[0]
       }
       if (Array.isArray(data.packs)) {
+        const contentSurf = data.game ? surfMapOfPlace(data.game) : null
         const builtIn =
-          data.game === 'salvage-rush'
-            ? (await import('@openvibe/content/salvage-rush')).SALVAGE_RUSH_PACK
-            : data.game === 'creator' && worldId
-              ? creatorWorldPack(worldId)
-              : undefined
+          contentSurf
+            ? surfPack(contentSurf.id)
+            : data.game === 'salvage-rush'
+              ? (await import('@openvibe/content/salvage-rush')).SALVAGE_RUSH_PACK
+              : data.game === 'creator' && worldId
+                ? creatorWorldPack(worldId)
+                : undefined
         const active = createContent(data.packs, builtIn)
         if (active.digest === data.digest) content = active
       }
@@ -135,6 +157,10 @@ async function start(): Promise<void> {
   }
   if (requestedGame === 'salvage-rush' && content.world.id !== 'salvage_rush_arena') {
     uiRoot.textContent = 'Salvage Rush content is unavailable. Please retry shortly.'
+    return
+  }
+  if (surfInfo && content.world.id !== surfInfo.id) {
+    uiRoot.textContent = 'Surf content is unavailable. Please retry shortly.'
     return
   }
   // Edited map (must match the server's copy for prediction parity).
@@ -312,6 +338,9 @@ async function start(): Promise<void> {
           ({ SalvageRushHud }) => new SalvageRushHud(uiRoot, scene),
         )
       : null
+  const surfUi = surfInfo
+    ? await import('./ui/surfHud.js').then(({ SurfHud }) => new SurfHud(uiRoot))
+    : null
   hud.onQualityChange = (override) => {
     const quality = qualityForTier(resolveQualityTier(override, readDeviceSignals()))
     applyEngineQuality(engine, quality)
@@ -325,6 +354,16 @@ async function start(): Promise<void> {
   const touchPad = new TouchPad()
   const touchSource = new TouchInputSource(touchPad)
   const touchControls = new TouchControls(uiRoot, canvas, touchPad)
+  const surfTrainer = surfInfo
+    ? await import('./ui/surfTrainer.js').then(
+        ({ SurfTrainer }) =>
+          new SurfTrainer(uiRoot, canvas, touchPad, () => {
+            surfUi?.hideFinish()
+            connection.send({ t: 'surf_restart' })
+          }),
+      )
+    : null
+  if (surfInfo) void import('./ui/surfTrainer.css')
   const switchable = new SwitchableInputSource(keyboardSource)
   // From above, WASD (or the stick) moves along the screen and the mouse aims; see topDownInputSource.ts.
   const topDown = (await worldView) === 'top'
@@ -353,7 +392,8 @@ async function start(): Promise<void> {
     }
     switchable.current = next
     if (touch) pointerOffset.known = false
-    touchControls.setActive(touch)
+    touchControls.setActive(touch && !surfInfo)
+    surfTrainer?.setActive(touch && !!surfInfo)
   }
   useTouch(matchMedia('(pointer: coarse)').matches)
   // Capture phase: the switch happens before the press is handled.
@@ -368,11 +408,20 @@ async function start(): Promise<void> {
   )
 
   const world = content.world
-  const player = new LocalPlayer(scene, physics, inputSource, connection, state, {
-    x: world.spawnPoint[0],
-    y: world.spawnPoint[1],
-    z: world.spawnPoint[2],
-  })
+  const placeSpawn = worldSpawn(world)
+  const player = new LocalPlayer(
+    scene,
+    physics,
+    inputSource,
+    connection,
+    state,
+    {
+      x: placeSpawn.pos[0],
+      y: placeSpawn.pos[1],
+      z: placeSpawn.pos[2],
+    },
+    movementParamsFor(movementStyleFor(content.world)),
+  )
   scene.activeCamera = player.camera
   releaseCamera()
   environment.attachCamera(player.camera)
@@ -411,6 +460,63 @@ async function start(): Promise<void> {
   const beams = new BeamRenderer(scene)
   const constraintLines = new ConstraintLineRenderer(scene, state, view)
   const ghost = new PlacementGhost(scene, physics, content)
+  const surfGhost = surfInfo
+    ? await import('./game/surfGhost.js').then(({ SurfGhost }) => new SurfGhost(scene))
+    : null
+  const surfGhostHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = {}
+    if (sso) headers.authorization = `Bearer ${sso}`
+    else headers['x-guest-token'] = identity.token
+    return headers
+  }
+  const loadSurfGhost = async (of: 'pb' | 'wr'): Promise<boolean> => {
+    if (!surfInfo || !surfGhost) return false
+    try {
+      const response = await fetch(
+        `/api/surf/maps/${encodeURIComponent(surfInfo.id)}/ghost?of=${of}`,
+        { cache: 'no-store', headers: surfGhostHeaders() },
+      )
+      if (!response.ok) return false
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      surfGhost.setTrack(decodeSurfTrack(bytes))
+      return true
+    } catch {
+      return false
+    }
+  }
+  if (surfUi && surfGhost) {
+    surfUi.onRestart = () => {
+      surfUi.hideFinish()
+      connection.send({ t: 'surf_restart' })
+    }
+    surfUi.onWatchWr = () => {
+      surfGhost.setVisible(true)
+      void loadSurfGhost('wr')
+    }
+    // Your PB is the default ghost; the WR is the fallback before your first run.
+    void loadSurfGhost('pb').then((ok) => (ok ? true : loadSurfGhost('wr')))
+  }
+  // Ride's keys. Capture-phase: InputTracker would otherwise read R as
+  // reload and G as drop, neither of which exists in a surf place.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (!surfInfo) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (input.uiCapture) return
+      if (e.code !== 'KeyR' && e.code !== 'KeyG') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      if (e.code === 'KeyR') {
+        surfUi?.hideFinish()
+        connection.send({ t: 'surf_restart' })
+      } else {
+        const on = surfGhost?.toggle() ?? false
+        hud.toast(on ? 'Ghost on' : 'Ghost off', false)
+      }
+    },
+    true,
+  )
   interact.placementPose = () => (ghost.valid ? ghost.pose : null)
   interact.onPlacementRotate = (delta) => ghost.rotate(delta)
 
@@ -529,6 +635,12 @@ async function start(): Promise<void> {
   let rejected = false
   connection.onMessage = (msg) => {
     if (msg.t === 'salvage_round') roundUi?.update(msg)
+    if (msg.t === 'surf_state') surfUi?.updateState(msg)
+    if (msg.t === 'surf_finish') {
+      surfUi?.showFinish(msg)
+      // The just-finished run may be the new PB: refresh its ghost.
+      setTimeout(() => void loadSurfGhost('pb'), 750)
+    }
     if (msg.t === 'welcome' && state.myEntityId && msg.instanceId !== state.instanceId) {
       player.onTransfer()
     }
@@ -705,6 +817,11 @@ async function start(): Promise<void> {
     }
     physics.step(0) // query-only world: refresh broadphase, no dynamics
     player.frameUpdate(timestep.alpha, elapsed)
+    if (surfUi) {
+      surfUi.setSpeed(Math.hypot(player.move.vel.x, player.move.vel.z))
+      surfUi.tick(now)
+      surfGhost?.update(surfUi.elapsedNow(now))
+    }
     view.update(now / 1000)
     markers?.update()
 
