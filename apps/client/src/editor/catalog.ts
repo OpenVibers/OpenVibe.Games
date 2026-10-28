@@ -21,7 +21,7 @@ export const newId = (prefix: string): string =>
 
 export interface Placeable {
   name: string
-  kind: 'static' | 'node' | 'spawn' | 'model' | 'prop' | 'patch' | 'npc'
+  kind: 'static' | 'node' | 'spawn' | 'model' | 'prop' | 'patch' | 'npc' | 'trigger'
   shape?: StaticBody['shape']
   color?: string
   tex?: string
@@ -69,6 +69,7 @@ export const ENTITY_DEFS: Placeable[] = [
   { name: '🧑 Townsfolk (NPC)', kind: 'npc', npc: 'townsfolk' },
   { name: '🐇 Dust hare (NPC)', kind: 'npc', npc: 'dust_hare' },
   { name: '☠ Rustjaw thug (NPC, hostile)', kind: 'npc', npc: 'rustjaw_thug' },
+  { name: '🔘 Trigger volume', kind: 'trigger' },
 ]
 
 export const TEXTURES = [

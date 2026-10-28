@@ -59,6 +59,20 @@ describe('fieldsFor', () => {
     )
   })
 
+  it('gives a zone the trigger, push and teleport authoring fields', () => {
+    const f = keys(fieldsFor('zone', null))
+    expect(f).toEqual(
+      expect.arrayContaining([
+        'trigger.once',
+        'trigger.wait',
+        'trigger.outputs',
+        'push.dir',
+        'push.speed',
+        'teleport.to',
+      ]),
+    )
+  })
+
   it('omits rotation for a resource node, which has no facing', () => {
     expect(keys(fieldsFor('node', null))).not.toContain('rot')
   })
@@ -222,6 +236,27 @@ describe('Inspector DOM', () => {
     expect(callbacks.setProperty).toHaveBeenCalledWith(['s1'], 'pos[0]', 12)
     // The inspector itself does not mutate.
     expect(doc.get('s1', 'static')!.pos[0]).toBe(1)
+  })
+
+  it('parses the JSON outputs field before committing', () => {
+    const doc = new EditorDocument()
+    doc.add('zone', {
+      id: 'z1',
+      name: 'Z',
+      min: [0, 0, 0],
+      max: [1, 1, 1],
+      rules: { pvp: true, build: true, physgun: true },
+      trigger: { wait: 0.2, outputs: [] },
+    } as never)
+    new Inspector(root, doc, callbacks).setState({ ids: ['z1'], lockedBy: null })
+    const el = root.querySelector('[data-field="trigger.outputs"]') as HTMLInputElement
+    el.value = '[{"event":"OnStartTouch","target":"r1","input":"Trigger"}]'
+    el.dispatchEvent(new Event('change'))
+    expect(callbacks.setProperty).toHaveBeenCalledWith(
+      ['z1'],
+      'trigger.outputs',
+      [{ event: 'OnStartTouch', target: 'r1', input: 'Trigger' }],
+    )
   })
 
   it('ignores unparseable numeric input and restores the true value', () => {

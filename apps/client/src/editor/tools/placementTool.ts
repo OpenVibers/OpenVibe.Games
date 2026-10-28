@@ -54,6 +54,7 @@ export function placeableShape(
     const b = models.find((m) => m.id === def.modelId)?.bounds ?? [1, 1, 1]
     return { type: 'box', size: [b[0]!, b[1]!, b[2]!] }
   }
+  if (def.kind === 'trigger') return { type: 'box', size: [2, 2, 2] }
   return { type: 'box', size: [0.3, 3, 0.3] } // spawn flag pole
 }
 
@@ -233,6 +234,18 @@ export function objectForPlacement(
       return {
         kind: 'spawn',
         object: { id: 'spawn', pos: [pose.pos.x, pose.pos.y, pose.pos.z], yaw: e.y },
+      }
+    case 'trigger':
+      return {
+        kind: 'zone',
+        object: {
+          id: newId('trigger'),
+          name: 'Trigger',
+          min: [pose.pos.x - 1, pose.pos.y, pose.pos.z - 1],
+          max: [pose.pos.x + 1, pose.pos.y + 2, pose.pos.z + 1],
+          rules: { pvp: true, build: true, physgun: true },
+          trigger: { wait: 0.2, outputs: [] },
+        },
       }
     case 'patch': {
       const sub = 32

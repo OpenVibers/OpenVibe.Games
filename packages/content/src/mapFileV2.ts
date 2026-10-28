@@ -15,13 +15,17 @@ import { z } from 'zod'
 import {
   FaceStyleSchema,
   HexColorSchema,
+  LogicDefSchema,
   MapLightSchema,
+  PointDefSchema,
   StaticBodySchema,
   ZoneDefSchema,
   MovementStyleSchema,
   SurfMapMetaSchema,
   type FaceStyle,
+  type LogicDef,
   type MovementStyle,
+  type PointDef,
   type SurfMapMeta,
   type ZoneDef,
 } from './schema/world.js'
@@ -171,6 +175,10 @@ export const MapFileV2Schema = z.object({
   lights: z.array(MapLightSchemaV2).max(256).default([]),
   /** Map-authored zones; they augment the base world's content zones. */
   zones: z.array(MapZoneSchemaV2).max(512).default([]),
+  /** Named point entities (`info_target`, `info_teleport_destination`, cameras). */
+  points: z.array(PointDefSchema).max(4096).default([]),
+  /** Logic entities: relay, auto and timer. */
+  logic: z.array(LogicDefSchema).max(4096).default([]),
   models: z
     .array(z.object({ id: z.string(), name: z.string(), glb: z.string(), bounds: vec3 }))
     .max(512)
@@ -199,6 +207,8 @@ export type TerrainObjectV2 = z.infer<typeof TerrainObjectSchemaV2>
 export type StaticObjectV2 = z.infer<typeof StaticObjectSchemaV2>
 export type MapLightV2 = z.infer<typeof MapLightSchemaV2>
 export type MapZoneV2 = z.infer<typeof MapZoneSchemaV2>
+export type MapPointV2 = PointDef
+export type MapLogicV2 = LogicDef
 export type MapNodeV2 = MapFileV2['nodes'][number]
 export type MapPropV2 = MapFileV2['props'][number]
 export type MapNpcV2 = MapFileV2['npcs'][number]
@@ -220,6 +230,8 @@ export function emptyMapV2(): MapFileV2 {
     npcs: [],
     lights: [],
     zones: [],
+    points: [],
+    logic: [],
     models: [],
     textures: [],
   }
@@ -233,6 +245,8 @@ const ID_KINDS = [
   ['props', 'pr'],
   ['lights', 'light'],
   ['zones', 'zone'],
+  ['points', 'point'],
+  ['logic', 'logic'],
   ['npcs', 'npc'],
 ] as const
 
@@ -365,9 +379,69 @@ export function validateMapFile(map: MapFileV2): string[] {
   for (const n of map.npcs) claim(n.id, 'npc')
   for (const l of map.lights) claim(l.id, 'light')
   for (const z0 of map.zones) claim(z0.id, 'zone')
+  for (const p of map.points) claim(p.id, 'point')
+  for (const l of map.logic) claim(l.id, 'logic')
   if (seen.has(SPAWN_OBJECT_ID)) issues.push(`"${SPAWN_OBJECT_ID}" is reserved for the spawn point`)
+  issues.push(...ioIssues(map))
   if (map.surf) issues.push(...surfIssues(map))
   return issues
+}
+
+/**
+ * Cross-field I/O checks the schema cannot express: every output target must
+ * resolve to an entity id, and a teleport destination must be a point.
+ * Inputs are already type-checked by `IoInputSchema`; here we check the edges.
+ */
+function ioIssues(map: MapFileV2): string[] {
+  const issues: string[] = []
+  const points = new Set(map.points.map((p) => p.id))
+  const targets = new Set<string>([
+    ...map.points.map((p) => p.id),
+    ...map.logic.map((l) => l.id),
+    ...map.zones.map((z) => z.id),
+    ...map.statics.map((s) => s.brushEntity?.targetname ?? s.id),
+  ])
+
+  const checkOutputs = (owner: string, outputs: readonly { target: string }[]): void => {
+    for (const o of outputs)
+      if (!targets.has(o.target)) issues.push(`${owner}: output targets missing entity "${o.target}"`)
+  }
+
+  for (const z of map.zones) {
+    if (z.teleport && !points.has(z.teleport.to))
+      issues.push(`zone "${z.id}": teleport destination "${z.teleport.to}" is not a point`)
+    if (z.push) {
+      const [x, y, zz] = z.push.dir
+      if (Math.hypot(x, y, zz) < 1e-9)
+        issues.push(`zone "${z.id}": push dir must not be the zero vector`)
+    }
+    if (z.trigger) checkOutputs(`zone "${z.id}"`, z.trigger.outputs)
+  }
+  for (const l of map.logic) checkOutputs(`logic "${l.id}"`, l.outputs)
+  for (const s of map.statics)
+    if (s.brushEntity) checkOutputs(`static "${s.id}"`, s.brushEntity.outputs)
+  return issues
+}
+
+/** `surf.kind` plus the Source timer zone-name aliases. */
+function surfMetaFor(
+  zone: MapZoneV2,
+  stages: number,
+): { kind: 'start' | 'checkpoint' | 'finish' | 'kill'; stage: number; spawn?: [number, number, number] } | null {
+  if (zone.surf) {
+    return {
+      kind: zone.surf.kind,
+      stage: zone.surf.stage,
+      ...(zone.surf.spawn ? { spawn: zone.surf.spawn } : {}),
+    }
+  }
+  const id = zone.id
+  if (id === 'map_start' || zone.name === 'map_start') return { kind: 'start', stage: 0 }
+  if (id === 'map_end' || zone.name === 'map_end') return { kind: 'finish', stage: stages }
+  if (id === 'map_kill' || zone.name === 'map_kill') return { kind: 'kill', stage: 0 }
+  const cp = /^map_cp(\d+)$/.exec(id) ?? /^map_cp(\d+)$/.exec(zone.name)
+  if (cp) return { kind: 'checkpoint', stage: Number(cp[1]) }
+  return null
 }
 
 /** A surf map's zones must describe exactly one ordered run. */
@@ -375,26 +449,27 @@ function surfIssues(map: MapFileV2): string[] {
   const issues: string[] = []
   const surf = map.surf
   if (!surf) return issues
-  const zones = map.zones.filter((z) => z.surf)
-  const starts = zones.filter((z) => z.surf!.kind === 'start')
-  const finishes = zones.filter((z) => z.surf!.kind === 'finish')
+  const zones = map.zones
+    .map((z) => ({ zone: z, meta: surfMetaFor(z, surf.stages) }))
+    .filter((x) => x.meta !== null)
+  const starts = zones.filter((z) => z.meta!.kind === 'start')
+  const finishes = zones.filter((z) => z.meta!.kind === 'finish')
   if (starts.length !== 1) issues.push(`surf: expected one start zone, found ${starts.length}`)
   if (finishes.length !== 1) issues.push(`surf: expected one finish zone, found ${finishes.length}`)
   if (map.movement !== 'surf') issues.push('surf: a surf map must set movement to "surf"')
-  for (const zone of zones) {
-    const meta = zone.surf!
-    const maxStage = meta.kind === 'finish' ? surf.stages : surf.stages - 1
-    if (meta.stage > maxStage)
-      issues.push(`surf zone "${zone.id}": stage ${meta.stage} exceeds ${maxStage}`)
-    if (meta.kind === 'checkpoint' && !meta.spawn)
+  for (const { zone, meta } of zones) {
+    const maxStage = meta!.kind === 'finish' ? surf.stages : surf.stages - 1
+    if (meta!.stage > maxStage)
+      issues.push(`surf zone "${zone.id}": stage ${meta!.stage} exceeds ${maxStage}`)
+    if (meta!.kind === 'checkpoint' && !meta!.spawn)
       issues.push(`surf zone "${zone.id}": a checkpoint needs a respawn point`)
   }
-  const checkpoints = zones.filter((z) => z.surf!.kind === 'checkpoint')
+  const checkpoints = zones.filter((z) => z.meta!.kind === 'checkpoint')
   if (checkpoints.length !== surf.stages - 1)
     issues.push(
       `surf: ${checkpoints.length} checkpoints for ${surf.stages} stages (expected ${surf.stages - 1})`,
     )
-  const stages = checkpoints.map((z) => z.surf!.stage).sort((a, b) => a - b)
+  const stages = checkpoints.map((z) => z.meta!.stage).sort((a, b) => a - b)
   for (let i = 0; i < stages.length; i++)
     if (stages[i] !== i + 1) {
       issues.push(`surf: checkpoint stages must be 1..${surf.stages - 1}, got ${stages.join(',')}`)
@@ -471,6 +546,8 @@ export function compileMapFileV2(map: MapFileV2): MapOverride {
     })),
     statics: map.statics.map((b) => ({ ...b })),
     zones: map.zones.map((z0): ZoneDef => ({ ...z0, min: [...z0.min], max: [...z0.max] })),
+    points: map.points.map((p) => ({ ...p, pos: [...p.pos] })),
+    logic: map.logic.map((l) => ({ ...l })),
     ...(map.movement ? { movement: map.movement } : {}),
     ...(map.surf ? { surf: map.surf } : {}),
     ...(map.spawn ? { spawn: map.spawn } : {}),

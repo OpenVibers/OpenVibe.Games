@@ -91,6 +91,104 @@ export const FaceStyleSchema = z.object({
 })
 export type FaceStyle = z.infer<typeof FaceStyleSchema>
 
+/**
+ * Inputs an entity accepts through the deterministic I/O graph. Source has a
+ * much larger vocabulary; this is the subset the surf trigger core needs plus
+ * the door/button inputs the next tier will drive. An unknown input is a
+ * parse error, so a typo in the editor cannot silently do nothing.
+ */
+export const IoInputSchema = z.enum([
+  'Enable',
+  'Disable',
+  'Toggle',
+  'Trigger',
+  'Open',
+  'Close',
+  'Press',
+  'Teleport',
+  'SetSpeed',
+  'ResetTimer',
+  'FireTimer',
+  'CancelPending',
+  'TouchTest',
+])
+export type IoInput = z.infer<typeof IoInputSchema>
+
+/**
+ * One edge in the event graph: "when `event` happens, send `input` to
+ * `target` after `delay` seconds". `once` means the edge fires at most once
+ * for the lifetime of the map.
+ */
+export const OutputSchema = z.object({
+  event: z.string().min(1).max(64),
+  target: z.string().min(1).max(64),
+  input: IoInputSchema,
+  param: z.string().optional(),
+  delay: z.number().finite().nonnegative().optional(),
+  once: z.boolean().optional(),
+})
+export type Output = z.infer<typeof OutputSchema>
+
+/** `trigger_multiple` / `trigger_once`: a volume that fires touch outputs. */
+export const TriggerZoneSchema = z.object({
+  wait: z.number().finite().nonnegative().optional(),
+  once: z.boolean().optional(),
+  outputs: z.array(OutputSchema).default([]),
+})
+export type TriggerZone = z.infer<typeof TriggerZoneSchema>
+
+/** `trigger_push`: a volume that applies a velocity to players inside it. */
+export const PushZoneSchema = z.object({
+  dir: finiteVec3,
+  /** Magnitude in Source units/s; the engine converts to m/s at runtime. */
+  speed: z.number().finite().min(0),
+  onlyFalling: z.boolean().optional(),
+})
+export type PushZone = z.infer<typeof PushZoneSchema>
+
+/** `trigger_teleport`: a volume that moves a player to a destination point. */
+export const TeleportZoneSchema = z.object({
+  to: z.string().min(1).max(64),
+  landmark: z.string().min(1).max(64).optional(),
+  keepAngles: z.boolean().optional(),
+})
+export type TeleportZone = z.infer<typeof TeleportZoneSchema>
+
+/**
+ * A point entity (`info_target`, `info_teleport_destination`, camera marker):
+ * a named position and optional facing, referenced by trigger outputs.
+ */
+export const PointDefSchema = z.object({
+  id: z.string().regex(/^[a-z0-9_-]+$/),
+  pos: finiteVec3,
+  yaw: z.number().optional(),
+  class: z.enum(['target', 'teleport_destination', 'camera']).default('target'),
+})
+export type PointDef = z.infer<typeof PointDefSchema>
+
+/**
+ * A logic entity: `logic_relay` forwards inputs, `logic_auto` fires on map
+ * spawn, and `logic_timer` fires on an interval.
+ */
+export const LogicDefSchema = z.object({
+  id: z.string().regex(/^[a-z0-9_-]+$/),
+  class: z.enum(['relay', 'auto', 'timer']),
+  wait: z.number().finite().nonnegative().optional(),
+  outputs: z.array(OutputSchema).default([]),
+})
+export type LogicDef = z.infer<typeof LogicDefSchema>
+
+/** A brush entity (`func_door`, `func_button`, `func_brush`) attached to a static. */
+export const BrushEntitySchema = z.object({
+  class: z.enum(['door', 'button', 'brush']),
+  targetname: z.string().min(1).max(64).optional(),
+  speed: z.number().finite().nonnegative().optional(),
+  lip: z.number().finite().nonnegative().optional(),
+  wait: z.number().finite().nonnegative().optional(),
+  outputs: z.array(OutputSchema).default([]),
+})
+export type BrushEntity = z.infer<typeof BrushEntitySchema>
+
 export const StaticBodySchema = z.object({
   /** Stable editor/document id (selection, collab locks). */
   id: z.string().optional(),
@@ -119,6 +217,8 @@ export const StaticBodySchema = z.object({
   uv: FaceStyleSchema.optional(),
   /** Per-face overrides for box statics (face index '0'..'5'). */
   faces: z.record(z.string(), FaceStyleSchema).optional(),
+  /** Optional brush-entity behaviour (`func_door`/`func_button`/`func_brush`). */
+  brushEntity: BrushEntitySchema.optional(),
 })
 
 export const ResourceNodeSpawnSchema = z.object({
@@ -175,6 +275,12 @@ export const ZoneDefSchema = z.object({
   }),
   /** Surf trigger metadata; absent on ordinary rule zones. */
   surf: SurfZoneMetaSchema.optional(),
+  /** `trigger_multiple` / `trigger_once` touch outputs. */
+  trigger: TriggerZoneSchema.optional(),
+  /** `trigger_push` velocity volume. */
+  push: PushZoneSchema.optional(),
+  /** `trigger_teleport` destination volume. */
+  teleport: TeleportZoneSchema.optional(),
 })
 
 export const WorldDefSchema = z.object({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MapZoneSchemaV2, MapLightSchemaV2 } from '@openvibe/content'
 import { lightForPlacement, type LightType } from './lightTool.js'
-import { nextZoneId, zoneForPlacement } from './zoneTool.js'
+import { nextZoneId, triggerForPlacement, zoneForPlacement } from './zoneTool.js'
 
 const place = (type: LightType) =>
   lightForPlacement({
@@ -94,5 +94,14 @@ describe('zoneForPlacement', () => {
   it('avoids ids already in use', () => {
     const taken = new Set(['zone-1', 'zone-2'])
     expect(nextZoneId((id) => taken.has(id))).toBe('zone-3')
+  })
+})
+
+describe('triggerForPlacement', () => {
+  it('produces a trigger_multiple zone the schema accepts', () => {
+    const z = triggerForPlacement({ point: [0, 1, 0], size: 4, height: 3, taken: () => false })
+    const parsed = MapZoneSchemaV2.safeParse(z)
+    expect(parsed.success, parsed.success ? '' : parsed.error.message).toBe(true)
+    if (parsed.success) expect(parsed.data.trigger).toMatchObject({ wait: 0.2, outputs: [] })
   })
 })

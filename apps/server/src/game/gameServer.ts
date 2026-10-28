@@ -27,6 +27,7 @@ import {
   SettingsSystem,
   SocialSystem,
   SurfSystem,
+  TriggersSystem,
   VehicleSystem,
   WorldEventSystem,
   buildHandlerTable,
@@ -90,6 +91,9 @@ export class GameServer {
     // Runs see this tick's authoritative positions: construct after movement,
     // insert in the ordered list before replication.
     const surf = new SurfSystem(ctx)
+    // Triggers read the same authoritative segments and apply push/teleport
+    // before the next movement step.
+    const triggers = new TriggersSystem(ctx)
     // The wire surface every system sends through.
     const replication = new ReplicationSystem(ctx)
     ctx.net = replication
@@ -115,6 +119,7 @@ export class GameServer {
       chat,
       movement,
       surf,
+      triggers,
       replication,
       manipulation,
       combat,
@@ -141,6 +146,7 @@ export class GameServer {
       chat,
       movement,
       surf,
+      triggers,
       replication,
       manipulation,
       combat,
@@ -301,6 +307,9 @@ export class GameServer {
     // 1b. Surf run state: timer, checkpoints, fails, finish (after movement,
     //     before replication so surf_state travels in this tick's snapshot).
     s.surf.tick(ctx, dt)
+    // 1c. Trigger/I/O: derive touch events from the same segments, then apply
+    //     push/teleport so they take effect before the next movement step.
+    s.triggers.tick(ctx, dt)
     if (this.rush) {
       const now = Date.now()
       const results = this.rush.tick(

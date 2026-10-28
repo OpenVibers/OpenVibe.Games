@@ -58,7 +58,7 @@ import { ToolManager } from './tools/toolManager.js'
 import { PlacementTool, objectForPlacement } from './tools/placementTool.js'
 import { sculptDab, toTerrainLocal, type SculptMode } from './tools/terrainTool.js'
 import { lightForPlacement, type LightType } from './tools/lightTool.js'
-import { zoneForPlacement } from './tools/zoneTool.js'
+import { triggerForPlacement, zoneForPlacement } from './tools/zoneTool.js'
 import { EditorCameraController } from './viewport/editorCameraController.js'
 import { EditorViewRegistry } from './viewport/editorViewRegistry.js'
 import { GizmoController, type GizmoMode } from './viewport/gizmoController.js'
@@ -662,16 +662,20 @@ export async function bootEditor(): Promise<void> {
 
   const placeZone = (): void => {
     const { point } = creationPoint()
-    const zone = zoneForPlacement({
-      point,
-      size: Number((document.getElementById('zone-size') as HTMLInputElement).value),
-      height: Number((document.getElementById('zone-height') as HTMLInputElement).value),
-      taken: (id) => doc.has(id),
-    })
-    history.apply(addObject('zone', zone as never, 'create zone'))
+    const isTrigger = (document.getElementById('zone-trigger') as HTMLInputElement | null)?.checked
+    const size = Number((document.getElementById('zone-size') as HTMLInputElement).value)
+    const height = Number((document.getElementById('zone-height') as HTMLInputElement).value)
+    const zone = isTrigger
+      ? triggerForPlacement({ point, size, height, taken: (id) => doc.has(id) })
+      : zoneForPlacement({ point, size, height, taken: (id) => doc.has(id) })
+    history.apply(addObject('zone', zone as never, isTrigger ? 'create trigger' : 'create zone'))
     selection.replace(zone.id)
     ui.refreshAll()
-    ui.setMessage(`🟦 ${zone.name} created — scale it with the gizmo, set rules in the Inspector`)
+    ui.setMessage(
+      isTrigger
+        ? `🔘 ${zone.name} created — set outputs in the Inspector`
+        : `🟦 ${zone.name} created — scale it with the gizmo, set rules in the Inspector`,
+    )
   }
 
   // ── Face tool ───────────────────────────────────────────────────────

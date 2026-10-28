@@ -51,3 +51,27 @@ export function zoneForPlacement(p: ZonePlacement): MapZoneV2 {
     rules: { pvp: true, build: true, physgun: true },
   }
 }
+
+/** Next readable trigger id (`trigger-1`, `trigger-2`, …). */
+export function nextTriggerId(taken: (id: string) => boolean): string {
+  for (let n = 1; n < 10_000; n++) {
+    const id = `trigger-${n}`
+    if (!taken(id)) return id
+  }
+  return `trigger-${Date.now().toString(36)}`
+}
+
+/** A `trigger_multiple` zone, ready for the Inspector's outputs field. */
+export function triggerForPlacement(p: ZonePlacement): MapZoneV2 {
+  const id = nextTriggerId(p.taken)
+  const half = Math.max(0.5, p.size / 2)
+  const height = Math.max(0.5, p.height)
+  return {
+    id,
+    name: `Trigger ${id.replace('trigger-', '')}`,
+    min: [p.point[0] - half, p.point[1], p.point[2] - half],
+    max: [p.point[0] + half, p.point[1] + height, p.point[2] + half],
+    rules: { pvp: true, build: true, physgun: true },
+    trigger: { wait: 0.2, outputs: [] },
+  }
+}

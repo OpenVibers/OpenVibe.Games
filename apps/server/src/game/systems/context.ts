@@ -30,6 +30,7 @@ import type { ReplicationSystem } from './replication.js'
 import type { SessionsSystem } from './sessions.js'
 import type { SettingsSystem } from './settings.js'
 import type { SurfSystem } from './surf.js'
+import type { TriggersSystem } from './triggers.js'
 import type { SurfRecords } from '../surfRecords.js'
 import type { SocialSystem } from './social.js'
 import type { VehicleSystem } from './vehicles.js'
@@ -197,6 +198,7 @@ export interface ServerSystems {
   chat: ChatSystem
   movement: MovementSystem
   surf: SurfSystem
+  triggers: TriggersSystem
   replication: ReplicationSystem
   manipulation: ManipulationSystem
   combat: CombatSystem

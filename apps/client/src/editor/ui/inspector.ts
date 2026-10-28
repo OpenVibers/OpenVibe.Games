@@ -18,7 +18,14 @@ import type { EditorDocument, EditorObject, EditorObjectKind } from '../document
 import { KIND_INFO } from '../document/editorObject.js'
 import { commonValue, formatNumber } from './numberField.js'
 
-export type FieldType = 'number' | 'text' | 'color' | 'checkbox' | 'select' | 'readonly'
+export type FieldType =
+  | 'number'
+  | 'text'
+  | 'color'
+  | 'checkbox'
+  | 'select'
+  | 'readonly'
+  | 'json'
 
 export interface FieldSpec {
   key: string
@@ -230,6 +237,14 @@ export function fieldsFor(kind: EditorObjectKind, object: EditorObject | null): 
         { key: 'rules.pvp', label: 'PVP', type: 'checkbox', section: 'Rules' },
         { key: 'rules.build', label: 'Building', type: 'checkbox', section: 'Rules' },
         { key: 'rules.physgun', label: 'Physgun', type: 'checkbox', section: 'Rules' },
+        { key: 'trigger.once', label: 'Fire once', type: 'checkbox', section: 'Trigger' },
+        { key: 'trigger.wait', label: 'Wait (s)', type: 'number', step: 0.05, min: 0, section: 'Trigger' },
+        { key: 'trigger.outputs', label: 'Outputs (JSON)', type: 'json', section: 'Trigger' },
+        { key: 'push.dir', label: 'Push dir', type: 'number', vector: 3, section: 'Push' },
+        { key: 'push.speed', label: 'Push speed (u/s)', type: 'number', step: 1, min: 0, section: 'Push' },
+        { key: 'push.onlyFalling', label: 'Only falling', type: 'checkbox', section: 'Push' },
+        { key: 'teleport.to', label: 'Teleport target', type: 'text', section: 'Teleport' },
+        { key: 'teleport.keepAngles', label: 'Keep angles', type: 'checkbox', section: 'Teleport' },
       ]
   }
 }
@@ -277,6 +292,10 @@ export function displayValue(
   if (field.type === 'checkbox') {
     const bools = raw.map((v) => v === true)
     return bools.every((b) => b === bools[0]) ? bools[0]! : null
+  }
+  if (field.type === 'json') {
+    const strings = raw.map((v) => (v === undefined || v === null ? '' : JSON.stringify(v)))
+    return strings.every((s) => s === strings[0]) ? strings[0]! : null
   }
   const strings = raw.map((v) => (v === undefined || v === null ? '' : String(v)))
   return strings.every((s) => s === strings[0]) ? strings[0]! : null
@@ -447,6 +466,16 @@ export class Inspector {
     // lock here too, so no path can mutate an object another user holds.
     if (this.state.lockedBy !== null) {
       this.refreshValues()
+      return
+    }
+    if (field.type === 'json') {
+      try {
+        const value = JSON.parse(input.value)
+        if (!Array.isArray(value)) throw new Error('not an array')
+        this.commit(field, value)
+      } catch {
+        this.refreshValues()
+      }
       return
     }
     if (field.type !== 'number') {

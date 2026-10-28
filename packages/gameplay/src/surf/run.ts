@@ -151,6 +151,22 @@ export function segmentAabbExit(a: SurfVec3, b: SurfVec3, box: SurfBox): number 
   return tExit >= 0 && tExit <= 1 ? tExit : null
 }
 
+/**
+ * Source surf timer zone aliases. `surf.kind` stays the canonical form; a
+ * map authored with the interoperable trigger names (`map_start`, `map_cpN`,
+ * `map_end`, `map_kill`) still builds a run without duplicating the kind.
+ */
+export function surfAliasFor(
+  idOrName: string,
+): { kind: SurfZoneKind; stage?: number } | null {
+  if (idOrName === 'map_start') return { kind: 'start', stage: 0 }
+  if (idOrName === 'map_end') return { kind: 'finish' }
+  if (idOrName === 'map_kill') return { kind: 'kill', stage: 0 }
+  const cp = /^map_cp(\d+)$/.exec(idOrName)
+  if (cp) return { kind: 'checkpoint', stage: Number(cp[1]) }
+  return null
+}
+
 /** Build the run description from a compiled map's surf metadata and zones. */
 export function surfRunMapOf(
   meta: SurfMapMeta | undefined,
@@ -159,25 +175,39 @@ export function surfRunMapOf(
   spawnYaw = 0,
   id = meta?.title ?? 'surf',
 ): SurfRunMap {
-  const tagged = zones.filter((z) => z.surf)
-  const start = tagged.find((z) => z.surf!.kind === 'start')
-  const finish = tagged.find((z) => z.surf!.kind === 'finish')
+  const tagged: { zone: ZoneDef; meta: NonNullable<ZoneDef['surf']> }[] = []
+  for (const zone of zones) {
+    if (zone.surf) {
+      tagged.push({ zone, meta: zone.surf })
+      continue
+    }
+    const alias = surfAliasFor(zone.id) ?? surfAliasFor(zone.name)
+    if (!alias) continue
+    const stage = alias.kind === 'finish'
+      ? (meta?.stages ?? 1)
+      : alias.kind === 'checkpoint'
+        ? (alias.stage ?? 0)
+        : 0
+    tagged.push({ zone, meta: { kind: alias.kind, stage } })
+  }
+  const start = tagged.find((t) => t.meta.kind === 'start')
+  const finish = tagged.find((t) => t.meta.kind === 'finish')
   if (!start || !finish)
     throw new Error('surf map needs a start zone and a finish zone')
-  const toZone = (z: ZoneDef): SurfRunZone => ({
-    id: z.id,
-    kind: z.surf!.kind,
-    stage: z.surf!.stage,
-    min: [z.min[0], z.min[1], z.min[2]],
-    max: [z.max[0], z.max[1], z.max[2]],
-    ...(z.surf!.spawn
-      ? { spawn: { x: z.surf!.spawn[0], y: z.surf!.spawn[1], z: z.surf!.spawn[2] } }
+  const toZone = (t: (typeof tagged)[number]): SurfRunZone => ({
+    id: t.zone.id,
+    kind: t.meta.kind,
+    stage: t.meta.stage,
+    min: [t.zone.min[0], t.zone.min[1], t.zone.min[2]],
+    max: [t.zone.max[0], t.zone.max[1], t.zone.max[2]],
+    ...(t.meta.spawn
+      ? { spawn: { x: t.meta.spawn[0], y: t.meta.spawn[1], z: t.meta.spawn[2] } }
       : {}),
-    ...(z.surf!.yaw !== undefined ? { yaw: z.surf!.yaw } : {}),
+    ...(t.meta.yaw !== undefined ? { yaw: t.meta.yaw } : {}),
   })
   const checkpoints = tagged
-    .filter((z) => z.surf!.kind === 'checkpoint')
-    .sort((a, b) => a.surf!.stage - b.surf!.stage)
+    .filter((t) => t.meta.kind === 'checkpoint')
+    .sort((a, b) => a.meta.stage - b.meta.stage)
     .map(toZone)
   return {
     id,
@@ -186,7 +216,7 @@ export function surfRunMapOf(
     start: toZone(start),
     checkpoints,
     finish: toZone(finish),
-    kills: tagged.filter((z) => z.surf!.kind === 'kill').map(toZone),
+    kills: tagged.filter((t) => t.meta.kind === 'kill').map(toZone),
     spawn: { x: spawn[0], y: spawn[1], z: spawn[2] },
     spawnYaw,
   }
