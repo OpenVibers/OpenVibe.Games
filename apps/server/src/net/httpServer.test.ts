@@ -186,6 +186,37 @@ describe('real routes on the apex', () => {
     expect(r.headers.location).toBe(location)
   })
 
+  it('serves the canonical surf page and the embed route', async () => {
+    for (const path of ['/surf/surf_lagoon', '/surf/embed?map=surf_lagoon']) {
+      const r = await send(path)
+      expect(r.status).toBe(200)
+      expect(r.body).toContain('game page')
+    }
+    const embed = await send('/surf/embed?map=surf_lagoon')
+    expect(embed.headers['content-security-policy']).toBe(
+      "frame-ancestors https://openvibe.surf 'self'",
+    )
+  })
+
+  it.each([
+    ['/surf/surf-lagoon', '/surf/surf_lagoon'],
+    ['/surf/surf-lagoon/', '/surf/surf_lagoon'],
+    ['/surf/embed?map=surf-lagoon&embed=1', '/surf/embed?map=surf_lagoon&embed=1'],
+    ['/play?game=surf-lagoon', '/surf/surf_lagoon'],
+    ['/play?game=surf-lagoon&src=ad', '/surf/surf_lagoon?src=ad'],
+    ['/play?game=surf&map=surf-canyon', '/surf/surf_canyon'],
+  ])('%s redirects to %s', async (path, location) => {
+    const r = await send(path)
+    expect(r.status).toBe(301)
+    expect(r.headers.location).toBe(location)
+  })
+
+  it('answers an unknown surf map with 404, not the game page', async () => {
+    const r = await send('/surf/surf-missing')
+    expect(r.status).toBe(404)
+    expect(r.body).not.toContain('game page')
+  })
+
   it('answers HEAD like GET, without a body', async () => {
     const r = await send('/', { method: 'HEAD' })
     expect(r.status).toBe(200)

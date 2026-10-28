@@ -29,6 +29,8 @@ export class PlaceRouter {
     private readonly hubs: ReadonlyMap<string, InstanceHub>,
     private readonly defaultPlace: string,
     private readonly dynamic: DynamicPlaces | null = null,
+    /** A one-release alias for old place ids (e.g. `surf-lagoon` → `surf_lagoon`). */
+    private readonly canonicalPlace: (place: string) => string | null = () => null,
   ) {
     if (!hubs.has(defaultPlace)) throw new Error(`default place ${defaultPlace} is not hosted`)
   }
@@ -49,7 +51,9 @@ export class PlaceRouter {
   }
 
   resolve(place: string | undefined): string {
-    return place && this.hubs.has(place) ? place : this.defaultPlace
+    if (!place) return this.defaultPlace
+    if (this.hubs.has(place)) return place
+    return this.canonicalPlace(place) ?? this.defaultPlace
   }
 
   onMessage(conn: GameConnection, msg: ClientMessage): void {
@@ -124,8 +128,9 @@ export class PlaceRouter {
     return this.allHubs().reduce((total, hub) => total + hub.onlineCount, 0)
   }
 
-  step(): void {
-    for (const hub of this.allHubs()) hub.step()
+  /** `elapsedSeconds` is one scheduler slice; every hub advances its rooms at their own rates. */
+  step(elapsedSeconds?: number): void {
+    for (const hub of this.allHubs()) hub.step(elapsedSeconds)
   }
 
   async heartbeat(): Promise<void> {

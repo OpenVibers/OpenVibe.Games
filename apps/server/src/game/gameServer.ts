@@ -8,6 +8,7 @@ import type { PlayerSession } from './playerSession.js'
 import { ServerContext } from './systems/context.js'
 import type { GameConnection, GameIntegrations, ServerSystems } from './systems/context.js'
 import {
+  ChatSystem,
   CombatSystem,
   EconomySystem,
   EditorSystem,
@@ -84,6 +85,7 @@ export class GameServer {
     const ctx = this.ctx
     const sessions = new SessionsSystem(ctx)
     const settings = new SettingsSystem(ctx)
+    const chat = new ChatSystem(ctx)
     const movement = new MovementSystem(ctx)
     // Runs see this tick's authoritative positions: construct after movement,
     // insert in the ordered list before replication.
@@ -110,6 +112,7 @@ export class GameServer {
     this.systems = {
       sessions,
       settings,
+      chat,
       movement,
       surf,
       replication,
@@ -135,6 +138,7 @@ export class GameServer {
     this.ordered = [
       sessions,
       settings,
+      chat,
       movement,
       surf,
       replication,
@@ -276,9 +280,14 @@ export class GameServer {
     return nearbyWorkstationKinds(session, this.ctx.world)
   }
 
+  /** This room's fixed simulation rate (100 surf, 30 everywhere else). */
+  get tickRate(): number {
+    return this.ctx.config.tickRate
+  }
+
   /**
-   * The simulation tick, 30 Hz. This is the ONE place the order is written down; the systems'
-   * internal cadence (1 Hz sweeps, every-2-tick snapshots) is their own.
+   * One simulation tick at the room's own rate. This is the ONE place the order is written down;
+   * the systems' internal cadence (1 Hz sweeps, every-N-tick snapshots) is their own.
    */
   step(): void {
     const ctx = this.ctx
@@ -337,7 +346,7 @@ export class GameServer {
     // 10. Once a second: resource respawn sweep.
     s.interaction.respawnResources()
 
-    // 11. Replication: interest diff + snapshot (every `snapshotEvery` ticks → 15 Hz).
+    // 11. Replication: interest diff + snapshot (every `snapshotEvery` ticks → 15 Hz default, 25 Hz surf).
     s.replication.tick(ctx, dt)
 
     // 12. Mods: reconcile installs (a revoked or disabled mod's effects are

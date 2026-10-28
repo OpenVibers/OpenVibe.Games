@@ -1,6 +1,6 @@
 import { encodeServerMessage, type ClientHello, type ClientMessage } from '@openvibe/protocol'
 import type { InstanceLease, InstanceRegistry } from '@openvibe/persistence'
-import type { Logger } from '@openvibe/shared'
+import { FixedTimestep, type Logger } from '@openvibe/shared'
 import type { GameConnection } from './systems/context.js'
 import type { GameServer } from './gameServer.js'
 import type { GameWorld } from './gameWorld.js'
@@ -15,6 +15,8 @@ export interface InstanceRoom {
 /** One-process room router. The socket's upgrade identity remains attached across transfers. */
 export class InstanceHub {
   private readonly rooms = new Map<number, InstanceRoom>()
+  /** One accumulator per room: 100 Hz surf and 30 Hz everything else can share a hub. */
+  private readonly clocks = new Map<number, FixedTimestep>()
   private readonly connections = new Map<GameConnection, { slot: number; hello: ClientHello }>()
   private readonly reservations = new Map<number, number>()
   private readonly pending = new Map<GameConnection, Promise<void>>()
@@ -126,8 +128,30 @@ export class InstanceHub {
     await this.pending.get(conn)
   }
 
-  step(): void {
-    for (const room of this.rooms.values()) room.game.step()
+  /**
+   * Advance every room by its own fixed steps. `elapsedSeconds` is the scheduler
+   * slice (one 100 Hz slot in main.ts); each room's accumulator turns it into
+   * 0–N steps of its configured rate, so a 30 Hz room takes one step roughly
+   * every third slice while a 100 Hz surf room takes one every slice.
+   *
+   * Without an argument this keeps the old test/manual contract: exactly one
+   * step per room per call, regardless of its rate.
+   */
+  step(elapsedSeconds?: number): void {
+    if (elapsedSeconds === undefined) {
+      for (const room of this.rooms.values()) room.game.step()
+      return
+    }
+    for (const room of this.rooms.values()) {
+      const rate = room.game.tickRate
+      let clock = this.clocks.get(room.lease.slot)
+      if (!clock || clock.dt !== 1 / rate) {
+        clock = new FixedTimestep(1 / rate)
+        this.clocks.set(room.lease.slot, clock)
+      }
+      const steps = clock.consume(elapsedSeconds)
+      for (let i = 0; i < steps; i++) room.game.step()
+    }
   }
 
   async heartbeat(now = Date.now()): Promise<void> {
@@ -147,6 +171,7 @@ export class InstanceHub {
         }
         this.log.error('instance lease lost', { id: room.lease.id })
         this.rooms.delete(room.lease.slot)
+        this.clocks.delete(room.lease.slot)
         for (const [conn, current] of this.connections) {
           if (current.slot === room.lease.slot) conn.close(1012, 'instance_lease_lost')
         }
@@ -170,6 +195,7 @@ export class InstanceHub {
       await room.dispose()
     }
     this.rooms.clear()
+    this.clocks.clear()
     return drained.every(Boolean)
   }
 

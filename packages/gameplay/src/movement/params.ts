@@ -1,3 +1,6 @@
+/** [stand, crouch, prone] values, indexed by the Stance enum. */
+export type StanceProfile = readonly [number, number, number]
+
 /**
  * Source/Quake-inspired movement tuning. All values in meters/seconds.
  * Both server simulation and client prediction read the same instance —
@@ -27,6 +30,10 @@ export interface MovementParams {
   readonly capsuleRadius: number
   /** Eye height above capsule center. */
   readonly eyeOffset: number
+  /** Total capsule height per stance, [stand, crouch, prone]; standing = capsuleHeight. */
+  readonly stanceHull: StanceProfile
+  /** Eye offset above the capsule center per stance, [stand, crouch, prone]. */
+  readonly stanceEye: StanceProfile
   /** Collision skin to keep the capsule from touching surfaces exactly. */
   readonly skin: number
   /** Horizontal speed ceiling (m/s); Infinity means the engine's old unbounded rule. */
@@ -50,6 +57,8 @@ export const DEFAULT_MOVEMENT: MovementParams = {
   capsuleHeight: 1.8,
   capsuleRadius: 0.4,
   eyeOffset: 0.65,
+  stanceHull: [1.8, 1.2, 0.7],
+  stanceEye: [0.65, 0.38, 0.14],
   skin: 0.02,
   maxHorizontalSpeed: Number.POSITIVE_INFINITY,
   autoBhop: true,

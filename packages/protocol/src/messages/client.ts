@@ -10,6 +10,9 @@ import { ClientSurfRestartSchema } from './surf.js'
  */
 export const MAX_CHARACTERS = 24
 
+/** Longest chat line the wire accepts (a Source `say` fits comfortably). */
+export const CHAT_MAX_LENGTH = 240
+
 /**
  * Client -> server messages, defined as zod schemas because the server must
  * treat every inbound byte as hostile. Types are inferred from schemas so
@@ -322,6 +325,21 @@ export const ClientCvarSetSchema = z.object({
   requestId: z.number().int().nonnegative().max(1_000_000_000).optional(),
 })
 
+/**
+ * Source's `say`: a public chat line. The server rate-limits it and treats the
+ * text as plain text throughout — it is never interpreted as markup.
+ */
+export const ClientSaySchema = z.object({
+  t: z.literal('say'),
+  text: z.string().trim().min(1).max(CHAT_MAX_LENGTH),
+})
+
+/** Source's `say_team`: team chat. Surf rooms are one team, so it reaches the room. */
+export const ClientSayTeamSchema = z.object({
+  t: z.literal('say_team'),
+  text: z.string().trim().min(1).max(CHAT_MAX_LENGTH),
+})
+
 export const ClientMessageSchema = z.union([
   ClientTransferSchema,
   ClientEditModeSchema,
@@ -351,6 +369,8 @@ export const ClientMessageSchema = z.union([
   ClientContainerOpenSchema,
   ClientContainerMoveSchema,
   ClientContainerSortSchema,
+  ClientSaySchema,
+  ClientSayTeamSchema,
   ClientSurfRestartSchema,
   ClientCvarSetSchema,
 ])
@@ -384,5 +404,7 @@ export type ClientContainerOpen = z.infer<typeof ClientContainerOpenSchema>
 export type ClientContainerMove = z.infer<typeof ClientContainerMoveSchema>
 export type ClientContainerSort = z.infer<typeof ClientContainerSortSchema>
 export type ClientCvarSet = z.infer<typeof ClientCvarSetSchema>
+export type ClientSay = z.infer<typeof ClientSaySchema>
+export type ClientSayTeam = z.infer<typeof ClientSayTeamSchema>
 export type { ClientSurfRestart } from './surf.js'
 export type ClientMessage = z.infer<typeof ClientMessageSchema>

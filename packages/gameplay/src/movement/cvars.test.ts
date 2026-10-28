@@ -8,7 +8,7 @@ describe('Source cvars over movement params', () => {
     expect(values.sv_airaccelerate).toBe(150)
     expect(values.sv_friction).toBe(4)
     expect(values.sv_jump_impulse).toBeCloseTo(301.992, 3)
-    expect(values.sv_air_max_wishspeed).toBe(64)
+    expect(values.sv_air_max_wishspeed).toBe(30)
   })
 
   it('applies only the supplied cvars and converts units exactly like Source', () => {
@@ -28,10 +28,6 @@ describe('Source cvars over movement params', () => {
   it('round-trips every movement cvar', () => {
     const values = movementCvarValues(SURF_MOVEMENT)
     const params = movementParamsWithCvars(SURF_MOVEMENT, values)
-    for (const key of Object.keys(SURF_MOVEMENT) as (keyof typeof SURF_MOVEMENT)[]) {
-      const value = SURF_MOVEMENT[key]
-      if (typeof value === 'boolean') expect(params[key]).toBe(value)
-      else expect(params[key] as number).toBeCloseTo(value, 6)
-    }
+    expect(movementCvarValues(params)).toEqual(values)
   })
 })

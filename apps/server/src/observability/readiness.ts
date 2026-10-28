@@ -13,11 +13,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  */
 
 /**
- * No completed tick for this long means the simulation is stalled. The loop
- * runs at `tickRate` (30/s, one tick every ~33 ms) and resyncs itself after
- * falling more than a second behind, so a healthy server never goes a second
- * without a tick; 5 s leaves room for a GC pause, a persistence flush or a
- * live map rebuild, and still flags a frozen world within one deploy poll.
+ * No completed tick for this long means the simulation is stalled. The
+ * scheduler runs at the fastest hosted room rate (100/s with surf, 30/s
+ * otherwise, one slice every ~10–33 ms) and resyncs itself after falling more
+ * than a second behind, so a healthy server never goes a second without a
+ * tick; 5 s leaves room for a GC pause, a persistence flush or a live map
+ * rebuild, and still flags a frozen world within one deploy poll.
  */
 export const TICK_STALL_MS = 5_000
 

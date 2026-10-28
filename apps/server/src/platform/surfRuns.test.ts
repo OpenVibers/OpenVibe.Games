@@ -98,6 +98,28 @@ describe('surf runs persistence', () => {
     expect(await records.ghostBytes(MAP, 'pb', 'guest:unknown')).toBeNull()
   })
 
+  it('returns the top ten in ascending time for chat', async () => {
+    const db = await openTestDb()
+    const records = new PgSurfRecords(db)
+    for (let i = 0; i < 12; i++) {
+      await records.record(
+        run({
+          accountKey: `guest:racer-${i}`,
+          playerName: `Racer ${i}`,
+          timeMs: 20_000 - i * 500,
+          createdAt: 1_000 + i,
+          splits: [20_000 - i * 500],
+        }),
+      )
+    }
+    const top = await records.topRuns(MAP, 10)
+    expect(top).toHaveLength(10)
+    const times = top.map((r) => r.timeMs)
+    expect(times).toEqual([...times].sort((a, b) => a - b))
+    expect(times[0]).toBe(14_500)
+    expect(times.at(-1)).toBe(19_000)
+  })
+
   it('play: defines and posts the `time` board with the run ms', async () => {
     const db = await openTestDb()
     const play = fakePlay()
@@ -105,8 +127,24 @@ describe('surf runs persistence', () => {
     const outcome = await records.record(run({ id: 'run-1', timeMs: 9_876 }))
     expect(outcome.pb).toBe(true)
     expect(play.defined).toEqual(['surf'])
-    expect(play.posted).toEqual([{ board: 'lagoon', time: 9_876, ref: 'run-1' }])
-    expect(surfPlayKey('surf_lagoon')).toBe('surf:lagoon')
+    expect(play.posted).toEqual([{ board: 'surf_lagoon', time: 9_876, ref: 'run-1' }])
+    expect(surfPlayKey('surf_lagoon')).toBe('surf:surf_lagoon')
+    expect(surfBoardId('surf-lagoon')).toBe('surf_lagoon')
+  })
+
+  it('copies each player’s local PB onto the renamed Play board once', async () => {
+    const db = await openTestDb()
+    const play = fakePlay()
+    const records = new PgSurfRecords(db, play.poster)
+    await records.record(run({ id: 'run-slow', timeMs: 9_000, createdAt: 1 }))
+    await records.record(run({ id: 'run-fast', timeMs: 8_000, createdAt: 2 }))
+    play.posted.length = 0
+
+    expect(await records.migratePlayBoards()).toBe(1)
+    expect(play.posted).toEqual([{ board: 'surf_lagoon', time: 8_000, ref: 'run-fast' }])
+    // The marker makes it one-shot; a second boot posts nothing.
+    expect(await records.migratePlayBoards()).toBe(0)
+    expect(play.posted).toHaveLength(1)
   })
 
   it('an unknown-kind Play answer leaves the run saved and reports no rank', async () => {
@@ -154,15 +192,15 @@ describe('surf runs persistence', () => {
     expect(calls[0]!.path).toBe('/api/v1/titles/surf')
     expect(calls[0]!.body.boards).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: 'lagoon', kind: 'time' }),
-        expect.objectContaining({ id: 'canyon', kind: 'time' }),
-        expect.objectContaining({ id: 'orbit', kind: 'time' }),
+        expect.objectContaining({ id: 'surf_lagoon', name: 'surf_lagoon — time', kind: 'time' }),
+        expect.objectContaining({ id: 'surf_canyon', name: 'surf_canyon — time', kind: 'time' }),
+        expect.objectContaining({ id: 'surf_orbit', name: 'surf_orbit — time', kind: 'time' }),
       ]),
     )
     const result = await poster.post(run({ id: 'run-9', timeMs: 4_321 }))
     expect(calls[1]!.path).toBe('/api/v1/titles/surf/scores')
     expect(calls[1]!.body).toMatchObject({
-      board: 'lagoon',
+      board: 'surf_lagoon',
       ref: 'run-9',
       entries: [{ score: 4_321 }],
     })

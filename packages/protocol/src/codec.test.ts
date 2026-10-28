@@ -28,6 +28,8 @@ describe('protocol codec', () => {
       { t: 'physgun', a: 'rotate', dyaw: 0.1, dpitch: -0.1, snap: true },
       { t: 'physgun', a: 'grid', on: true },
       { t: 'cvar_set', name: 'sv_gravity', value: 800, requestId: 3 },
+      { t: 'say', text: 'hello room' },
+      { t: 'say_team', text: 'team line' },
     ]
     for (const msg of messages) {
       expect(decodeClientMessage(encodeClientMessage(msg))).toEqual(msg)
@@ -53,6 +55,9 @@ describe('protocol codec', () => {
         '{"t":"input","seq":1,"moveX":5,"moveZ":0,"yawQ":0,"pitchQ":0,"intents":0}',
       ),
     ).toBeNull()
+    // Empty and oversized chat is refused at the boundary.
+    expect(decodeClientMessage('{"t":"say","text":"   "}')).toBeNull()
+    expect(decodeClientMessage(JSON.stringify({ t: 'say', text: 'x'.repeat(241) }))).toBeNull()
   })
 
   it('decodes an older hello without a digest for a typed join rejection', () => {

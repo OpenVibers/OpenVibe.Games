@@ -22,10 +22,7 @@ export class SurfSystem implements System {
 
   readonly handlers: HandlerMap = {
     surf_restart: (session, _msg: ClientSurfRestart) => {
-      if (!session.surf) return
-      const event = session.surf.restart(this.ctx.clock.tick)
-      if (event.type === 'restarted') this.teleport(session, event.to, event.yaw)
-      this.sendState(session)
+      this.restart(session)
     },
   }
 
@@ -40,6 +37,7 @@ export class SurfSystem implements System {
     const map = this.runMap()
     if (!map) return
     session.surf = new SurfRunState(map, this.ctx.config.tickRate)
+    session.surfPractice = false
     session.surfPb = null
     session.surfWr = null
     session.surfPbSplits = []
@@ -48,11 +46,71 @@ export class SurfSystem implements System {
     this.sendState(session)
   }
 
+  /**
+   * Put the run back at the start line. The same method serves the `R` key's
+   * `surf_restart` message and chat's `!r`/`/r`, so they cannot drift.
+   */
+  restart(session: PlayerSession): boolean {
+    if (!session.surf) return false
+    const event = session.surf.restart(this.ctx.clock.tick)
+    if (event.type === 'restarted') this.teleport(session, event.to, event.yaw)
+    this.sendState(session)
+    return true
+  }
+
+  /**
+   * Enter/leave practice. Both directions restart the run at the start line:
+   * leaving must not resume a clock that was frozen while practising, and
+   * entering must clear any ranked run already in progress.
+   */
+  setPractice(session: PlayerSession, on: boolean): boolean {
+    if (!session.surf) return false
+    if (session.surfPractice === on) return true
+    session.surfPractice = on
+    const event = session.surf.restart(this.ctx.clock.tick)
+    if (event.type === 'restarted') this.teleport(session, event.to, event.yaw)
+    this.sendState(session)
+    return true
+  }
+
+  /** The authored spawn for a stage (0 = start, checkpoints, finish), or null if it does not exist. */
+  stageTarget(
+    session: PlayerSession,
+    stage: number,
+  ): { to: { x: number; y: number; z: number }; yaw: number } | null {
+    const map = session.surf?.map
+    if (!map || !Number.isInteger(stage) || stage < 0 || stage > map.stages) return null
+    const zone =
+      (stage === map.start.stage ? map.start : undefined) ??
+      map.checkpoints.find((z) => z.stage === stage) ??
+      (stage === map.finish.stage ? map.finish : undefined)
+    if (!zone) return null
+    return { to: zone.spawn ?? map.spawn, yaw: zone.yaw ?? map.spawnYaw }
+  }
+
+  /**
+   * Practice-only stage travel. The run is reset to idle (not merely
+   * teleported), so no start/finish crossing and therefore no PB write can
+   * come out of a stage jump.
+   */
+  goToStage(session: PlayerSession, stage: number): boolean {
+    if (!session.surf || !session.surfPractice) return false
+    const target = this.stageTarget(session, stage)
+    if (!target) return false
+    session.surf.restart(this.ctx.clock.tick)
+    this.teleport(session, target.to, target.yaw)
+    this.sendState(session)
+    return true
+  }
+
   tick(ctx: ServerContext, _dt: number): void {
     if (!this.enabled) return
     for (const session of ctx.sessions.values()) {
       const run = session.surf
       if (!run) continue
+      // Practice is unranked by construction: the run state machine sees no
+      // segments, so it can neither start nor finish (and write) a run.
+      if (session.surfPractice) continue
       for (const segment of session.moveSegments) {
         const events = run.observe(ctx.clock.tick, segment.from, segment.to, segment.yaw)
         for (const event of events) {
@@ -113,6 +171,9 @@ export class SurfSystem implements System {
   }
 
   private async finish(session: PlayerSession, result: SurfRunResult): Promise<void> {
+    // Defence in depth: the tick already skips practice, but a finish queued
+    // just before practice was enabled must never become a ranked result.
+    if (session.surfPractice) return
     const records = this.ctx.integrations.surf
     let pb = session.surfPb === null || result.timeMs < session.surfPb
     let wr = session.surfWr === null || result.timeMs < session.surfWr
@@ -192,6 +253,7 @@ export class SurfSystem implements System {
       splits: run.splitTimes,
       pbMs: session.surfPb,
       wrMs: session.surfWr,
+      practice: session.surfPractice,
       ...(session.surfPbSplits.length ? { pbSplits: session.surfPbSplits } : {}),
     })
   }

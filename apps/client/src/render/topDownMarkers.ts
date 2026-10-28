@@ -89,7 +89,11 @@ export class TopDownMarkers {
   update(): void {
     const me = this.markerFor('self', this.selfMat)
     const pos = this.player.renderPos
-    me.position.set(pos.x, pos.y - hullHeightFor(this.player.move.stance) / 2 + LIFT, pos.z)
+    me.position.set(
+      pos.x,
+      pos.y - hullHeightFor(this.player.move.stance, this.player.params) / 2 + LIFT,
+      pos.z,
+    )
     me.rotation.y = this.player.viewYaw
     for (const [id, e] of this.state.entities) {
       if (e.kind !== 'player' || id === this.state.myEntityId) continue

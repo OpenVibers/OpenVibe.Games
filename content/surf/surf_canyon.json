@@ -2,7 +2,7 @@
   "v": 2,
   "movement": "surf",
   "surf": {
-    "title": "Surf Canyon",
+    "title": "surf_canyon",
     "author": "OpenVibe",
     "tier": 2,
     "stages": 4,

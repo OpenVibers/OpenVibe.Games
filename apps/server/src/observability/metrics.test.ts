@@ -41,7 +41,7 @@ describe('ServerMetrics room gauges', () => {
   it("answers one place's gauges, not the other places' (the e2e reads its own place through /metrics?place=)", () => {
     const m = new ServerMetrics()
     m.sampleRoom('scraplandia:0', gauges({ mapStatics: 0, entities: 3 }), 1_000)
-    m.sampleRoom('surf-lagoon:0', gauges({ mapStatics: 47, entities: 1 }), 1_000)
+    m.sampleRoom('surf_lagoon:0', gauges({ mapStatics: 47, entities: 1 }), 1_000)
     expect(m.mapStatics).toBe(47)
     const one = m.placeSnapshot('scraplandia')
     expect(one['mapStatics']).toBe(0)

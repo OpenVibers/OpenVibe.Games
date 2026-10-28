@@ -11,7 +11,7 @@ import {
 } from '@openvibe/gameplay'
 import { CollisionLayer, type BodyId } from '@openvibe/physics'
 import type { ClientEditMode, ClientInput } from '@openvibe/protocol'
-import { clamp, dequantiseAngle, qfromYaw, vec3, wrapAngle } from '@openvibe/shared'
+import { SIM_TICK_RATE, clamp, dequantiseAngle, qfromYaw, vec3, wrapAngle } from '@openvibe/shared'
 import { canEditMap } from '../../net/networkAuth.js'
 import type { PlayerSession } from '../playerSession.js'
 import type { ServerContext } from './context.js'
@@ -28,26 +28,34 @@ export const MOVE = DEFAULT_MOVEMENT
  *
  * Speed stays honest through credit: one per tick, banked up to a second's worth, one spent per simulated input.
  * After a hitch the bank lets the backlog catch up a few inputs a tick; a client sending faster than real time runs
- * out of credit and its extra inputs only wait.
+ * out of credit and its extra inputs only wait. The one-second budgets scale with the room's tick rate: 30 at
+ * the sandbox's 30 Hz, 100 in a 100 Hz surf room.
  */
-/** Inputs that may wait: a second of play. A client past it is flooding, and its oldest go. */
-export const MAX_INPUT_QUEUE = 30
-/** Credit banked at most: a second of play. */
-export const MAX_INPUT_CREDIT = 30
+/** Inputs that may wait at 30 Hz: a second of play. A client past it is flooding, and its oldest go. */
+export const MAX_INPUT_QUEUE = SIM_TICK_RATE
+/** Credit banked at most at 30 Hz: a second of play. */
+export const MAX_INPUT_CREDIT = SIM_TICK_RATE
 /** Inputs simulated in one tick at most, while catching up. */
 export const CATCH_UP_PER_TICK = 4
-/** Ticks a late client is waited for (its player holds still) before its player coasts to a stop. */
-export const STALL_TICKS = 15
+/** Ticks a late client is waited for at 30 Hz (its player holds still) before it coasts to a stop. */
+export const STALL_TICKS = SIM_TICK_RATE / 2
 
-/** Queue one input from the client. */
-export function queueInput(session: PlayerSession, input: ClientInput): void {
-  if (session.inputQueue.length >= MAX_INPUT_QUEUE) session.inputQueue.shift()
+/** Queue one input from the client; the cap is one second at the room's rate. */
+export function queueInput(
+  session: PlayerSession,
+  input: ClientInput,
+  tickRate: number = SIM_TICK_RATE,
+): void {
+  if (session.inputQueue.length >= tickRate) session.inputQueue.shift()
   session.inputQueue.push(input)
 }
 
 /** This tick's inputs, in order: earn one credit, then spend one per input, at most CATCH_UP_PER_TICK. */
-export function takeInputs(session: PlayerSession): ClientInput[] {
-  session.inputCredit = Math.min(MAX_INPUT_CREDIT, session.inputCredit + 1)
+export function takeInputs(
+  session: PlayerSession,
+  tickRate: number = SIM_TICK_RATE,
+): ClientInput[] {
+  session.inputCredit = Math.min(tickRate, session.inputCredit + 1)
   const out: ClientInput[] = []
   while (
     out.length < CATCH_UP_PER_TICK &&
@@ -97,7 +105,7 @@ export class MovementSystem implements System {
 
   readonly handlers: HandlerMap = {
     input: (session, msg: ClientInput, _conn) => {
-      queueInput(session, msg)
+      queueInput(session, msg, this.ctx.config.tickRate)
     },
     editmode: (session, msg: ClientEditMode, _conn) => {
       // Rank-gated noclip build mode. The flag lives in the move state so
@@ -157,7 +165,7 @@ export class MovementSystem implements System {
     this.sweepSelf = ctx.sessions.bodyOf(session.playerId)
     session.moveSegments.length = 0
     let simulated = 0
-    for (const input of takeInputs(session)) {
+    for (const input of takeInputs(session, ctx.config.tickRate)) {
       session.lastInput = input
       session.starvedTicks = 0
       session.lastProcessedSeq = input.seq
@@ -180,7 +188,7 @@ export class MovementSystem implements System {
       // they land (simulating anything now would be a step the client never predicted). A client quiet for longer
       // (a background tab, a dropped connection) coasts to a stop under gravity.
       session.starvedTicks++
-      if (session.starvedTicks > STALL_TICKS) {
+      if (session.starvedTicks > ctx.config.tickRate / 2) {
         // Zero MOVEMENT only: buttons stay held. Zeroing buttons fabricates release edges for toggle keys
         // (prone/crouch), and the server flapped stances.
         const from = surfPlace
@@ -205,7 +213,7 @@ export class MovementSystem implements System {
     if (bodyId !== undefined && session.bodyStance !== session.move.stance) {
       // Stance changed: swap the kinematic hull to match the new posture.
       ctx.world.physics.removeBody(bodyId)
-      const hull = hullHeightFor(session.move.stance)
+      const hull = hullHeightFor(session.move.stance, params)
       bodyId = ctx.world.physics.addBody({
         shape: {
           type: 'capsule',

@@ -5,6 +5,8 @@ import {
   CraftQueue,
   createMoveState,
   eyeOffsetFor,
+  movementParamsFor,
+  movementStyleFor,
   normalizeStats,
   type PlayerMoveState,
   type SurfRunState,
@@ -96,6 +98,8 @@ export interface PlayerSession {
   fallVy: number
   /** Surf run tracker; null outside a surf place. */
   surf: SurfRunState | null
+  /** Surf practice mode: stage travel and no ranked runs/PB writes. */
+  surfPractice: boolean
   /** Cached personal best/world record shown in surf_state. */
   surfPb: number | null
   surfWr: number | null
@@ -123,6 +127,8 @@ export interface PlayerSession {
   interestCells: Set<number>
   /** Player state changed since last persistence flush. */
   dirty: boolean
+  /** `welcome` was sent; chat is refused before it (the client is not in the game yet). */
+  welcomed: boolean
   send(text: string): void
   closeConnection(code: number, reason: string): void
 }
@@ -185,6 +191,7 @@ export function createSession(init: SessionInit): PlayerSession {
     openContainer: null,
     fallVy: 0,
     surf: null,
+    surfPractice: false,
     surfPb: null,
     surfWr: null,
     surfPbSplits: [],
@@ -200,6 +207,7 @@ export function createSession(init: SessionInit): PlayerSession {
     known: new Set(),
     interestCells: new Set(),
     dirty: true,
+    welcomed: false,
     send: init.send,
     closeConnection: init.closeConnection,
   }
@@ -207,8 +215,9 @@ export function createSession(init: SessionInit): PlayerSession {
 
 /** Eye position for view rays — stance-aware, matches the client camera. */
 export function eyePosition(session: PlayerSession, out: Vec3): Vec3 {
+  const params = movementParamsFor(movementStyleFor(session.content.world))
   out.x = session.move.pos.x
-  out.y = session.move.pos.y + eyeOffsetFor(session.move.stance)
+  out.y = session.move.pos.y + eyeOffsetFor(session.move.stance, params)
   out.z = session.move.pos.z
   return out
 }

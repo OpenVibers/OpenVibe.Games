@@ -250,6 +250,21 @@ export interface ServerAnnounce {
   text: string
 }
 
+/**
+ * One chat line. Player lines carry `from`; server/command lines are
+ * `channel: 'system'` with no speaker. `text` is plain text — clients render
+ * it with textContent, never as markup.
+ */
+export interface ServerSay {
+  t: 'say'
+  channel: 'say' | 'say_team' | 'system'
+  text: string
+  /** Speaker display name; absent on system lines. */
+  from?: string
+  /** Speaker entity id; absent on system lines. */
+  fromId?: string
+}
+
 /** Market data for an opened trading post (refreshed after each deal). */
 export interface ServerMarket {
   t: 'market'
@@ -322,6 +337,7 @@ export type ServerMessage =
   | ServerReputation
   | ServerJobs
   | ServerAnnounce
+  | ServerSay
   | ServerTracer
   | ServerFx
   | ServerMapReload

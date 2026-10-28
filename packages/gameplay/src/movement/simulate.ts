@@ -1,7 +1,7 @@
 import { Buttons } from './buttons.js'
 import { clamp, v3addScaled, v3copy, v3dot, v3lengthSq, vec3, type Vec3 } from '@openvibe/shared'
 import type { CollisionQueries, SweepHit } from './collision.js'
-import type { MovementParams } from './params.js'
+import { DEFAULT_MOVEMENT, type MovementParams } from './params.js'
 
 /**
  * Source/Quake-style kinematic character movement with stances.
@@ -26,10 +26,10 @@ export enum Stance {
   Prone = 2,
 }
 
-/** Hull heights per stance (capsule total height, m). */
-export const STANCE_HULL: readonly number[] = [1.8, 1.2, 0.7]
-/** Eye offset above the capsule CENTER per stance. */
-export const STANCE_EYE: readonly number[] = [0.65, 0.38, 0.14]
+/** Default hull heights per stance (capsule total height, m). */
+export const STANCE_HULL = DEFAULT_MOVEMENT.stanceHull
+/** Default eye offset above the capsule CENTER per stance. */
+export const STANCE_EYE = DEFAULT_MOVEMENT.stanceEye
 /** Ground-speed multiplier per stance. */
 export const STANCE_SPEED: readonly number[] = [1, 0.45, 0.22]
 /** Transition durations [from][to] in seconds. */
@@ -41,12 +41,14 @@ const STANCE_DUR: readonly (readonly number[])[] = [
 /** Lockout after a completed transition (anti spam/peek abuse). */
 const STANCE_COOLDOWN = 0.4
 
-export function hullHeightFor(stance: Stance): number {
-  return STANCE_HULL[stance] ?? 1.8
+/** A stance's collision hull height under these params (defaults preserve the sandbox). */
+export function hullHeightFor(stance: Stance, params: MovementParams = DEFAULT_MOVEMENT): number {
+  return params.stanceHull[stance] ?? params.capsuleHeight
 }
 
-export function eyeOffsetFor(stance: Stance): number {
-  return STANCE_EYE[stance] ?? 0.65
+/** A stance's eye offset above the capsule center under these params. */
+export function eyeOffsetFor(stance: Stance, params: MovementParams = DEFAULT_MOVEMENT): number {
+  return params.stanceEye[stance] ?? params.eyeOffset
 }
 
 export interface MoveInput {
@@ -398,8 +400,8 @@ function updateStance(
       : Stance.Stand
   if (desired === state.stance || state.stanceT > 0 || state.stanceCooldown > 0) return
 
-  const oldHull = hullHeightFor(state.stance)
-  const newHull = hullHeightFor(desired)
+  const oldHull = hullHeightFor(state.stance, params)
+  const newHull = hullHeightFor(desired, params)
   if (newHull > oldHull) {
     // Growing needs headroom: sweep the current hull upward by the delta.
     v3copy(_end, state.pos)
@@ -437,7 +439,7 @@ export function stepMovement(
     return
   }
   updateStance(state, input, params, world, dt)
-  const hull = hullHeightFor(state.stance)
+  const hull = hullHeightFor(state.stance, params)
 
   const groundHit = checkGround(state, world, params, hull)
   state.grounded = groundHit !== null

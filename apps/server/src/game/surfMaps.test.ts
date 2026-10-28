@@ -5,6 +5,7 @@ import {
   compileMapFileV2,
   parseMapFile,
   surfMap,
+  surfMapOfPlace,
   type MapFileV2,
 } from '@openvibe/content'
 import {
@@ -64,7 +65,7 @@ describe.each(SURF_MAPS)('$name', (info) => {
     const map = load(info.id)
     expect(map.movement).toBe('surf')
     expect(map.surf).toMatchObject({
-      title: info.name,
+      title: info.id,
       author: 'OpenVibe',
       tier: info.tier,
       stages: info.stages,
@@ -109,12 +110,12 @@ describe.each(SURF_MAPS)('$name', (info) => {
       const compiled = compileMapFileV2(map)
       const run = new SurfRunState(
         surfRunMapOf(compiled.surf, compiled.zones ?? [], compiled.spawn, compiled.spawnYaw),
-        30,
+        100,
       )
       const move = createMoveState(vec3(run.map.spawn.x, run.map.spawn.y, run.map.spawn.z))
       const params = movementParamsFor('surf')
       let finished = false
-      for (let tick = 0; tick < 60 * 30 && !finished; tick++) {
+      for (let tick = 0; tick < 60 * 100 && !finished; tick++) {
         const next =
           run.reached < run.map.checkpoints.length
             ? run.map.checkpoints[run.reached]!
@@ -128,8 +129,8 @@ describe.each(SURF_MAPS)('$name', (info) => {
         const from = { x: move.pos.x, y: move.pos.y, z: move.pos.z }
         // A hop pulse clears the gaps between landings; the surf line itself
         // is a held forward run down the 50–60° ramps.
-        const buttons = tick % 20 < 2 ? Buttons.Jump : 0
-        stepMovement(move, { moveX: 0, moveZ: 1, yaw, pitch: 0, buttons }, params, queries, 1 / 30)
+        const buttons = tick % 67 < 2 ? Buttons.Jump : 0
+        stepMovement(move, { moveX: 0, moveZ: 1, yaw, pitch: 0, buttons }, params, queries, 1 / 100)
         const events = run.observe(tick, from, move.pos, yaw)
         for (const event of events) {
           if (event.type === 'failed' || event.type === 'restarted') {
@@ -152,6 +153,19 @@ describe('surf map catalogue', () => {
     expect(SURF_MAPS.map((m) => m.id)).toEqual(['surf_lagoon', 'surf_canyon', 'surf_orbit'])
     expect(SURF_MAPS.map((m) => m.tier)).toEqual([1, 2, 4])
     expect(SURF_MAPS.map((m) => m.stages)).toEqual([3, 4, 6])
-    for (const info of SURF_MAPS) expect(surfMap(info.placeId)?.id).toBe(info.id)
+    // A Source map is its file name: the visible name, content id and place id
+    // are the same string, and the JSON title agrees.
+    expect(SURF_MAPS.every((m) => m.name === m.id && m.placeId === m.id)).toBe(true)
+    for (const info of SURF_MAPS) {
+      expect(surfMap(info.placeId)?.id).toBe(info.id)
+      expect(load(info.id).surf?.title).toBe(info.id)
+    }
+  })
+
+  it('resolves the old hyphenated id only as a redirect alias', () => {
+    expect(surfMap('surf-lagoon')).toMatchObject({ id: 'surf_lagoon', placeId: 'surf_lagoon' })
+    expect(surfMapOfPlace('surf-canyon')?.id).toBe('surf_canyon')
+    expect(surfMap('surf')?.id).toBe('surf_lagoon')
+    expect(surfMap('surf-missing')).toBeUndefined()
   })
 })

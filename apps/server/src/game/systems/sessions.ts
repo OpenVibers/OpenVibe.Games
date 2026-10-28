@@ -282,6 +282,9 @@ export class SessionsSystem implements System {
     ctx.sessions.setBody(playerId, bodyId)
 
     const cvarState = ctx.systems.settings.wireFor(rank)
+    // From here the client is in the game: chat is allowed only after this
+    // flag, so a `say` racing the join (or sent before `hello`) is dropped.
+    session.welcomed = true
     ctx.net.send(session, {
       t: 'welcome',
       v: msg.v,

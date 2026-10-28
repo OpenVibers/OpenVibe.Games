@@ -3,6 +3,7 @@ import { HOTBAR_SLOTS } from '../constants.js'
 import type { Connection } from '../net/connection.js'
 import type { ClientState } from '../state/clientState.js'
 import type { IconFactory } from './iconFactory.js'
+import { Chat } from './chat.js'
 import { weaponModuleFor, type WeaponSettings } from '../weapons/registry.js'
 import {
   getQualityOverride,
@@ -42,6 +43,8 @@ export class Hud {
   private statusEl!: HTMLElement
   private toastArea!: HTMLElement
 
+  /** Source-style chat (Y/U); the HUD owns its mount and capture handoff. */
+  readonly chat: Chat
   menuOpen = false
 
   /** Any HUD panel that owns input right now (the menu, a shop, a container). */
@@ -68,6 +71,8 @@ export class Hud {
   ) {
     this.root = root
     this.build()
+    this.chat = new Chat(this.root, connection, state)
+    this.chat.onCaptureChange = (captured) => this.onUiCaptureChange?.(captured)
     icons.onReady = () => {
       this.renderHotbar()
       this.renderMenu()
@@ -531,6 +536,8 @@ export class Hud {
   }
 
   toggleMenu(): void {
+    // Chat and the menu both hold input capture; only one may be open.
+    if (!this.menuOpen) this.chat.close()
     this.menuOpen = !this.menuOpen
     this.menuEl.style.display = this.menuOpen ? 'flex' : 'none'
     this.renderTabs()

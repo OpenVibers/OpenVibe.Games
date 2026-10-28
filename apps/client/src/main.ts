@@ -104,13 +104,39 @@ async function start(): Promise<void> {
   // A creator world (/worlds): its own place, the plain creator pack and the world's map.
   const requestedWorld = params.get('world')
   const worldId = requestedWorld && CREATOR_WORLD_ID.test(requestedWorld) ? requestedWorld : null
-  // OpenVibe.Surf Ride: ?map=<id> (or ?game=surf&map=…). A map is a place
-  // (`surf-lagoon`), so the existing place URL scheme carries it unchanged.
+  // OpenVibe.Surf Ride: /surf/<id> is canonical, and ?map=<id> / ?game=<id>
+  // are accepted aliases. A map's place id is the map id (`surf_lagoon`).
   const requestedMap = params.get('map')
+  const surfPath = /^\/surf\/([^/]+)\/?$/.exec(location.pathname)?.[1]
   const surfInfo: SurfMapInfo | null =
+    (surfPath && surfPath !== 'embed' ? surfMap(surfPath) : null) ??
     (requestedMap ? surfMap(requestedMap) : null) ??
-    (requestedGame === 'surf' ? surfMap('surf_lagoon') : null) ??
+    (requestedGame ? surfMap(requestedGame) : null) ??
     null
+  // The old hyphenated forms are aliases only: put the canonical form in the
+  // address bar before any fetch. The server sends the same 301.
+  if (surfInfo) {
+    if (surfPath && surfPath !== 'embed' && surfPath !== surfInfo.id) {
+      history.replaceState(null, '', `/surf/${surfInfo.id}${location.search}${location.hash}`)
+    } else if (requestedGame && surfMap(requestedGame) && !surfPath) {
+      const rest = new URLSearchParams(params)
+      rest.delete('game')
+      rest.delete('map')
+      history.replaceState(
+        null,
+        '',
+        `/surf/${surfInfo.id}${rest.size ? `?${rest.toString()}` : ''}${location.hash}`,
+      )
+    } else if (requestedMap && requestedMap !== surfInfo.id) {
+      params.set('map', surfInfo.id)
+      const query = params.toString()
+      history.replaceState(
+        null,
+        '',
+        `${location.pathname}${query ? `?${query}` : ''}${location.hash}`,
+      )
+    }
+  }
   const selectedPlace = worldId
     ? creatorPlaceId(worldId)
     : surfInfo
@@ -326,6 +352,23 @@ async function start(): Promise<void> {
   gameConsole.onCvarRequest = (cvar, value, requestId) => {
     connection.send({ t: 'cvar_set', name: cvar, value, requestId })
   }
+
+  // Source's chat keys: Y talks to the room, U to the team. Capture-phase so
+  // the game never reads them as movement/tool keys; the HUD owns the input
+  // and its capture handoff. The console's own textarea stops these keys too.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.repeat) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (input.uiCapture) return
+      if (e.code !== 'KeyY' && e.code !== 'KeyU') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      hud.chat.open(e.code === 'KeyY' ? 'say' : 'say_team')
+    },
+    true,
+  )
   // Scraplandia's first-steps checklist (not in Salvage Rush or a creator world, whose worlds are something else).
   let updateWaypoint: (() => void) | null = null
   let firstStepsRef: FirstSteps | null = null
@@ -920,8 +963,13 @@ async function start(): Promise<void> {
 
   let wasSubmerged = false
 
-  // Fixed-timestep prediction; interpolated rendering.
-  const timestep = new FixedTimestep(1 / state.tickRate)
+  // Fixed-timestep prediction; interpolated rendering. A room's welcome carries
+  // its own rate (30 default, 100 surf), so a transfer/reset rebuilds the
+  // accumulator instead of keeping the previous room's step.
+  let timestep = new FixedTimestep(1 / state.tickRate)
+  state.events.on('welcome', () => {
+    if (timestep.dt !== 1 / state.tickRate) timestep = new FixedTimestep(1 / state.tickRate)
+  })
   gameLoop = () => {
     const now = performance.now()
     const elapsed = Math.min((now - last) / 1000, 0.25)

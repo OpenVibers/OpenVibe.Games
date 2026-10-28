@@ -47,6 +47,8 @@ export interface ClientStateEvents {
   weather: string
   container: { id: string; size: number; slots: { i: number; def: string; count: number }[] }
   announce: string
+  /** One chat line (conversation or a command reply). */
+  chat: Extract<ServerMessage, { t: 'say' }>
   market: unknown
   jobs: unknown
   reputation: { id: string; name: string; value: number; stance: string }[]
@@ -242,6 +244,9 @@ export class ClientState {
         break
       case 'announce':
         this.events.emit('announce', msg.text)
+        break
+      case 'say':
+        this.events.emit('chat', msg)
         break
       case 'market':
         this.events.emit('market', msg)
