@@ -1,9 +1,13 @@
+/* The run's clock sits top centre, as in CS surf: clear of the OpenVibe menu pill (top left) and the phone's Restart
+   button (top right). */
 .surf-hud {
   position: fixed;
   z-index: 12;
-  top: max(1rem, env(safe-area-inset-top));
-  left: max(1rem, env(safe-area-inset-left));
-  width: min(18rem, calc(100vw - 2rem));
+  top: max(0.75rem, env(safe-area-inset-top));
+  left: 50%;
+  translate: -50% 0;
+  width: min(19rem, calc(100vw - 13rem));
+  min-width: 13.5rem;
   padding: 0.8rem 0.95rem 0.9rem;
   border: 1px solid var(--border, #2a3340);
   border-left: 3px solid var(--g-accent, #f0b040);
@@ -116,3 +120,25 @@
 }
 .surf-watch { background: transparent !important; color: var(--text-primary, #e6e6e6) !important; }
 .surf-finish-actions button:disabled { opacity: 0.45; cursor: default; }
+
+/* A surf place has no survival: the vitals, the hotbar and the first-steps card are the islands'. */
+.ovg-surf .vitals,
+.ovg-surf .hotbar,
+.ovg-surf .first-steps { display: none !important; }
+
+/* Touch: the keys mean nothing, the screen is small. A compact clock, the last two splits. */
+@media (pointer: coarse), (max-width: 640px) {
+  .surf-hud {
+    width: auto;
+    min-width: 0;
+    max-width: calc(100vw - 11.5rem);
+    padding: 0.5rem 0.7rem 0.55rem;
+    border-radius: 0.7rem;
+    font-size: 0.78rem;
+  }
+  .surf-title { display: none; }
+  .surf-timer { font-size: 1.55rem; margin: 0; }
+  .surf-hint { display: none; }
+  .surf-meta { font-size: 0.68rem; }
+  .surf-split:not(:nth-last-child(-n + 2)) { display: none; }
+}

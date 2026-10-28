@@ -20,7 +20,7 @@ import { MapLightLayer, mapDiff, staticWork, terrainWork } from './render/mapRun
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
 import { FixedTimestep } from '@openvibe/shared'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
-import type { Appearance } from '@openvibe/protocol'
+import { defaultAppearance, type Appearance } from '@openvibe/protocol'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import { Scene } from '@babylonjs/core/scene.js'
 import { WATER_LEVEL, getMapOverride, terrainHeight } from '@openvibe/content'
@@ -241,13 +241,22 @@ async function start(): Promise<void> {
   } catch {
     characters = []
   }
-  const choice = await characterSelect(uiRoot, characters, Boolean(sso))
+  // A surf map (OpenVibe.Surf's Ride) goes straight onto the ramp: your first character if you have one, else a surfer
+  // with the default look under your saved name. Character select and the customize screen belong to the islands.
+  const firstOwn = [...characters].sort((a, b) => a.slot - b.slot)[0] ?? null
+  const choice = surfInfo
+    ? { slot: firstOwn ? firstOwn.slot : 0, existing: firstOwn }
+    : await characterSelect(uiRoot, characters, Boolean(sso))
   let name: string
   let appearance: Appearance
   let releaseCamera: () => void
   if (choice.existing?.appearance) {
     name = choice.existing.name
     appearance = { ...choice.existing.appearance, height: 1, build: 1 }
+    releaseCamera = () => {}
+  } else if (surfInfo) {
+    name = identity.name ?? 'Surfer'
+    appearance = defaultAppearance()
     releaseCamera = () => {}
   } else {
     const created = await customizeScreen(scene, content, uiRoot, identity.name, !sso)
@@ -269,6 +278,8 @@ async function start(): Promise<void> {
   const state = new ClientState()
   const connection = new Connection()
   const input = new InputTracker(canvas)
+  // A surf map starts on a pad above its first ramp: look a little down, so the pad's edge (the drop) is in front.
+  if (surfInfo) input.pitch = -0.2
   const view = new EntityView(scene, physics, content, state)
   const icons = new IconFactory(scene, content)
   const weaponSettings = new WeaponSettings()
@@ -454,6 +465,12 @@ async function start(): Promise<void> {
     viewmodel.setEnabled(false)
     environment.hazeFog = false
     hud.setCrosshair(false)
+  }
+  // A surf run is the ramps and the clock: no hands or held tool, and no survival bars or hotbar (surfHud.css hides
+  // those under .ovg-surf).
+  if (surfInfo) {
+    viewmodel.setEnabled(false)
+    uiRoot.classList.add('ovg-surf')
   }
   // From above, a ring under each player (yours blue) shows who is where and which way each one faces.
   const markers = topDown ? new TopDownMarkers(scene, state, view, player) : null
