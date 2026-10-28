@@ -27,6 +27,7 @@ import type { PhysicsSystem } from './physics.js'
 import type { ProductionSystem } from './production.js'
 import type { ReplicationSystem } from './replication.js'
 import type { SessionsSystem } from './sessions.js'
+import type { SettingsSystem } from './settings.js'
 import type { SurfSystem } from './surf.js'
 import type { SurfRecords } from '../surfRecords.js'
 import type { SocialSystem } from './social.js'
@@ -191,6 +192,7 @@ export class SessionRegistry {
  */
 export interface ServerSystems {
   sessions: SessionsSystem
+  settings: SettingsSystem
   movement: MovementSystem
   surf: SurfSystem
   replication: ReplicationSystem

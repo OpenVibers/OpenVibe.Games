@@ -1,4 +1,10 @@
-import { Intents } from '@openvibe/shared'
+import {
+  Intents,
+  intentCommand,
+  keyCodeFor,
+  type Bindings,
+  type IntentName,
+} from '@openvibe/shared'
 
 /** One simulation tick of intent input, independent of the device behind it. */
 export interface InputSample {
@@ -35,9 +41,23 @@ export interface KeyboardState {
   readonly pitch: number
 }
 
-/** Keyboard + mouse: today's desktop bindings, mapped onto named intents. */
+/** Keyboard + mouse: Source key bindings, mapped onto named intents. */
 export class KeyboardInputSource implements InputSource {
-  constructor(private readonly keys: KeyboardState) {}
+  /** Console-typed `+jump` / `-jump`, independent of the physical keys. */
+  private manualIntents = 0
+
+  constructor(
+    private readonly keys: KeyboardState,
+    /** When present, the player's binds replace the stock intent keys. */
+    private readonly bindings: Bindings | null = null,
+  ) {}
+
+  /** A `+`/`-` command typed in the console feeds the same intent bits as a key. */
+  setManualIntent(name: string, down: boolean): void {
+    const bit = Intents[name as IntentName]
+    if (typeof bit !== 'number') return
+    this.manualIntents = down ? this.manualIntents | bit : this.manualIntents & ~bit
+  }
 
   get yaw(): number {
     return this.keys.yaw
@@ -49,11 +69,21 @@ export class KeyboardInputSource implements InputSource {
 
   sample(): InputSample {
     const keys = this.keys
-    let intents = 0
-    if (keys.keyDown('Space')) intents |= Intents.Jump
-    if (keys.keyDown('ShiftLeft')) intents |= Intents.Sprint
-    if (keys.keyDown('ControlLeft') || keys.keyDown('KeyC')) intents |= Intents.Crouch
-    if (keys.keyDown('KeyZ')) intents |= Intents.Prone
+    let intents = this.manualIntents
+    if (this.bindings) {
+      for (const binding of this.bindings.entries()) {
+        const code = keyCodeFor(binding.key)
+        if (!code || !keys.keyDown(code)) continue
+        const intent = intentCommand(binding.command)
+        if (intent?.down) intents |= Intents[intent.name]
+      }
+    } else {
+      // No console mounted (unit tests, embeds): the stock controls remain.
+      if (keys.keyDown('Space')) intents |= Intents.Jump
+      if (keys.keyDown('ShiftLeft')) intents |= Intents.Sprint
+      if (keys.keyDown('ControlLeft') || keys.keyDown('KeyC')) intents |= Intents.Crouch
+      if (keys.keyDown('KeyZ')) intents |= Intents.Prone
+    }
     const moveX = (keys.keyDown('KeyD') ? 1 : 0) - (keys.keyDown('KeyA') ? 1 : 0)
     const moveZ = (keys.keyDown('KeyW') ? 1 : 0) - (keys.keyDown('KeyS') ? 1 : 0)
     return { moveX, moveZ, yaw: keys.yaw, pitch: keys.pitch, intents }

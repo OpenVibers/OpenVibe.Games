@@ -43,6 +43,11 @@ export class Hud {
   private toastArea!: HTMLElement
 
   menuOpen = false
+
+  /** Any HUD panel that owns input right now (the menu, a shop, a container). */
+  get interfaceOpen(): boolean {
+    return this.menuOpen || this.shopOpen || this.openContainerId !== null
+  }
   private activeTab: MenuTab = 'inventory'
   private dragFrom: number | null = null
   onUiCaptureChange: ((captured: boolean) => void) | null = null

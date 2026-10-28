@@ -2,7 +2,7 @@
   "name": "openvibe-games",
   "private": true,
   "version": "0.1.0",
-  "description": "Scraplandia — persistent multiplayer physics sandbox (browser)",
+  "description": "Scraplandia \u2014 persistent multiplayer physics sandbox (browser)",
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -21,7 +21,8 @@
     "typecheck": "tsc --build tsconfig.solution.json",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:console": "node --import tsx apps/client/e2e/consoleCheck.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.23.0",

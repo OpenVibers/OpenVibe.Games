@@ -15,6 +15,7 @@ import { TypedEmitter } from '@openvibe/shared'
 
 export interface ClientStateEvents {
   welcome: { entityId: string; tickRate: number }
+  cvars: { values: Record<string, number | boolean>; writable: string[]; error?: string }
   entityAdded: WireEntity
   entityRemoved: string
   entityUpdated: WireEntity
@@ -60,6 +61,10 @@ export class ClientState {
   myEntityId = ''
   /** OpenVibe rank from welcome (owner/admin/moderator, null = player). */
   myRank: 'owner' | 'admin' | 'moderator' | null = null
+  /** Server-authoritative cvars in Source units (welcome + cvar_state). */
+  cvars: Record<string, number | boolean> = {}
+  /** Server cvars this rank may change. */
+  cvarsWritable: string[] = []
   myPlayerId = ''
   instanceId: string | null = null
   instanceCount = 1
@@ -118,7 +123,19 @@ export class ClientState {
         this.tickRate = msg.tickRate
         this.snapshotRate = msg.snapshotRate
         this.serverTick = msg.tick
+        if (msg.cvars) this.cvars = msg.cvars
+        if (msg.cvarsWritable) this.cvarsWritable = msg.cvarsWritable
         this.events.emit('welcome', { entityId: msg.entityId, tickRate: msg.tickRate })
+        this.events.emit('cvars', { values: this.cvars, writable: this.cvarsWritable })
+        break
+      case 'cvar_state':
+        this.cvars = msg.values
+        this.cvarsWritable = msg.writable
+        this.events.emit('cvars', {
+          values: msg.values,
+          writable: msg.writable,
+          ...(msg.error !== undefined ? { error: msg.error } : {}),
+        })
         break
       case 'transfer_result':
         break

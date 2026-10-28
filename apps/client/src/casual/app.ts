@@ -14,6 +14,8 @@ import {
 import { ApiError, type ActionAnswer, type CasualApi, type Player } from './api.js'
 import { icon } from './art.js'
 import { button, duration, h, num, sheet, tick, toast } from './dom.js'
+import { CvarRegistry, CLIENT_CVARS } from '@openvibe/shared'
+import { GameConsole } from '../ui/console.js'
 import { forgetSession } from '../net/identity.js'
 
 export type Tab = 'home' | 'heroes' | 'summon' | 'quests' | 'shop'
@@ -35,6 +37,8 @@ export class App {
   private view = h('section', { class: 'cg-view', attrs: { 'aria-live': 'off' } })
   private tabs = h('nav', { class: 'cg-tabs', attrs: { 'aria-label': 'Game sections' } })
   private menu: (app: App) => void = () => {}
+  /** Same ~ overlay as the 3D client, with read-only commands only. */
+  readonly console: GameConsole
 
   constructor(
     readonly root: HTMLElement,
@@ -46,6 +50,15 @@ export class App {
     private views: Record<Tab, View>,
   ) {
     root.replaceChildren(this.top, this.view, this.tabs)
+    this.console = new GameConsole({
+      parent: document.body,
+      cvars: new CvarRegistry(CLIENT_CVARS),
+      readOnly: true,
+    })
+    this.console.setStatusProvider(() => [
+      `${this.pack.name} · ${this.player.name}`,
+      `tab ${this.tab} · version ${this.version} · read-only console`,
+    ])
   }
 
   onMenu(fn: (app: App) => void): void {

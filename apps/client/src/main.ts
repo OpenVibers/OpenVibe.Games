@@ -18,7 +18,16 @@ import {
 } from '@openvibe/content'
 import { MapLightLayer, mapDiff, staticWork, terrainWork } from './render/mapRuntimeLayers.js'
 import { createRapierWorld, loadRapier } from '@openvibe/physics/rapier'
-import { FixedTimestep } from '@openvibe/shared'
+import {
+  CLIENT_CVARS,
+  CvarRegistry,
+  DEFAULT_BINDS,
+  Bindings,
+  ConfigStore,
+  FixedTimestep,
+  SOURCE_MOVEMENT_CVARS,
+  isIntentCommand,
+} from '@openvibe/shared'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js'
 import { defaultAppearance, type Appearance } from '@openvibe/protocol'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
@@ -27,7 +36,9 @@ import { WATER_LEVEL, getMapOverride, terrainHeight } from '@openvibe/content'
 import {
   DEFAULT_MOVEMENT,
   decodeSurfTrack,
+  movementCvarValues,
   movementParamsFor,
+  movementParamsWithCvars,
   movementStyleFor,
 } from '@openvibe/gameplay'
 import { Sfx, footstepSurface, materialForVisual } from './audio/sfx.js'
@@ -68,6 +79,7 @@ import { ClientState } from './state/clientState.js'
 import { characterSelect, type CharacterInfo } from './ui/characterSelect.js'
 import { customizeScreen } from './ui/customizeScreen.js'
 import { Hud } from './ui/hud.js'
+import { GameConsole } from './ui/console.js'
 import { IconFactory } from './ui/iconFactory.js'
 import { registerPhysgunModule } from './weapons/physgunModule.js'
 import { registerRiggingModule } from './weapons/riggingModule.js'
@@ -140,14 +152,13 @@ async function start(): Promise<void> {
       }
       if (Array.isArray(data.packs)) {
         const contentSurf = data.game ? surfMapOfPlace(data.game) : null
-        const builtIn =
-          contentSurf
-            ? surfPack(contentSurf.id)
-            : data.game === 'salvage-rush'
-              ? (await import('@openvibe/content/salvage-rush')).SALVAGE_RUSH_PACK
-              : data.game === 'creator' && worldId
-                ? creatorWorldPack(worldId)
-                : undefined
+        const builtIn = contentSurf
+          ? surfPack(contentSurf.id)
+          : data.game === 'salvage-rush'
+            ? (await import('@openvibe/content/salvage-rush')).SALVAGE_RUSH_PACK
+            : data.game === 'creator' && worldId
+              ? creatorWorldPack(worldId)
+              : undefined
         const active = createContent(data.packs, builtIn)
         if (active.digest === data.digest) content = active
       }
@@ -289,6 +300,32 @@ async function start(): Promise<void> {
     guest: identity.token,
     ...(sso ? { bearer: sso } : {}),
   })
+  // The ~ console: Source vocabulary over this place's movement preset. The
+  // server sends the authoritative values in welcome/cvar_state; the console
+  // only ever requests a server cvar change.
+  const baseMovement = movementParamsFor(movementStyleFor(content.world))
+  const cvarRegistry = new CvarRegistry([...SOURCE_MOVEMENT_CVARS, ...CLIENT_CVARS])
+  cvarRegistry.apply(movementCvarValues(baseMovement))
+  const bindings = new Bindings({
+    defaults: {
+      ...DEFAULT_BINDS,
+      // Scraplandia keeps its existing R/G verbs; surf binds them to the run.
+      ...(surfInfo ? {} : { r: '+reload', g: '+drop' }),
+    },
+  })
+  const gameConsole = new GameConsole({
+    parent: uiRoot,
+    cvars: cvarRegistry,
+    bindings,
+    configs: new ConfigStore(),
+  })
+  gameConsole.setStatusProvider(() => [
+    `${name} · tick ${state.serverTick} · ${state.entities.size} entities`,
+    `entity ${state.myEntityId || '—'} · rank ${state.myRank ?? 'player'} · ${connection.open ? 'connected' : 'offline'}`,
+  ])
+  gameConsole.onCvarRequest = (cvar, value, requestId) => {
+    connection.send({ t: 'cvar_set', name: cvar, value, requestId })
+  }
   // Scraplandia's first-steps checklist (not in Salvage Rush or a creator world, whose worlds are something else).
   let updateWaypoint: (() => void) | null = null
   let firstStepsRef: FirstSteps | null = null
@@ -320,7 +357,8 @@ async function start(): Promise<void> {
       // Gathering: point at whichever pile gives what is still missing.
       const hasWood = state.countOf('wood_log') > 0 || state.countOf('wood_plank') > 0
       const hasStone = state.countOf('stone') > 0
-      const prefer = step.id === 'gather' ? (hasStone ? ['branch_pile'] : hasWood ? ['loose_stones'] : []) : []
+      const prefer =
+        step.id === 'gather' ? (hasStone ? ['branch_pile'] : hasWood ? ['loose_stones'] : []) : []
       const sightings: NodeSighting[] = []
       // Props the step names (the campfire, the workbench, the trading post) count as sightings too.
       const props = new Set(toward.props ?? [])
@@ -335,11 +373,21 @@ async function start(): Promise<void> {
             remaining: e.remaining ?? 1,
           })
         } else if (e.kind === 'prop' && props.has(e.def)) {
-          sightings.push({ def: e.def, name: content.item(e.def)?.name ?? e.def, x: e.pos[0], z: e.pos[2], remaining: 1 })
+          sightings.push({
+            def: e.def,
+            name: content.item(e.def)?.name ?? e.def,
+            x: e.pos[0],
+            z: e.pos[2],
+            remaining: 1,
+          })
         }
       }
       const zones = getMapOverride(content.world)?.zones ?? []
-      const wanted = { nodes: [...(toward.nodes ?? []), ...props], ...(toward.zone ? { zone: toward.zone } : {}), prefer }
+      const wanted = {
+        nodes: [...(toward.nodes ?? []), ...props],
+        ...(toward.zone ? { zone: toward.zone } : {}),
+        prefer,
+      }
       waypoint.update(from, player.viewYaw, pickTarget(from, wanted, sightings, zones))
     }
   }
@@ -361,7 +409,8 @@ async function start(): Promise<void> {
 
   // Touch on a coarse pointer, keyboard otherwise; a device with both
   // switches to whichever was used last, carrying the view angle across.
-  const keyboardSource = new KeyboardInputSource(input)
+  const keyboardSource = new KeyboardInputSource(input, bindings)
+  gameConsole.onIntentCommand = (intent, down) => keyboardSource.setManualIntent(intent, down)
   const touchPad = new TouchPad()
   const touchSource = new TouchInputSource(touchPad)
   const touchControls = new TouchControls(uiRoot, canvas, touchPad)
@@ -431,11 +480,16 @@ async function start(): Promise<void> {
       y: placeSpawn.pos[1],
       z: placeSpawn.pos[2],
     },
-    movementParamsFor(movementStyleFor(content.world)),
+    baseMovement,
   )
   scene.activeCamera = player.camera
   releaseCamera()
   environment.attachCamera(player.camera)
+  // The server's authoritative cvar values are the only source for movement
+  // parameter changes; prediction and simulation share the same conversion.
+  gameConsole.onServerCvars = (values) => {
+    player.setMovementParams(movementParamsWithCvars(baseMovement, values))
+  }
   const interact = new InteractionController(
     physics,
     player,
@@ -454,6 +508,7 @@ async function start(): Promise<void> {
     connection,
     player,
     icons,
+    console: gameConsole,
   }
   const fpBody = new FirstPersonBody(scene, content, appearance, player, state)
   const viewmodel = new Viewmodel(scene, content, player.camera, appearance)
@@ -513,27 +568,49 @@ async function start(): Promise<void> {
     // Your PB is the default ghost; the WR is the fallback before your first run.
     void loadSurfGhost('pb').then((ok) => (ok ? true : loadSurfGhost('wr')))
   }
-  // Ride's keys. Capture-phase: InputTracker would otherwise read R as
-  // reload and G as drop, neither of which exists in a surf place.
-  document.addEventListener(
-    'keydown',
-    (e) => {
-      if (!surfInfo) return
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
-      if (input.uiCapture) return
-      if (e.code !== 'KeyR' && e.code !== 'KeyG') return
-      e.preventDefault()
-      e.stopImmediatePropagation()
-      if (e.code === 'KeyR') {
-        surfUi?.hideFinish()
-        connection.send({ t: 'surf_restart' })
-      } else {
-        const on = surfGhost?.toggle() ?? false
-        hud.toast(on ? 'Ghost on' : 'Ghost off', false)
-      }
-    },
-    true,
-  )
+  const restartSurf = (): boolean => {
+    if (!surfInfo) return false
+    surfUi?.hideFinish()
+    connection.send({ t: 'surf_restart' })
+    return true
+  }
+  const toggleGhost = (): boolean => {
+    if (!surfGhost) return false
+    const on = surfGhost.toggle()
+    hud.toast(on ? 'Ghost on' : 'Ghost off', false)
+    return true
+  }
+  // Source binds, not key codes: the defaults are `r +restart` and
+  // `g toggle_ghost` in a surf place, `r +reload`/`g +drop` elsewhere, and a
+  // player's `bind` replaces them. Intent commands are read by the keyboard
+  // source; this is only for one-shot verbs.
+  const runBoundCommand = (command: string): boolean => {
+    switch (command) {
+      case '+restart':
+        return restartSurf()
+      case 'toggle_ghost':
+        return toggleGhost()
+      case 'toggleconsole':
+        gameConsole.toggle()
+        return true
+      case '+reload':
+        interact.handle({ kind: 'reload' })
+        return true
+      case '+drop':
+        interact.handle({ kind: 'drop' })
+        return true
+      default:
+        return false
+    }
+  }
+  // Bindings switch on with their handler. Enabling them before boot has
+  // reached this point would preventDefault on ~ with no one to toggle.
+  input.bindings = bindings
+  input.onBind = (command, down) => {
+    if (!down || isIntentCommand(command)) return
+    runBoundCommand(command)
+  }
+  gameConsole.onBoundCommand = runBoundCommand
   interact.placementPose = () => (ghost.valid ? ghost.pose : null)
   interact.onPlacementRotate = (delta) => ghost.rotate(delta)
 
@@ -566,6 +643,14 @@ async function start(): Promise<void> {
   window.addEventListener('keydown', unlockAudio)
   hud.volume = () => sfx.getVolume()
   hud.onVolumeChange = (v) => sfx.setVolume(v)
+  gameConsole.onLocalCvar = (cvar, value) => {
+    if (cvar === 'volume') sfx.setVolume(Number(value))
+    else if (cvar === 'crosshair') hud.setCrosshair(Number(value) !== 0)
+  }
+  const storedVolume = cvarRegistry.get('volume')
+  if (typeof storedVolume === 'number') sfx.setVolume(storedVolume)
+  const storedCrosshair = cvarRegistry.get('crosshair')
+  if (typeof storedCrosshair === 'number') hud.setCrosshair(storedCrosshair !== 0)
   interact.onMelee = (target) => {
     sfx.swing()
     if (!target) return
@@ -599,13 +684,15 @@ async function start(): Promise<void> {
   let wasGrounded = true
   let fallSpeed = 0
 
-  hud.onUiCaptureChange = (captured) => {
+  const applyUiCapture = (captured: boolean): void => {
     input.uiCapture = captured
     touchControls.setUiCapture(captured)
     if (captured) input.exitLock()
-    // Straight back into the game when the menu closes; touch never locks.
+    // Straight back into the game when every overlay closes; touch never locks.
     else if (switchable.current === keyboardSource) input.requestLock()
   }
+  hud.onUiCaptureChange = (captured) => applyUiCapture(captured || gameConsole.isOpen)
+  gameConsole.onOpenChange = (open) => applyUiCapture(open || hud.interfaceOpen)
   input.onAction = (action) => {
     switch (action.kind) {
       case 'toggle_menu':
@@ -643,7 +730,8 @@ async function start(): Promise<void> {
 
   state.events.on('actionResult', (r) => {
     // A drink the server accepted (eating answers the same action, so only right after this client asked to drink).
-    if (r.action === 'consume' && r.ok && Date.now() - interact.lastDrinkAt < 3000) firstStepsRef?.onDrink()
+    if (r.action === 'consume' && r.ok && Date.now() - interact.lastDrinkAt < 3000)
+      firstStepsRef?.onDrink()
     if (r.action === 'use' && r.ok && interact.lastTargetWasPlayer) {
       interact.lastTargetWasPlayer = false
       hud.flashHitmarker()
@@ -662,6 +750,17 @@ async function start(): Promise<void> {
       player.onTransfer()
     }
     state.apply(msg)
+    if (msg.t === 'welcome') {
+      // The authoritative values arrive with welcome; autoexec runs only
+      // after they are applied, so a cfg that queries sv_gravity sees 800.
+      gameConsole.applyServerCvars(msg.cvars ?? {}, msg.cvarsWritable ?? [])
+      void gameConsole.runAutoexec()
+    } else if (msg.t === 'cvar_state') {
+      gameConsole.applyServerCvars(msg.values, msg.writable, {
+        ...(msg.error !== undefined ? { error: msg.error } : {}),
+        ...(msg.requestId !== undefined ? { requestId: msg.requestId } : {}),
+      })
+    }
     if (msg.t === 'transfer_result') {
       hud.toast(
         msg.accepted
@@ -754,7 +853,9 @@ async function start(): Promise<void> {
           hud.setStatus('could not join — try signing in again from the home page')
         }
       } else if (msg.reason === 'guest_one_character') {
-        hud.setStatus('this server keeps one character per guest — sign in with OpenVibe to keep more')
+        hud.setStatus(
+          'this server keeps one character per guest — sign in with OpenVibe to keep more',
+        )
       } else if (msg.reason === 'auth_failed' || msg.reason === 'signed_out') {
         localStorage.removeItem('ovg_sso')
         hud.setStatus(

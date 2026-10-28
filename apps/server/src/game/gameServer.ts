@@ -23,6 +23,7 @@ import {
   ProductionSystem,
   ReplicationSystem,
   SessionsSystem,
+  SettingsSystem,
   SocialSystem,
   SurfSystem,
   VehicleSystem,
@@ -82,6 +83,7 @@ export class GameServer {
     )
     const ctx = this.ctx
     const sessions = new SessionsSystem(ctx)
+    const settings = new SettingsSystem(ctx)
     const movement = new MovementSystem(ctx)
     // Runs see this tick's authoritative positions: construct after movement,
     // insert in the ordered list before replication.
@@ -107,6 +109,7 @@ export class GameServer {
 
     this.systems = {
       sessions,
+      settings,
       movement,
       surf,
       replication,
@@ -131,6 +134,7 @@ export class GameServer {
     ctx.systems = this.systems
     this.ordered = [
       sessions,
+      settings,
       movement,
       surf,
       replication,
