@@ -1060,6 +1060,8 @@ export function generateScrapIsland(seed = 20261019): MapFileV2 {
     ],
     models: [],
     textures: [],
+    points: [],
+    logic: [],
     spawn: [ISLAND.spawn[0], round(top(ISLAND.spawn[0], ISLAND.spawn[2])), ISLAND.spawn[2]],
     spawnYaw: 0,
   }

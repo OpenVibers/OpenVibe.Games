@@ -1,4 +1,4 @@
-import type { PointDef, ZoneDef } from '@openvibe/content'
+import type { LogicDef, PointDef, ZoneDef } from '@openvibe/content'
 import { insideBox, segmentAabbEntry, segmentAabbExit } from '../surf/run.js'
 import { OutputQueue, outputKey, type OutputSpec } from './io.js'
 import {

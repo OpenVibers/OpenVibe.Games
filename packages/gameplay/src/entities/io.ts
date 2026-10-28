@@ -10,9 +10,9 @@ export interface OutputSpec {
   event: string
   target: string
   input: string
-  param?: string
-  delay?: number
-  once?: boolean
+  param?: string | undefined
+  delay?: number | undefined
+  once?: boolean | undefined
 }
 
 export interface QueuedOutput {
