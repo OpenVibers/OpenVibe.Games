@@ -53,12 +53,14 @@
   }
 
   var here = location.pathname + location.search
+  // The two places people go every visit carry an icon; each game folds into the navbar's More (Shared 4.22): the
+  // portal lists them all anyway, and five same-looking links read as clutter on a phone.
   var links = [
-    { label: 'Games', href: PORTAL },
-    { label: 'Scraplandia', href: PLAY },
-    { label: 'Salvage Rush', href: RUSH },
-    { label: 'Vibe Heroes', href: HEROES },
-    { label: 'Leaderboard', href: BOARD },
+    { label: 'Games', href: PORTAL, icon: 'fa-gamepad' },
+    { label: 'Leaderboard', href: BOARD, icon: 'fa-trophy' },
+    { label: 'Scraplandia', href: PLAY, more: true },
+    { label: 'Salvage Rush', href: RUSH, more: true },
+    { label: 'Vibe Heroes', href: HEROES, more: true },
   ]
   // The shared footer's items are { name, url } (label/href rendered empty links).
   var footerLinks = [
