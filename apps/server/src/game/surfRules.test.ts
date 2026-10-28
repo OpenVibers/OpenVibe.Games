@@ -92,6 +92,9 @@ function ctxFor(session: any, respawns: string[], sent: unknown[]) {
         async wrMs() {
           return null
         },
+        async topRuns() {
+          return []
+        },
         async record() {
           return { pb: true, wr: false, rank: null, pbMs: 1000, wrMs: 1000 }
         },

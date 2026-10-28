@@ -98,6 +98,28 @@ describe('surf runs persistence', () => {
     expect(await records.ghostBytes(MAP, 'pb', 'guest:unknown')).toBeNull()
   })
 
+  it('returns the top ten in ascending time for chat', async () => {
+    const db = await openTestDb()
+    const records = new PgSurfRecords(db)
+    for (let i = 0; i < 12; i++) {
+      await records.record(
+        run({
+          accountKey: `guest:racer-${i}`,
+          playerName: `Racer ${i}`,
+          timeMs: 20_000 - i * 500,
+          createdAt: 1_000 + i,
+          splits: [20_000 - i * 500],
+        }),
+      )
+    }
+    const top = await records.topRuns(MAP, 10)
+    expect(top).toHaveLength(10)
+    const times = top.map((r) => r.timeMs)
+    expect(times).toEqual([...times].sort((a, b) => a - b))
+    expect(times[0]).toBe(14_500)
+    expect(times.at(-1)).toBe(19_000)
+  })
+
   it('play: defines and posts the `time` board with the run ms', async () => {
     const db = await openTestDb()
     const play = fakePlay()

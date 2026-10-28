@@ -12,6 +12,7 @@ import type { GameEventRecorder } from '../../platform/gameEvents.js'
 import type { ProgressSummaryWriter } from '../../platform/progressSummary.js'
 import type { ConstraintRecord, GameWorld } from '../gameWorld.js'
 import type { PlayerSession } from '../playerSession.js'
+import type { ChatSystem } from '../chatCommands.js'
 import type { CombatSystem } from './combat.js'
 import type { EconomySystem } from './economy.js'
 import type { EditorSystem } from './editor.js'
@@ -191,6 +192,7 @@ export class SessionRegistry {
  */
 export interface ServerSystems {
   sessions: SessionsSystem
+  chat: ChatSystem
   movement: MovementSystem
   surf: SurfSystem
   replication: ReplicationSystem

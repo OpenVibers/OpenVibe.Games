@@ -315,6 +315,22 @@ async function start(): Promise<void> {
     guest: identity.token,
     ...(sso ? { bearer: sso } : {}),
   })
+  // Source's chat keys: Y talks to the room, U to the team. Capture-phase so
+  // the game never reads them as movement/tool keys; the HUD owns the input
+  // and its capture handoff.
+  document.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.repeat) return
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (input.uiCapture) return
+      if (e.code !== 'KeyY' && e.code !== 'KeyU') return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      hud.chat.open(e.code === 'KeyY' ? 'say' : 'say_team')
+    },
+    true,
+  )
   // Scraplandia's first-steps checklist (not in Salvage Rush or a creator world, whose worlds are something else).
   let updateWaypoint: (() => void) | null = null
   let firstStepsRef: FirstSteps | null = null
