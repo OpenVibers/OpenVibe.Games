@@ -92,13 +92,39 @@ async function start(): Promise<void> {
   // A creator world (/worlds): its own place, the plain creator pack and the world's map.
   const requestedWorld = params.get('world')
   const worldId = requestedWorld && CREATOR_WORLD_ID.test(requestedWorld) ? requestedWorld : null
-  // OpenVibe.Surf Ride: ?map=<id> (or ?game=surf&map=…). A map is a place
-  // (`surf-lagoon`), so the existing place URL scheme carries it unchanged.
+  // OpenVibe.Surf Ride: /surf/<id> is canonical, and ?map=<id> / ?game=<id>
+  // are accepted aliases. A map's place id is the map id (`surf_lagoon`).
   const requestedMap = params.get('map')
+  const surfPath = /^\/surf\/([^/]+)\/?$/.exec(location.pathname)?.[1]
   const surfInfo: SurfMapInfo | null =
+    (surfPath && surfPath !== 'embed' ? surfMap(surfPath) : null) ??
     (requestedMap ? surfMap(requestedMap) : null) ??
-    (requestedGame === 'surf' ? surfMap('surf_lagoon') : null) ??
+    (requestedGame ? surfMap(requestedGame) : null) ??
     null
+  // The old hyphenated forms are aliases only: put the canonical form in the
+  // address bar before any fetch. The server sends the same 301.
+  if (surfInfo) {
+    if (surfPath && surfPath !== 'embed' && surfPath !== surfInfo.id) {
+      history.replaceState(null, '', `/surf/${surfInfo.id}${location.search}${location.hash}`)
+    } else if (requestedGame && surfMap(requestedGame) && !surfPath) {
+      const rest = new URLSearchParams(params)
+      rest.delete('game')
+      rest.delete('map')
+      history.replaceState(
+        null,
+        '',
+        `/surf/${surfInfo.id}${rest.size ? `?${rest.toString()}` : ''}${location.hash}`,
+      )
+    } else if (requestedMap && requestedMap !== surfInfo.id) {
+      params.set('map', surfInfo.id)
+      const query = params.toString()
+      history.replaceState(
+        null,
+        '',
+        `${location.pathname}${query ? `?${query}` : ''}${location.hash}`,
+      )
+    }
+  }
   const selectedPlace = worldId
     ? creatorPlaceId(worldId)
     : surfInfo

@@ -62,7 +62,54 @@ export function portalPage(filePath: string, parts: HomeParts | null): string {
 }
 import { handleWsTicketRequest, type WsTicketStore } from './wsTicket.js'
 import { casualGameOf, casualPageHtml } from '../casual/page.js'
-import type { MapFileV2 } from '@openvibe/content'
+import { surfMap, type MapFileV2 } from '@openvibe/content'
+
+/**
+ * The human surf pages: `/surf/<map>` is canonical, `/surf/embed` is the iframe
+ * route, and the old forms are permanent redirects. A redirect is returned for
+ * the caller to send before any static file is looked up; `page` means the
+ * client bundle's play.html answers it.
+ */
+const SURF_MAP_PATH = /^\/surf\/([^/]+)\/?$/
+
+function surfPageRoute(
+  path: string,
+  query: URLSearchParams,
+): { redirect?: string; page?: boolean } | null {
+  const match = SURF_MAP_PATH.exec(path)
+  if (!match) {
+    // ?game=<surf map> on the game page (or the apex root) is the old entry
+    // point. Every surf game value lands on its canonical /surf/<id> page.
+    if (path !== '/play' && path !== '/' && path !== '/play/') return null
+    const game = query.get('game')
+    if (!game) return null
+    const info = surfMap(game)
+    if (!info) return null
+    const requestedMap = query.get('map')
+    const target = (requestedMap ? surfMap(requestedMap) : null) ?? info
+    const rest = new URLSearchParams(query)
+    rest.delete('game')
+    rest.delete('map')
+    return { redirect: `/surf/${target.id}${rest.size ? `?${rest.toString()}` : ''}` }
+  }
+  const requested = match[1]!
+  if (requested === 'embed') {
+    const map = query.get('map')
+    if (!map) return { page: true }
+    const info = surfMap(map)
+    if (!info) return { page: true } // the client reports the unknown map
+    if (info.id === map) return { page: true }
+    const rest = new URLSearchParams(query)
+    rest.set('map', info.id)
+    return { redirect: `/surf/embed?${rest.toString()}` }
+  }
+  const info = surfMap(requested)
+  if (!info) return null
+  if (requested !== info.id || path.endsWith('/')) {
+    return { redirect: `/surf/${info.id}${query.size ? `?${query.toString()}` : ''}` }
+  }
+  return { page: true }
+}
 
 /**
  * Minimal HTTP layer: health/metrics endpoints and (in production) the
@@ -751,6 +798,12 @@ export function createHttpServer(
       notFound()
       return
     }
+    const surfRoute = surfPageRoute(url, new URL(req.url ?? '/', 'http://games.local').searchParams)
+    if (surfRoute?.redirect) {
+      res.writeHead(301, { location: surfRoute.redirect, 'cache-control': 'no-store' })
+      res.end()
+      return
+    }
     if (!root) {
       notFound()
       return
@@ -813,7 +866,7 @@ export function createHttpServer(
             ? 'editor.html'
             : url === '/worlds'
               ? 'worlds.html'
-              : url === '/surf/embed'
+              : url === '/surf/embed' || surfRoute?.page
                 ? 'play.html'
                 : null
 

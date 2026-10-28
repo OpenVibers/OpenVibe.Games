@@ -2,7 +2,7 @@
   "v": 2,
   "movement": "surf",
   "surf": {
-    "title": "Surf Lagoon",
+    "title": "surf_lagoon",
     "author": "OpenVibe",
     "tier": 1,
     "stages": 3,

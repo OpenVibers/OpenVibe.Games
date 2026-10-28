@@ -34,16 +34,29 @@ export interface SurfRunRow {
   isPb: boolean
 }
 
+/** What Play needs to record a run: the local PB row, without its ghost. */
+export interface SurfPlayRun {
+  id: string
+  mapId: string
+  accountKey: string
+  playerName: string
+  timeMs: number
+  createdAt: number
+}
+
 export interface SurfPlayPoster {
   /** Register the surf title/boards; safe to call repeatedly. */
   define(): Promise<void>
   /** Post one run's ms. Returns the rank when Play reports one. */
-  post(run: SurfRunRecord): Promise<{ rank: number | null }>
+  post(run: SurfPlayRun): Promise<{ rank: number | null }>
 }
 
-/** The Play board id for a map: `surf` title, `<slug>` board (`surf:lagoon`). */
+/** The one-time local-PB copy onto the renamed Play boards (see migratePlayBoards). */
+const SURF_PLAY_MIGRATION = 'surf_board_ids'
+
+/** The Play board id for a map: the full map id (`surf_lagoon`), so the URL is `/titles/surf/boards/surf_lagoon`. */
 export function surfBoardId(mapId: string): string {
-  return mapId.replace(/^surf_/, '').replace(/[^a-z0-9_-]/g, '')
+  return mapId.replace(/-/g, '_').replace(/[^a-z0-9_]/g, '')
 }
 
 export function surfPlayKey(mapId: string): string {
@@ -186,6 +199,59 @@ export class PgSurfRecords implements SurfRecords {
       }
     }
     return { pb, wr, rank, pbMs, wrMs }
+  }
+
+  /**
+   * Copy each player's local PB onto the renamed Play boards once.
+   *
+   * Renaming `lagoon` to `surf_lagoon` creates a new Play board; Play retires
+   * the old one and keeps its scores, but the new board starts empty. Games'
+   * authoritative local runs still hold every player's best (one PB per map per
+   * account), so posting those under their original refs is an idempotent copy:
+   * no player's score disappears from the public all-time board. A marker in
+   * `play_sync` makes it one-shot; a partial failure retries on the next boot
+   * and Play's (board, ref, player) key makes the retry harmless.
+   */
+  async migratePlayBoards(): Promise<number> {
+    if (!this.play) return 0
+    const done = await this.db.maybe<{ stream: string }>(sql`
+      SELECT stream FROM play_sync WHERE stream = ${SURF_PLAY_MIGRATION}
+    `)
+    if (done) return 0
+    await this.play.define()
+    const rows = await this.db.many<{
+      id: string
+      map_id: string
+      account_key: string
+      player_name: string
+      time_ms: number | string
+      created_at: number | string
+    }>(sql`
+      SELECT DISTINCT ON (map_id, account_key)
+             id, map_id, account_key, player_name, time_ms, created_at
+      FROM surf_runs
+      WHERE is_pb
+      ORDER BY map_id, account_key, created_at DESC
+    `)
+    let copied = 0
+    for (const row of rows) {
+      if (!toPlayer(row.account_key)) continue
+      await this.play.post({
+        id: row.id,
+        mapId: row.map_id,
+        accountKey: row.account_key,
+        playerName: row.player_name,
+        timeMs: Number(row.time_ms),
+        createdAt: Number(row.created_at),
+      })
+      copied++
+    }
+    await this.db.exec(sql`
+      INSERT INTO play_sync (stream, at, key) VALUES
+        (${SURF_PLAY_MIGRATION}, ${Date.now()}, 'surf_lagoon')
+      ON CONFLICT (stream) DO UPDATE SET at = excluded.at, key = excluded.key
+    `)
+    return copied
   }
 
   /** Every map with its record count and derived world record. */
