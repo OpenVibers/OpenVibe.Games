@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { dirname, extname, join, normalize, resolve } from 'node:path'
+import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
 import type { Logger } from '@openvibe/shared'
 import type { ServerMetrics } from '../observability/metrics.js'
 import { isDirectLoopback, prometheusText, wantsPrometheus } from '../observability/release.js'
@@ -30,6 +30,16 @@ import type { GamesActorLimits } from './actorLimits.js'
 import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
 import { discoveryHandler, homeJsonLdTags, jsonLdTagsOf } from './discovery.js'
+import {
+  addAgentHead,
+  agentLinkFor,
+  canonicalOf,
+  handleAgent,
+  isAgentRequest,
+  readPageFile,
+  AGENT_PAGE_FILES,
+  type AgentContext,
+} from './agent.js'
 import type { HomeParts } from './portalHome.js'
 import { legalHandler } from './legalPages.js'
 import { updatesHandler } from './updatesPage.js'
@@ -243,6 +253,20 @@ export function createHttpServer(
   mapPathFor?: (place: string | undefined) => string | undefined,
 ): Server {
   const root = staticDir ? resolve(staticDir) : null
+  // The agent layer (openvibe-shared/agent-layer): the Markdown twins of the public pages render through the
+  // same builders the HTML routes use, so a twin cannot drift from its page.
+  const agentCtx: AgentContext = {
+    root,
+    host: '',
+    portalHtml: async () => {
+      if (!root) return null
+      const file = join(root, 'index.html')
+      if (!existsSync(file)) return null
+      const live = platform?.homeSections
+      const parts = live ? await live().catch(() => null) : null
+      return portalPage(file, parts)
+    },
+  }
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
   // browser answer without the Network round trip. See /auth/login.
   const knownSessions = new SessionCheckCache()
@@ -798,6 +822,20 @@ export function createHttpServer(
       notFound()
       return
     }
+    // The agent layer (openvibe-shared/agent-layer): /.well-known/agent.json and the Markdown twins of the
+    // portal, the game and the world pages. Before the page routes, so a twin is the page's own render and
+    // never a static file; after the API routes, so /api keeps answering for itself.
+    if (isAgentRequest(req)) {
+      const ctx: AgentContext = { ...agentCtx, host: String(req.headers.host ?? '') }
+      void handleAgent(req, res, ctx).catch((err: unknown) => {
+        log.warn('agent layer failed', { error: String(err) })
+        if (!res.headersSent) {
+          res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' })
+          res.end('Something went wrong on our side. Try again in a moment.')
+        }
+      })
+      return
+    }
     const surfRoute = surfPageRoute(url, new URL(req.url ?? '/', 'http://games.local').searchParams)
     if (surfRoute?.redirect) {
       res.writeHead(301, { location: surfRoute.redirect, 'cache-control': 'no-store' })
@@ -893,15 +931,41 @@ export function createHttpServer(
     if (pageAlias === 'index.html' || url === '/index.html') {
       const live = platform?.homeSections
       void (live ? live().catch(() => null) : Promise.resolve(null)).then((parts) => {
-        const body = portalPage(filePath, parts)
+        const page = portalPage(filePath, parts)
+        // The portal has a Markdown twin, so the page names it (the agent layer's discovery tags).
+        const canonical = canonicalOf(page) ?? `${DEFAULT_PORTAL_URL.replace(/\/+$/, '')}/`
+        const body = addAgentHead(page, canonical)
         res.writeHead(200, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-cache',
           'content-length': String(Buffer.byteLength(body)),
+          link: agentLinkFor(canonical),
         })
         res.end(req.method === 'HEAD' ? undefined : body)
       })
       return
+    }
+    // The other pages with a twin (the game, the world list, a casual game) carry the same discovery tags
+    // and the Link header as they are served.
+    const fileName = filePath.slice(filePath.lastIndexOf(sep) + 1)
+    if (AGENT_PAGE_FILES.has(fileName)) {
+      const page = readPageFile(filePath)
+      if (page) {
+        const canonical = canonicalOf(page) ?? `${DEFAULT_PORTAL_URL.replace(/\/+$/, '')}/`
+        const body = addAgentHead(page, canonical)
+        res.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'cache-control': 'no-cache',
+          'content-length': String(Buffer.byteLength(body)),
+          link: agentLinkFor(canonical),
+          // The embeddable surf route keeps its frame rule on this path too (it is play.html).
+          ...(url === '/surf/embed'
+            ? { 'content-security-policy': "frame-ancestors https://openvibe.surf 'self'" }
+            : {}),
+        })
+        res.end(req.method === 'HEAD' ? undefined : body)
+        return
+      }
     }
     const type = MIME[extname(filePath)] ?? 'application/octet-stream'
     res.writeHead(200, {

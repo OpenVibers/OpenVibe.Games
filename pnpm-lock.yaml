@@ -128,13 +128,13 @@ importers:
         version: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.222.0
       openvibe-publishing:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0
-        version: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0)
+        version: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0)
       openvibe-sdk:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0
         version: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
       openvibe-shared:
-        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0
-        version: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0
+        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0
+        version: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0
       pg:
         specifier: ^8.23.0
         version: 8.23.0
@@ -222,6 +222,9 @@ importers:
   packages/shared: {}
 
 packages:
+
+  '@acemir/cssom@0.9.32':
+    resolution: {integrity: sha512-OijrAUu7rrJhSIoHNg6LMPS5e344nwUHA+1EFYYjrh64D+GmytUsfBQjci45TjT+rd5Spsp8B5xsZDT+TgyXXQ==}
 
   '@asamuzakjp/css-color@6.0.7':
     resolution: {integrity: sha512-vC/bk1Lz7Tn/EfU9/apOTBk80/8dyGyWMowPoV1tJ52muDGsDqt2HPT2klrFUiY60MQmQv9q8yIht15JnBgDGw==}
@@ -992,6 +995,10 @@ packages:
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
 
+  boolbase@2.0.0:
+    resolution: {integrity: sha512-DkVaaQHymRhpYEYo9x1oo7Q7B0Y6KJUsjm3c9eTyFDby4MHLBTwZ6ZDWBel5zrYxj1WsZgC5oLpiz+93MluXeA==}
+    engines: {node: '>=20.19.0'}
+
   brace-expansion@1.1.18:
     resolution: {integrity: sha512-Edep/X9fGqVNmzKBVsDYIOtD+z1tuezV70LBjdCst9Tqu76lsnvRiZ6oTic1n+/BIwX6QDGAO94PN4N2SADvtw==}
 
@@ -1035,9 +1042,17 @@ packages:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
     engines: {node: '>= 8'}
 
+  css-select@7.0.0:
+    resolution: {integrity: sha512-snmjEVXy+1LnwXdxhYvTMj1d9tOh4HxkA1YmoayVBeeyR2C14Pum7fcxJIm4SswYspVy866eYNwlH6xC3/VH5g==}
+    engines: {node: '>=20.19.0'}
+
   css-tree@3.2.1:
     resolution: {integrity: sha512-X7sjQzceUhu1u7Y/ylrRZFU2FS6LRiFVp6rKLPg23y3x3c3DOKAwuXGDp+PAGjh6CSnCjYeAul8pcT8bAl+lSA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
+
+  css-what@8.0.0:
+    resolution: {integrity: sha512-DH0Bqq3DNp5tdOReuNyAA+Ev4Y2GS5FMbZpeTLP6C4CDi0h5nL0BmUPChXw3o/qbHLDWHl49sbNqQVY7bMSDdw==}
+    engines: {node: '>=20.19.0'}
 
   data-urls@7.0.0:
     resolution: {integrity: sha512-23XHcCF+coGYevirZceTVD7NdJOqVn+49IHyxgszm+JIiHLoB2TkmPtsYkNWT1pvRSGkc35L6NHs0yHkN2SumA==}
@@ -1062,8 +1077,45 @@ packages:
     resolution: {integrity: sha512-HVQE3AAb/pxF8fQAoiqpvg9i3evqug3hoiwakOyZAwJm+6vZehbkYXZ0l4JxS+I3QxM97v5aaRNhj8v5oBhekw==}
     engines: {node: '>=0.10'}
 
+  dom-serializer@2.0.0:
+    resolution: {integrity: sha512-wIkAryiqt/nV5EQKqQpo3SToSOV9J0DnbJqwK7Wv/Trc92zIAYZ4FlMu+JPFW1DfGFt81ZTCGgDEabffXeLyJg==}
+
+  dom-serializer@3.1.1:
+    resolution: {integrity: sha512-4MEa38/QexBob6gFNwu+EGdWvhJ1OKuNwdYY3Y3NyeWDQfnGeDYQUDfIRzWu5B5gsv03so2Uxd28YC6zrsx3Lw==}
+    engines: {node: '>=20.19.0'}
+
+  domelementtype@2.3.0:
+    resolution: {integrity: sha512-OLETBj6w0OsagBwdXnPdN0cnMfF9opN69co+7ZrbfPGrdpPVNBUj02spi6B1N7wChLQiPn4CSH/zJvXw56gmHw==}
+
+  domelementtype@3.0.0:
+    resolution: {integrity: sha512-umCQid3jKbDmVjx8jGaW7uUykm4DEUeyV21hPxNMo2nV955DhUThwqyOIDtreepP31hl84X7G5U9ZfsWvIB3Pg==}
+    engines: {node: '>=20.19.0'}
+
+  domhandler@5.0.3:
+    resolution: {integrity: sha512-cgwlv/1iFQiFnU96XXgROh8xTeetsnJiDsTc7TYCLFd9+/WNkIqPTxiM/8pSd8VIrhXGTf1Ny1q1hquVqDJB5w==}
+    engines: {node: '>= 4'}
+
+  domhandler@6.0.1:
+    resolution: {integrity: sha512-gYzvtM72ZtxQO0T048kd6HWSbbGCNOUwcnfQ01cqIJ4X2IYKFFHZ5mKvrQETcFXxsRObZulDaKmy//R7TPtsBg==}
+    engines: {node: '>=20.19.0'}
+
+  domutils@3.2.2:
+    resolution: {integrity: sha512-6kZKyUajlDuqlHKVX1w7gyslj9MPIXzIFiz/rGu35uC1wMi+kMhQwGhl4lt9unC9Vb9INnY9Z3/ZA3+FhASLaw==}
+
+  domutils@4.0.2:
+    resolution: {integrity: sha512-qI4JLRKnSzqFqr7hAlS5xQDusBCjKSEG4t4+7aNrIQMHBcsC2TGEhuyABJdYkgSewL57PNLYEiibY2iPKhKpaA==}
+    engines: {node: '>=20.19.0'}
+
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
+
+  entities@4.5.0:
+    resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
+    engines: {node: '>=0.12'}
+
+  entities@7.0.1:
+    resolution: {integrity: sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA==}
+    engines: {node: '>=0.12'}
 
   entities@8.0.0:
     resolution: {integrity: sha512-zwfzJecQ/Uej6tusMqwAqU/6KL2XaB2VZ2Jg54Je6ahNBGNH6Ek6g3jjNCF0fG9EWQKGZNddNjU5F1ZQn/sBnA==}
@@ -1202,6 +1254,12 @@ packages:
     resolution: {integrity: sha512-CV9TW3Y3f8/wT0BRFc1/KAVQ3TUHiXmaAb6VW9vtiMFf7SLoMd1PdAc4W3KFOFETBJUb90KatHqlsZMWV+R9Gg==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
 
+  html-escaper@3.0.3:
+    resolution: {integrity: sha512-RuMffC89BOWQoY0WKGpIhn5gX3iI54O6nRA0yC124NYVtzjmFWBIiFd8M0x+ZdX0P9R4lADg1mgP8C7PxGOWuQ==}
+
+  htmlparser2@10.1.0:
+    resolution: {integrity: sha512-VTZkM9GWRAtEpveh7MSF6SjjrpNVNNVJfFup7xTY3UpFtm67foy9HDVXneLtFVt4pMz5kZtgNcvCniNFb1hlEQ==}
+
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
@@ -1278,6 +1336,15 @@ packages:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
 
+  linkedom@0.18.14:
+    resolution: {integrity: sha512-BRUnkOm4YR5vo+qI3j0EbungB0vZPSCue5AdnTQRaxAGSbsOZiBFRO0rh4zlo8qXUhli8pxvnpEXDklMnlq2Rg==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      canvas: '>= 2'
+    peerDependenciesMeta:
+      canvas:
+        optional: true
+
   locate-path@6.0.0:
     resolution: {integrity: sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==}
     engines: {node: '>=10'}
@@ -1340,6 +1407,10 @@ packages:
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
 
+  nth-check@3.0.1:
+    resolution: {integrity: sha512-GX0gsdbGVCgnRgbeGaubfjpBXyYRWOOCVeYh08bSQvDZqxz5ndXs1OTfAt/h36G1xvI94YIspsI0sVFqAV9+RQ==}
+    engines: {node: '>=20.19.0'}
+
   obug@2.2.1:
     resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
     engines: {node: '>=12.20.0'}
@@ -1378,9 +1449,9 @@ packages:
       pg:
         optional: true
 
-  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0:
-    resolution: {tarball: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0}
-    version: 4.33.0
+  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0:
+    resolution: {tarball: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0}
+    version: 4.34.0
     hasBin: true
 
   optionator@0.9.4:
@@ -1633,6 +1704,9 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  uhyphen@0.2.0:
+    resolution: {integrity: sha512-qz3o9CHXmJJPGBdqzab7qAYuW8kQGKNEuoHFYrBwV6hWIMcpAmxDLXojcHfFr9US1Pe6zUswEIJIbLI610fuqA==}
+
   undici-types@6.21.0:
     resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
@@ -1793,6 +1867,8 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
+
+  '@acemir/cssom@0.9.32': {}
 
   '@asamuzakjp/css-color@6.0.7':
     dependencies:
@@ -2377,6 +2453,8 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
+  boolbase@2.0.0: {}
+
   brace-expansion@1.1.18:
     dependencies:
       balanced-match: 1.0.2
@@ -2415,10 +2493,20 @@ snapshots:
       shebang-command: 2.0.0
       which: 2.0.2
 
+  css-select@7.0.0:
+    dependencies:
+      boolbase: 2.0.0
+      css-what: 8.0.0
+      domhandler: 6.0.1
+      domutils: 4.0.2
+      nth-check: 3.0.1
+
   css-tree@3.2.1:
     dependencies:
       mdn-data: 2.27.1
       source-map-js: 1.2.1
+
+  css-what@8.0.0: {}
 
   data-urls@7.0.0:
     dependencies:
@@ -2437,9 +2525,49 @@ snapshots:
 
   denque@2.1.0: {}
 
+  dom-serializer@2.0.0:
+    dependencies:
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
+      entities: 4.5.0
+
+  dom-serializer@3.1.1:
+    dependencies:
+      domelementtype: 3.0.0
+      domhandler: 6.0.1
+      entities: 8.0.0
+
+  domelementtype@2.3.0: {}
+
+  domelementtype@3.0.0: {}
+
+  domhandler@5.0.3:
+    dependencies:
+      domelementtype: 2.3.0
+
+  domhandler@6.0.1:
+    dependencies:
+      domelementtype: 3.0.0
+
+  domutils@3.2.2:
+    dependencies:
+      dom-serializer: 2.0.0
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
+
+  domutils@4.0.2:
+    dependencies:
+      dom-serializer: 3.1.1
+      domelementtype: 3.0.0
+      domhandler: 6.0.1
+
   ecdsa-sig-formatter@1.0.11:
     dependencies:
       safe-buffer: 5.2.1
+
+  entities@4.5.0: {}
+
+  entities@7.0.1: {}
 
   entities@8.0.0: {}
 
@@ -2627,6 +2755,15 @@ snapshots:
     transitivePeerDependencies:
       - '@noble/hashes'
 
+  html-escaper@3.0.3: {}
+
+  htmlparser2@10.1.0:
+    dependencies:
+      domelementtype: 2.3.0
+      domhandler: 5.0.3
+      domutils: 3.2.2
+      entities: 7.0.1
+
   ignore@5.3.2: {}
 
   ignore@7.0.6: {}
@@ -2733,6 +2870,14 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
+  linkedom@0.18.14:
+    dependencies:
+      '@acemir/cssom': 0.9.32
+      css-select: 7.0.0
+      html-escaper: 3.0.3
+      htmlparser2: 10.1.0
+      uhyphen: 0.2.0
+
   locate-path@6.0.0:
     dependencies:
       p-locate: 5.0.0
@@ -2779,6 +2924,10 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
+  nth-check@3.0.1:
+    dependencies:
+      boolbase: 2.0.0
+
   obug@2.2.1: {}
 
   openvibe-contracts@https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.222.0:
@@ -2786,11 +2935,11 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
 
-  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0):
+  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0):
     dependencies:
       openvibe-sdk: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
     optionalDependencies:
-      openvibe-shared: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0
+      openvibe-shared: https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0
 
   openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.71.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0):
     optionalDependencies:
@@ -2798,9 +2947,12 @@ snapshots:
       iovalkey: 0.4.0
       pg: 8.23.0
 
-  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.33.0:
+  openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.34.0:
     dependencies:
       jsonwebtoken: 9.0.3
+      linkedom: 0.18.14
+    transitivePeerDependencies:
+      - canvas
 
   optionator@0.9.4:
     dependencies:
@@ -3041,6 +3193,8 @@ snapshots:
       - supports-color
 
   typescript@5.9.3: {}
+
+  uhyphen@0.2.0: {}
 
   undici-types@6.21.0: {}
 

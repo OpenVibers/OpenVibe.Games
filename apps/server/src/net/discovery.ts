@@ -388,7 +388,7 @@ export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): bool
     send(
       res,
       'text/plain',
-      seo.robotsTxt({ sitemaps: [`${SITE}/sitemap.xml`], disallow: DISALLOW }),
+      seo.robotsTxt({ sitemaps: [`${SITE}/sitemap.xml`], disallow: DISALLOW }) + `# Agent manifest: ${SITE}/.well-known/agent.json\n`,
     )
     return true
   }
