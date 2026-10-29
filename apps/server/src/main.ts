@@ -100,6 +100,10 @@ import { createAssetRoutes } from './worlds/assetRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
 import { createSteamCatalog } from './steam/steamCatalog.js'
 import { createSteamRoutes } from './steam/steamPage.js'
+import { createAiGenerate, createBench } from './aiMatches/services.js'
+import { runMatchJob } from './aiMatches/job.js'
+import { createAiMatchRoutes } from './aiMatches/routes.js'
+import type { Offer } from './aiMatches/game.js'
 import { createWorldSearchIndex } from './worlds/searchIndex.js'
 
 /**
@@ -1017,6 +1021,33 @@ async function main(): Promise<void> {
     address: clientAddress,
     log: log.child({ system: 'casual' }),
   })
+  const benchUrl = process.env.GAMES_BENCH_URL ?? 'https://bench.openvibe.services'
+  const serveAiMatches = createAiMatchRoutes(db, benchUrl)
+  let aiMatchTimer: ReturnType<typeof setInterval> | null = null
+  if (process.env.GAMES_AI_MATCHES_ENABLED === '1' && platform) {
+    const dailyCap = Number(process.env.GAMES_AI_MATCHES_DAILY_CAP ?? 0)
+    const gamesPerMatch = Number(process.env.GAMES_AI_MATCHES_GAMES ?? 2)
+    let offers: [Offer, Offer] | null = null
+    try {
+      const raw: unknown = JSON.parse(process.env.GAMES_AI_MATCHES_OFFERS ?? 'null')
+      if (Array.isArray(raw) && raw.length === 2 && raw.every((o) => o && typeof o.provider === 'string' && typeof o.model === 'string' && o.provider && o.model)) offers = raw as [Offer, Offer]
+    } catch { /* invalid configuration stays off */ }
+    const aiUrl = process.env.GAMES_AI_URL
+    if (offers && aiUrl && Number.isSafeInteger(dailyCap) && dailyCap > 0 && Number.isSafeInteger(gamesPerMatch) && gamesPerMatch > 0 && gamesPerMatch <= 100) {
+      const bench = createBench(platform, benchUrl)
+      const generate = createAiGenerate(platform, aiUrl)
+      let busy = false
+      const tick = () => {
+        if (busy) return
+        busy = true
+        void runMatchJob(db, bench, generate, { enabled: true, dailyCap, gamesPerMatch, offers, publicBase: gamesSiteUrl })
+          .catch((error: unknown) => log.warn('AI match failed', { error: String(error) }))
+          .finally(() => { busy = false })
+      }
+      tick()
+      aiMatchTimer = setInterval(tick, 60 * 60 * 1000)
+    } else log.warn('AI matches enabled but configuration is incomplete')
+  }
   const http = createHttpServer(
     config.staticDir,
     metrics,
@@ -1124,6 +1155,7 @@ async function main(): Promise<void> {
           return true
         }
         if (serveCasual(req, res)) return true
+        if (serveAiMatches(req, res)) return true
         if (serveWorlds(req, res)) return true
         if (serveAssets(req, res)) return true
         if (serveWorldPage(req, res)) return true
@@ -1401,6 +1433,7 @@ async function main(): Promise<void> {
       const httpDone = drainer.close(DRAIN_MS)
       running = false
       clearInterval(metricsTimer)
+      if (aiMatchTimer) clearInterval(aiMatchTimer)
       clearInterval(heartbeatTimer)
       clearInterval(worldSweepTimer)
       worldSearch?.stop()

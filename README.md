@@ -8,6 +8,7 @@ recovery bird earns haul points, with its own all-time/this-week leaderboard and
 The same Games process also hosts Salvage Rush, an on-foot timed collection game with its own
 place, world, rooms and round system. Play it at `/play?game=salvage-rush` on the same host.
 See [docs/games.md](docs/games.md) for both games and local progression.
+Server-run Vibe Heroes AI draft matches and Bench scoring are described in [docs/ai-matches.md](docs/ai-matches.md).
 Players build their own **creator worlds** in the map editor and publish them at `/worlds` for anyone to join
 (sandboxed: characters are not saved there); see [docs/games.md](docs/games.md#creator-worlds).
 It also hosts the casual line (plan T22): small phone-first browser games built from one kit, starting with
