@@ -319,7 +319,8 @@ function steamRow(g: SteamGame): string {
   }<span class="steam-text"><b>${esc(g.name)}</b>${price ? `<span class="steam-price">${price}</span>` : ''}</span></a></li>`
 }
 
-function steamSection(d: HomeData, now: number): string {
+/** The Steam lists (off the home since 2026-10-29: the "On Steam right now" card links them). */
+export function steamSection(d: HomeData, now: number): string {
   const s = d.steam
   if (!s) return ''
   const deals = [...s.sale].sort((a, b) => b.discount_percent - a.discount_percent)
@@ -468,7 +469,6 @@ export function renderHome(
       boardsSection(d),
       achievementsSection(d),
       worldsSection(d, now),
-      steamSection(d, now),
       howSection(),
       faqSection(),
     ]
