@@ -78,8 +78,9 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), 'ovg-http-'))
   const dist = join(dir, 'dist')
   mkdirSync(join(dist, 'assets', 'tex'), { recursive: true })
-  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>portal page</title>')
-  writeFileSync(join(dist, 'play.html'), '<!doctype html><title>game page</title>')
+  // A real page has a head to carry the discovery tags into (the agent layer adds them there).
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><html><head><title>portal page</title></head><body><h1>portal page</h1></body></html>')
+  writeFileSync(join(dist, 'play.html'), '<!doctype html><html><head><title>game page</title></head><body><h1>game page</h1></body></html>')
   writeFileSync(join(dist, 'editor.html'), '<!doctype html><title>editor page</title>')
   writeFileSync(join(dist, 'frame.js'), 'void 0')
   writeFileSync(join(dist, ASSET.slice(1)), 'export {}')
@@ -382,5 +383,60 @@ describe('/api/ws-ticket is rate limited per address', () => {
     } finally {
       server.close()
     }
+  })
+})
+
+describe('the agent layer', () => {
+  it('serves the manifest on the apex and on the play host', async () => {
+    for (const host of [APEX, PLAY]) {
+      const r = await send('/.well-known/agent.json', { host })
+      expect(r.status).toBe(200)
+      expect(r.headers['content-type']).toBe('application/json; charset=utf-8')
+      const d = JSON.parse(r.body)
+      expect(d).toMatchObject({ id: 'games', site: 'openvibe.games', home: 'https://openvibe.games' })
+      expect(d.api).toBe('https://openvibe.games/api')
+      expect(d.policy.auth).toEqual(['none', 'Network OIDC'])
+    }
+  })
+
+  it('twins the portal, the game and a world page', async () => {
+    const index = await send('/index.md')
+    expect(index.status).toBe(200)
+    expect(index.headers['content-type']).toBe('text/markdown; charset=utf-8')
+    expect(index.headers.link).toContain('rel="alternate"')
+    expect(index.body).toContain('canonical: "https://openvibe.games/"')
+    expect(index.body).toContain('# portal page')
+    // The game's canonical home is the play host's root (play.html names it), so its twin does too,
+    // wherever the twin is asked for.
+    const play = await send('/play.md')
+    expect(play.status).toBe(200)
+    expect(play.body).toContain('canonical: "https://play.openvibe.games/"')
+    expect(play.body).toContain('# game page')
+    // The play host's root IS the game.
+    const root = await send('/index.md', { host: PLAY })
+    expect(root.status).toBe(200)
+    expect(root.body).toContain('canonical: "https://play.openvibe.games/"')
+    expect(root.body).toContain('# game page')
+  })
+
+  it('names the twin on the HTML page, and answers a markdown preference', async () => {
+    // The portal names its twin: the stub pages carry no canonical, so the apex root is the fallback.
+    const page = await send('/')
+    expect(page.headers.link).toContain('<https://openvibe.games/index.md>; rel="alternate"; type="text/markdown"')
+    expect(page.body).toContain('<link rel="alternate" type="text/markdown" href="https://openvibe.games/index.md">')
+    expect(page.body).toContain('<link rel="describedby" href="https://openvibe.games/llms.txt">')
+    const md = await send('/play', { headers: { accept: 'text/markdown' } })
+    expect(md.headers['content-type']).toBe('text/markdown; charset=utf-8')
+    expect(md.body).toContain('# game page')
+    // A browser's request is the page itself, never the twin.
+    const browser = await send('/play', { headers: { accept: 'text/html,application/xhtml+xml' } })
+    expect(browser.headers['content-type']).toBe('text/html; charset=utf-8')
+  })
+
+  it('has no twin for a page that is not public', async () => {
+    const r = await send('/nothing.md')
+    expect(r.status).toBe(404)
+    expect(r.headers['content-type']).toBe('text/markdown; charset=utf-8')
+    expect(r.body).toBe('# Not found\n')
   })
 })
