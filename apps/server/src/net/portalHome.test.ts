@@ -10,6 +10,7 @@ import {
   createPortalHome,
   readPlayTitles,
   renderHome,
+  steamSection,
   renderStats,
   yourStuffSection,
   type HomeData,
@@ -125,10 +126,13 @@ describe('the home page live sections', () => {
     expect(parts.sections).toContain('Most visited')
     expect(parts.sections).toContain('40 visits')
     expect(parts.stats).toContain('<b>7</b><span>creator worlds published</span>')
-    expect(parts.sections).toContain('https://store.steampowered.com/app/2/')
-    expect(parts.sections).toContain('−50%')
-    expect(parts.sections).toContain('checked 2 hours ago')
-    expect(parts.sections).not.toContain('home-steam-new')
+    // The Steam lists left the home (2026-10-29: the "On Steam right now" card links them); they render on their own.
+    expect(parts.sections).not.toContain('store.steampowered.com')
+    const steam = steamSection(d, NOW)
+    expect(steam).toContain('https://store.steampowered.com/app/2/')
+    expect(steam).toContain('−50%')
+    expect(steam).toContain('checked 2 hours ago')
+    expect(steam).not.toContain('home-steam-new')
   })
 
   it('a stat with nothing to say is left out', () => {
@@ -181,7 +185,8 @@ describe('the home page live sections', () => {
     const home = createPortalHome(src, { now: () => now, log: { warn: (m) => warnings.push(m) } })
     const first = await home()
     expect(first.stats).toContain('player online now')
-    expect(first.sections).toContain('id="home-steam"')
+    expect(first.sections).toContain('id="home-how"')
+    expect(first.sections).not.toContain('id="home-steam"')
     expect(first.sections).not.toContain('home-achievements')
     now += 30_000
     await home()
