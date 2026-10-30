@@ -4,6 +4,7 @@ import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
 import type { CreatorWorld } from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
 import { escapeHtml } from './notFound.js'
+import { foldBlock, pickBlock, pickRules, pickStyle } from './shortHome.js'
 import type { SteamGame } from '../steam/steamCatalog.js'
 
 /**
@@ -196,9 +197,9 @@ function boardCard(o: {
   unit: (score: number) => string
   href: string
   more: string
-}): string {
-  if (!o.rows.length) return ''
-  return `<article class="board-card">
+}): { label: string; html: string } | null {
+  if (!o.rows.length) return null
+  const html = `<article class="board-card">
   <h3>${esc(o.title)} <small>${esc(o.board)}</small></h3>
   <ol class="board-rows">${o.rows
     .slice(0, 5)
@@ -209,6 +210,7 @@ function boardCard(o: {
     .join('')}</ol>
   <a class="card-link" href="${esc(o.href)}">${esc(o.more)}</a>
 </article>`
+  return { label: o.title, html }
 }
 
 function boardsSection(d: HomeData): string {
@@ -239,12 +241,20 @@ function boardsSection(d: HomeData): string {
       href: '/play/vibe-heroes',
       more: 'Build your team →',
     }),
-  ].filter(Boolean)
+  ].filter((c): c is { label: string; html: string } => c !== null)
   if (!cards.length) return ''
-  return `<section class="home-sec" aria-labelledby="home-boards">
+  // The boards are blocks of the same kind: on a phone a row of chips picks one of them and the chip names it, so
+  // one board is read at a time. Every board stays in the page.
+  const panes = cards.map((c, i) => ({ id: `board-${i}`, label: c.label, html: c.html }))
+  const rules = pickRules(
+    'boards',
+    panes.map((p) => p.id),
+  )
+  return `${pickStyle([rules])}
+<section class="home-sec home-pick-sec" aria-labelledby="home-boards">
   <h2 id="home-boards">Top players</h2>
   <p class="home-lede">The servers score every round, so these boards are what really happened. Signed-in players get their name on them.</p>
-  <div class="board-grid">${cards.join('')}</div>
+  ${pickBlock({ key: 'boards', label: 'The boards', head: 'Top players', panes })}
 </section>`
 }
 
@@ -252,8 +262,11 @@ function achievementsSection(d: HomeData): string {
   const all = d.titles.flatMap((t) => t.achievements.map((a) => ({ ...a, title: t })))
   if (!all.length) return ''
   all.sort((a, b) => b.unlockedBy - a.unlockedBy || a.title.name.localeCompare(b.title.name))
-  return `<section class="home-sec" aria-labelledby="home-achievements">
-  <h2 id="home-achievements">Achievements to earn</h2>
+  return foldBlock({
+    id: 'home-achievements',
+    head: '<h2 id="home-achievements">Achievements to earn</h2>',
+    html: `<section class="home-sec" aria-labelledby="home-achievements">
+  <h2>Achievements to earn</h2>
   <p class="home-lede">Every achievement is kept on OpenVibe.Play with the number of players who earned it. Some give an item for your OpenVibe inventory.</p>
   <ul class="ach-grid">${all
     .slice(0, 8)
@@ -273,7 +286,8 @@ function achievementsSection(d: HomeData): string {
         `<a class="card-link" href="${PLAY_SITE}/t/${encodeURIComponent(t.id)}">${esc(t.name)} on OpenVibe.Play →</a>`,
     )
     .join(' ')}</p>
-</section>`
+</section>`,
+  })
 }
 
 function worldCard(w: CreatorWorld, now: number): string {
@@ -367,17 +381,25 @@ const HOW: readonly { title: string; text: string }[] = [
 ]
 
 function howSection(): string {
-  return `<section class="home-sec" aria-labelledby="home-how">
-  <h2 id="home-how">How it works</h2>
+  return foldBlock({
+    id: 'home-how',
+    head: '<h2 id="home-how">How it works</h2>',
+    html: `<section class="home-sec" aria-labelledby="home-how">
+  <h2>How it works</h2>
   <ol class="how-steps">${HOW.map((s) => `<li><b>${esc(s.title)}</b><span>${esc(s.text)}</span></li>`).join('')}</ol>
-</section>`
+</section>`,
+  })
 }
 
 function faqSection(): string {
-  return `<section class="home-sec" aria-labelledby="home-faq">
-  <h2 id="home-faq">Questions</h2>
+  return foldBlock({
+    id: 'home-faq',
+    head: '<h2 id="home-faq">Questions</h2>',
+    html: `<section class="home-sec" aria-labelledby="home-faq">
+  <h2>Questions</h2>
   <div class="faq">${HOME_FAQ.map((f) => `<details><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join('')}</div>
-</section>`
+</section>`,
+  })
 }
 
 /** The home page's JSON-LD beyond the site and game nodes discovery.ts already writes: the games and the FAQ. */

@@ -397,6 +397,83 @@
           box-shadow: 0 8px 48px rgba(var(--accent-rgb, 59, 130, 246), 0.7);
         }
       }
+      /* ── the home on a phone (the owner's short-pages rule, 2026-10-30) ──
+         Pick: on a phone the home's blocks of the same kind are one at a time, picked with a row of chips.
+         Radio inputs and :has(), no script: the chips and the one-block rule live under 640 px and only where
+         :has() is understood, so a wider screen, or an older browser, shows every block and no chips. */
+      .pick-head { display: none; }
+      .pick-row { display: none; }
+      .pick-pane { min-width: 0; }
+      @supports selector(:has(*)) {
+        @media (max-width: 640px) {
+          .pick-head { display: block; }
+          .pick-head h2 { margin: 0 0 4px; font-size: 1.25rem; }
+          .pick-row {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            margin: 10px -20px 0;
+            padding: 2px 20px 4px;
+            scrollbar-width: none;
+            overscroll-behavior-x: contain;
+          }
+          .pick-row::-webkit-scrollbar { display: none; }
+          .pick-row input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+          .pick-row label {
+            display: inline-flex;
+            align-items: center;
+            flex: none;
+            min-height: 44px;
+            padding: 0 15px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            font-weight: 650;
+            white-space: nowrap;
+            cursor: pointer;
+          }
+          .pick-row input:checked + label {
+            color: var(--text);
+            border-color: var(--accent-light);
+            background: rgba(var(--accent-rgb, 59, 130, 246), 0.12);
+          }
+          .pick-row input:focus-visible + label { outline: 2px solid var(--accent-light); outline-offset: 2px; }
+          .pick-pane { display: none; }
+          /* The chip names the block, so the block's own heading gives way to it. */
+          .home-pick-sec > h2 { display: none; }
+        }
+      }
+      /* The fold: closed on a phone, and where there is room it looks like the section it replaces. */
+      .gm-fold-block { margin: 0 auto 40px; max-width: 1100px; padding: 0 20px; }
+      .gm-fold-block > summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        min-height: 48px;
+        padding: 0 16px;
+        cursor: pointer;
+        color: var(--text);
+        font-weight: 700;
+        list-style: none;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--bg-card);
+      }
+      .gm-fold-block > summary::-webkit-details-marker { display: none; }
+      .gm-fold-block > summary h2 { margin: 0; padding: 0; border: 0; font-size: 1.05rem; }
+      .gm-fold-block > summary span { color: var(--text-dim); font-weight: 600; font-size: 0.86rem; text-align: right; }
+      .gm-fold-block > summary:focus-visible { outline: 2px solid var(--accent-light); outline-offset: -2px; border-radius: 14px; }
+      .gm-fold-block .home-sec { margin: 12px 0 0; padding: 0; }
+      .gm-fold-block .home-sec > h2 { display: none; }
+      .gm-fold-block .ov-shipped-home { margin: 12px 0 0 !important; padding: 0 !important; }
+      @media (min-width: 641px) {
+        .gm-fold-block { border: 0; background: none; margin-top: 40px; padding: 0 20px; }
+        .gm-fold-block > summary { display: block; min-height: 0; padding: 0; border: 0; background: none; }
+        .gm-fold-block > summary h2 { margin: 0 0 6px; font-size: 1.25rem; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+        .gm-fold-block > summary span { display: none; }
+      }
       /* ── live sections (net/portalHome.ts renders them on the server) ── */
       .home-sec {
         max-width: 1100px;
@@ -1244,7 +1321,10 @@
 
 
     <!-- What shipped on OpenVibe.Games: the network's shared "shipped" views (openvibe-shared
-         shipped.js, which the shared footer loads), the same on every OpenVibe site. -->
+         shipped.js, which the shared footer loads), the same on every OpenVibe site. A fold on a phone:
+         closed there, open where there is room, and the list stays in the page. -->
+    <details class="gm-fold gm-fold-block" id="home-shipped" open>
+      <summary><h2>Recently shipped on OpenVibe.Games</h2><span>tap to open</span></summary>
     <section
       class="ov-shipped-home"
       aria-label="What shipped"
@@ -1270,6 +1350,8 @@
         </p></noscript
       >
     </section>
+    </details>
+    <script>(function(){var d=document.getElementById("home-shipped");if(!d)return;var k='ov_fold_'+'home-shipped';var s=null;try{s=localStorage.getItem(k)}catch(e){}if(s==='open'){d.open=true;return}if(s==='closed'){d.open=false;return}var t=0;if(window.matchMedia&&window.matchMedia('(max-width:640px)').matches){t=Date.now();d.open=false}d.addEventListener('toggle',function(){if(Date.now()-t<300)return;try{localStorage.setItem(k,d.open?'open':'closed')}catch(e){}})})();</script>
 
     <!-- Shared cross-site footer (/shared/footer.js, this site's pinned copy): network links, legal, signed-in row. -->
     <footer id="ov-footer" class="ovf"></footer>
