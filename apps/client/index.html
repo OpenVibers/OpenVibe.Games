@@ -797,6 +797,23 @@
         .how-steps { gap: 0; }
         .how-steps li { padding: 10px 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; }
       }
+      /* Fingers, not pointers (2026-10-29): a card's "full leaderboard" link and the hero's link reach 44 px with a
+         vertical-only hit area. */
+      @media (pointer: coarse) {
+        .card-link,
+        .hero-link {
+          position: relative;
+        }
+        .card-link::after,
+        .hero-link::after {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: -11px;
+          bottom: -11px;
+        }
+      }
     </style>
   </head>
   <body>
