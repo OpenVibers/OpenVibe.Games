@@ -802,16 +802,9 @@
       @media (pointer: coarse) {
         .card-link,
         .hero-link {
-          position: relative;
-        }
-        .card-link::after,
-        .hero-link::after {
-          content: '';
-          position: absolute;
-          left: 0;
-          right: 0;
-          top: -11px;
-          bottom: -11px;
+          display: inline-flex;
+          align-items: center;
+          min-height: 44px;
         }
       }
     </style>
