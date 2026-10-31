@@ -1,9 +1,18 @@
+import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
+
 export {}
 
 interface Entry {
   rank: number
   name: string
   score: number
+}
+
+/** The viewer's own best for the game on the page, and where it sits on the board we keep. */
+interface Mine {
+  best: number | null
+  rank: number | null
+  name: string | null
 }
 
 type Game = 'salvage-rush' | 'scraplandia'
@@ -21,6 +30,7 @@ const title = document.getElementById('title') as HTMLElement
 const lede = document.getElementById('lede') as HTMLElement
 const scoreHeader = document.getElementById('score-header') as HTMLElement
 const playLink = document.getElementById('play-link') as HTMLAnchorElement
+const youLine = document.getElementById('you') as HTMLElement
 
 const COPY: Record<
   Game,
@@ -35,7 +45,7 @@ const COPY: Record<
 > = {
   'salvage-rush': {
     title: 'Salvage Rush',
-    lede: "Each player's best round score. Rounds last 90 seconds; every point comes from a pickup the server counted.",
+    lede: `Each player's best round score. Rounds last ${SALVAGE_RUSH_PACK.game?.roundSeconds ?? 90} seconds; every point comes from a pickup the server counted.`,
     score: 'Best score',
     play: '/play?game=salvage-rush',
     playLabel: '▶ Play a round',
@@ -87,6 +97,31 @@ function applyGame(): void {
   document.title = `${copy.title} leaderboard · OpenVibe.Games`
 }
 
+/**
+ * The viewer's own best for this game, read from the rows we keep. The board itself comes from
+ * OpenVibe.Play, so the row that is the viewer's is the one with their name and their best score.
+ */
+async function loadMine(): Promise<Mine | null> {
+  try {
+    const response = await fetch(`/api/v1/games/${game}/me`)
+    if (!response.ok) return null
+    const data = (await response.json()) as Mine
+    return data
+  } catch {
+    return null
+  }
+}
+
+function markMine(mine: Mine | null): void {
+  if (!mine || mine.best === null || mine.rank === null) {
+    youLine.hidden = true
+    youLine.textContent = ''
+    return
+  }
+  youLine.hidden = false
+  youLine.textContent = `Your best: ${mine.best.toLocaleString('en-US')} — rank ${mine.rank.toLocaleString('en-US')} on this board.`
+}
+
 async function load(): Promise<void> {
   for (const tab of periodTabs)
     tab.setAttribute('aria-pressed', String(tab.dataset.period === period))
@@ -100,12 +135,27 @@ async function load(): Promise<void> {
     const response = await fetch(`/api/v1/games/${game}/leaderboard?period=${period}&page=${page}`)
     if (!response.ok) throw new Error('unavailable')
     const data = (await response.json()) as { entries: Entry[]; pages: number }
+    const mine = await loadMine()
+    markMine(mine)
     for (const entry of data.entries) {
       const row = document.createElement('tr')
       if (entry.rank <= 3) row.className = `top-${entry.rank}`
+      const isMine =
+        mine !== null &&
+        mine.best !== null &&
+        entry.score === mine.best &&
+        (mine.name === null || entry.name === mine.name)
+      if (isMine) row.classList.add('is-you')
+      const nameCell = cell(entry.name, 'name')
+      if (isMine) {
+        const tag = document.createElement('span')
+        tag.className = 'you'
+        tag.textContent = 'you'
+        nameCell.append(tag)
+      }
       row.append(
         cell(String(entry.rank), 'rank'),
-        cell(entry.name, 'name'),
+        nameCell,
         cell(entry.score.toLocaleString('en-US')),
       )
       entries.append(row)

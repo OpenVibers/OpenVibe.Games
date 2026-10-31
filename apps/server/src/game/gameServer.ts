@@ -57,6 +57,7 @@ export class GameServer {
   private lastRushBroadcast = 0
   private readonly roundFinished?: GameIntegrations['roundFinished']
   private readonly playerJoined?: GameIntegrations['playerJoined']
+  private readonly integrations: GameIntegrations
 
   constructor(
     config: ServerConfig,
@@ -72,6 +73,7 @@ export class GameServer {
         : null
     this.roundFinished = integrations.roundFinished
     this.playerJoined = integrations.playerJoined
+    this.integrations = integrations
     // The world clock and weather survive restarts (a rainy dusk stays a rainy dusk); they are
     // loaded asynchronously in load(), before the tick loop starts.
     this.ctx = new ServerContext(
@@ -295,6 +297,45 @@ export class GameServer {
    * One simulation tick at the room's own rate. This is the ONE place the order is written down;
    * the systems' internal cadence (1 Hz sweeps, every-N-tick snapshots) is their own.
    */
+  /**
+   * Tell every player what their own round was: the score the server gave them, their rank in that
+   * round, how many played it, and their own best round so far. The score and the rank come from the
+   * round the server scored; the best is read from the rows we keep (null when they have none).
+   */
+  private async sendRoundResults(
+    ctx: ServerContext,
+    roundId: string,
+    results: { key: string; name: string; score: number; rank: number }[],
+  ): Promise<void> {
+    const sessions = ctx.sessions.all()
+    const bests = await Promise.all(
+      sessions.map(async (session) => {
+        const key = session.subjectId ?? session.token
+        if (!this.integrations.bestScore) return null
+        try {
+          return await this.integrations.bestScore(key)
+        } catch {
+          return null
+        }
+      }),
+    )
+    sessions.forEach((session, index) => {
+      const key = session.subjectId ?? session.token
+      const result = results.find((r) => r.key === key)
+      if (!result) return
+      const own = bests[index] ?? null
+      ctx.net.send(session, {
+        t: 'salvage_result',
+        roundId,
+        score: result.score,
+        rank: result.rank,
+        players: results.length,
+        // The round just finished counts towards the best, even when its row has not landed yet.
+        best: own === null ? null : Math.max(own, result.score),
+      })
+    })
+  }
+
   step(): void {
     const ctx = this.ctx
     const s = this.systems
@@ -320,7 +361,11 @@ export class GameServer {
           pos: [session.move.pos.x, session.move.pos.y, session.move.pos.z],
         })),
       )
-      if (results) this.roundFinished?.(this.rush.view().roundId, results)
+      if (results) {
+        const roundId = this.rush.view().roundId
+        this.roundFinished?.(roundId, results)
+        void this.sendRoundResults(ctx, roundId, results)
+      }
       if (results || now - this.lastRushBroadcast >= 1000) {
         ctx.net.broadcastAll({ t: 'salvage_round', ...this.rush.view() })
         this.lastRushBroadcast = now

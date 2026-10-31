@@ -10,6 +10,7 @@ import {
   dayKey,
 } from '@openvibe/casual'
 import { enemyArt, icon } from '../art.js'
+import { GAME_PROMISE } from '../../ui/gamePromise.js'
 import { button, duration, h, num, sheet, tick, toast } from '../dom.js'
 import type { App } from '../app.js'
 import { playBattle } from './battle.js'
@@ -316,4 +317,6 @@ function stageList(app: App): void {
     }),
     list,
   )
+  // The one line every game page carries: what a player gets, and what they never have to do.
+  s.body.append(h('p', { class: 'muted promise-line', text: GAME_PROMISE }))
 }

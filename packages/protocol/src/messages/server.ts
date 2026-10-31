@@ -314,6 +314,19 @@ export type ServerMessage =
       pickups: { x: number; z: number; available: boolean }[]
       scores: { name: string; score: number; rank: number }[]
     }
+  | {
+      /**
+       * A finished round, sent to one player only: their score, their rank in that round, how many
+       * played it and their own best round so far (null when they have none on record). Every value
+       * comes from the round the server scored, never from the client.
+       */
+      t: 'salvage_result'
+      roundId: string
+      score: number
+      rank: number
+      players: number
+      best: number | null
+    }
   | ServerWelcome
   | ServerCvarState
   | ServerTransferResult

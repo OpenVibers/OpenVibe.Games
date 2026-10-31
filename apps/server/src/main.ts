@@ -83,7 +83,8 @@ import {
 } from './platform/revocationEvents.js'
 import { createStaffAuthorizer } from './platform/staffAuth.js'
 import { createWsTicketStore } from './net/wsTicket.js'
-import { GameProgressWriter, type Milestone } from './game/progression.js'
+import { GameProgressWriter, playerBestScore, type Milestone } from './game/progression.js'
+import { handleResultPage } from './net/resultPage.js'
 import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
 import { createPlayBoards } from './platform/playBoards.js'
@@ -417,6 +418,7 @@ async function main(): Promise<void> {
             roundFinished: (roundId: string, results: RoundResult[]) => {
               progressWriter.submit(`0:${roundId}`, results)
             },
+            bestScore: (key: string) => playerBestScore(db, 'salvage-rush', key),
           }
         : {}),
       ...(primarySurf ? { surf: surfRecords } : {}),
@@ -490,6 +492,7 @@ async function main(): Promise<void> {
                 roundFinished: (roundId: string, results: RoundResult[]) => {
                   progressWriter.submit(`${slot}:${roundId}`, results)
                 },
+                bestScore: (key: string) => playerBestScore(db, 'salvage-rush', key),
               }
             : {}),
           ...(primarySurf ? { surf: surfRecords } : {}),
@@ -591,6 +594,7 @@ async function main(): Promise<void> {
           : {
               roundFinished: (roundId: string, results: RoundResult[]) =>
                 progressWriter.submit(`${slot}:${roundId}`, results),
+              bestScore: (key: string) => playerBestScore(db, 'salvage-rush', key),
             }),
       },
     )
@@ -1100,6 +1104,16 @@ async function main(): Promise<void> {
     config.oauth,
     {
       handle: (req, res) => {
+        // The result page of a Salvage Rush round (/result/<round>): a shareable page with the score,
+        // the rank and the player's own best, read from the rows the server wrote for that round.
+        if (
+          handleResultPage(req, res, {
+            db,
+            networkAuthUrl: config.networkAuthUrl,
+            site: gamesSiteUrl,
+          })
+        )
+          return true
         if (req.method === 'GET' && req.url?.split('?')[0] === '/api/v1/content') {
           const requestedWorld = new URL(req.url ?? '/', 'http://games.local').searchParams.get(
             'world',

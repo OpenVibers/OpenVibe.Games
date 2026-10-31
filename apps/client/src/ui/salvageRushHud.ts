@@ -4,6 +4,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { Color3 } from '@babylonjs/core/Maths/math.color.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh.js'
+import { buildResultCard, type RoundResult } from './rushResult.js'
 import './salvageRushHud.css'
 
 type Round = Extract<ServerMessage, { t: 'salvage_round' }>
@@ -16,6 +17,7 @@ export class SalvageRushHud {
   private readonly scores: HTMLElement
   private timer: number | null = null
   private pickups: Mesh[] = []
+  private result: HTMLElement | null = null
 
   constructor(
     parent: HTMLElement,
@@ -40,6 +42,17 @@ export class SalvageRushHud {
     parent.append(this.root)
   }
 
+  /**
+   * The round this player finished: their score, their rank and their own best, with a button that
+   * shares the round's page. The card sits over the game until it is closed.
+   */
+  showResult(result: RoundResult): void {
+    this.result?.remove()
+    const card = buildResultCard(result, window.location.origin)
+    this.root.parentElement?.append(card)
+    this.result = card
+  }
+
   update(round: Round): void {
     if (this.pickups.length !== round.pickups.length) {
       for (const mesh of this.pickups) mesh.dispose()
@@ -58,6 +71,11 @@ export class SalvageRushHud {
     )
     if (this.timer !== null) window.clearInterval(this.timer)
     const active = round.phase === 'active'
+    if (active && this.result) {
+      // A new round starts: the result card has made its point.
+      this.result.remove()
+      this.result = null
+    }
     this.root.classList.toggle('is-active', active)
     this.phase.textContent = active ? 'Collect scrap' : 'Next round in'
     const refresh = () => {

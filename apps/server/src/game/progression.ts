@@ -102,6 +102,97 @@ export async function recordJoined(db: Db, key: string, now: number): Promise<vo
   }
 }
 
+/** One row of a finished round, as the round's own board shows it. */
+export interface RoundRow {
+  /** The account the row belongs to (hashed, never the person's id). */
+  accountKey: string
+  playerName: string
+  score: number
+  rank: number
+  finishedAt: number
+}
+
+/**
+ * The rows of one finished round, in rank order. These are the rows the server wrote when the round
+ * ended, so the board a player sees is the round that really happened.
+ */
+export async function roundRows(
+  db: Db,
+  game: GameId,
+  roundId: string,
+): Promise<RoundRow[]> {
+  const rows = await db.many<{
+    account_key: string
+    player_name: string
+    score: number
+    rank: number
+    finished_at: number
+  }>(sql`
+    SELECT account_key, player_name, score, rank, finished_at
+    FROM game_round_results
+    WHERE game_id = ${game} AND round_id = ${roundId}
+    ORDER BY rank ASC, score DESC, player_name ASC
+  `)
+  return rows.map((row) => ({
+    accountKey: row.account_key,
+    playerName: row.player_name,
+    score: Number(row.score) || 0,
+    rank: Number(row.rank) || 0,
+    finishedAt: Number(row.finished_at) || 0,
+  }))
+}
+
+/**
+ * The player's own best round for a game, from the row we keep. Null when they have no round on
+ * record: not measured yet is said plainly rather than shown as a zero.
+ */
+export async function playerBestScore(
+  db: Db,
+  game: GameId,
+  key: string,
+): Promise<number | null> {
+  const account = accountKey(key)
+  const rows = await db.many<{ score: number }>(sql`
+    SELECT score FROM game_best_scores WHERE game_id = ${game} AND account_key = ${account}
+  `)
+  const score = Number(rows[0]?.score)
+  return Number.isFinite(score) ? score : null
+}
+
+/** The player's own best row for a game: the score and the name the board shows. */
+export async function playerBest(
+  db: Db,
+  game: GameId,
+  key: string,
+): Promise<{ score: number; name: string } | null> {
+  const account = accountKey(key)
+  const rows = await db.many<{ score: number; player_name: string }>(sql`
+    SELECT score, player_name FROM game_best_scores
+    WHERE game_id = ${game} AND account_key = ${account}
+  `)
+  const row = rows[0]
+  if (!row) return null
+  const score = Number(row.score)
+  if (!Number.isFinite(score)) return null
+  return { score, name: String(row.player_name ?? '') }
+}
+
+/**
+ * The place a score of this size sits on the board: one more than the number of players with a better
+ * best. Counted from the rows we keep, so it is the rank of the same board the page shows.
+ */
+export async function playerBestRank(
+  db: Db,
+  game: GameId,
+  score: number,
+): Promise<number> {
+  const rows = await db.many<{ better: number }>(sql`
+    SELECT COUNT(*)::bigint AS better FROM game_best_scores
+    WHERE game_id = ${game} AND score > ${score}
+  `)
+  return (Number(rows[0]?.better) || 0) + 1
+}
+
 /** The only writer for scores; called by the server's completed-round hook. */
 export async function recordRound(
   db: Db,
