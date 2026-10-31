@@ -36,7 +36,7 @@ export const RESULT_GAME = 'salvage-rush' as const
 
 /** The one line every game page carries: what a player gets, and what they never have to do. */
 export const GAME_PROMISE =
-  'No ads. No tracking. Play as a guest, no sign-up. Nothing to buy in the game.'
+  'Play as a guest, no sign-up. No ads inside the games.'
 
 export interface ResultPageInput {
   /** The round the page is about. */

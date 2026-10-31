@@ -57,7 +57,7 @@ describe('the result page of a round', () => {
   })
 
   it('carries the one line every game page carries', () => {
-    expect(resultPageHtml(input())).toContain('No ads. No tracking.')
+    expect(resultPageHtml(input())).toContain('Play as a guest, no sign-up.')
   })
 
   it('wears the shared kit and the shared theme', () => {
