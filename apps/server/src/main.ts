@@ -1382,9 +1382,14 @@ async function main(): Promise<void> {
       socket.destroy()
     }
   })
-  http.listen(config.port, config.host, () => {
-    log.info('listening', { host: config.host, port: config.port })
-  })
+  // Socket activation (2026-10-31): systemd's .socket unit holds the listener across restarts, so a deploy
+  // queues requests in the kernel instead of answering 502. Without the socket unit, the usual listen.
+  const socketActivated = process.env.LISTEN_FDS === '1' && Number(process.env.LISTEN_PID) === process.pid
+  const onListening = (): void => {
+    log.info('listening', socketActivated ? { fd: 3 } : { host: config.host, port: config.port })
+  }
+  if (socketActivated) http.listen({ fd: 3 }, onListening)
+  else http.listen(config.port, config.host, onListening)
 
   // Scheduler loop with drift correction — never tied to timers' jitter. It
   // runs at the fastest room rate; each room's accumulator in InstanceHub
