@@ -121,6 +121,29 @@ const REWARDS = new Map<string, string>([
   ),
 ])
 
+/**
+ * The card facts that come from the content packs, not from a sentence written by hand: the length of a
+ * Salvage Rush round is the pack's own number, so the card cannot drift from the game it describes.
+ * The marker in the page is <!--ov:card-<name>--> and is replaced wherever the page is served.
+ */
+export function cardFacts(): Record<string, string> {
+  const facts: Record<string, string> = {}
+  const roundSeconds = SALVAGE_RUSH_PACK.game?.roundSeconds
+  if (typeof roundSeconds === 'number' && roundSeconds > 0) {
+    facts['salvage-rush-round-tag'] = `<span>${roundSeconds}-second rounds</span>`
+  }
+  return facts
+}
+
+/** Puts the card facts into the page, wherever the markers are. */
+export function applyCardFacts(html: string, facts: Record<string, string> = cardFacts()): string {
+  let out = html
+  for (const [name, value] of Object.entries(facts)) {
+    out = out.replaceAll(`<!--ov:card-${name}-->`, () => value)
+  }
+  return out
+}
+
 const esc = (v: unknown): string => escapeHtml(String(v ?? ''))
 const fmt = new Intl.NumberFormat('en-US')
 const n = (v: number): string => fmt.format(v)
@@ -413,7 +436,7 @@ export function homeExtraJsonLd(site: string, playSite: string): unknown[] {
     {
       name: 'Salvage Rush',
       url: `${site}/play?game=salvage-rush`,
-      description: '90-second scrap-collecting rounds with a leaderboard.',
+      description: `${SALVAGE_RUSH_PACK.game?.roundSeconds ?? 90}-second scrap-collecting rounds with a leaderboard.`,
     },
     {
       name: 'Vibe Heroes',

@@ -783,6 +783,7 @@ async function start(): Promise<void> {
   let rejected = false
   connection.onMessage = (msg) => {
     if (msg.t === 'salvage_round') roundUi?.update(msg)
+    if (msg.t === 'salvage_result') roundUi?.showResult(msg)
     if (msg.t === 'surf_state') surfUi?.updateState(msg)
     if (msg.t === 'surf_finish') {
       surfUi?.showFinish(msg)

@@ -76,6 +76,11 @@ export interface GameIntegrations {
     roundId: string,
     results: { key: string; name: string; score: number; rank: number }[],
   ) => void
+  /**
+   * The player's own best score for the game, read from the rows we keep. Null when they have no
+   * score on record yet. Used to tell a player their own best after a round, never to rank anyone.
+   */
+  bestScore?: (key: string) => Promise<number | null>
   /** Called for a server-confirmed extraction haul (Scraplandia). Never accepts a client message. */
   haulExtracted?: (key: string, extractionId: string, name: string, score: number) => void
   /** A server-confirmed milestone past the first haul (Scraplandia): a contract, a harvest, a skill level. */

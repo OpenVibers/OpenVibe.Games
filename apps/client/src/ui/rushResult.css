@@ -1,0 +1,94 @@
+/*
+ * The result card of a finished round (the market outcome, 2026-10-30): the player's own score, their
+ * rank and their best, and the button that shares the round's page.
+ *
+ * Every colour is a shared token (--bg-card, --text-primary, --accent, --border), so the card wears
+ * the reader's theme: dark or light, with no colour of its own.
+ */
+.rush-result {
+  position: fixed;
+  z-index: 16;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  box-shadow: 0 18px 50px var(--shadow-lg, rgba(0, 0, 0, 0.45));
+  font:
+    500 0.95rem/1.35 system-ui,
+    sans-serif;
+}
+.rush-result-kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.rush-result-score {
+  margin: 0.15rem 0 0.6rem;
+  font-size: 2.1rem;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.rush-result-facts {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0 0 0.9rem;
+}
+.rush-result-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--border);
+}
+.rush-result-facts dt {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.rush-result-facts dd {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.rush-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.rush-result-actions > * {
+  flex: 1 1 8rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+.rush-result-share {
+  background: var(--accent-strong, var(--accent));
+  border-color: transparent;
+  color: var(--on-accent-strong, var(--on-accent, #fff));
+}
+.rush-result-board {
+  background: transparent;
+}
+.rush-result-close {
+  background: transparent;
+}

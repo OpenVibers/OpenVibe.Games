@@ -1,4 +1,5 @@
 import { MAX_CHARACTERS, type Appearance } from '@openvibe/protocol'
+import { GAME_PROMISE } from './gamePromise.js'
 
 /**
  * Character select: your characters in this game, and a "New character" button. There is no slot count to unlock
@@ -22,7 +23,9 @@ export function characterSelect(
     overlay.className = 'customize-overlay'
     const panel = document.createElement('div')
     panel.className = 'customize-panel'
-    panel.innerHTML = '<h1>CHOOSE YOUR SCRAPPER</h1>'
+    panel.innerHTML =
+      '<h1>CHOOSE YOUR SCRAPPER</h1>' +
+      '<p class="char-onesentence">Pick a scrapper and press Play — you are in the world in a moment.</p>'
     const pick = (slot: number, existing: CharacterInfo | null) => {
       overlay.remove()
       resolve({ slot, existing })
@@ -77,6 +80,11 @@ export function characterSelect(
       })
       panel.appendChild(btn)
     }
+    // The one line every game page carries: what a player gets, and what they never have to do.
+    const promise = document.createElement('p')
+    promise.className = 'char-promise'
+    promise.textContent = GAME_PROMISE
+    panel.appendChild(promise)
     overlay.appendChild(panel)
     uiRoot.appendChild(overlay)
   })

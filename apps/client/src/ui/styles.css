@@ -1197,6 +1197,18 @@ body:has(.ov-touch:not([hidden])) .first-steps li:not(.current) {
   font-size: calc(12px * var(--ov-text-scale, 1));
 }
 
+.char-onesentence {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: calc(14px * var(--ov-text-scale, 1));
+  line-height: 1.45;
+}
+.char-promise {
+  margin-top: 14px;
+  color: var(--text-muted);
+  font-size: calc(12px * var(--ov-text-scale, 1));
+  line-height: 1.5;
+}
 .char-upsell {
   margin-top: 14px;
   padding: 12px 14px;

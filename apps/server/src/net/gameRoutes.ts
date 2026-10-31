@@ -1,10 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Db } from 'openvibe-sdk/db'
-import { isGuestToken } from '../platform/accounts.js'
-import { hashGuestKey } from './guestIdentity.js'
-import { resolveNetworkUser } from './networkAuth.js'
+import { viewerAccountKey } from './viewer.js'
 import type { GamesActorLimits } from './actorLimits.js'
-import { isGameId, playerAchievements } from '../game/progression.js'
+import { isGameId, playerAchievements, playerBest, playerBestRank } from '../game/progression.js'
 import { BoardUnavailable, type PlayBoards } from '../platform/playBoards.js'
 
 interface Options {
@@ -24,13 +22,18 @@ export function handleGameRead(
   if (req.method !== 'GET') return false
   const url = new URL(req.url ?? '/', 'http://games.local')
   const match = /^\/api\/v1\/games\/([^/]+)\/leaderboard$/.exec(url.pathname)
+  const mine = /^\/api\/v1\/games\/([^/]+)\/me$/.exec(url.pathname)
   const achievements = url.pathname === '/api/v1/players/me/achievements'
-  if (!match && !achievements) return false
+  if (!match && !achievements && !mine) return false
   const send = (status: number, body: unknown): void => {
     res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' })
     res.end(JSON.stringify(body))
   }
   if (match && !isGameId(match[1] ?? '')) {
+    send(404, { error: 'unknown_game' })
+    return true
+  }
+  if (mine && !isGameId(mine[1] ?? '')) {
     send(404, { error: 'unknown_game' })
     return true
   }
@@ -64,20 +67,32 @@ export function handleGameRead(
       }
       return
     }
-    const bearer = /^Bearer\s+(.+)$/i.exec(req.headers.authorization ?? '')?.[1]
-    const guest = req.headers['x-guest-token']
-    let key: string | null = null
-    if (bearer && options.networkAuthUrl) {
-      const user = await resolveNetworkUser(options.networkAuthUrl, bearer)
-      key = user?.subjectId ?? null
-    } else if (typeof guest === 'string' && isGuestToken(guest)) {
-      key = `guest:${hashGuestKey(guest)}`
+    if (mine) {
+      // The viewer's own best for that game, and where it sits on the board we keep.
+      const game = mine[1] as 'scraplandia' | 'salvage-rush'
+      const key = await viewerAccountKey(req, { networkAuthUrl: options.networkAuthUrl })
+      if (!key) {
+        send(200, { best: null, rank: null, name: null })
+        return
+      }
+      const best = await playerBest(options.db, game, key)
+      if (!best) {
+        send(200, { best: null, rank: null, name: null })
+        return
+      }
+      send(200, {
+        best: best.score,
+        rank: await playerBestRank(options.db, game, best.score),
+        name: best.name,
+      })
+      return
     }
-    if (!key) {
+    const viewerKey = await viewerAccountKey(req, { networkAuthUrl: options.networkAuthUrl })
+    if (!viewerKey) {
       send(401, { error: 'unauthorized' })
       return
     }
-    send(200, { games: await playerAchievements(options.db, key) })
+    send(200, { games: await playerAchievements(options.db, viewerKey) })
   })().catch(() => {
     if (!res.headersSent) send(503, { error: 'read_unavailable' })
   })

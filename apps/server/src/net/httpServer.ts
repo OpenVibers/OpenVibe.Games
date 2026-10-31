@@ -40,7 +40,7 @@ import {
   AGENT_PAGE_FILES,
   type AgentContext,
 } from './agent.js'
-import type { HomeParts } from './portalHome.js'
+import { applyCardFacts, type HomeParts } from './portalHome.js'
 import { legalHandler } from './legalPages.js'
 import { updatesHandler } from './updatesPage.js'
 import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
@@ -63,7 +63,9 @@ export function portalHtml(filePath: string): string {
 
 /** The portal with its live parts (portalHome.ts) in place of the build's markers, and their JSON-LD in the head. */
 export function portalPage(filePath: string, parts: HomeParts | null): string {
-  const html = portalHtml(filePath)
+  // The card facts come from the content packs, so they are in the page even when the live sections
+  // are not (a slow source must not leave a card without its round length).
+  const html = applyCardFacts(portalHtml(filePath))
   if (!parts) return html
   return html
     .replace('<!--ov:home-stats-->', () => parts.stats)
