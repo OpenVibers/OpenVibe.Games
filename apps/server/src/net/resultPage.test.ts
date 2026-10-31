@@ -58,6 +58,8 @@ describe('the result page of a round', () => {
 
   it('carries the one line every game page carries', () => {
     expect(resultPageHtml(input())).toContain('Play as a guest, no sign-up.')
+    // kit.answer's rows are Kit 2: without kit-data.css they fall apart into a bare list.
+    expect(resultPageHtml(input())).toContain('href="/shared/kit-data.css"')
   })
 
   it('wears the shared kit and the shared theme', () => {

@@ -133,7 +133,7 @@ export function resultPageHtml(input: ResultPageInput): string {
     }),
     body,
   })
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A Salvage Rush round · OpenVibe.Games</title><meta name="robots" content="noindex,follow"><meta name="description" content="A scored round of Salvage Rush on OpenVibe.Games."><script src="/shared/theme-loader.js"></script><link rel="stylesheet" href="/shared/kit.css"></head><body class="ovk-app"><div id="navbar-mount"></div>${html}<script src="/shared/navbar.js" defer></script><script src="/shared/kit-web.js" defer></script></body></html>`
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A Salvage Rush round · OpenVibe.Games</title><meta name="robots" content="noindex,follow"><meta name="description" content="A scored round of Salvage Rush on OpenVibe.Games."><script src="/shared/theme-loader.js"></script><link rel="stylesheet" href="/shared/kit.css"><link rel="stylesheet" href="/shared/kit-data.css"></head><body class="ovk-app"><div id="navbar-mount"></div>${html}<script src="/shared/navbar.js" defer></script><script src="/shared/kit-web.js" defer></script></body></html>`
 }
 
 export interface ResultRouteOptions {
