@@ -15,4 +15,15 @@ describe('the creator worlds list on a light theme', () => {
     expect(page).toMatch(/\.card \{[^}]*border: 1px solid var\(--border, #1f2d47\);/)
     expect(page).not.toMatch(/\.card \{[^}]*background: var\(--bg-raised\)/)
   })
+
+  it('takes its page and text colours from the theme too, so a light theme never leaves a dark page behind', () => {
+    const root = /:root \{([^}]*)\}/.exec(page)?.[1] ?? ''
+    expect(root).toMatch(/--bg: var\(--bg-primary, #0a0f1c\);/)
+    expect(root).toMatch(/--bg-raised: var\(--bg-secondary, #101828\);/)
+    expect(root).toMatch(/--text: var\(--text-primary, #e6edf7\);/)
+    expect(root).toMatch(/--good: var\(--success-text, #34d399\);/)
+    expect(root).toMatch(/--warn: var\(--warning-text, #fbbf24\);/)
+    expect(root).toMatch(/--bad: var\(--danger-text, #f87171\);/)
+    expect(root).toMatch(/color-scheme: var\(--color-scheme, dark\);/)
+  })
 })
