@@ -43,7 +43,8 @@ export function updatesHandler(req: NodeRequire = createRequire(import.meta.url)
       canonical: `${SITE_URL}/updates`,
       robots: 'index, follow',
       // The site's icon, as on every other page (apps/client/*.html): without it the browser asks for /favicon.ico (404).
-      head: '<link rel="icon" type="image/svg+xml" href="/favicon.svg" />',
+      // The shared showcase stylesheet: without it the page fell back to the browser's serif (domain sweep, 2026-11-01).
+      head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n<link rel="stylesheet" href="${serve.url('showcase.css')}">`,
       navbar: {
         service: 'games',
         apiBase: NETWORK_URL,
