@@ -43,8 +43,9 @@ export function updatesHandler(req: NodeRequire = createRequire(import.meta.url)
       canonical: `${SITE_URL}/updates`,
       robots: 'index, follow',
       // The site's icon, as on every other page (apps/client/*.html): without it the browser asks for /favicon.ico (404).
-      // The shared showcase stylesheet: without it the page fell back to the browser's serif (domain sweep, 2026-11-01).
-      head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n<link rel="stylesheet" href="${serve.url('showcase.css')}">`,
+      // The page's type: shell.page sets no font, so without these rules /updates fell back to the browser's Times New
+      // Roman (domain sweep, 2026-11-01). Zero specificity: any site rule wins.
+      head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n<style>:where(body){font-family:var(--ov-font,'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif)}:where(main.page){display:block;max-width:880px;margin:0 auto;padding:24px max(16px,env(safe-area-inset-right,0px)) 56px max(16px,env(safe-area-inset-left,0px))}:where(.ov-updates h1){font-size:clamp(1.6rem,5.4vw,2.2rem);line-height:1.15;margin:0 0 10px;text-wrap:balance}</style>`,
       navbar: {
         service: 'games',
         apiBase: NETWORK_URL,
