@@ -53,10 +53,19 @@
         margin: 0 auto;
         padding: 20px 16px 64px;
       }
+      /* One trail on one line, Games › this page: the navbar carries the site's links now (2026-11-01). */
       .crumbs {
         display: flex;
-        gap: 14px;
-        font-size: 14px;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-faint);
+      }
+      .crumbs > * + *::before {
+        content: '›';
+        margin-right: 6px;
+        color: var(--text-faint);
       }
       /* The viewer's own row: the same accent the page already uses, no colour of its own. */
       .you-line {
@@ -240,12 +249,25 @@
       }
     </style>
     <script type="module" src="/src/pages/leaderboard.ts"></script>
+    <!-- The OpenVibe Frame (navbar + footer), as on every other page of the site: this page had only its own row of
+         links (phone sweep, 2026-11-01). -->
+    <script src="/shared/navbar.js" defer></script>
+    <script src="/shared/footer.js" defer></script>
+    <script>
+      window.__ovgFrame = { page: 'portal', title: 'Leaderboard' }
+    </script>
+    <script src="/frame.js" defer></script>
+    <style>
+      #navbar-mount {
+        min-height: 56px;
+      }
+    </style>
   </head>
   <body>
+    <div id="navbar-mount"></div>
     <main>
       <nav class="crumbs" aria-label="Breadcrumb">
-        <a href="/">OpenVibe.Games</a><a href="/play">Play Scraplandia</a
-        ><a href="/play?game=salvage-rush">Play Salvage Rush</a>
+        <a href="/">OpenVibe.Games</a><span aria-current="page">Leaderboard</span>
       </nav>
       <p class="eyebrow">LEADERBOARD</p>
       <h1 id="title">Salvage Rush</h1>
@@ -288,5 +310,6 @@
         unlocked with your OpenVibe account; a finished round or haul shows here within a minute.
       </p>
     </main>
+    <footer id="ov-footer" class="ovf"></footer>
   </body>
 </html>
