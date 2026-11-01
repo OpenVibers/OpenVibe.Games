@@ -64,6 +64,7 @@ interface SeoToolkit {
   sitemapXml(urls: SeoUrl[]): string
   jsonLd: {
     website(o: { name: string; url: string; description: string }): unknown
+    organization(o?: Record<string, unknown>): unknown
     softwareApp(o: {
       name: string
       url: string
@@ -296,6 +297,7 @@ function llmsFullBody(): string {
 export function homeJsonLd(): unknown[] {
   return [
     seo.jsonLd.website({ name: SITE_NAME, url: SITE, description: DESCRIPTION }),
+    seo.jsonLd.organization(),
     seo.jsonLd.softwareApp({
       name: 'Scraplandia',
       url: `${PLAY}/`,

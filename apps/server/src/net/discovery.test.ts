@@ -232,6 +232,7 @@ describe('crawl artifacts (plan T11)', () => {
     ]
     expect(blocks.map((b) => (JSON.parse(b[1] ?? '{}') as { '@type'?: string })['@type'])).toEqual([
       'WebSite',
+      'Organization',
       'WebApplication',
       // Vibe Heroes, the casual line's first game (plan T22).
       'WebApplication',
@@ -239,7 +240,7 @@ describe('crawl artifacts (plan T11)', () => {
     ])
     const nodes = blocks.map((b) => JSON.parse(b[1] ?? '{}') as Record<string, unknown>)
     expect(nodes[0]?.['url']).toBe('https://openvibe.games')
-    expect(nodes[1]?.['applicationCategory']).toBe('GameApplication')
+    expect(nodes[2]?.['applicationCategory']).toBe('GameApplication')
     // Nothing private or per-user in the served nodes.
     const text = JSON.stringify(nodes)
     for (const p of PRIVATE) expect(text).not.toContain(p)
