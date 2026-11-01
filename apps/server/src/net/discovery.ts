@@ -64,6 +64,7 @@ interface SeoToolkit {
   sitemapXml(urls: SeoUrl[]): string
   jsonLd: {
     website(o: { name: string; url: string; description: string }): unknown
+    organization(o?: Record<string, unknown>): unknown
     softwareApp(o: {
       name: string
       url: string
