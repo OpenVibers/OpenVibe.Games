@@ -462,7 +462,12 @@ body:has(#ovg-frame-toggle:not([hidden])) .status {
   pointer-events: auto;
 }
 
+/* The panel is dark on every theme, so its text tokens are its own: on a light theme the page's dark greys read 2.3:1
+   on it (contrast probe, 2026-11-01). */
 .customize-panel {
+  --text-primary: #e6e6e6;
+  --text-secondary: #b8c2d0;
+  --text-muted: #8d98a8;
   margin-left: 4vw;
   width: 320px;
   max-height: 92vh;
