@@ -72,11 +72,18 @@
         margin: 0 auto;
         padding: 20px 16px 64px;
       }
+      /* One trail on one line, Games › this page: the navbar carries the site's links now (2026-11-01). */
       .crumbs {
         display: flex;
         flex-wrap: wrap;
-        gap: 14px;
-        font-size: 14px;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-muted, #7386a3);
+      }
+      .crumbs > * + *::before {
+        content: '›';
+        margin-right: 6px;
       }
       .eyebrow {
         margin: 28px 0 4px;
@@ -383,12 +390,26 @@
       }
     </style>
     <script type="module" src="/src/pages/worlds.ts"></script>
+    <!-- The OpenVibe Frame (navbar + footer), as on every other page of the site: this page had only its own row of
+         links (phone sweep, 2026-11-01). -->
+    <script src="/shared/theme-loader.js"></script>
+    <script src="/shared/navbar.js" defer></script>
+    <script src="/shared/footer.js" defer></script>
+    <script>
+      window.__ovgFrame = { page: 'portal', title: 'Creator worlds' }
+    </script>
+    <script src="/frame.js" defer></script>
+    <style>
+      #navbar-mount {
+        min-height: 56px;
+      }
+    </style>
   </head>
   <body>
+    <div id="navbar-mount"></div>
     <main>
       <nav class="crumbs" aria-label="Breadcrumb">
-        <a href="/">OpenVibe.Games</a><a href="/play">Play Scraplandia</a
-        ><a href="/leaderboard.html">Leaderboard</a>
+        <a href="/">OpenVibe.Games</a><span aria-current="page">Creator worlds</span>
       </nav>
       <p class="eyebrow">CREATOR WORLDS</p>
       <h1>Build a world. Share it.</h1>
@@ -465,5 +486,6 @@
         <p class="note">This page needs JavaScript to list worlds. Play Scraplandia at /play.</p>
       </noscript>
     </main>
+    <footer id="ov-footer" class="ovf"></footer>
   </body>
 </html>
