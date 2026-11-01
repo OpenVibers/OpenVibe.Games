@@ -34,8 +34,9 @@
         --bg-card: rgba(19, 28, 46, 0.88);
         --border: #1f2d47;
         --text: #e6edf7;
-        --text-dim: #96a7c2;
-        --text-faint: #7386a3;
+        /* The reader's theme (theme-loader.js), as the leaderboard page does: fixed greys faded on light themes (2.4:1). */
+        --text-dim: var(--text-secondary, #96a7c2);
+        --text-faint: var(--text-muted, #7386a3);
         --good: #34d399;
         --warn: #fbbf24;
         --bad: #f87171;
