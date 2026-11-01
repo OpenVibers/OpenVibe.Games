@@ -296,6 +296,7 @@ function llmsFullBody(): string {
 export function homeJsonLd(): unknown[] {
   return [
     seo.jsonLd.website({ name: SITE_NAME, url: SITE, description: DESCRIPTION }),
+    seo.jsonLd.organization(),
     seo.jsonLd.softwareApp({
       name: 'Scraplandia',
       url: `${PLAY}/`,
