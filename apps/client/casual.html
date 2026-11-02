@@ -63,23 +63,38 @@
         color: transparent;
         filter: drop-shadow(0 3px 0 #5a2a00);
       }
+      /* Loading: a gold line that runs under the name (owner, 2026-10-31: nothing spins unless it is the thing). */
       .splash-ring {
-        width: 42px;
-        height: 42px;
-        margin: 22px auto 10px;
-        border-radius: 50%;
-        border: 4px solid rgba(255, 255, 255, 0.15);
-        border-top-color: #ffd25a;
-        animation: spin 0.9s linear infinite;
+        position: relative;
+        width: 140px;
+        height: 5px;
+        margin: 26px auto 14px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.15);
       }
-      @keyframes spin {
+      .splash-ring::after {
+        content: '';
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 40%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #ffd25a, #ff9f1c);
+        animation: splash-run 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+      @keyframes splash-run {
+        from {
+          transform: translateX(-100%);
+        }
         to {
-          transform: rotate(360deg);
+          transform: translateX(250%);
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .splash-ring {
+        .splash-ring::after {
           animation: none;
+          width: 100%;
+          opacity: 0.6;
         }
       }
     </style>
