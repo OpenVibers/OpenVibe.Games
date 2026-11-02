@@ -1198,7 +1198,8 @@ body:has(.ov-touch:not([hidden])) .first-steps li:not(.current) {
   font-size: calc(15px * var(--ov-text-scale, 1));
 }
 .char-slot span {
-  color: #78828e;
+  /* The muted token: 4.9:1 on the slot (the fixed grey read at 3.7:1, WCAG AA sweep 11-02). */
+  color: var(--text-muted, #8d98a8);
   font-size: calc(12px * var(--ov-text-scale, 1));
 }
 
