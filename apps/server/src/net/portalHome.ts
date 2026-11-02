@@ -4,7 +4,7 @@ import { SALVAGE_RUSH_PACK } from '@openvibe/content/salvage-rush'
 import type { CreatorWorld } from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
 import { escapeHtml } from './notFound.js'
-import { foldBlock, pickBlock, pickRules, pickStyle } from './shortHome.js'
+import { foldBlock, pickBlock } from './shortHome.js'
 import type { SteamGame } from '../steam/steamCatalog.js'
 
 /**
@@ -266,15 +266,10 @@ function boardsSection(d: HomeData): string {
     }),
   ].filter((c): c is { label: string; html: string } => c !== null)
   if (!cards.length) return ''
-  // The boards are blocks of the same kind: on a phone a row of chips picks one of them and the chip names it, so
-  // one board is read at a time. Every board stays in the page.
+  // The boards are blocks of the same kind: every board shown, and on a phone a row of chips jumps to one (the owner,
+  // 2026-10-31: never hide content to shorten).
   const panes = cards.map((c, i) => ({ id: `board-${i}`, label: c.label, html: c.html }))
-  const rules = pickRules(
-    'boards',
-    panes.map((p) => p.id),
-  )
-  return `${pickStyle([rules])}
-<section class="home-sec home-pick-sec" aria-labelledby="home-boards">
+  return `<section class="home-sec home-pick-sec" aria-labelledby="home-boards">
   <h2 id="home-boards">Top players</h2>
   <p class="home-lede">The servers score every round, so these boards are what really happened. Signed-in players get their name on them.</p>
   ${pickBlock({ key: 'boards', label: 'The boards', head: 'Top players', panes })}

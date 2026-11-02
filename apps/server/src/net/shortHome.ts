@@ -1,15 +1,13 @@
 /**
  * The home on a phone (the owner's short-pages rule, 2026-10-30): one or two screens, app-like.
  *
- *   pickBlock()  several blocks of the same kind, one at a time on a phone, picked with a row of chips. Radio
- *                inputs and :has(), no script: every block stays in the page for crawlers, and a wider screen (or a
- *                browser without :has()) shows them all and no chips.
+ *   pickBlock()  several blocks of the same kind, all shown, each with its own heading; on a phone the chips are a
+ *                row of links that jump to them (the owner, 2026-10-31: never hide content to shorten).
  *   foldBlock()  a part a reader rarely needs, closed on a phone and open where there is room. The page's own markup
  *                keeps it open, so a browser without the script shows it as before; the script closes it on a narrow
  *                screen and remembers the reader's choice.
  *
- * The CSS for both lives in apps/client/index.html; the rule that shows the picked block is written for the page,
- * because there is one per block.
+ * The CSS for both lives in apps/client/index.html.
  */
 import { escapeHtml } from './notFound.js'
 
@@ -22,8 +20,8 @@ export interface PickPane {
 }
 
 /**
- * A pick block. The panes are the page's own blocks; the block's heading gives way to the chip that names it on a
- * phone, and the chips are gone on a wide screen, where every pane shows at once.
+ * A pick block. The panes are the page's own blocks, every one shown; on a phone the chips jump to them, and on a wide
+ * screen there are no chips.
  */
 export function pickBlock(o: {
   key: string
@@ -34,30 +32,15 @@ export function pickBlock(o: {
   const panes = o.panes ?? []
   if (!panes.length) return ''
   const chips = panes
-    .map(
-      (p, i) =>
-        `<input type="radio" name="pick-${esc(o.key)}" id="pk-${esc(o.key)}-${esc(p.id)}" value="${esc(p.id)}"${i === 0 ? ' checked' : ''}><label for="pk-${esc(o.key)}-${esc(p.id)}">${esc(p.label)}</label>`,
-    )
+    .map((p) => `<a class="pick-chip" href="#pp-${esc(o.key)}-${esc(p.id)}">${esc(p.label)}</a>`)
     .join('')
   const body = panes
     .map((p) => `<div class="pick-pane" id="pp-${esc(o.key)}-${esc(p.id)}">${p.html}</div>`)
     .join('')
   const heading = `<h2>${esc(o.head || o.label)}</h2>`
-  return `<div class="pick" id="pick-${esc(o.key)}"><div class="pick-bar"><div class="pick-head">${heading}</div><div class="pick-row" role="radiogroup" aria-label="${esc(o.label)}">${chips}</div></div><div class="pick-body">${body}</div></div>`
+  return `<div class="pick" id="pick-${esc(o.key)}"><div class="pick-bar"><div class="pick-head">${heading}</div><nav class="pick-row" aria-label="${esc(o.label)}">${chips}</nav></div><div class="pick-body">${body}</div></div>`
 }
 
-/** The rules for every pane of a pick block, in the order they appear: one rule per pane, so the CSS is written for the page. */
-export function pickRules(key: string, ids: string[]): string {
-  return ids
-    .map((id) => `.pick:has(#pk-${key}-${id}:checked) #pp-${key}-${id}{display:block}`)
-    .join('')
-}
-
-/** The rule that shows the picked block, as a style tag the page carries. */
-export function pickStyle(rules: string[]): string {
-  if (!rules.length) return ''
-  return `<style>@supports selector(:has(*)){@media (max-width:640px){${rules.join('')}}}</style>`
-}
 
 /**
  * A fold. The head is the heading the block had; the html is what it holds.
