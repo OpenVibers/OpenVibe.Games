@@ -126,6 +126,8 @@ describe('the home page live sections', () => {
     expect(parts.sections).toContain('Most visited')
     expect(parts.sections).toContain('40 visits')
     expect(parts.stats).toContain('<b>7</b><span>creator worlds published</span>')
+    // The strip scrolls sideways on a phone, so it is reachable by keyboard (WCAG sweep, 2026-11-01).
+    expect(parts.stats).toContain('<ul class="home-stats" aria-label="OpenVibe.Games in numbers" tabindex="0">')
     // The Steam lists left the home (2026-10-29: the "On Steam right now" card links them); they render on their own.
     expect(parts.sections).not.toContain('store.steampowered.com')
     const steam = steamSection(d, NOW)

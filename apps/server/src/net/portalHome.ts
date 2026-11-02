@@ -207,7 +207,7 @@ export function renderStats(d: HomeData): string {
   if (deals > 0)
     items.push({ value: deals, label: deals === 1 ? 'Steam deal today' : 'Steam deals today' })
   if (!items.length) return ''
-  return `<ul class="home-stats" aria-label="OpenVibe.Games in numbers">${items
+  return `<ul class="home-stats" aria-label="OpenVibe.Games in numbers" tabindex="0">${items
     .slice(0, 5)
     .map((s) => `<li><b>${n(s.value)}</b><span>${esc(s.label)}</span></li>`)
     .join('')}</ul>`
