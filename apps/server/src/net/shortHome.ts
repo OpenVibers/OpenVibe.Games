@@ -43,10 +43,26 @@ export function pickBlock(o: {
 
 
 /**
+ * What a fold holds, counted, for its title row (the owner, 2026-10-31: a fold that shortens a page shows its count):
+ * "6 questions", "12 items", "latest 5" for the shipped list, or nothing when there is nothing to count. Replaces the
+ * hint the fold used to show instead.
+ */
+export function foldMeta(body: string, cls = ''): string {
+  const s = String(body ?? '')
+  const n = (re: RegExp): number => (s.match(re) ?? []).length
+  const shipped = /data-ov-shipped="list"[^>]*?data-limit="(\d+)"|data-limit="(\d+)"[^>]*?data-ov-shipped="list"/.exec(s)
+  const q = n(/<details[\s>]/g)
+  const li = n(/<li[\s>]/g)
+  const a = n(/<a\s/g)
+  const text = shipped ? `latest ${shipped[1] || shipped[2]}` : q > 1 ? `${q} questions` : li > 1 ? `${li} items` : a > 1 ? `${a} links` : ''
+  return text ? `<span${cls ? ` class="${cls}"` : ''}>${text}</span>` : ''
+}
+
+/**
  * A fold. The head is the heading the block had; the html is what it holds.
  */
 export function foldBlock(o: { id: string; head: string; html: string }): string {
-  return `<details class="gm-fold gm-fold-block" id="${esc(o.id)}" open><summary>${o.head}<span>tap to open</span></summary>${o.html}</details>${foldScript(o.id)}`
+  return `<details class="gm-fold gm-fold-block" id="${esc(o.id)}" open><summary>${o.head}${foldMeta(o.html)}</summary>${o.html}</details>${foldScript(o.id)}`
 }
 
 /** The script a fold carries: closed on a phone unless the reader opened it before, and it remembers that. */

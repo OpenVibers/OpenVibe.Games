@@ -37,7 +37,7 @@ describe('the home on a phone', () => {
     })
     expect(html).toContain('<details class="gm-fold gm-fold-block" id="home-faq" open>')
     expect(html).toContain(
-      '<summary><h2 id="home-faq">Questions</h2><span>tap to open</span></summary>',
+      '<summary><h2 id="home-faq">Questions</h2></summary>',
     )
     expect(html).toContain('the answers')
     expect(html).toContain('document.getElementById("home-faq")')
