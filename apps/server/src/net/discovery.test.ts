@@ -162,9 +162,14 @@ describe('crawl artifacts (plan T11)', () => {
     expect(r.headers['content-type']).toBe('text/plain; charset=utf-8')
     expect(r.headers['cache-control']).toBe('public, max-age=3600')
     expect(r.body).toContain('# OpenVibe.Games')
-    expect(r.body).toContain('- [OpenVibe.Games home](https://openvibe.games/)')
+    // AGT-5: the site's own pages are linked at their Markdown twins; Scraplandia is another origin and keeps its URL.
+    expect(r.body).toContain('- [OpenVibe.Games home](https://openvibe.games/index.md)')
     expect(r.body).toContain('- [Scraplandia](https://play.openvibe.games/)')
-    expect(r.body).toContain('- [Vibe Heroes](https://openvibe.games/play/vibe-heroes)')
+    expect(r.body).toContain('- [Vibe Heroes](https://openvibe.games/play/vibe-heroes.md)')
+    // /steam and /updates have no twin: their URL stays, marked (HTML).
+    expect(r.body).toContain('- [On Steam right now](https://openvibe.games/steam) (HTML)')
+    expect(r.body).toContain('- [What shipped](https://openvibe.games/updates) (HTML)')
+    expect(r.body).toContain('\n## Optional\n')
     expect(r.body).toContain('https://openvibe.games/sitemap.xml')
     expect(r.body).toContain('https://openvibe.games/robots.txt')
     expect(r.body).toContain('https://openvibe.games/map.json')

@@ -32,6 +32,11 @@ interface LlmsOptions {
   summary: string
   details?: string
   sections?: LlmsSection[]
+  /** Link the site's own pages at their Markdown twins (openvibe-shared 4.108.0); `base` is the site's origin. */
+  markdown?: boolean
+  base?: string
+  /** llmstxt.org's "## Optional": what an agent may skip for a shorter context. Written last. */
+  optional?: LlmsSection['links']
 }
 interface SeoUrl {
   loc: string
@@ -128,6 +133,9 @@ const SITE_DETAILS =
 // Every path robots.txt keeps out of crawlers. None is a public page, so none is in the sitemap
 // or llms.txt either: sign-in, the per-user API, operational metrics and the noindex editor app.
 const DISALLOW = ['/auth/', '/api/', '/metrics', '/editor']
+
+/** Public pages with no Markdown twin (served by another server, or not rendered as Markdown): linked as HTML. */
+const TWINLESS = new Set([`${SITE}/steam`, `${SITE}/updates`])
 
 /** "2026-09-29" or "2026-09-29T12:00:00Z" as YYYY-MM-DD; null when the value is unusable. */
 function dayOf(ts: unknown): string | null {
@@ -231,37 +239,49 @@ function publicPageDocs(): PublicPageDoc[] {
 function llmsBody(): string {
   return seo.llmsTxt({
     name: SITE_NAME,
+    // AGT-5: each of Games' own pages is linked at its Markdown twin; `base` keeps Scraplandia (play.openvibe.games)
+    // and other sites' links as they are. /steam and /updates have no twin, so they are linked as HTML.
+    markdown: true,
+    base: SITE,
     summary: SITE_SUMMARY,
     details: SITE_DETAILS,
     sections: [
       {
         title: 'Public pages',
-        links: publicPageDocs().map((p) => ({ title: p.title, url: p.url, note: p.note })),
+        links: publicPageDocs().map((p) => ({
+          title: p.title,
+          url: p.url,
+          note: p.note,
+          ...(TWINLESS.has(p.url) ? { html: true } : {}),
+        })),
       },
       {
         title: 'Machine-readable',
         links: [
-          {
-            title: 'Sitemap',
-            url: `${SITE}/sitemap.xml`,
-            note: 'the public pages above, each with a real lastmod',
-          },
-          {
-            title: 'robots.txt',
-            url: `${SITE}/robots.txt`,
-            note: 'search and AI crawlers are welcome on the public pages',
-          },
-          {
-            title: 'Full text (llms-full.txt)',
-            url: `${SITE}/llms-full.txt`,
-            note: 'this site’s public pages as one text document, for a model to read whole',
-          },
           {
             title: 'World map (JSON)',
             url: `${SITE}/map.json`,
             note: 'the canonical world document this game server runs',
           },
         ],
+      },
+    ],
+    // llmstxt.org's "## Optional": what an agent may skip when it needs a shorter context.
+    optional: [
+      {
+        title: 'Sitemap',
+        url: `${SITE}/sitemap.xml`,
+        note: 'the public pages above, each with a real lastmod',
+      },
+      {
+        title: 'robots.txt',
+        url: `${SITE}/robots.txt`,
+        note: 'search and AI crawlers are welcome on the public pages',
+      },
+      {
+        title: 'Full text (llms-full.txt)',
+        url: `${SITE}/llms-full.txt`,
+        note: 'this site’s public pages as one text document, for a model to read whole',
       },
     ],
   })
