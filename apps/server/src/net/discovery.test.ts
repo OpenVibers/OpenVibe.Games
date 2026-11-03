@@ -190,6 +190,21 @@ describe('crawl artifacts (plan T11)', () => {
     expect((await send('/app-icons/..%2F..%2Fpackage.json')).status).not.toBe(200)
   })
 
+  it('serves /openapi.json (SEO-3): the contracts\' OpenAPI 3.1 document, without internal-only operations', async () => {
+    const r = await send('/openapi.json')
+    expect(r.status).toBe(200)
+    expect(r.headers['content-type']).toBe('application/json; charset=utf-8')
+    expect(r.headers['access-control-allow-origin']).toBe('*')
+    const doc = JSON.parse(r.body) as { openapi: string; paths: Record<string, Record<string, { 'x-openvibe-visibility'?: string | string[] }>> }
+    expect(doc.openapi).toMatch(/^3\.1/)
+    const ops = Object.values(doc.paths).flatMap((item) => Object.values(item))
+    expect(ops.length).toBeGreaterThan(0)
+    for (const op of ops) {
+      const vis = ([] as string[]).concat(op['x-openvibe-visibility'] ?? [])
+      expect(vis.length > 0 && vis.every((v) => v === 'internal')).toBe(false)
+    }
+  })
+
   it('serves /llms-full.txt: text/plain, the home page, and nothing robots keeps out', async () => {
     const r = await send('/llms-full.txt')
     expect(r.status).toBe(200)
