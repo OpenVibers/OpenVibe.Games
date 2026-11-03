@@ -335,6 +335,35 @@ export function homeJsonLdTags(): string {
     .join('\n')
 }
 
+type OpenApiDoc = { openapi?: string; paths?: Record<string, Record<string, unknown>> }
+const contractsOpenApi = createRequire(import.meta.url)('openvibe-contracts').openapi as { document(service: string): OpenApiDoc | null }
+const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'patch', 'head', 'options'])
+
+/**
+ * GET /openapi.json (SEO-3): the game server's public API as OpenAPI 3.1, generated from the contracts
+ * (openvibe-contracts), without the operations they mark internal-only.
+ */
+export function openApiBody(): string | null {
+  const doc = contractsOpenApi.document('games')
+  if (!doc) return null
+  const paths: Record<string, Record<string, unknown>> = {}
+  for (const [p, item] of Object.entries(doc.paths ?? {})) {
+    const kept: Record<string, unknown> = {}
+    for (const [k, op] of Object.entries(item ?? {})) {
+      if (!HTTP_METHODS.has(k)) {
+        kept[k] = op
+        continue
+      }
+      const raw = (op as { 'x-openvibe-visibility'?: string | string[] } | null)?.['x-openvibe-visibility']
+      const vis = raw === undefined ? [] : ([] as string[]).concat(raw)
+      if (vis.length && vis.every((v) => v === 'internal')) continue
+      kept[k] = op
+    }
+    if (Object.keys(kept).some((k) => HTTP_METHODS.has(k))) paths[p] = kept
+  }
+  return JSON.stringify({ ...doc, paths })
+}
+
 function send(res: ServerResponse, type: string, body: string): void {
   res.writeHead(200, {
     'content-type': `${type}; charset=utf-8`,
@@ -356,6 +385,7 @@ export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): bool
     url !== '/sitemap.xml' &&
     url !== '/llms.txt' &&
     url !== '/llms-full.txt' &&
+    url !== '/openapi.json' &&
     url !== '/manifest.webmanifest' &&
     !icon
   ) {
@@ -364,6 +394,17 @@ export function discoveryHandler(rq: IncomingMessage, res: ServerResponse): bool
   if (rq.method !== 'GET' && rq.method !== 'HEAD') {
     res.writeHead(405, { allow: 'GET, HEAD' })
     res.end()
+    return true
+  }
+  if (url === '/openapi.json') {
+    const body = openApiBody()
+    if (!body) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('No API document.')
+      return true
+    }
+    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'public, max-age=3600', 'access-control-allow-origin': '*' })
+    res.end(rq.method === 'HEAD' ? undefined : body)
     return true
   }
   if (url === '/manifest.webmanifest') {
