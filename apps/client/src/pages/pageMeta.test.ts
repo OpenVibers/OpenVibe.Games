@@ -1,10 +1,11 @@
 /**
  * The pages outside the game client's router are still read by search engines and share cards:
- * each names a one-line meta description of 120–160 characters, and the leaderboard (linked from
- * the game and the portal) names its own canonical URL and the site's og:image, the card the home
- * uses. The description is one line so a plain line-based crawler sees it too.
+ * each names a one-line meta description of 120–160 characters, and every page that had the old
+ * share image names the site's content-hashed card (openvibe-shared/social), with its size and the
+ * Twitter mirror. The description is one line so a plain line-based crawler sees it too.
  */
 import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
@@ -12,6 +13,10 @@ const client = (path: string) => fileURLToPath(new URL(`../../${path}`, import.m
 const html = (page: string) => readFileSync(client(page), 'utf8')
 const description = (page: string) =>
   /<meta name="description" content="([^"]*)" \/>/.exec(html(page))?.[1] ?? ''
+// The server already depends on the pinned openvibe-shared; its social helper is what names the card.
+const req = createRequire(new URL('../../../server/package.json', import.meta.url))
+const social = req('openvibe-shared/social') as { url(service: string): string | null }
+const CARD = `https://openvibe.games${social.url('games')}`
 
 describe('page metadata', () => {
   it.each(['play.html', 'worlds.html', 'leaderboard.html'])(
@@ -25,9 +30,19 @@ describe('page metadata', () => {
     },
   )
 
-  it('leaderboard.html names its canonical URL and the site card', () => {
+  it('leaderboard.html names its canonical URL', () => {
     const page = html('leaderboard.html')
     expect(page).toContain('<link rel="canonical" href="https://openvibe.games/leaderboard.html" />')
-    expect(page).toContain('<meta property="og:image" content="https://openvibe.games/og-image.png" />')
   })
+
+  it.each(['index.html', 'play.html', 'worlds.html', 'editor.html', 'leaderboard.html'])(
+    '%s shares the content-hashed site card',
+    (page) => {
+      const doc = html(page)
+      expect(doc).toContain(`<meta property="og:image" content="${CARD}" />`)
+      expect(doc).toContain('<meta property="og:image:width" content="1200" />')
+      expect(doc).toContain('<meta property="og:image:height" content="630" />')
+      expect(doc).toContain(`<meta name="twitter:image" content="${CARD}" />`)
+    },
+  )
 })
