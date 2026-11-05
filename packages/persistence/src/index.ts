@@ -2,7 +2,13 @@ export * from './dto.js'
 export * from './repositories.js'
 export { accountKey } from './accountKey.js'
 export { openPgStore, type PgPersistenceStore, type PgStoreOptions } from './pg/pgStore.js'
-export { InstanceRegistry, type InstanceLease, type InstanceState } from './pg/instanceRegistry.js'
+export {
+  HEARTBEAT_STATEMENT_TIMEOUT_MS,
+  InstanceRegistry,
+  type InstanceLease,
+  type InstanceState,
+  type LeaseHeartbeat,
+} from './pg/instanceRegistry.js'
 export { MIGRATIONS_DIR } from './migrations.js'
 export { moveCasualSaves, exportCasual, eraseCasual } from './pg/casualData.js'
 export {

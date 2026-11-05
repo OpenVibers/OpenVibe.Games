@@ -53,6 +53,7 @@ import { resolveClientAddress } from './net/clientAddress.js'
 import { ServerMetrics } from './observability/metrics.js'
 import { createReadiness } from './observability/readiness.js'
 import { buildRelease, releaseHandler } from './observability/release.js'
+import { createTickWatchdog } from './observability/tickWatchdog.js'
 import { sharedAssetsHandler } from './net/sharedAssets.js'
 import { loadDefinitionPacks, scriptGrant } from './mods/contentPack.js'
 import { ModError, ModRegistry, type ModView } from './mods/registry.js'
@@ -544,6 +545,10 @@ async function main(): Promise<void> {
       )
     : undefined
   const createSecondaryRoom = async (slot: number, lease: InstanceLease) => {
+    // Slot 0 reuses the boot store. Point its lease guard at the lease this room is actually starting
+    // with: after a lease loss the hub claims a new version, and the old closure would fence every
+    // write of the restarted room.
+    if (slot === 0) secondaryPrimaryLease = lease
     const roomStore =
       slot === 0
         ? secondaryStore
@@ -645,6 +650,9 @@ async function main(): Promise<void> {
     const surfRegistry = new InstanceRegistry(db, info.placeId)
     let surfPrimaryLease: InstanceLease
     const createSurfRoom = async (slot: number, lease: InstanceLease) => {
+      // Slot 0's guard reads this variable; a restart after a lease loss claims a new version, so the
+      // guard must follow the lease the room is actually built with.
+      if (slot === 0) surfPrimaryLease = lease
       const roomStore = openPgStore(db, {
         placeId: info.placeId,
         instanceSlot: slot,
@@ -786,7 +794,15 @@ async function main(): Promise<void> {
     [secondaryPlace, secondaryContent],
     ...surfContentByPlace,
   ])
-  const heartbeatTimer = setInterval(() => void router.heartbeat(), 5_000)
+  const heartbeatTimer = setInterval(() => {
+    // Never let a rejected heartbeat (or a dispose that throws) become an unhandled rejection that
+    // takes the whole process with it: one place failing must not stop every other place's lease.
+    router.heartbeat().catch((err: unknown) =>
+      log.error('instance heartbeat tick failed', {
+        error: String((err as Error)?.message ?? err),
+      }),
+    )
+  }, 5_000)
   heartbeatTimer.unref()
 
   const syncScriptView = async (view: ModView): Promise<void> => {
@@ -1427,6 +1443,12 @@ async function main(): Promise<void> {
   }
   loop()
 
+  // A tick loop that dies (or is never scheduled again) leaves the process answering /healthz while
+  // /api/ready's required `tick` check fails forever: production stayed 8 hours like that. Exit 1
+  // after the readiness threshold plus the grace, so systemd restarts a working process.
+  const tickWatchdog = createTickWatchdog({ metrics, log: log.child({ system: 'tick' }) })
+  tickWatchdog.start()
+
   const metricsTimer = setInterval(() => metrics.logSummary(log), config.metricsLogSeconds * 1000)
 
   // ── Stop (roadmap WS-P lifecycle; manifests/services/games.json → lifecycle.shutdown) ──
@@ -1451,6 +1473,7 @@ async function main(): Promise<void> {
       hard.unref()
       const httpDone = drainer.close(DRAIN_MS)
       running = false
+      tickWatchdog.stop()
       clearInterval(metricsTimer)
       if (aiMatchTimer) clearInterval(aiMatchTimer)
       clearInterval(heartbeatTimer)
