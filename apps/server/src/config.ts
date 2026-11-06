@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path'
 import { surfMap } from '@openvibe/content'
 import { MIGRATIONS_DIR } from '@openvibe/persistence'
 import { SIM_TICK_RATE, SURF_SNAPSHOT_EVERY, SURF_TICK_RATE } from '@openvibe/shared'
@@ -30,6 +31,11 @@ export interface ServerConfig {
   /** Directory of built client assets to serve, or null for API/WS only. */
   staticDir: string | null
   mapPath: string
+  /**
+   * The editor map of the other built-in place this process runs (main.ts serves both): a sibling of `mapPath` named
+   * after its place. A missing file is an empty map, not a 404, so the client never reports a failed map request.
+   */
+  secondaryMapPath: string
   /**
    * TRUST_PROXY: which proxies may set the client-address headers. null = none
    * (the TCP peer is the client). 'all' = the server is only reachable through
@@ -209,6 +215,14 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   // A surf deployment's place id is its map id; the old `surf-lagoon` env value
   // boots the canonical place rather than starting a second, aliased one.
   const placeId = surfMap(requestedPlace)?.id ?? requestedPlace
+  const mapPath =
+    env.MAP_PATH ?? (placeId === 'salvage-rush' ? 'data/salvage-rush-map.json' : 'data/map.json')
+  // main.ts also runs the other built-in place in this process. Its map document is the sibling of the primary one;
+  // the file not existing yet is an empty map (mapStore.loadMap), where a 404 would show up as a failed request.
+  const secondaryMapPath = join(
+    dirname(mapPath),
+    placeId === 'salvage-rush' ? 'map.json' : 'salvage-rush-map.json',
+  )
   return {
     port: intEnv(env, 'PORT', 8000),
     host: env.HOST ?? '0.0.0.0',
@@ -223,9 +237,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
       valkeyPrefix: env.VALKEY_PREFIX ?? 'ov:games:',
     },
     staticDir: env.STATIC_DIR ?? null,
-    mapPath:
-      env.MAP_PATH ??
-      (placeId === 'salvage-rush' ? 'data/salvage-rush-map.json' : 'data/map.json'),
+    mapPath,
+    secondaryMapPath,
     trustProxy: parseProxyTrust(env.TRUST_PROXY),
     /** openvibe.network auth endpoint; when set, editor tokens validate there. */
     networkAuthUrl:

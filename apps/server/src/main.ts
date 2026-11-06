@@ -1356,13 +1356,14 @@ async function main(): Promise<void> {
       log.child({ system: 'indexnow' }),
     ),
     config.placeId,
-    // One map document per place: surf maps are separate files, the rest
-    // share the configured editor map.
+    // One map document per place: surf maps are separate files, each built-in place has its own document (an absent
+    // file is an empty map, not a 404), and anything else has no map.
     (place) => {
       const surf = place ? surfMapOfPlace(place) : null
       if (surf) return surfMapPath(surf.id)
       if (!place || place === config.placeId)
         return primarySurf ? surfMapPath(primarySurf.id) : config.mapPath
+      if (place === secondaryPlace) return config.secondaryMapPath
       return undefined
     },
   )

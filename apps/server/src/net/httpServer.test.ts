@@ -87,6 +87,9 @@ beforeAll(async () => {
   writeFileSync(join(dist, 'assets', 'tex', 'wood_planks.jpg'), 'jpeg')
   writeFileSync(join(dist, 'assets', 'tex', 'wood_planks.ktx2'), 'ktx2')
   const mapPath = join(dir, 'data', 'map.json')
+  // The process runs both built-in places. This one has no file yet: /map.json?game=salvage-rush must still be an
+  // empty map document, not the 404 the play client logged (main.ts's mapPathFor answers it from here).
+  const secondaryMapPath = join(dir, 'data', 'salvage-rush-map.json')
   mkdirSync(join(dir, 'data', 'map-assets'), { recursive: true })
   writeFileSync(join(dir, 'data', 'map-assets', 'tex-1700000000000.png'), 'png')
 
@@ -108,6 +111,14 @@ beforeAll(async () => {
     async () => [{ slot: 0, name: 'Ana', appearance: null }],
     null,
     { handle: (req, res) => readiness.handle(req, res) },
+    undefined,
+    undefined,
+    'scraplandia',
+    (place) => {
+      if (!place || place === 'scraplandia') return mapPath
+      if (place === 'salvage-rush') return secondaryMapPath
+      return undefined
+    },
   )
   bare = createHttpServer(null, metrics, log)
   port = await listen(server)
@@ -165,6 +176,17 @@ describe('real routes on the apex', () => {
     const tex = await send('/map-assets/tex-1700000000000.png')
     expect(tex.status).toBe(200)
     expect(tex.headers['content-type']).toBe('image/png')
+  })
+
+  it('answers the other built-in place with an empty map, not a 404', async () => {
+    const map = await send('/map.json?game=salvage-rush')
+    expect(map.status).toBe(200)
+    expect(map.headers['content-type']).toBe('application/json')
+    expect(map.headers.etag).toBeTruthy()
+    const body = JSON.parse(map.body) as { v?: number }
+    expect(body.v).toBe(2)
+    // A place this process does not run still has no map.
+    expect((await send('/map.json?game=not-a-place')).status).toBe(404)
   })
 
   it('answers the SSO routes', async () => {
