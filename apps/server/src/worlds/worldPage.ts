@@ -14,6 +14,13 @@ interface Shell {
   page(o: Record<string, unknown>): string
 }
 
+interface Kit {
+  share(o: Record<string, unknown>): string
+}
+
+const kit = (opts: { require?: NodeRequire } = {}) =>
+  (opts.require ?? createRequire(import.meta.url))('openvibe-shared/kit') as Kit
+
 const SITE_NAME = 'OpenVibe.Games'
 const NETWORK_URL = 'https://openvibe.network'
 const LINKS: NotFoundLink[] = [
@@ -31,10 +38,9 @@ const STYLE = `<style>
 .world .play{display:inline-flex;align-items:center;min-height:44px;padding:10px 26px;border-radius:12px;background:var(--accent-strong,#2563eb);color:var(--on-accent-strong,#fff);font-weight:800;text-decoration:none}
 .world .more{display:inline-flex;align-items:center;min-height:44px;padding:10px 18px;border-radius:12px;border:1px solid var(--border,#1f2d47);color:inherit;text-decoration:none}
 .world .note{margin-top:22px;font-size:14px;color:var(--text-faint,#7386a3)}
-.world .row button.more{background:none;font:inherit;cursor:pointer}
 </style>`
 
-export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell): string {
+export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell, kitLib: Kit = kit()): string {
   const url = `${siteUrl}/worlds/${world.id}`
   const description =
     world.summary ||
@@ -57,7 +63,7 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
     description: description.slice(0, 300),
     canonical: url,
     robots: 'index, follow',
-    head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n${STYLE}`,
+    head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n<link rel="stylesheet" href="/shared/kit.css">\n${STYLE}`,
     navbar: {
       service: 'games',
       apiBase: NETWORK_URL,
@@ -83,7 +89,7 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
   <p class="stats">${escapeHtml(visits)}</p>
   <div class="row">
     <a class="play" href="/play?world=${world.id}">▶ Join this world</a>
-    <button type="button" class="more" data-ov-share-sheet data-url="${escapeHtml(url)}" data-title="${escapeHtml(world.title)}" data-text="${escapeHtml(description)}">Share</button>
+    ${kitLib.share({ title: world.title, url, text: description })}
     <a class="more" href="/worlds?remix=${world.id}">Remix it</a>
     <a class="more" href="/worlds">More worlds</a>
   </div>

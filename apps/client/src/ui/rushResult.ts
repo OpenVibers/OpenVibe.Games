@@ -65,16 +65,16 @@ export function buildResultCard(result: RoundResult, origin: string): HTMLElemen
 
   const actions = document.createElement('div')
   actions.className = 'rush-result-actions'
+  // The network's one Share button, exactly as openvibe-shared 4.114.0's kit.share() builds it: the navbar loads
+  // ov-share.js on the first press and opens it from these data-* attributes.
   const share = document.createElement('button')
   share.type = 'button'
-  share.className = 'rush-result-share'
-  share.textContent = 'Share'
-  // The network's one Share sheet (openvibe-shared 4.114.0): the navbar loads ov-share.js on the first press and
-  // opens it from these data-* attributes.
+  share.className = 'ovk-btn ovk-btn--quiet rush-result-share'
   share.dataset.ovShareSheet = ''
   share.dataset.title = 'A Salvage Rush round'
   share.dataset.text = resultShareText(result)
   share.dataset.url = url
+  share.innerHTML = '<svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span>'
   const board = document.createElement('a')
   board.className = 'rush-result-board'
   board.href = '/leaderboard.html?game=salvage-rush'

@@ -40,6 +40,7 @@ describe('the result card of a round', () => {
   it('carries the buttons a player needs', () => {
     const card = buildResultCard(result, 'https://openvibe.games')
     const share = card.querySelector('.rush-result-share') as HTMLButtonElement
+    expect(share.className).toContain('ovk-btn ovk-btn--quiet')
     expect(share.textContent).toBe('Share')
     expect(share.dataset.ovShareSheet).toBe('')
     expect(share.dataset.url).toBe('https://openvibe.games/result/0%3A1700000000000-12')
