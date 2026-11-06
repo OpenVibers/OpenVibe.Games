@@ -39,7 +39,14 @@ describe('the result card of a round', () => {
 
   it('carries the buttons a player needs', () => {
     const card = buildResultCard(result, 'https://openvibe.games')
-    expect(card.querySelector('.rush-result-share')?.textContent).toBe('Share')
+    const share = card.querySelector('.rush-result-share') as HTMLButtonElement
+    expect(share.textContent).toBe('Share')
+    expect(share.dataset.ovShareSheet).toBe('')
+    expect(share.dataset.url).toBe('https://openvibe.games/result/0%3A1700000000000-12')
+    expect(share.dataset.title).toBe('A Salvage Rush round')
+    expect(share.dataset.text).toBe(
+      'I scored 12 in Salvage Rush (rank 2 of 7). My best round: 12.',
+    )
     expect(card.querySelector('.rush-result-board')?.getAttribute('href')).toBe(
       '/leaderboard.html?game=salvage-rush',
     )

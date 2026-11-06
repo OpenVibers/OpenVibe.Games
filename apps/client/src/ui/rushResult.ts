@@ -69,18 +69,12 @@ export function buildResultCard(result: RoundResult, origin: string): HTMLElemen
   share.type = 'button'
   share.className = 'rush-result-share'
   share.textContent = 'Share'
-  share.addEventListener('click', () => {
-    const text = resultShareText(result)
-    if (navigator.share) {
-      navigator.share({ title: 'A Salvage Rush round', text, url }).catch(() => undefined)
-      return
-    }
-    void navigator.clipboard?.writeText(`${text} ${url}`).catch(() => undefined)
-    share.textContent = 'Copied'
-    window.setTimeout(() => {
-      share.textContent = 'Share'
-    }, 1500)
-  })
+  // The network's one Share sheet (openvibe-shared 4.114.0): the navbar loads ov-share.js on the first press and
+  // opens it from these data-* attributes.
+  share.dataset.ovShareSheet = ''
+  share.dataset.title = 'A Salvage Rush round'
+  share.dataset.text = resultShareText(result)
+  share.dataset.url = url
   const board = document.createElement('a')
   board.className = 'rush-result-board'
   board.href = '/leaderboard.html?game=salvage-rush'

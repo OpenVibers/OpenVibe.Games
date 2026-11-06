@@ -250,6 +250,19 @@
         letter-spacing: 0.03em;
         text-decoration: none;
       }
+      .share {
+        display: inline-block;
+        margin: 22px 10px 0 0;
+        padding: 13px 22px;
+        border-radius: 12px;
+        border: 1px solid var(--page-border);
+        background: transparent;
+        color: var(--text);
+        font: inherit;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+      }
       .note {
         margin-top: 14px;
         font-size: 14px;
@@ -311,6 +324,7 @@
           ><button id="next" type="button">Next</button>
         </div>
       </section>
+      <button class="share" type="button" id="share" data-ov-share-sheet data-title="Salvage Rush leaderboard" data-url="https://openvibe.games/leaderboard.html?game=salvage-rush">Share</button>
       <a class="play" id="play-link" href="/play?game=salvage-rush">▶ Play a round</a>
       <p class="note">
         "This week" starts on Monday, 00:00 UTC. These boards are kept by
