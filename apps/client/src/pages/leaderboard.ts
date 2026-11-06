@@ -31,6 +31,7 @@ const lede = document.getElementById('lede') as HTMLElement
 const scoreHeader = document.getElementById('score-header') as HTMLElement
 const playLink = document.getElementById('play-link') as HTMLAnchorElement
 const youLine = document.getElementById('you') as HTMLElement
+const shareButton = document.getElementById('share') as HTMLButtonElement
 
 const COPY: Record<
   Game,
@@ -86,9 +87,20 @@ function cell(text: string, className?: string): HTMLTableCellElement {
   return td
 }
 
+/** The one Share sheet sends the board on screen: its game and period, in its public address. */
+function applyShare(): void {
+  const copy = COPY[game]
+  const query = new URLSearchParams({ game })
+  if (period === 'week') query.set('period', 'week')
+  shareButton.dataset.title = `${copy.title} leaderboard`
+  shareButton.dataset.text = copy.lede
+  shareButton.dataset.url = `https://openvibe.games/leaderboard.html?${query.toString()}`
+}
+
 function applyGame(): void {
   for (const tab of gameTabs) tab.setAttribute('aria-pressed', String(tab.dataset.game === game))
   const copy = COPY[game]
+  applyShare()
   title.textContent = copy.title
   lede.textContent = copy.lede
   scoreHeader.textContent = copy.score
@@ -123,6 +135,7 @@ function markMine(mine: Mine | null): void {
 }
 
 async function load(): Promise<void> {
+  applyShare()
   for (const tab of periodTabs)
     tab.setAttribute('aria-pressed', String(tab.dataset.period === period))
   const copy = COPY[game]

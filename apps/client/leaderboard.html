@@ -250,6 +250,16 @@
         letter-spacing: 0.03em;
         text-decoration: none;
       }
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .cta-row .play {
+        margin-top: 0;
+      }
       .note {
         margin-top: 14px;
         font-size: 14px;
@@ -259,6 +269,7 @@
     <script type="module" src="/src/pages/leaderboard.ts"></script>
     <!-- The OpenVibe Frame (navbar + footer), as on every other page of the site: this page had only its own row of
          links (phone sweep, 2026-11-01). -->
+    <link rel="stylesheet" href="/shared/kit.css" />
     <script src="/shared/navbar.js" defer></script>
     <script src="/shared/footer.js" defer></script>
     <script>
@@ -311,7 +322,10 @@
           ><button id="next" type="button">Next</button>
         </div>
       </section>
-      <a class="play" id="play-link" href="/play?game=salvage-rush">▶ Play a round</a>
+      <div class="cta-row">
+        <button class="ovk-btn ovk-btn--quiet" type="button" id="share" data-ov-share-sheet data-title="Salvage Rush leaderboard" data-url="https://openvibe.games/leaderboard.html?game=salvage-rush"><svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span></button>
+        <a class="play" id="play-link" href="/play?game=salvage-rush">▶ Play a round</a>
+      </div>
       <p class="note">
         "This week" starts on Monday, 00:00 UTC. These boards are kept by
         <a href="https://play.openvibe.network/">OpenVibe.Play</a>, with the achievements you have

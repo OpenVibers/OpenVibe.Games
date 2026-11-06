@@ -26,6 +26,7 @@ interface Kit {
   tool: Builder
   page: Builder
   button: Builder
+  share: Builder
   badge: (text: string, tone?: string) => string
 }
 const sharedRequire = createRequire(import.meta.url)
@@ -98,13 +99,14 @@ export function resultPageHtml(input: ResultPageInput): string {
           ]
         : [['Players', n(players)]],
   })
-  const share = kit.button({
-    href: url,
+  const share = kit.share({
+    title: 'A Salvage Rush round',
+    url,
+    text: shareText(input, mine),
     label: 'Share this result',
-    icon: 'send',
-    attrs: { 'data-ovk-share': shareText(input, mine) },
   })
   const body = [
+    `<p>${share}</p>`,
     kit.tool({
       head: kit.toolHead({
         icon: 'trophy',
@@ -120,7 +122,6 @@ export function resultPageHtml(input: ResultPageInput): string {
     }),
     kit.section({
       body:
-        `<div class="ovk-tool-card">${share}</div>` +
         `<p class="ovk-note">${kit.esc(GAME_PROMISE)}</p>` +
         kit.button({ href: '/leaderboard.html?game=salvage-rush', label: 'Full leaderboard', kind: 'ghost', icon: 'trophy' }),
     }),
@@ -133,7 +134,15 @@ export function resultPageHtml(input: ResultPageInput): string {
     }),
     body,
   })
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A Salvage Rush round · OpenVibe.Games</title><meta name="robots" content="noindex,follow"><meta name="description" content="A scored round of Salvage Rush on OpenVibe.Games."><script src="/shared/theme-loader.js"></script><link rel="stylesheet" href="/shared/kit.css"><link rel="stylesheet" href="/shared/kit-data.css"></head><body class="ovk-app"><div id="navbar-mount"></div>${html}<script src="/shared/navbar.js" defer></script><script src="/shared/kit-web.js" defer></script></body></html>`
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A Salvage Rush round · OpenVibe.Games</title><meta name="robots" content="noindex,follow"><meta name="description" content="A scored round of Salvage Rush on OpenVibe.Games."><style>body{margin:0}:where(body){font-family:var(--ov-font,'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif)}</style><script src="/shared/theme-loader.js"></script><link rel="stylesheet" href="/shared/kit.css"><link rel="stylesheet" href="/shared/kit-data.css"></head><body class="ovk-app"><div id="navbar-mount"></div>${html}<script src="/shared/web-runtime.js" defer></script><script src="/shared/navbar.js" defer></script><script src="/shared/kit-web.js" defer></script><script>window.addEventListener('DOMContentLoaded', function () { OpenVibeNavbar.init(${JSON.stringify({
+    service: 'games',
+    apiBase: 'https://openvibe.network',
+    links: [
+      { label: 'Leaderboard', href: '/leaderboard.html' },
+      { label: 'Play Scraplandia', href: '/play' },
+    ],
+    history: { type: 'page', title: 'A Salvage Rush round' },
+  })}); });</script></body></html>`
 }
 
 export interface ResultRouteOptions {

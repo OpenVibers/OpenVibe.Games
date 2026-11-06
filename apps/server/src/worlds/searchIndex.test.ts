@@ -142,6 +142,10 @@ describe('creator worlds in OpenVibe.Search', () => {
     expect(html).toContain('<link rel="canonical" href="https://openvibe.games/worlds/wk3j9x0a2bq"')
     expect(html).toContain('1 visit')
     expect(html).toContain('href="/worlds?remix=wk3j9x0a2bq"')
+    expect(html).toContain('class="ovk-btn ovk-btn--quiet"')
+    expect(html).toContain('data-ov-share-sheet')
+    expect(html).toContain('data-url="https://openvibe.games/worlds/wk3j9x0a2bq"')
+    expect(html).toContain('data-title="Moon &lt;script&gt;"')
     expect(html).not.toContain('Remix of')
     const remix = worldPageHtml(
       {

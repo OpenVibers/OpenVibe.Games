@@ -14,6 +14,13 @@ interface Shell {
   page(o: Record<string, unknown>): string
 }
 
+interface Kit {
+  share(o: Record<string, unknown>): string
+}
+
+const kit = (opts: { require?: NodeRequire } = {}) =>
+  (opts.require ?? createRequire(import.meta.url))('openvibe-shared/kit') as Kit
+
 const SITE_NAME = 'OpenVibe.Games'
 const NETWORK_URL = 'https://openvibe.network'
 const LINKS: NotFoundLink[] = [
@@ -33,7 +40,7 @@ const STYLE = `<style>
 .world .note{margin-top:22px;font-size:14px;color:var(--text-faint,#7386a3)}
 </style>`
 
-export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell): string {
+export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell, kitLib: Kit = kit()): string {
   const url = `${siteUrl}/worlds/${world.id}`
   const description =
     world.summary ||
@@ -56,7 +63,7 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
     description: description.slice(0, 300),
     canonical: url,
     robots: 'index, follow',
-    head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n${STYLE}`,
+    head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n<link rel="stylesheet" href="/shared/kit.css">\n${STYLE}`,
     navbar: {
       service: 'games',
       apiBase: NETWORK_URL,
@@ -82,6 +89,7 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
   <p class="stats">${escapeHtml(visits)}</p>
   <div class="row">
     <a class="play" href="/play?world=${world.id}">▶ Join this world</a>
+    ${kitLib.share({ title: world.title, url, text: description })}
     <a class="more" href="/worlds?remix=${world.id}">Remix it</a>
     <a class="more" href="/worlds">More worlds</a>
   </div>
