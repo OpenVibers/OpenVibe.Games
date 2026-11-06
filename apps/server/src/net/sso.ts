@@ -103,6 +103,8 @@ export function parseCookies(header: string | undefined): Record<string, string>
 
 export interface LoginState {
   state: string
+  /** The PKCE verifier for this flow (openvibe-sdk/sso's authorizeUrl); never leaves this cookie. */
+  verifier: string
   next: string | null
   silent: boolean
 }
@@ -118,6 +120,7 @@ export function decodeLoginState(raw: string | undefined): LoginState | null {
     if (typeof parsed.state !== 'string') return null
     return {
       state: parsed.state,
+      verifier: typeof parsed.verifier === 'string' ? parsed.verifier : '',
       next: typeof parsed.next === 'string' ? parsed.next : null,
       silent: parsed.silent === true,
     }
@@ -148,6 +151,30 @@ export function loginStateCookie(s: LoginState, secure: boolean): string {
 
 export function clearLoginStateCookie(): string {
   return `${LOGIN_STATE_COOKIE}=; Path=/auth; Max-Age=0; HttpOnly; SameSite=Lax`
+}
+
+/**
+ * Comparison in constant time: the OAuth `state` coming back must match the
+ * one the login state cookie pinned before the code is exchanged.
+ */
+export function sameString(a: unknown, b: unknown): boolean {
+  const x = Buffer.from(String(a ?? ''))
+  const y = Buffer.from(String(b ?? ''))
+  return x.length === y.length && x.length > 0 && timingSafeEqual(x, y)
+}
+
+/**
+ * Set once when a sign-in cannot finish, so the callback starts it again by
+ * itself; the second failure shows the page instead of looping.
+ */
+export const RETRY_COOKIE = 'ov_oauth_retry'
+
+export function retryCookie(secure: boolean): string {
+  return `${RETRY_COOKIE}=1; Path=/auth; Max-Age=120; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`
+}
+
+export function clearRetryCookie(): string {
+  return `${RETRY_COOKIE}=; Path=/auth; Max-Age=0; HttpOnly; SameSite=Lax`
 }
 
 // ── FedCM ──────────────────────────────────────────────────────────────

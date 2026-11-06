@@ -54,6 +54,8 @@ export interface ServerConfig {
     selfUrl: string
     /** Public base of the play host (Host-routed game vhost). */
     playUrl: string
+    /** Host-internal Network base the token grant tries first. */
+    internalUrl: string
   } | null
   /**
    * Platform integration (roadmap Wave 12): Games calls OpenVibe services with
@@ -253,6 +255,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
           baseUrl: env.OV_NETWORK_URL ?? 'https://openvibe.network',
           selfUrl: env.SELF_URL ?? 'https://openvibe.games',
           playUrl: env.PLAY_URL ?? 'https://play.openvibe.games',
+          internalUrl: trimSlash(
+            env.OV_NETWORK_INTERNAL_URL ?? env.OV_NETWORK_URL ?? 'https://openvibe.network',
+          ),
         }
       : null,
     platform: loadPlatformConfig(env),
