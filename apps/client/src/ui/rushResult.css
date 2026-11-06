@@ -67,6 +67,9 @@
 .rush-result-actions > * {
   flex: 1 1 8rem;
   min-height: 2.75rem;
+}
+.rush-result-actions > :not(.ovk-btn) {
+  min-height: 2.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -80,11 +83,6 @@
   text-align: center;
   text-decoration: none;
   cursor: pointer;
-}
-.rush-result-share {
-  background: var(--accent-strong, var(--accent));
-  border-color: transparent;
-  color: var(--on-accent-strong, var(--on-accent, #fff));
 }
 .rush-result-board {
   background: transparent;
