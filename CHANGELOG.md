@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Share: a creator world's page, a round's result page, the leaderboard and the in-game round result now open the network's one Share sheet (`data-ov-share-sheet`, openvibe-shared 4.114.0) with the page's public address. The result page now starts the shared navbar itself, which is what loads the sheet on the first press; `navigator.share` is gone.
+
 ### Fixed
 
 - **A shared /worlds link had no preview.** The creator worlds page carried no Open Graph or Twitter tags, so a

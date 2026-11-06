@@ -52,8 +52,12 @@ describe('the result page of a round', () => {
     expect(resultPageUrl('https://openvibe.games/', '0:1700000000000-12')).toBe(
       'https://openvibe.games/result/0%3A1700000000000-12',
     )
-    expect(html).toContain('data-ovk-share')
+    expect(html).toContain('data-ov-share-sheet')
+    expect(html).toContain('data-url="https://openvibe.games/result/0%3A1700000000000-12"')
+    expect(html).toContain('data-title="A Salvage Rush round"')
     expect(html).toContain('I scored 12 in Salvage Rush')
+    // The navbar is what loads ov-share.js on the first press, so the page must start it.
+    expect(html).toContain('OpenVibeNavbar.init(')
   })
 
   it('carries the one line every game page carries', () => {
