@@ -69,6 +69,23 @@ describe('loadConfig surf place', () => {
   })
 })
 
+describe('loadConfig editor maps', () => {
+  it('gives the other built-in place a sibling map document, never a 404', () => {
+    const scraplandia = loadConfig({
+      GAMES_PLACE_ID: 'scraplandia',
+      MAP_PATH: '/opt/openvibe.games/data/map.json',
+    })
+    expect(scraplandia.mapPath).toBe('/opt/openvibe.games/data/map.json')
+    expect(scraplandia.secondaryMapPath).toBe('/opt/openvibe.games/data/salvage-rush-map.json')
+
+    const rush = loadConfig({
+      GAMES_PLACE_ID: 'salvage-rush',
+      MAP_PATH: '/opt/openvibe.games/data/salvage-rush-map.json',
+    })
+    expect(rush.secondaryMapPath).toBe('/opt/openvibe.games/data/map.json')
+  })
+})
+
 describe('loadConfig scriptMods', () => {
   it('is off unless the place enables it', () => {
     expect(loadConfig({}).scriptMods).toBe(false)
