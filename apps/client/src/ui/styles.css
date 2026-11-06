@@ -58,6 +58,30 @@ body {
   z-index: 30;
 }
 
+/* ── The Frame inside the shell ────────────────────────────────────
+   The stage is a permanently dark surface (html, body above), so the
+   Frame drawn into it wears the dark theme's ink whatever theme the
+   visitor picked. Without this a light theme hands the navbar its
+   page ink — daylight's #1a1a2e — which sits on #0b0e11 at 1.15:1
+   (the burger) and 2.32:1 (the search orb) at 390 px on
+   openvibe.games/play, below even the 3:1 a UI icon needs. The bars
+   are transparent until the page scrolls, so the canvas is what they
+   read against. Pinned on the mounts, not on <html>: the theme-loader
+   writes its own tokens inline there. */
+#navbar-mount,
+#ov-footer {
+  --bg-primary: #0a0f1c;
+  --bg-secondary: #101828;
+  --bg-tertiary: #172238;
+  --bg-card: #131c2e;
+  --text-primary: #e6edf7;
+  --text-secondary: #96a7c2;
+  --text-muted: #7386a3;
+  --border: #1f2d47;
+  --border-light: #2c3d5c;
+  color-scheme: dark;
+}
+
 #stage {
   position: relative;
   flex: 1 1 auto;

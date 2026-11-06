@@ -25,6 +25,22 @@
       #navbar-mount {
         min-height: 56px;
       }
+      /* The game is a dark surface, so the Frame drawn into it wears the dark theme's ink whatever theme
+         the visitor picked (a light theme's page ink on #0b0820 is unreadable). Same block as
+         src/ui/styles.css on the play shell: this page links no stylesheet of its own. */
+      #navbar-mount,
+      #ov-footer {
+        --bg-primary: #0a0f1c;
+        --bg-secondary: #101828;
+        --bg-tertiary: #172238;
+        --bg-card: #131c2e;
+        --text-primary: #e6edf7;
+        --text-secondary: #96a7c2;
+        --text-muted: #7386a3;
+        --border: #1f2d47;
+        --border-light: #2c3d5c;
+        color-scheme: dark;
+      }
       .cg {
         max-width: 480px;
         margin: 0 auto;
