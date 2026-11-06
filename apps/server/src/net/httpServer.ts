@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { dirname, extname, join, normalize, resolve, sep } from 'node:path'
@@ -6,19 +5,24 @@ import type { Logger } from '@openvibe/shared'
 import type { ServerMetrics } from '../observability/metrics.js'
 import { isDirectLoopback, prometheusText, wantsPrometheus } from '../observability/release.js'
 import { canEditMap, fetchNetworkAccount, resolveNetworkUser } from './networkAuth.js'
+import { createSsoClient, failurePage } from 'openvibe-sdk/sso'
 import {
   LOGIN_STATE_COOKIE,
   MAX_FEDCM_BODY_BYTES,
+  RETRY_COOKIE,
   SESSION_COOKIE,
   SessionCheckCache,
   clearLoginStateCookie,
+  clearRetryCookie,
   clearSessionCookie,
   decodeLoginState,
   isSilentDenial,
   loginStateCookie,
   parseCookies,
   parseFedcmBody,
+  retryCookie,
   safeNext,
+  sameString,
   sessionCookie,
   sessionHandoffHtml,
   ssoHintCookie,
@@ -176,6 +180,8 @@ export interface OAuthConfig {
   selfUrl: string
   /** Public base of the play vhost, e.g. https://play.openvibe.games. */
   playUrl: string
+  /** Host-internal Network base the token grant tries first (OV_NETWORK_INTERNAL_URL). */
+  internalUrl?: string
 }
 
 /**
@@ -272,6 +278,33 @@ export function createHttpServer(
   // Sessions the Network confirmed recently: lets a silent login on a signed-in
   // browser answer without the Network round trip. See /auth/login.
   const knownSessions = new SessionCheckCache()
+  // openvibe-sdk/sso's client per public origin: the authorize URL, PKCE, the code exchange and the
+  // /auth/health verdict are the SDK's, not a hand copy. Both callback URIs stay registered.
+  const ssoClients = new Map<string, ReturnType<typeof createSsoClient>>()
+  function ssoFor(base: string, cfg: OAuthConfig) {
+    let client = ssoClients.get(base)
+    if (!client) {
+      client = createSsoClient({
+        site: 'games',
+        siteName: 'OpenVibe.Games',
+        baseUrl: base,
+        clientId: cfg.clientId,
+        clientSecret: cfg.clientSecret,
+        networkUrl: cfg.baseUrl,
+        networkInternalUrl: cfg.internalUrl ?? cfg.baseUrl,
+        redirectUri: `${base}/auth/callback`,
+        scope: 'profile theme',
+        secureCookies: base.startsWith('https'),
+        log: {
+          log: (msg: string) => log.info(msg),
+          warn: (msg: string) => log.warn(msg),
+          error: (msg: string) => log.error(msg),
+        },
+      })
+      ssoClients.set(base, client)
+    }
+    return client
+  }
   // The real entry points, offered on the 404 page of each host.
   const portalHome = `${(oauth?.selfUrl ?? DEFAULT_PORTAL_URL).replace(/\/+$/, '')}/`
   const apexLinks: NotFoundLink[] = [
@@ -548,25 +581,24 @@ export function createHttpServer(
       // Where a session token is resolved to an account (see networkAuth.ts).
       const networkMeUrl =
         editorAuth?.networkAuthUrl ?? (oauth ? `${oauth.baseUrl}/api/auth/me` : null)
+      // The SDK client for the host the browser is on (see ssoFor above).
+      const sso = oauth && redirectBase ? ssoFor(redirectBase, oauth) : null
 
-      if (url === '/auth/login' && oauth && redirectBase) {
+      if (url === '/auth/login' && oauth && redirectBase && sso) {
         const silent = query.get('silent') === '1'
         const next = safeNext(query.get('next'), origins)
         const startLogin = () => {
           // Both callbacks are registered with the provider; using the host the
           // player came from means the callback lands back on that same host.
-          const state = randomBytes(16).toString('hex')
-          const params = new URLSearchParams({
-            client_id: oauth.clientId,
-            redirect_uri: `${redirectBase}/auth/callback`,
-            response_type: 'code',
-            scope: 'profile theme',
-            state,
-          })
-          if (silent) params.set('prompt', 'none')
+          // openvibe-sdk/sso builds the URL with state and PKCE (S256); the
+          // verifier rides in the login state cookie and never reaches a script.
+          const started = sso.authorizeUrl({ silent })
           res.writeHead(302, {
-            location: `${oauth.baseUrl}/oauth/authorize?${params.toString()}`,
-            'set-cookie': loginStateCookie({ state, next, silent }, secure),
+            location: started.url,
+            'set-cookie': loginStateCookie(
+              { state: started.state, verifier: started.verifier, next, silent },
+              secure,
+            ),
             'cache-control': 'no-store',
           })
           res.end()
@@ -600,9 +632,51 @@ export function createHttpServer(
         })
         return
       }
-      if (url === '/auth/callback' && oauth && redirectBase) {
+      if (url === '/auth/callback' && oauth && redirectBase && sso) {
         const login = decodeLoginState(cookies[LOGIN_STATE_COOKIE])
-        const next = login?.next ?? null
+        // Sanitized again here: the cookie is the browser's to lose or rewrite,
+        // and this is the value a redirect follows.
+        const next = safeNext(login?.next ?? null, origins)
+        const loginHref = `/auth/login${next ? `?next=${encodeURIComponent(next)}` : ''}`
+        /** The page a sign-in that cannot finish shows: plain words, "Try again", no bare line of text. */
+        const failure = (status: number, title: string, text: string, cookieList: string[]) => {
+          res.writeHead(status, {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+            'set-cookie': cookieList,
+          })
+          res.end(
+            failurePage({
+              siteName: 'OpenVibe.Games',
+              title,
+              text,
+              retryHref: loginHref,
+              backHref: next ?? home,
+            }),
+          )
+        }
+        /**
+         * A lost or expired flow (the cookie is gone, or the state does not
+         * match) starts the sign-in once more by itself; the second failure
+         * shows the page instead of looping. Neither ever sets a session.
+         */
+        const retryOrExplain = (cookieList: string[]) => {
+          if (cookies[RETRY_COOKIE] !== '1') {
+            res.writeHead(302, {
+              location: loginHref,
+              'set-cookie': [...cookieList, retryCookie(secure)],
+              'cache-control': 'no-store',
+            })
+            res.end()
+            return
+          }
+          failure(
+            400,
+            "Sign-in didn't finish",
+            'It took too long, or it started in another tab or app. Start it again and it will go through; your account is fine.',
+            [...cookieList, clearRetryCookie()],
+          )
+        }
         const error = query.get('error')
         if (error) {
           // prompt=none found nobody signed in (or the silent attempt was
@@ -610,58 +684,45 @@ export function createHttpServer(
           if (login?.silent || isSilentDenial(error)) {
             res.writeHead(302, {
               location: withSsoNone(next ?? home),
-              'set-cookie': clearLoginStateCookie(),
+              'set-cookie': [clearLoginStateCookie(), clearRetryCookie()],
               'cache-control': 'no-store',
             })
             res.end()
             return
           }
-          res.writeHead(400, {
-            'content-type': 'text/plain',
-            'set-cookie': clearLoginStateCookie(),
+          log.warn('oauth sign-in not completed', {
+            error: String(query.get('error_description') ?? error).slice(0, 120),
           })
-          res.end(`sign-in failed: ${query.get('error_description') ?? error}`)
+          failure(
+            400,
+            "Sign-in didn't finish",
+            `OpenVibe.Network did not complete the sign-in (${String(error).slice(0, 60)}). Try again when you are ready; your account is fine.`,
+            [clearLoginStateCookie(), clearRetryCookie()],
+          )
           return
         }
         const code = query.get('code')
-        if (!code) {
-          res.writeHead(400, { 'content-type': 'text/plain' })
-          res.end('missing code')
-          return
-        }
-        // A login-state cookie is only ever missing when the browser refused
-        // it; when present, the state it pinned must be the one coming back.
-        if (login && login.state !== query.get('state')) {
+        // The cookie is required, not only compared when present: without it
+        // a crafted link would sign a visitor into someone else's account. The
+        // state is compared in constant time and so is the PKCE verifier's flow.
+        if (!code || !login || !login.verifier || !sameString(query.get('state'), login.state)) {
           log.warn('oauth callback state mismatch', {})
-          res.writeHead(400, {
-            'content-type': 'text/plain',
-            'set-cookie': clearLoginStateCookie(),
-          })
-          res.end('sign-in failed: state mismatch — start again')
+          retryOrExplain([clearLoginStateCookie()])
           return
         }
         void (async () => {
           try {
-            // The exchange must repeat the redirect_uri the authorize step
-            // used; the callback arrives on that same host, so Host decides.
-            const resp = await fetch(`${oauth.baseUrl}/oauth/token`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
-                grant_type: 'authorization_code',
-                client_id: oauth.clientId,
-                client_secret: oauth.clientSecret,
-                code,
-                redirect_uri: `${redirectBase}/auth/callback`,
-              }),
-            })
-            const data = (await resp.json()) as TokenResponse
+            // The exchange (and its PKCE verifier) is openvibe-sdk/sso's. It
+            // must repeat the redirect_uri the authorize step used; the
+            // callback arrives on that same host, so Host decides.
+            const data = (await sso.tokenGrant({
+              grant_type: 'authorization_code',
+              redirect_uri: `${redirectBase}/auth/callback`,
+              code: String(code),
+              code_verifier: login.verifier,
+            })) as TokenResponse
             if (!data.access_token) {
-              res.writeHead(400, {
-                'content-type': 'text/plain',
-                'set-cookie': clearLoginStateCookie(),
-              })
-              res.end(`sign-in failed: ${data.error_description ?? data.error ?? 'no token'}`)
+              retryOrExplain([clearLoginStateCookie()])
               return
             }
             knownSessions.remember(data.access_token)
@@ -675,18 +736,44 @@ export function createHttpServer(
                 sessionCookie(data.access_token, secure),
                 ssoHintCookie('account', secure),
                 clearLoginStateCookie(),
+                clearRetryCookie(),
               ],
             })
             res.end(sessionHandoffHtml(data.access_token, 'account', dest))
           } catch (err) {
+            const failureInfo = err as { status?: number; error?: string }
+            if (
+              failureInfo.error === 'invalid_client' ||
+              failureInfo.error === 'unauthorized_client' ||
+              failureInfo.status === 401
+            ) {
+              log.error("the Network refuses this site's OAuth client", {
+                error: failureInfo.error ?? String(failureInfo.status),
+              })
+              failure(
+                500,
+                "Sign-in isn't working on OpenVibe.Games right now",
+                'This is a problem on our side, not with your account, and it has been logged. Please try again a little later.',
+                [clearLoginStateCookie(), clearRetryCookie()],
+              )
+              return
+            }
             log.warn('oauth callback failed', { error: String(err) })
-            res.writeHead(502, { 'content-type': 'text/plain' })
-            res.end('openvibe.network is unreachable — try again shortly')
+            if (failureInfo.status && failureInfo.status < 500) {
+              retryOrExplain([clearLoginStateCookie()])
+              return
+            }
+            failure(
+              502,
+              "OpenVibe.Network didn't answer",
+              'Your account is fine: the sign-in service did not reply in time. Try again in a moment.',
+              [clearLoginStateCookie(), clearRetryCookie()],
+            )
           }
         })()
         return
       }
-      if (url === '/auth/fedcm' && oauth) {
+      if (url === '/auth/fedcm' && oauth && sso) {
         // Browser-native FedCM sign-in: the shared navbar posts the assertion
         // JWT openvibe.network issued through the browser's account chooser,
         // plus the nonce it put in the FedCM request. Same-origin JSON only.
@@ -721,19 +808,12 @@ export function createHttpServer(
             return
           }
           try {
-            // Same endpoint and answer shape as the code exchange; the
+            // Same endpoint and answer shape as the code exchange (the SDK's grant); the
             // Network verifies the assertion's signature and audience.
-            const resp = await fetch(`${oauth.baseUrl}/oauth/token`, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
-                grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                assertion: parsed.body.token,
-                client_id: oauth.clientId,
-                client_secret: oauth.clientSecret,
-              }),
-            })
-            const data = (await resp.json().catch(() => ({}))) as TokenResponse
+            const data = (await sso.tokenGrant({
+              grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+              assertion: parsed.body.token,
+            })) as TokenResponse
             if (!data.access_token) {
               log.warn('fedcm exchange rejected', { error: data.error ?? 'no_token' })
               json(401, {
@@ -753,6 +833,15 @@ export function createHttpServer(
               ssoHintCookie('account', secure),
             ])
           } catch (err) {
+            const info = err as { status?: number; error?: string; message?: string }
+            if (info.status && info.status < 500) {
+              log.warn('fedcm exchange rejected', { error: info.error ?? info.status })
+              json(401, {
+                error: info.error ?? 'invalid_grant',
+                error_description: info.message ?? 'openvibe.network rejected the assertion',
+              })
+              return
+            }
             log.warn('fedcm exchange failed', { error: String(err) })
             json(502, {
               error: 'server_error',
@@ -790,6 +879,19 @@ export function createHttpServer(
             'cache-control': 'private, no-store',
           })
           res.end(JSON.stringify({ user }))
+        })
+        return
+      }
+      if (url === '/auth/health' && sso) {
+        // Does the Network accept this site's OAuth client? openvibe-sdk/sso's checkClient
+        // (a token request with a code no sign-in ever had), cached 10 minutes; 503 only
+        // when the Network refuses the client, never for a Network that cannot answer.
+        void sso.checkClient().then((client) => {
+          res.writeHead(client === 'invalid' ? 503 : 200, {
+            'content-type': 'application/json',
+            'cache-control': 'no-store',
+          })
+          res.end(JSON.stringify({ ok: client !== 'invalid', client }))
         })
         return
       }

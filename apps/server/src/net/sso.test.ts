@@ -60,7 +60,12 @@ describe('withSsoNone', () => {
 
 describe('login state cookie', () => {
   it('round-trips', () => {
-    const s = { state: 'abc', next: 'https://openvibe.network/x', silent: true }
+    const s = {
+      state: 'abc',
+      verifier: 'verifier-1',
+      next: 'https://openvibe.network/x',
+      silent: true,
+    }
     expect(decodeLoginState(encodeLoginState(s))).toEqual(s)
   })
   it('tolerates garbage', () => {
