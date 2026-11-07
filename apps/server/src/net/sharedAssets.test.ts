@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { sharedAssetsHandler } from './sharedAssets.js'
+import { sharedAssetsHandler, versionSharedRefs } from './sharedAssets.js'
 
 // D42 (roadmap WS-P task 4): the game server serves its own pinned OpenVibe Frame files at /shared, and the
 // client pages load them from there, never from openvibe.network.
@@ -76,6 +76,15 @@ describe('/shared (D42)', () => {
       expect((await fetch(base + p)).status).toBe(404)
     }
     expect((await fetch(`${base}/shared/navbar.js`, { method: 'POST' })).status).toBe(404)
+  })
+
+  it('turns a page\'s /shared references into content-addressed URLs', () => {
+    const html = versionSharedRefs(
+      '<script src="/shared/navbar.js" defer></script><link href="/shared/kit.css?v=old"><img src="/shared/icons/games-192.png">',
+    )
+    expect(html).toContain(`src="/shared/navbar.js?v=${serve.hashOf('navbar.js')}"`)
+    expect(html).toContain(`href="/shared/kit.css?v=${serve.hashOf('kit.css')}"`)
+    expect(html).toContain('src="/shared/icons/games-192.png"')
   })
 
   it('the client pages load the frame from /shared, not openvibe.network', () => {

@@ -6,6 +6,7 @@
 import { readFileSync, statSync } from 'node:fs'
 import { CASUAL_GAMES } from '@openvibe/casual'
 import { casualJsonLdTag } from '../net/discovery.js'
+import { versionSharedRefs } from '../net/sharedAssets.js'
 
 const SITE = 'https://openvibe.games'
 const MARK = '<!--casual:head-->'
@@ -66,9 +67,11 @@ export function casualPageHtml(filePath: string, id: string): string {
   if (!memo || memo.path !== filePath || memo.mtimeMs !== mtimeMs) {
     memo = { path: filePath, mtimeMs, raw: readFileSync(filePath, 'utf8') }
   }
-  return memo.raw
-    .replace(MARK, casualHead(id))
-    .replace('<body>', `<body data-game="${esc(id)}">`)
-    .replaceAll('<!--casual:name-->', esc(CASUAL_GAMES[id]?.name ?? ''))
-    .replace('<!--casual:about-->', casualAbout(id))
+  return versionSharedRefs(
+    memo.raw
+      .replace(MARK, casualHead(id))
+      .replace('<body>', `<body data-game="${esc(id)}">`)
+      .replaceAll('<!--casual:name-->', esc(CASUAL_GAMES[id]?.name ?? ''))
+      .replace('<!--casual:about-->', casualAbout(id)),
+  )
 }

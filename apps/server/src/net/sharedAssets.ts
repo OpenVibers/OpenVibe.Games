@@ -34,6 +34,22 @@ export function contentTypeOf(name: string): string {
   return 'application/javascript; charset=utf-8'
 }
 
+const SHARED_REF = /(["'])\/shared\/([A-Za-z0-9][A-Za-z0-9._-]*)(\?[^"']*)?\1/g
+
+/**
+ * Add `?v=<content hash>` to every `/shared/<file>` reference in a page's HTML, so the browser caches
+ * the pinned shared file for a year (the URL is content-addressed) instead of revalidating it every
+ * five minutes. The hash is the one this server already serves for the file, so the URL and the bytes
+ * cannot disagree. Files that are not browser files (icons, social cards, the manifest) are left alone.
+ */
+export function versionSharedRefs(html: string, req: NodeRequire = createRequire(import.meta.url)): string {
+  const files = req('openvibe-shared/files') as SharedFiles
+  const serve = req('openvibe-shared/serve') as SharedServe
+  return html.replace(SHARED_REF, (whole, quote: string, name: string) =>
+    files.isBrowserFile(name) ? `${quote}/shared/${name}?v=${serve.hashOf(name)}${quote}` : whole,
+  )
+}
+
 export function sharedAssetsHandler(req: NodeRequire = createRequire(import.meta.url)) {
   const files = req('openvibe-shared/files') as SharedFiles
   const serve = req('openvibe-shared/serve') as SharedServe
