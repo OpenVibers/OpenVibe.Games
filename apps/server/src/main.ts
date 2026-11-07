@@ -98,6 +98,7 @@ import { CASUAL_GAMES, validatePack } from '@openvibe/casual'
 import { CreatorWorldHost } from './worlds/worldHost.js'
 import { createWorldHubStarter, worldScriptsFactory } from './worlds/startWorldHub.js'
 import { createWorldRoutes } from './worlds/worldRoutes.js'
+import { createMenuCardHandler } from './net/menuCard.js'
 import { createAssetRoutes } from './worlds/assetRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
 import { createWorldSharing } from './worlds/sharing.js'
@@ -1063,6 +1064,8 @@ async function main(): Promise<void> {
     ...(worldSearch ? { search: worldSearch } : {}),
     ...(worldSharing ? { sharing: worldSharing } : {}),
   })
+  // The menu's network card (frame.menu-card@1): /.well-known/openvibe-menu.json, the newest published worlds.
+  const serveMenuCard = createMenuCardHandler({ store: creatorWorlds })
   // The uniform share API for worlds: /api/v1/world/<id>/share and the shared-with-me listing.
   const serveWorldShare = worldSharing
     ? createWorldShareRoutes({
@@ -1268,6 +1271,7 @@ async function main(): Promise<void> {
           )
           return true
         }
+        if (serveMenuCard(req, res)) return true
         if (serveCasual(req, res)) return true
         if (serveAiMatches(req, res)) return true
         if (serveWorldShare?.(req, res)) return true
