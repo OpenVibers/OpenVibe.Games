@@ -1,7 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import type { CreatorWorld } from '@openvibe/persistence'
 import { CARD_TTL_S, cardFrom, createMenuCardHandler, plain } from './menuCard.js'
+
+const contracts = createRequire(import.meta.url)('openvibe-contracts') as { validate: (id: string, value: unknown) => { valid: boolean; errors?: unknown } }
 
 const NOW = Date.parse('2026-11-07T08:00:00Z')
 
@@ -84,6 +87,10 @@ describe('the menu network card (frame.menu-card@1)', () => {
       expect(item.meta.length).toBeLessThanOrEqual(120)
       expect(item.url.startsWith('https://openvibe.games/')).toBe(true)
     }
+    // The menu's contract now allows an item image, but a creator world has no cover of its own: no picture is
+    // invented here (a placeholder is never sent), and the file still validates against the new schema.
+    expect(card.items.every((item) => !('image' in item))).toBe(true)
+    expect(contracts.validate('frame.menu-cards@1', [card]).valid).toBe(true)
   })
 
   it('sends at most six, and never a draft or a hidden world', () => {
