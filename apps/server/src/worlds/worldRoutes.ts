@@ -28,6 +28,7 @@ import {
 import type { GamesActorLimits } from '../net/actorLimits.js'
 import type { NetworkUser } from '../net/networkAuth.js'
 import type { WorldSearchIndex } from './searchIndex.js'
+import type { WorldSharing } from './sharing.js'
 
 /**
  * /api/worlds: creator worlds (migration 0010). Anyone reads the published list and plays a published world; a
@@ -74,6 +75,8 @@ export interface WorldRouteOptions {
   events?: { db: Db; sink: EventSink; siteUrl: string }
   /** Published worlds in OpenVibe.Search (searchIndex.ts), synced in the same transaction as the events. */
   search?: WorldSearchIndex
+  /** The share.v1 row next to each world (worlds/sharing.ts): a draft's Specific-people list, and the one check. */
+  sharing?: WorldSharing
   /** Whether worlds' scripts run here (GAMES_CREATOR_SCRIPTS); they are kept either way. */
   scriptsRun?: boolean
   now?: () => number
@@ -251,13 +254,19 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
     return user as NetworkUser & { subjectId: string }
   }
 
-  /** A world the caller may see: published, or theirs, or staff. Anything else is not found. */
+  /**
+   * A world the caller may see: published, theirs, staff, on its team (migration 0015), or a draft the
+   * owner shared with them before publishing (share.v1, `people`). A hidden world stays staff-only.
+   * Anything else is not found.
+   */
   const visible = async (id: string, user: NetworkUser | null): Promise<CreatorWorld> => {
     const world = CREATOR_WORLD_ID.test(id) ? await opts.store.get(id) : null
     if (!world) return fail(404, 'world_not_found')
     if (world.status === 'published' || isStaff(user) || world.ownerSubject === user?.subjectId)
       return world
+    if (world.status !== 'draft') return fail(404, 'world_not_found')
     if (user?.subjectId && (await opts.store.isMember(world.id, user.subjectId))) return world
+    if (user?.subjectId && opts.sharing && (await opts.sharing.canView(user, world.id).catch(() => false))) return world
     return fail(404, 'world_not_found')
   }
 
@@ -336,6 +345,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         map: starterCreatorMap(),
         now: now(),
       })
+      await opts.sharing?.register(world).catch((err) => opts.log.warn('world share row not registered', { world: world.id, error: String(err?.message ?? err) }))
       opts.log.info('creator world created', { world: world.id })
       send(res, 201, ownerView(world, 0))
       return
@@ -368,6 +378,7 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         remixedFrom: { id: src.id, title: src.title, owner: src.ownerName },
         view: src.view,
       })
+      await opts.sharing?.register(world).catch((err) => opts.log.warn('remix share row not registered', { world: world.id, error: String(err?.message ?? err) }))
       if (!own) await opts.store.countRemix(src.id)
       opts.log.info('creator world remixed', { world: world.id, from: src.id })
       send(res, 201, ownerView(world, 0))
@@ -625,6 +636,9 @@ export function createWorldRoutes(opts: WorldRouteOptions) {
         return next
       })
       if (!updated) fail(404, 'world_not_found')
+      if (patch.status) {
+        await opts.sharing?.syncFromStatus(id, patch.status).catch((err) => opts.log.warn('world share audience not synced', { world: id, error: String(err?.message ?? err) }))
+      }
       if (mine) void opts.store.rename(user.subjectId, user.name).catch(() => undefined)
       if (patch.status && patch.status !== world.status) {
         opts.log.info('creator world status', {

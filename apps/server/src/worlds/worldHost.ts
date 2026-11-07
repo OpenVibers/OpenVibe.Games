@@ -23,6 +23,8 @@ export interface WorldHostOptions {
   maxRunning: number
   /** A world with nobody in it stops after this long. */
   idleMs: number
+  /** A draft shared with this signed-in person (share.v1 `people`): they may join and test it. */
+  canViewShared?: (id: string, subject: string) => Promise<boolean>
   now?: () => number
 }
 
@@ -33,7 +35,7 @@ interface Running {
   activeAt: number
 }
 
-/** Who may join a world that is not published: its owner, and staff. */
+/** Who may join a world that is not published: its owner, its team, the people its owner shared it with, and staff. */
 export function mayJoin(world: CreatorWorld, conn: GameConnection, onTeam = false): boolean {
   if (world.status === 'published') return true
   const identity = conn.identity
@@ -78,13 +80,16 @@ export class CreatorWorldHost implements DynamicPlaces {
     await this.stopping.get(id)
     const world = await this.opts.store.get(id)
     const identity = conn.identity
+    const subject = !!identity && 'subject' in identity ? identity.subject : null
     const onTeam =
       !!world &&
       world.status === 'draft' &&
-      !!identity &&
-      'subject' in identity &&
-      (await this.opts.store.isMember(id, identity.subject))
-    if (!world || !mayJoin(world, conn, onTeam)) return null
+      !!subject &&
+      (await this.opts.store.isMember(id, subject))
+    const onList =
+      !!world && world.status === 'draft' && !!subject && !!this.opts.canViewShared &&
+      (await this.opts.canViewShared(id, subject).catch(() => false))
+    if (!world || !mayJoin(world, conn, onTeam || onList)) return null
     const current = this.running.get(id)
     if (current) {
       current.activeAt = this.now()
