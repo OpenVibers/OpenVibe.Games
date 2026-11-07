@@ -1,6 +1,8 @@
 import { createRequire } from 'node:module'
 import type { IncomingMessage } from 'node:http'
-import type { Db } from 'openvibe-sdk/db'
+import type { Db, Tx } from 'openvibe-sdk/db'
+import type { Role, Shares, ShareOptions, ResourceRef } from 'openvibe-sdk/share'
+import type { SubjectRef } from 'openvibe-sdk/core'
 import type { CreatorWorld, CreatorWorldStore } from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
 import type { NetworkUser } from '../net/networkAuth.js'
@@ -17,7 +19,7 @@ import { viewerAccountKey } from '../net/viewer.js'
  */
 const req = createRequire(import.meta.url)
 type ShareModule = {
-  createShares(options: Record<string, unknown>): any
+  createShares(options: ShareOptions): Shares
 }
 const { createShares } = req('openvibe-sdk/share') as ShareModule
 
@@ -36,7 +38,7 @@ export interface WorldSharingOptions {
 }
 
 export interface WorldSharing {
-  shares: any
+  shares: Shares
   service: string
   kind: string
   /** The SDK viewer for a Games account, or null. */
@@ -67,11 +69,11 @@ export function createWorldSharing(opts: WorldSharingOptions): WorldSharing {
     network: opts.network,
     events: opts.events,
     notify: opts.notify,
-    async onOwnerChange(ref: { service: string; kind: string; id: string }, _from: unknown, to: { type: string; id: string }, tx: any) {
+    async onOwnerChange(ref: ResourceRef, _from: SubjectRef, to: SubjectRef, tx: Tx) {
       if (ref.service !== SERVICE || ref.kind !== KIND || to?.type !== 'user') return
       await tx.exec('UPDATE creator_worlds SET owner_subject = $1 WHERE id = $2', [to.id, ref.id])
     },
-  })
+  } as unknown as ShareOptions)
 
   const viewer = (user: NetworkUser | null) => {
     const subject = subjectOf(user?.subjectId ?? null)
@@ -103,8 +105,8 @@ export function createWorldSharing(opts: WorldSharingOptions): WorldSharing {
     const owner = subjectOf(world.ownerSubject) || { type: 'service' as const, id: SERVICE }
     try {
       await shares.register(refOf(world.id), { owner_subject: owner, audience: world.status === 'published' ? 'public' : 'private' })
-    } catch (err: any) {
-      if (err?.status !== 409) throw err   // somebody registered it first: use theirs
+    } catch (err) {
+      if ((err as { status?: number }).status !== 409) throw err   // somebody registered it first: use theirs
     }
   }
 
@@ -141,9 +143,9 @@ export function createWorldSharing(opts: WorldSharingOptions): WorldSharing {
     },
     async work() {
       let expired = 0
-      try { expired = await shares.expireMembers() } catch (err: any) { log.warn('sharing expiry sweep failed', { error: String(err?.message ?? err) }) }
+      try { expired = await shares.expireMembers() } catch (err) { log.warn('sharing expiry sweep failed', { error: String((err as Error | undefined)?.message ?? err) }) }
       let sent = 0
-      try { sent = await shares.flush() } catch (err: any) { log.warn('sharing deliveries failed', { error: String(err?.message ?? err) }) }
+      try { sent = await shares.flush() } catch (err) { log.warn('sharing deliveries failed', { error: String((err as Error | undefined)?.message ?? err) }) }
       return { expired, sent }
     },
   }
@@ -158,7 +160,7 @@ export function describeWorldRef(store: CreatorWorldStore, publicUrl: string) {
     return {
       title: world.title,
       link: `${publicUrl.replace(/\/+$/, '')}/worlds/${world.id}`,
-      roles: ['viewer'],
+      roles: ['viewer'] as Role[],
       audiences: [...AUDIENCES],
       transferable: false,
       world: { status: world.status, revision: world.revision },

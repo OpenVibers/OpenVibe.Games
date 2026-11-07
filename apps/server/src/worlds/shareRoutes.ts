@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { CreatorWorldStore } from '@openvibe/persistence'
 import type { Logger } from '@openvibe/shared'
 import type { NetworkUser } from '../net/networkAuth.js'
+import type { ResourceRef, Shares, Viewer } from 'openvibe-sdk/share'
 import { describeWorldRef, shareUser, type WorldSharing } from './sharing.js'
 
 /**
@@ -19,16 +20,16 @@ export function createWorldShareRoutes(opts: {
   publicUrl: string
   log: Logger
 }): (req: IncomingMessage, res: ServerResponse) => boolean {
-  const routed = Object.create(opts.sharing.shares)
-  routed.getWithRevision = async (viewer: unknown, ref: { kind: string; id: string }) => {
+  const routed: Shares = Object.create(opts.sharing.shares) as Shares
+  routed.getWithRevision = async (viewer: Viewer, ref: ResourceRef) => {
     await opts.sharing.ensure(ref.id)
     return await opts.sharing.shares.getWithRevision(viewer, ref)
   }
-  routed.update = async (viewer: unknown, ref: { kind: string; id: string }, body: unknown, extra: unknown) => {
+  routed.update = async (viewer: Viewer, ref: ResourceRef, body: Parameters<Shares['update']>[2], extra: Parameters<Shares['update']>[3]) => {
     await opts.sharing.ensure(ref.id)
     return await opts.sharing.shares.update(viewer, ref, body, extra)
   }
-  routed.requestAccess = async (viewer: unknown, ref: { kind: string; id: string }) => {
+  routed.requestAccess = async (viewer: Viewer, ref: ResourceRef) => {
     await opts.sharing.ensure(ref.id)
     return await opts.sharing.shares.requestAccess(viewer, ref)
   }

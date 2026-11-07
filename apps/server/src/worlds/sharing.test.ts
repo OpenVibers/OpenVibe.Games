@@ -62,7 +62,9 @@ it('a draft shared with Specific people is visible to them and joinable, and onl
   const sam = { id: '', name: 'sam', rank: null, subjectId: SAM }
   expect(await sharing.canView(lee, world.id)).toBe(false)
 
-  await sharing.shares.update(sharing.viewer(kim), { service: 'games', kind: 'world', id: world.id }, {
+  const kimViewer = sharing.viewer(kim)
+  if (!kimViewer) throw new Error('no view')
+  await sharing.shares.update(kimViewer, { service: 'games', kind: 'world', id: world.id }, {
     audience: 'people',
     members: [{ name: '@lee', role: 'viewer' }],
   })

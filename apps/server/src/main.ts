@@ -741,7 +741,7 @@ async function main(): Promise<void> {
   // A draft is Only me; its Share sheet can name people who may open /worlds/<id> and join to test it
   // before publishing. Network lookups and notification pushes use the `games` principal's token.
   const worldSharingUrl = config.oauth?.selfUrl ?? 'https://openvibe.games'
-  async function worldSharingNetwork(input: { path: string; method?: string; json?: unknown; query?: Record<string, string> }): Promise<any> {
+  async function worldSharingNetwork(input: { path: string; method?: string; json?: unknown; query?: Record<string, string> }): Promise<unknown> {
     if (!platform) throw new Error('Network is not configured for this service')
     const url = new URL(`${config.platform.networkUrl.replace(/\/+$/, '')}${input.path}`)
     for (const [k, v] of Object.entries(input.query ?? {})) url.searchParams.set(k, String(v))
