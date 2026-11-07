@@ -33,6 +33,7 @@ import { MAX_ASSET_BYTES, isContentAddressed, storeAsset } from './mapAssetStore
 import type { GamesActorLimits } from './actorLimits.js'
 import { resolveClientAddress } from './clientAddress.js'
 import { sendNotFound, type NotFoundLink } from './notFound.js'
+import { versionSharedRefs } from './sharedAssets.js'
 import { discoveryHandler, homeJsonLdTags, jsonLdTagsOf } from './discovery.js'
 import {
   addAgentHead,
@@ -58,9 +59,9 @@ export function portalHtml(filePath: string): string {
   if (portalMemo && portalMemo.path === filePath && portalMemo.mtimeMs === mtimeMs)
     return portalMemo.html
   const raw = readFileSync(filePath, 'utf8')
-  const html = raw.includes('</head>')
-    ? raw.replace('</head>', `${homeJsonLdTags()}\n  </head>`)
-    : raw
+  const html = versionSharedRefs(
+    raw.includes('</head>') ? raw.replace('</head>', `${homeJsonLdTags()}\n  </head>`) : raw,
+  )
   portalMemo = { path: filePath, mtimeMs, html }
   return html
 }
@@ -1072,7 +1073,7 @@ export function createHttpServer(
       }
     }
     const type = MIME[extname(filePath)] ?? 'application/octet-stream'
-    res.writeHead(200, {
+    const headers = {
       'content-type': type,
       // HTML must always revalidate (a stale page pins an old protocol
       // version and can't join). Vite content-hashes what it builds into
@@ -1091,7 +1092,16 @@ export function createHttpServer(
       ...(url === '/surf/embed'
         ? { 'content-security-policy': "frame-ancestors https://openvibe.surf 'self'" }
         : {}),
-    })
+    }
+    if (filePath.endsWith('.html')) {
+      // play.html and editor.html are build output too: their /shared/ references
+      // get the pinned file's hash so the browser can keep it for a year.
+      const body = versionSharedRefs(readFileSync(filePath, 'utf8'))
+      res.writeHead(200, { ...headers, 'content-length': String(Buffer.byteLength(body)) })
+      res.end(req.method === 'HEAD' ? undefined : body)
+      return
+    }
+    res.writeHead(200, headers)
     createReadStream(filePath)
       .on('error', (err) => {
         log.warn('static file error', { path: filePath, error: String(err) })
