@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { CreatorWorld, CreatorWorldStore } from '@openvibe/persistence'
+import { MENU_PATH, menuCard, menuRoute } from 'openvibe-sdk/menu'
+import type { MenuCard } from 'openvibe-sdk/menu'
 
 /**
  * The menu's network card for OpenVibe.Games (frame.menu-card@1): GET /.well-known/openvibe-menu.json.
@@ -28,7 +30,7 @@ export function plain(value: unknown, max: number): string {
 }
 
 /** The card itself, newest published world first (the store's order). */
-export function cardFrom(worlds: CreatorWorld[], at = Date.now()) {
+export function cardFrom(worlds: CreatorWorld[], at = Date.now()): MenuCard {
   const items = (Array.isArray(worlds) ? worlds : [])
     .filter((w) => w && w.id && w.status === 'published')
     .slice(0, 6)
@@ -37,16 +39,17 @@ export function cardFrom(worlds: CreatorWorld[], at = Date.now()) {
       meta: `by ${plain(w.ownerName, 110)}`,
       url: `${BASE}/worlds/${encodeURIComponent(w.id)}`,
     }))
-  return {
+  return menuCard({
     id: CARD_ID,
     site: SITE,
     title: 'New worlds',
     kind: 'rows',
+    origin: BASE,
     items,
     more: { label: 'All worlds', url: `${BASE}/worlds` },
-    updated_at: new Date(at).toISOString(),
-    ttl_s: CARD_TTL_S,
-  }
+    ttlSeconds: CARD_TTL_S,
+    updatedAt: at,
+  })
 }
 
 export interface MenuCardOptions {
@@ -56,15 +59,15 @@ export interface MenuCardOptions {
 
 /**
  * The route. Returns true when it answered the request (the platform handle stops there), false for any other
- * path. A database failure keeps the last good card; before one exists it answers 503 and Network keeps the
- * site's previous card for its 30-minute window.
+ * path. A database failure keeps the last good card; before one exists openvibe-sdk/menu answers [] (never a
+ * 500), and Network keeps the site's previous card for its 30-minute window.
  */
 export function createMenuCardHandler({ store, now = Date.now }: MenuCardOptions) {
-  let cached: ReturnType<typeof cardFrom> | null = null
+  let cached: MenuCard | null = null
   let cachedAt = 0
-  let pending: Promise<ReturnType<typeof cardFrom>> | null = null
+  let pending: Promise<MenuCard> | null = null
 
-  async function card(): Promise<ReturnType<typeof cardFrom>> {
+  async function card(): Promise<MenuCard> {
     const at = now()
     if (cached && at - cachedAt < CACHE_MS) return cached
     if (pending) return pending
@@ -75,39 +78,18 @@ export function createMenuCardHandler({ store, now = Date.now }: MenuCardOptions
       } catch (err) {
         if (!cached) throw err
       }
-      return cached as ReturnType<typeof cardFrom>
+      return cached as MenuCard
     })().finally(() => {
       pending = null
     })
     return pending
   }
 
+  const route = menuRoute(async () => [await card()], { maxAgeSeconds: 60 })
   return (req: IncomingMessage, res: ServerResponse): boolean => {
     const path = (req.url ?? '/').split('?')[0] ?? '/'
-    if (path !== '/.well-known/openvibe-menu.json') return false
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.writeHead(405, { 'content-type': 'application/json', allow: 'GET, HEAD' })
-      res.end('{"error":"method_not_allowed"}')
-      return true
-    }
-    void card()
-      .then((body) => {
-        res.writeHead(200, {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'public, max-age=60',
-          'access-control-allow-origin': '*',
-          'cross-origin-resource-policy': 'cross-origin',
-        })
-        res.end(req.method === 'HEAD' ? undefined : JSON.stringify([body]))
-      })
-      .catch(() => {
-        res.writeHead(503, {
-          'content-type': 'application/json',
-          'cache-control': 'no-store',
-          'access-control-allow-origin': '*',
-        })
-        res.end('{"error":"menu_unavailable"}')
-      })
+    if (path !== MENU_PATH) return false
+    void route(req, res)
     return true
   }
 }
