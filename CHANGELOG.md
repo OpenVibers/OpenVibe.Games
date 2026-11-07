@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Two official example creator worlds** (plan §4 Games: "creator worlds (none published yet)"; review next step 3): **Beacon Hill**, a sculpted hill with a beacon, a flagstone path, benches, a campfire and three zones, and **The Workshop**, a walled yard with a shed you can walk into, workbenches, crates, props, resource nodes and lamps. They are ordinary v2 map documents (`apps/server/src/worlds/exampleWorlds.ts`) that staff can open in `/editor`, published for the official OpenVibe account by `apps/server/src/worlds/seedExampleWorlds.ts` (`pnpm --filter @openvibe/server exec tsx scripts/seedExampleWorlds.ts`, idempotent, `--revise` updates a changed map) so `/worlds` and the home's creator-worlds section have real entries. A person's world is never touched. `exampleWorlds.test.ts`, `seedExampleWorlds.test.ts`.
+
 - Share: a creator world's page, a round's result page, the leaderboard and the in-game round result now open the network's one Share sheet (`data-ov-share-sheet`, openvibe-shared 4.114.0) with the page's public address. The result page now starts the shared navbar itself, which is what loads the sheet on the first press; `navigator.share` is gone.
 
 ### Fixed

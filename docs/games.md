@@ -107,6 +107,12 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   team (`GET /api/worlds/:id/team`, `DELETE /api/worlds/:id/team/:subject`, an editor leaves with `…/team/me`).
   Two saves at once are still told apart by the map's revision (409). Team places follow account export, merge and
   deletion. `/api/worlds/mine` lists them as `team`.
+- **Official examples:** two published worlds show what the editor can do — **Beacon Hill** (sculpted terrain, a
+  beacon, a path, lights and three zones) and **The Workshop** (a walk-in shed, benches, props, resource nodes and
+  lamps). They are ordinary v2 map documents in `apps/server/src/worlds/exampleWorlds.ts`; staff open either in
+  `/editor`. `apps/server/src/worlds/seedExampleWorlds.ts` publishes them for the official account:
+  `pnpm --filter @openvibe/server exec tsx scripts/seedExampleWorlds.ts` (idempotent; `--revise` updates a changed
+  map; `GAMES_OFFICIAL_SUBJECT`/`GAMES_OFFICIAL_NAME` choose the account). A person's world is never touched.
 - **Asset store:** builds and scripts creators share, free, for anyone's worlds (migration 0016; `/api/assets`,
   the **Asset store** section of `/worlds` and the editor's **Store** tab; up to `GAMES_CREATOR_ASSETS_PER_PERSON`
   (50) each). A **build** is pieces chosen in the editor (boxes and other statics, resource nodes, props and lights)
