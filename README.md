@@ -291,7 +291,7 @@ Events deliveries) and `OV_NETWORK_AUTH_URL` live in `/etc/openvibe/games.env`, 
 between services.
 
 <!-- versions:start -->
-- openvibe-contracts: v0.312.0
+- openvibe-contracts: v0.320.0
 - openvibe-sdk: v0.94.0
 - openvibe-shared: v4.129.0
 - openvibe-publishing: v1.4.0
