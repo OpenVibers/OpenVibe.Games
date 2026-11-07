@@ -84,7 +84,7 @@ describe('the menu network card (frame.menu-card@1)', () => {
     expect(card.title.length).toBeLessThanOrEqual(60)
     for (const item of card.items) {
       expect(item.title.length).toBeLessThanOrEqual(80)
-      expect(item.meta.length).toBeLessThanOrEqual(120)
+      expect(item.meta?.length ?? 0).toBeLessThanOrEqual(120)
       expect(item.url.startsWith('https://openvibe.games/')).toBe(true)
     }
     // The menu's contract now allows an item image, but a creator world has no cover of its own: no picture is
