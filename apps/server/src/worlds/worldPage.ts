@@ -3,12 +3,14 @@ import { createRequire } from 'node:module'
 import { CREATOR_WORLD_ID } from '@openvibe/content'
 import type { CreatorWorld, CreatorWorldStore } from '@openvibe/persistence'
 import { escapeHtml, sendNotFound, type NotFoundLink } from '../net/notFound.js'
+import type { WorldSharing } from './sharing.js'
 
 /**
- * GET /worlds/<id>: a published creator world's own page inside the OpenVibe Frame (openvibe-shared/shell), the page
+ * GET /worlds/<id>: a creator world's own page inside the OpenVibe Frame (openvibe-shared/shell), the page
  * OpenVibe.Search links to and the link a creator shares: its title, who made it, their summary, how many have
- * visited, and the button that opens it in /play. Anything not published is a real 404 (a draft is its owner's, and
- * the owner reaches it from /worlds).
+ * visited, and the button that opens it in /play. A published world is everyone's; a draft is its owner's, its
+ * team's and the people the owner shared it with (share.v1 `people`), who may read the page and join to test it.
+ * Anyone else gets the real 404 the page has always given a draft.
  */
 interface Shell {
   page(o: Record<string, unknown>): string
@@ -40,7 +42,7 @@ const STYLE = `<style>
 .world .note{margin-top:22px;font-size:14px;color:var(--text-faint,#7386a3)}
 </style>`
 
-export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell, kitLib: Kit = kit()): string {
+export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell, kitLib: Kit = kit(), { draft = false }: { draft?: boolean } = {}): string {
   const url = `${siteUrl}/worlds/${world.id}`
   const description =
     world.summary ||
@@ -62,7 +64,8 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
     siteName: SITE_NAME,
     description: description.slice(0, 300),
     canonical: url,
-    robots: 'index, follow',
+    // A draft is not in Search, the sitemap or the public list; only the people on its list may read it.
+    robots: draft ? 'noindex, nofollow' : 'index, follow',
     head: `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n<link rel="stylesheet" href="/shared/kit.css">\n${STYLE}`,
     navbar: {
       service: 'games',
@@ -89,7 +92,7 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
   <p class="stats">${escapeHtml(visits)}</p>
   <div class="row">
     <a class="play" href="/play?world=${world.id}">▶ Join this world</a>
-    ${kitLib.share({ title: world.title, url, text: description })}
+    ${kitLib.share({ title: world.title, url, text: description, kind: 'world', id: world.id })}
     <a class="more" href="/worlds?remix=${world.id}">Remix it</a>
     <a class="more" href="/worlds">More worlds</a>
   </div>
@@ -103,6 +106,10 @@ export function worldPageHtml(world: CreatorWorld, siteUrl: string, shell: Shell
 export function createWorldPage(opts: {
   store: CreatorWorldStore
   siteUrl: string
+  /** The share.v1 row: a draft's Specific-people list, and the one check (worlds/sharing.ts). */
+  sharing?: WorldSharing
+  /** The Network's auth base, to read the signed-in person from the ovg_sso cookie. */
+  networkAuthUrl?: string | null
   require?: NodeRequire
 }) {
   const shell = (opts.require ?? createRequire(import.meta.url))('openvibe-shared/shell') as Shell
@@ -114,14 +121,19 @@ export function createWorldPage(opts: {
     const id = match[1] ?? ''
     void (async () => {
       const world = CREATOR_WORLD_ID.test(id) ? await opts.store.get(id) : null
-      if (!world || world.status !== 'published') {
+      const viewer = world && world.status !== 'published' && opts.sharing
+        ? await opts.sharing.viewerFromRequest(req, opts.networkAuthUrl ?? null).catch(() => null)
+        : null
+      const draftView = !!world && world.status === 'draft' && !!viewer && !!opts.sharing &&
+        await opts.sharing.canView({ subjectId: viewer.subject.id, name: '', rank: null, id: '' }, world.id).catch(() => false)
+      if (!world || (world.status !== 'published' && !draftView)) {
         sendNotFound(req, res, path, LINKS)
         return
       }
-      const body = worldPageHtml(world, siteUrl, shell)
+      const body = worldPageHtml(world, siteUrl, shell, kit(), { draft: world.status !== 'published' })
       res.writeHead(200, {
         'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'public, max-age=60',
+        'cache-control': world.status === 'published' ? 'public, max-age=60' : 'no-store',
         'content-length': String(Buffer.byteLength(body)),
       })
       res.end(req.method === 'HEAD' ? undefined : body)

@@ -31,7 +31,7 @@ afterEach(async () => {
   server = null
 })
 
-async function setup(perPerson = 2) {
+async function setup(perPerson = 2, sharing?: unknown) {
   const db = await openTestDb()
   const store = createCreatorWorldStore(db)
   const calls = {
@@ -65,6 +65,7 @@ async function setup(perPerson = 2) {
     address: () => '127.0.0.1',
     log: createConsoleLogger({ app: 'world-routes-test' }, 'error'),
     perPerson,
+    ...(sharing ? { sharing: sharing as never } : {}),
     events: {
       db,
       sink: {
@@ -126,6 +127,31 @@ describe('/api/worlds', () => {
     expect(parseIfMatch('"abc123"')).toBe('abc123')
     expect(parseIfMatch(undefined)).toBeNull()
     expect(parseIfMatch('')).toBeNull()
+  })
+
+  it('opens a draft shared with Specific people, and only to them', async () => {
+    const people = new Set([LEE])
+    const sharing = {
+      canView: async (user: NetworkUser | null, _id: string) => !!user?.subjectId && people.has(user.subjectId),
+      register: async () => {},
+      syncFromStatus: async () => {},
+    }
+    const { call, store } = await setup(2, sharing)
+    const world = await store.create({
+      ownerSubject: KIM,
+      ownerName: 'kim',
+      title: 'Secret test world',
+      summary: '',
+      map: emptyMapV2(),
+      now: 1,
+    })
+    // The draft is still not in the public list, and a stranger gets the missing answer.
+    expect((await call('GET', `/api/worlds/${world.id}`, 'lee')).status).toBe(200)
+    expect((await call('GET', `/api/worlds/${world.id}`, 'sam')).status).toBe(404)
+    expect((await call('GET', `/api/worlds/${world.id}/map`, 'lee')).status).toBe(200)
+    expect((await call('GET', `/api/worlds/${world.id}/map`, 'sam')).status).toBe(404)
+    const list = await call('GET', '/api/worlds')
+    expect(list.body.worlds).toEqual([])
   })
 
   it('builds a world as a team: an invite link adds editors who save its map and scripts; the owner keeps the rest', async () => {

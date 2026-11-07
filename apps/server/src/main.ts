@@ -100,6 +100,8 @@ import { createWorldHubStarter, worldScriptsFactory } from './worlds/startWorldH
 import { createWorldRoutes } from './worlds/worldRoutes.js'
 import { createAssetRoutes } from './worlds/assetRoutes.js'
 import { createWorldPage } from './worlds/worldPage.js'
+import { createWorldSharing } from './worlds/sharing.js'
+import { createWorldShareRoutes } from './worlds/shareRoutes.js'
 import { createSteamCatalog } from './steam/steamCatalog.js'
 import { createSteamRoutes } from './steam/steamPage.js'
 import { createAiGenerate, createBench } from './aiMatches/services.js'
@@ -735,6 +737,63 @@ async function main(): Promise<void> {
   // A creator world is the place `world:<id>` with the plain creator pack and its map as the override. Its room is
   // sandboxed: no NPCs, no world events, no rewards, no events, and characters are never saved there.
   const creatorWorlds = createCreatorWorldStore(db)
+  // ── Sharing (design 2026-11-06, VISIBILITY-EVERYWHERE step 5): the share.v1 row next to each world ──
+  // A draft is Only me; its Share sheet can name people who may open /worlds/<id> and join to test it
+  // before publishing. Network lookups and notification pushes use the `games` principal's token.
+  const worldSharingUrl = config.oauth?.selfUrl ?? 'https://openvibe.games'
+  async function worldSharingNetwork(input: { path: string; method?: string; json?: unknown; query?: Record<string, string> }): Promise<any> {
+    if (!platform) throw new Error('Network is not configured for this service')
+    const url = new URL(`${config.platform.networkUrl.replace(/\/+$/, '')}${input.path}`)
+    for (const [k, v] of Object.entries(input.query ?? {})) url.searchParams.set(k, String(v))
+    const token = await platform.tokens.getToken({ audience: 'openvibe.network', scope: 'identity.subject.resolve network.notifications.push' })
+    const headers: Record<string, string> = { accept: 'application/json', authorization: `Bearer ${token}` }
+    if (input.json !== undefined) headers['content-type'] = 'application/json'
+    const res = await fetch(url, {
+      method: input.method ?? 'GET',
+      headers,
+      ...(input.json === undefined ? {} : { body: JSON.stringify(input.json) }),
+      signal: AbortSignal.timeout(8_000),
+    })
+    const answer = await res.json().catch(() => null)
+    if (!res.ok) throw Object.assign(new Error(`Network ${input.method ?? 'GET'} ${input.path} ${res.status}`), { status: res.status })
+    return answer
+  }
+  const worldSharing = platform
+    ? createWorldSharing({
+        db,
+        store: creatorWorlds,
+        log: log.child({ system: 'world-sharing' }),
+        network: { json: worldSharingNetwork },
+        events: {
+          async publish(event) {
+            if (!sink.enabled) return
+            await db.tx(async (t) => {
+              await sink.enqueue(t, event as Parameters<EventSink['enqueue']>[1])
+            })
+          },
+        },
+        async notify(notification) {
+          const to = (notification as { to?: { type?: string; id?: string } }).to
+          if (!to || to.type !== 'user' || !to.id) return
+          const words: Record<string, [string, string]> = {
+            'share.added': ['A world was shared with you', 'Open it on OpenVibe.Games.'],
+            'share.access_requested': ['Someone asked for access to your world', 'Review the request on OpenVibe.Games.'],
+            'share.transfer.requested': ['Someone wants to give you a world', 'Accept or decline it on OpenVibe.Games.'],
+            'share.transfer.answered': ['A world transfer was answered', 'See what happened on OpenVibe.Games.'],
+          }
+          const [title, message] = words[String((notification as { kind?: string }).kind)] ?? ['Sharing on OpenVibe.Games', 'There is something new for you.']
+          try {
+            await worldSharingNetwork({
+              path: '/internal/notifications/push', method: 'POST',
+              json: { subject: to.id, type: 'GENERIC', title, message, service: 'games', url: worldSharingUrl, category: 'social' },
+            })
+          } catch (err) {
+            log.warn('sharing notification not sent', { error: String((err as Error | undefined)?.message ?? err) })
+          }
+        },
+      })
+    : null
+
   // A world's def set: the creator pack, plus its own scripts when they run here (GAMES_CREATOR_SCRIPTS). The client
   // builds the same set from /api/v1/content?world= (its packs carry the same mods), so the digests agree.
   const creatorContent = new Map<string, Promise<ContentRegistry>>()
@@ -775,6 +834,12 @@ async function main(): Promise<void> {
     log: log.child({ system: 'creator-worlds' }),
     maxRunning: config.creatorWorldsMax,
     idleMs: config.creatorWorldIdleSeconds * 1000,
+    ...(worldSharing
+      ? {
+          canViewShared: (id: string, subject: string) =>
+            worldSharing.canView({ id: '', name: '', rank: null, subjectId: subject }, id),
+        }
+      : {}),
   })
   const router = new PlaceRouter(
     hubs,
@@ -947,7 +1012,12 @@ async function main(): Promise<void> {
     : null
   worldSearch?.start()
   // GET /worlds/<id>: a published world's own page (the one Search links to).
-  const serveWorldPage = createWorldPage({ store: creatorWorlds, siteUrl: gamesSiteUrl })
+  const serveWorldPage = createWorldPage({
+    store: creatorWorlds,
+    siteUrl: gamesSiteUrl,
+    ...(worldSharing ? { sharing: worldSharing } : {}),
+    networkAuthUrl: config.networkAuthUrl,
+  })
   // GET /steam and /api/steam: Steam's featured lists from OpenVibe.Sources (steam/steamCatalog.ts), synced hourly.
   const steamCatalog = createSteamCatalog({
     db,
@@ -991,7 +1061,21 @@ async function main(): Promise<void> {
     perPerson: config.creatorWorldsPerPerson,
     events: { db, sink, siteUrl: gamesSiteUrl },
     ...(worldSearch ? { search: worldSearch } : {}),
+    ...(worldSharing ? { sharing: worldSharing } : {}),
   })
+  // The uniform share API for worlds: /api/v1/world/<id>/share and the shared-with-me listing.
+  const serveWorldShare = worldSharing
+    ? createWorldShareRoutes({
+        sharing: worldSharing,
+        store: creatorWorlds,
+        resolveUser: (token) =>
+          config.networkAuthUrl
+            ? resolveNetworkUser(config.networkAuthUrl, token)
+            : Promise.resolve(null),
+        publicUrl: gamesSiteUrl,
+        log: log.child({ system: 'world-sharing' }),
+      })
+    : null
   // The asset store's JSON API (worlds/assetRoutes.ts): builds and scripts creators publish for others' worlds.
   const serveAssets = createAssetRoutes({
     store: createCreatorAssetStore(db),
@@ -1186,6 +1270,7 @@ async function main(): Promise<void> {
         }
         if (serveCasual(req, res)) return true
         if (serveAiMatches(req, res)) return true
+        if (serveWorldShare?.(req, res)) return true
         if (serveWorlds(req, res)) return true
         if (serveAssets(req, res)) return true
         if (serveWorldPage(req, res)) return true
