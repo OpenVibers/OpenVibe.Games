@@ -84,7 +84,7 @@ describe('the menu network card (frame.menu-card@1)', () => {
     expect(card.title.length).toBeLessThanOrEqual(60)
     for (const item of card.items) {
       expect(item.title.length).toBeLessThanOrEqual(80)
-      expect(item.meta.length).toBeLessThanOrEqual(120)
+      expect(item.meta?.length ?? 0).toBeLessThanOrEqual(120)
       expect(item.url.startsWith('https://openvibe.games/')).toBe(true)
     }
     // The menu's contract now allows an item image, but a creator world has no cover of its own: no picture is
@@ -131,7 +131,7 @@ describe('the menu network card (frame.menu-card@1)', () => {
     expect(store.calls(), 'the second request is served from the cache').toBe(1)
   })
 
-  it('answers 503 when the store fails and no good card is cached, and keeps the last good one after', async () => {
+  it('answers [] when the store fails and no good card is cached, and keeps the last good one after', async () => {
     let fail = false
     let calls = 0
     const store = {
@@ -146,7 +146,9 @@ describe('the menu network card (frame.menu-card@1)', () => {
     fail = true
     handler(req('/.well-known/openvibe-menu.json'), bad.res)
     await bad.ended
-    expect(bad.status()).toBe(503)
+    expect(bad.status()).toBe(200)
+    expect(JSON.parse(bad.body())).toEqual([])
+    expect(bad.headers['cache-control']).toBe('no-store')
 
     fail = false
     const good = fakeRes()
