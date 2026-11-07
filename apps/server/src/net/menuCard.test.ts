@@ -114,7 +114,9 @@ describe('the menu network card (frame.menu-card@1)', () => {
     expect(first.headers['access-control-allow-origin']).toBe('*')
     expect(first.headers['content-type']).toContain('application/json')
     expect(first.headers['cache-control']).toBe('public, max-age=60')
-    expect(JSON.parse(first.body()).site).toBe('games')
+    const parsed = JSON.parse(first.body())
+    expect(Array.isArray(parsed) && parsed.length).toBe(1)
+    expect(parsed[0].site).toBe('games')
 
     const second = fakeRes()
     expect(handler(req('/.well-known/openvibe-menu.json'), second.res)).toBe(true)
@@ -149,7 +151,7 @@ describe('the menu network card (frame.menu-card@1)', () => {
     handler(req('/.well-known/openvibe-menu.json'), kept.res)
     await kept.ended
     expect(kept.status()).toBe(200)
-    expect(JSON.parse(kept.body()).items[0].title).toBe('World a')
+    expect(JSON.parse(kept.body())[0].items[0].title).toBe('World a')
     expect(calls).toBe(2)
   })
 })

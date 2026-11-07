@@ -98,7 +98,7 @@ export function createMenuCardHandler({ store, now = Date.now }: MenuCardOptions
           'access-control-allow-origin': '*',
           'cross-origin-resource-policy': 'cross-origin',
         })
-        res.end(req.method === 'HEAD' ? undefined : JSON.stringify(body))
+        res.end(req.method === 'HEAD' ? undefined : JSON.stringify([body]))
       })
       .catch(() => {
         res.writeHead(503, {
