@@ -82,6 +82,9 @@ beforeAll(async () => {
   writeFileSync(join(dist, 'index.html'), '<!doctype html><html><head><title>portal page</title></head><body><h1>portal page</h1></body></html>')
   writeFileSync(join(dist, 'play.html'), '<!doctype html><html><head><title>game page</title></head><body><h1>game page</h1></body></html>')
   writeFileSync(join(dist, 'editor.html'), '<!doctype html><title>editor page</title>')
+  writeFileSync(join(dist, 'achievements.html'), '<!doctype html><title>achievements page</title>')
+  writeFileSync(join(dist, 'leaderboards.html'), '<!doctype html><title>leaderboards page</title>')
+  writeFileSync(join(dist, 'developers.html'), '<!doctype html><title>developers page</title>')
   writeFileSync(join(dist, 'frame.js'), 'void 0')
   writeFileSync(join(dist, ASSET.slice(1)), 'export {}')
   writeFileSync(join(dist, 'assets', 'tex', 'wood_planks.jpg'), 'jpeg')
@@ -137,6 +140,9 @@ describe('real routes on the apex', () => {
     ['/play', 'game page'],
     ['/play?sso=none', 'game page'],
     ['/editor', 'editor page'],
+    ['/achievements', 'achievements page'],
+    ['/leaderboards', 'leaderboards page'],
+    ['/developers', 'developers page'],
     ['/index.html', 'portal page'],
   ])('%s answers 200 with its page', async (path, marker) => {
     const r = await send(path)
@@ -144,6 +150,12 @@ describe('real routes on the apex', () => {
     expect(r.headers['content-type']).toBe('text/html; charset=utf-8')
     expect(r.headers['cache-control']).toBe('no-cache')
     expect(r.body).toContain(marker)
+  })
+
+  it('sends the old board page to Leaderboards with its game and period', async () => {
+    const r = await send('/leaderboard.html?game=salvage-rush&period=week')
+    expect(r.status).toBe(301)
+    expect(r.headers.location).toBe('/leaderboards?game=salvage-rush&period=week')
   })
 
   it('serves hashed build assets as immutable, and public files', async () => {

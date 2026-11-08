@@ -88,6 +88,7 @@ import { GameProgressWriter, playerBestScore, type Milestone } from './game/prog
 import { handleResultPage } from './net/resultPage.js'
 import type { RoundResult } from './game/salvageRush.js'
 import { handleGameRead } from './net/gameRoutes.js'
+import { createPlayProxy } from './net/playRoutes.js'
 import { createPlayBoards } from './platform/playBoards.js'
 import { PgSurfRecords, createSurfPlay, surfBoardId } from './platform/surfRuns.js'
 import { handleSurfRead } from './net/surfRoutes.js'
@@ -996,6 +997,14 @@ async function main(): Promise<void> {
     onLimited: (name, actor) => log.warn('rate limited', { limit: name, actor }),
     valkey,
   })
+  // The Achievements, Leaderboards and Developers pages read Play through these routes (server-side,
+  // public reads); the pages themselves are part of this site, not play.openvibe.network.
+  const playPages = createPlayProxy({
+    url: config.platform.playUrl,
+    limits: actorLimits,
+    address: (request) => resolveClientAddress(request, config.trustProxy),
+    log: log.child({ system: 'play-pages' }),
+  })
   const ticketStore = createWsTicketStore({ valkey })
   // One trusted-proxy-aware address resolution for the upgrade limit, the
   // ticket limit and logs (config.TRUST_PROXY; the socket address otherwise).
@@ -1311,6 +1320,7 @@ async function main(): Promise<void> {
           })
         )
           return true
+        if (playPages(req, res)) return true
         if (
           handleGameRead(req, res, {
             db,

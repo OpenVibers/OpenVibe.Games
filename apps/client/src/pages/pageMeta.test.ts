@@ -19,7 +19,7 @@ const social = req('openvibe-shared/social') as { url(service: string): string |
 const CARD = `https://openvibe.games${social.url('games')}`
 
 describe('page metadata', () => {
-  it.each(['play.html', 'worlds.html', 'leaderboard.html'])(
+  it.each(['play.html', 'worlds.html', 'achievements.html', 'leaderboards.html', 'developers.html'])(
     '%s has a one-line description of 120 to 160 characters',
     (page) => {
       const d = description(page)
@@ -30,12 +30,12 @@ describe('page metadata', () => {
     },
   )
 
-  it('leaderboard.html names its canonical URL', () => {
-    const page = html('leaderboard.html')
-    expect(page).toContain('<link rel="canonical" href="https://openvibe.games/leaderboard.html" />')
+  it('leaderboards.html names its canonical URL', () => {
+    const page = html('leaderboards.html')
+    expect(page).toContain('<link rel="canonical" href="https://openvibe.games/leaderboards" />')
   })
 
-  it.each(['index.html', 'play.html', 'worlds.html', 'editor.html', 'leaderboard.html'])(
+  it.each(['index.html', 'play.html', 'worlds.html', 'editor.html', 'achievements.html', 'leaderboards.html', 'developers.html'])(
     '%s shares the content-hashed site card',
     (page) => {
       const doc = html(page)

@@ -13,6 +13,10 @@ Players build their own **creator worlds** in the map editor and publish them at
 (sandboxed: characters are not saved there); see [docs/games.md](docs/games.md#creator-worlds).
 It also hosts the casual line (plan T22): small phone-first browser games built from one kit, starting with
 **Vibe Heroes**, an idle hero collector at `/play/vibe-heroes`. See [docs/casual.md](docs/casual.md).
+The player pages of OpenVibe.Play (the game services behind Games) live here too: `/achievements`, `/leaderboards`
+and the API guide for game makers at `/developers`. They read Play's public API server-side; the service and its API
+stay at play.openvibe.network, whose old pages 301 here.
+
 A persistent multiplayer physics sandbox for the browser: Source-style movement,
 physgun-driven building from crafted physical objects, gathering, crafting, and
 extraction risk — running against an authoritative dedicated server.

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Achievements · OpenVibe.Games</title>
+    <meta name="description" content="Every achievement in every OpenVibe game. Sign in to see yours, or browse what Scraplandia, Salvage Rush and Vibe Heroes have to earn." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://openvibe.games/achievements" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OpenVibe.Games" />
+    <meta property="og:title" content="Achievements · OpenVibe.Games" />
+    <meta
+      property="og:description"
+      content="Every achievement in every OpenVibe game: your unlocks when you are signed in, and what every game has to earn when you are not."
+    />
+    <meta property="og:url" content="https://openvibe.games/achievements" />
+    <meta property="og:image" content="https://openvibe.games/shared/social/games.jpg?v=a77ab4204f47" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://openvibe.games/shared/social/games.jpg?v=a77ab4204f47" />
+    <link rel="stylesheet" href="/src/pages/play-pages.css" />
+    <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
+    <script src="/shared/theme-loader.js" defer></script>
+    <script src="/shared/navbar.js" defer></script>
+    <script src="/shared/footer.js" defer></script>
+    <script>
+      window.__ovgFrame = { page: 'portal' }
+    </script>
+    <script src="/frame.js" defer></script>
+    <script type="module" src="/src/pages/achievements.ts"></script>
+  </head>
+  <body>
+    <div id="navbar-mount"></div>
+    <main class="shell">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">OpenVibe.Games</a><span aria-hidden="true">/</span><span>Achievements</span>
+      </nav>
+      <p class="eyebrow">ACHIEVEMENTS</p>
+      <h1 id="page-title">Achievements</h1>
+      <p class="lede" id="page-lede">
+        Every achievement in every OpenVibe game, kept on one shared record. Sign in with your
+        OpenVibe account and this page shows the ones you have unlocked.
+      </p>
+      <div class="actions" id="signin-actions" hidden>
+        <a class="btn primary" href="/auth/login?next=%2Fachievements">Sign in to see yours</a>
+        <a class="btn" href="/leaderboards">Leaderboards</a>
+      </div>
+      <ul class="summary" id="summary" hidden></ul>
+      <p class="status" id="status" role="status">Loading achievements…</p>
+      <div class="games" id="games"></div>
+      <section class="keep" id="keep" hidden aria-labelledby="keep-title">
+        <h2 id="keep-title" style="margin-top: 0">Keep playing</h2>
+        <p class="muted">Games you have not started yet, or where there is still more to earn.</p>
+        <ul id="keep-list"></ul>
+      </section>
+    </main>
+    <footer id="ov-footer" class="ovf"></footer>
+  </body>
+</html>

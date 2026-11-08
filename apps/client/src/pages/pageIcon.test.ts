@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 const client = (path: string) => fileURLToPath(new URL(`../../${path}`, import.meta.url))
 
 describe('page icon', () => {
-  it.each(['index.html', 'play.html', 'editor.html'])('%s links /favicon.svg', (page) => {
+  it.each(['index.html', 'play.html', 'editor.html', 'achievements.html', 'leaderboards.html', 'developers.html'])('%s links /favicon.svg', (page) => {
     const html = readFileSync(client(page), 'utf8')
     expect(html).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />')
   })

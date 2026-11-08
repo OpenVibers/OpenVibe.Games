@@ -49,7 +49,7 @@ describe('the result card of a round', () => {
       'I scored 12 in Salvage Rush (rank 2 of 7). My best round: 12.',
     )
     expect(card.querySelector('.rush-result-board')?.getAttribute('href')).toBe(
-      '/leaderboard.html?game=salvage-rush',
+      '/leaderboards?game=salvage-rush',
     )
   })
 })

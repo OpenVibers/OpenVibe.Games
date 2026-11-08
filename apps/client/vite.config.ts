@@ -25,6 +25,9 @@ export default defineConfig({
           if (req.url === '/play') req.url = '/play.html'
           else if (req.url === '/editor') req.url = '/editor.html'
           else if (req.url === '/worlds') req.url = '/worlds.html'
+          else if (req.url === '/achievements') req.url = '/achievements.html'
+          else if (req.url === '/leaderboards') req.url = '/leaderboards.html'
+          else if (req.url === '/developers') req.url = '/developers.html'
           else if (/^\/play\/[a-z0-9-]+(\?|$)/.test(req.url ?? '')) req.url = '/casual.html'
           next()
         })
@@ -53,7 +56,9 @@ export default defineConfig({
         home: 'index.html',
         main: 'play.html',
         editor: 'editor.html',
-        leaderboard: 'leaderboard.html',
+        achievements: 'achievements.html',
+        leaderboards: 'leaderboards.html',
+        developers: 'developers.html',
         worlds: 'worlds.html',
         casual: 'casual.html',
       },

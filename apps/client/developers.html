@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Game developers: the Play API · OpenVibe.Games</title>
+    <meta name="description" content="Add achievements, leaderboards and cloud saves to your OpenVibe game: register a title with the Play API, post what players did, and read the boards anywhere." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://openvibe.games/developers" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="OpenVibe.Games" />
+    <meta property="og:title" content="The Play API · OpenVibe.Games" />
+    <meta
+      property="og:description"
+      content="Achievements, leaderboards and cloud saves for your game, on the OpenVibe network: one API, one player account, nothing to host."
+    />
+    <meta property="og:url" content="https://openvibe.games/developers" />
+    <meta property="og:image" content="https://openvibe.games/shared/social/games.jpg?v=a77ab4204f47" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://openvibe.games/shared/social/games.jpg?v=a77ab4204f47" />
+    <link rel="stylesheet" href="/src/pages/play-pages.css" />
+    <!-- The OpenVibe Frame: the user's theme before first paint, then navbar + footer. -->
+    <script src="/shared/theme-loader.js" defer></script>
+    <script src="/shared/navbar.js" defer></script>
+    <script src="/shared/footer.js" defer></script>
+    <script>
+      window.__ovgFrame = { page: 'portal' }
+    </script>
+    <script src="/frame.js" defer></script>
+  </head>
+  <body>
+    <div id="navbar-mount"></div>
+    <main class="shell">
+      <nav class="crumbs" aria-label="Breadcrumb">
+        <a href="/">OpenVibe.Games</a><span aria-hidden="true">/</span><span>Developers</span>
+      </nav>
+      <p class="eyebrow">GAME DEVELOPERS</p>
+      <h1>The Play API</h1>
+      <p class="lede">
+        Achievements, leaderboards and cloud saves for your game, on the OpenVibe network. One API,
+        one player account, nothing to host yourself. This is the same API the boards and
+        achievements on this site are drawn from.
+      </p>
+      <div class="actions">
+        <a class="btn primary" href="https://openvibe.services/projects">Make a project</a>
+        <a class="btn" href="https://play.openvibe.network/api/v1/titles"
+          >Browse the public titles JSON</a
+        >
+      </div>
+
+      <div class="doc">
+        <section class="card" aria-labelledby="base-h">
+          <h2 id="base-h">Base address and errors</h2>
+          <p>
+            Every call is under <code>https://play.openvibe.network/api/v1</code>. The API stays on
+            that host; this page is the documentation, moved here with the rest of the player pages.
+          </p>
+          <p class="muted">
+            Errors are RFC 9457 <code>problem+json</code> with a stable <code>code</code>.
+          </p>
+        </section>
+
+        <section class="card" aria-labelledby="reading-h">
+          <h2 id="reading-h">Reading: anyone, any site</h2>
+          <ul>
+            <li><code>GET /titles</code>: every game, with its achievements and boards.</li>
+            <li><code>GET /titles/:title</code>: one game.</li>
+            <li>
+              <code>GET /titles/:title/boards/:board?period=week|all&amp;page=1</code>: 25 entries a
+              page, <code>rank</code>, <code>name</code>, <code>score</code>, never a player id.
+            </li>
+            <li>
+              <code>GET /people/:subject/achievements</code>: a person's unlocks in every game, what
+              their OpenVibe profile shows.
+            </li>
+          </ul>
+        </section>
+
+        <section class="card" aria-labelledby="writing-h">
+          <h2 id="writing-h">Writing: your game's own token</h2>
+          <p>
+            Your server uses an OpenVibe Network service or app token for audience
+            <code>openvibe.play</code>. Only the principal that registered a title writes to it.
+          </p>
+          <ul>
+            <li>
+              <code>PUT /titles/:title</code> (<code>play.title.manage</code>): the name, url,
+              summary, achievements and boards. A definition left out is retired, never deleted.
+            </li>
+            <li>
+              <code>POST /titles/:title/scores</code> (<code>play.result.write</code>):
+              <code>{ board, ref, entries: [{ player, name, score }] }</code>. Posting the same
+              <code>ref</code> again changes nothing.
+            </li>
+            <li>
+              <code>POST /titles/:title/unlocks</code> (<code>play.result.write</code>):
+              <code>{ player, achievements: [id] }</code>, and it answers the new ones.
+            </li>
+            <li>
+              <code>POST /titles/:title/players/:guest/adopt</code>: a guest signed in, so their
+              unlocks and scores become the person's.
+            </li>
+            <li>
+              <code>GET /titles/:title/players/:player/achievements</code>
+              (<code>play.player.read</code>): what one player unlocked in your game.
+            </li>
+          </ul>
+        </section>
+
+        <section class="card" aria-labelledby="saves-h">
+          <h2 id="saves-h">Cloud saves</h2>
+          <p>
+            Up to 8 slots per player in your game, each any JSON value of at most 64 KB. Every write
+            names the version it read; if another device saved in between, the write is refused with
+            <code>409 play.save_conflict</code> so the game can merge instead of losing progress.
+          </p>
+          <ul>
+            <li>
+              <code>PUT /titles/:title/players/:player/saves/:slot</code>
+              (<code>play.result.write</code>): <code>{ data, version }</code>.
+            </li>
+            <li>
+              <code>GET /titles/:title/players/:player/saves/:slot</code>
+              (<code>play.player.read</code>): the slot and its version.
+            </li>
+            <li><code>GET /me/saves</code>: a signed-in person's slots in every game.</li>
+          </ul>
+        </section>
+
+        <section class="card" aria-labelledby="sandbox-h">
+          <h2 id="sandbox-h">Start in the sandbox</h2>
+          <ol>
+            <li>
+              Sign in on <a href="https://openvibe.services/projects">OpenVibe Services</a> and make
+              a project. New projects are sandbox-only.
+            </li>
+            <li>
+              Add a sandbox app and ask for <code>play.title.manage</code>,
+              <code>play.result.write</code> and <code>play.player.read</code>. A sandbox app gets
+              them without waiting for anyone.
+            </li>
+            <li>
+              Get a token for audience <code>openvibe.play</code> and
+              <code>PUT /titles/sandbox-your-game</code>. Sandbox titles are never listed, counted
+              or indexed; their players are guests only.
+            </li>
+          </ol>
+          <p class="muted">
+            When the game is ready, staff turn production on for your project and its production app
+            registers the real name.
+          </p>
+        </section>
+
+        <section class="card" aria-labelledby="sdk-h">
+          <h2 id="sdk-h">From your game server</h2>
+          <p>
+            The <code>openvibe-sdk/play</code> client wraps the same calls; plain HTTPS works too.
+          </p>
+          <pre><code>const { createClient } = require('openvibe-sdk/core');
+const { createPlayClient } = require('openvibe-sdk/play');
+
+const play = createPlayClient(createClient({ tokenProvider: tokens }));
+await play.titles.define('gem-run', {
+  name: 'Gem Run',
+  achievements: [{ id: 'first-gem', name: 'First Gem' }],
+  boards: [{ id: 'high-score', name: 'High score', kind: 'best' }],
+});
+await play.scores.post('gem-run', {
+  board: 'high-score', ref: 'round-42',
+  entries: [{ player: 'usr_…', name: 'kim', score: 1200 }],
+});
+await play.achievements.unlock('gem-run', {
+  player: 'usr_…', achievements: ['first-gem'],
+});
+await play.saves.put('gem-run', 'usr_…', 'main', { data: { level: 3 }, version: 0 });</code></pre>
+        </section>
+
+        <section class="card" aria-labelledby="where-h">
+          <h2 id="where-h">Where players see it</h2>
+          <p>
+            Every unlock and board score is on <a href="/achievements">Achievements</a> and
+            <a href="/leaderboards">Leaderboards</a> here, and on the player's OpenVibe profile. A
+            guest plays at once; when they sign in, their progress moves to their account.
+          </p>
+          <p class="muted">
+            Read more about the service in the
+            <a href="https://github.com/OpenVibers/OpenVibe.Play#readme">OpenVibe.Play README</a>.
+          </p>
+        </section>
+      </div>
+    </main>
+    <footer id="ov-footer" class="ovf"></footer>
+  </body>
+</html>

@@ -77,7 +77,7 @@ export function buildResultCard(result: RoundResult, origin: string): HTMLElemen
   share.innerHTML = '<svg class="ovk-i" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg><span>Share</span>'
   const board = document.createElement('a')
   board.className = 'rush-result-board'
-  board.href = '/leaderboard.html?game=salvage-rush'
+  board.href = '/leaderboards?game=salvage-rush'
   board.textContent = 'Full board'
   const close = document.createElement('button')
   close.type = 'button'

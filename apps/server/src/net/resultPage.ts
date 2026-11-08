@@ -123,7 +123,7 @@ export function resultPageHtml(input: ResultPageInput): string {
     kit.section({
       body:
         `<p class="ovk-note">${kit.esc(GAME_PROMISE)}</p>` +
-        kit.button({ href: '/leaderboard.html?game=salvage-rush', label: 'Full leaderboard', kind: 'ghost', icon: 'trophy' }),
+        kit.button({ href: '/leaderboards?game=salvage-rush', label: 'Full leaderboard', kind: 'ghost', icon: 'trophy' }),
     }),
   ].join('\n')
   const html = kit.page({
@@ -138,7 +138,7 @@ export function resultPageHtml(input: ResultPageInput): string {
     service: 'games',
     apiBase: 'https://openvibe.network',
     links: [
-      { label: 'Leaderboard', href: '/leaderboard.html' },
+      { label: 'Leaderboard', href: '/leaderboards' },
       { label: 'Play Scraplandia', href: '/play' },
     ],
     history: { type: 'page', title: 'A Salvage Rush round' },
