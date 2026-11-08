@@ -240,9 +240,12 @@ const browser = await chromium.launch({
   args: ['--use-angle=swiftshader', '--enable-webgl', '--disable-gpu-sandbox'],
 })
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
-page.on('pageerror', (e) =>
-  console.log('[pageerror]', String((e as Error).stack ?? e).slice(0, 500)),
-)
+let disposedTextureErrors = 0
+const onPageError = (e: Error): void => {
+  if (e.message.includes('markAllMaterialsAsDirty')) disposedTextureErrors++
+  console.log('[pageerror]', String(e.stack ?? e).slice(0, 500))
+}
+page.on('pageerror', onPageError)
 await page.goto(`http://127.0.0.1:${PORT}/editor`)
 await page.waitForSelector('#save', { timeout: 90_000 })
 await page.waitForFunction(() => Boolean((window as never as { __editor?: unknown }).__editor), {
@@ -794,9 +797,7 @@ async function withMap(
         localStorage.setItem('ovg_sso', t as string)
         document.cookie = `ovg_sso=${encodeURIComponent(t as string)}; Path=/; SameSite=Lax`
       }, TEST_TOKEN)
-      pg.on('pageerror', (e) =>
-        console.log('[pageerror]', String((e as Error).stack ?? e).slice(0, 500)),
-      )
+      pg.on('pageerror', onPageError)
       await pg.goto(`http://127.0.0.1:${port}/editor`)
       await pg.waitForSelector('#save', { timeout: 90_000 })
       await pg.waitForFunction(
@@ -1686,14 +1687,40 @@ section('W. Painting imported models')
       zones: [],
     },
     async (pg) => {
-      /** Arm a model and click the viewport to place one, returning its id. */
+      /** Arm a model and click visible terrain, clear of the placement strip. */
       const place = async (modelId: string, x: number, y: number): Promise<string | null> => {
         await probeArgs(pg, ([p, id]) => p.armModel(id as unknown as string), modelId)
-        await pg.mouse.move(x, y)
+        const target = (await probeArgs(
+          pg,
+          ([p, px, py]) => {
+            const canvas = document.getElementById('game')
+            for (const [dx, dy] of [
+              [0, 0],
+              [0, -60],
+              [-80, -60],
+              [80, -60],
+              [0, -120],
+            ]) {
+              const cx = (px as number) + dx
+              const cy = (py as number) + dy
+              if (document.elementFromPoint(cx, cy) === canvas && p.pickIdAt(cx, cy) === 'w-floor')
+                return [cx, cy]
+            }
+            return null
+          },
+          x,
+          y,
+        )) as [number, number] | null
+        if (!target) throw new Error(`no visible terrain near placement point (${x}, ${y})`)
+        const before = (await probeOf(pg, (p) => p.objectCounts())).statics
+        await pg.mouse.move(target[0], target[1])
         await pg.waitForTimeout(200)
         await pg.mouse.down()
         await pg.mouse.up()
         await pg.waitForTimeout(700)
+        const after = (await probeOf(pg, (p) => p.objectCounts())).statics
+        if (after !== before + 1)
+          throw new Error(`model placement created ${after - before} objects`)
         return probeOf(pg, (p) => p.primaryId())
       }
 
@@ -1952,6 +1979,11 @@ section('V. Performance profile on a large map')
   )
 }
 
+ok(
+  'disposed textures never retry KTX2 fallback',
+  disposedTextureErrors === 0,
+  disposedTextureErrors,
+)
 console.log(
   `\n${'═'.repeat(64)}\n${checks - failures}/${checks} checks passed, ${failures} FAILED\n`,
 )

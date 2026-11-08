@@ -73,7 +73,9 @@ export function loadTexture(src: TexSource, scene: Scene): Texture {
   configure()
   let tx: Texture | null = null
   const fallBack = (): void => {
-    if (tx && src.fallback) tx.updateURL(src.fallback)
+    // KTX2 decoding can fail after a material has replaced and disposed this
+    // texture. Babylon clears its scene on dispose; updateURL needs that scene.
+    if (tx?.getScene() === scene && !scene.isDisposed && src.fallback) tx.updateURL(src.fallback)
   }
   tx = new Texture(src.url, scene, false, true, Texture.TRILINEAR_SAMPLINGMODE, null, fallBack)
   return tx
