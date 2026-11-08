@@ -42,4 +42,4 @@ jobs:
       - run: pnpm test:collab
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo.
   security:
-    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@e80c595ff3d4bc46b7e0f41fdb040b985cb30
+    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@e80c595ff3d4bc46b7e0f41fdb040b985885cb30
