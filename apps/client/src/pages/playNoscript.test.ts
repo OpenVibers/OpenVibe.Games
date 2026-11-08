@@ -14,7 +14,7 @@ describe('play.html without JavaScript', () => {
   it('describes both games and what they need', () => {
     expect(noscript).toContain('<h1>Scraplandia and Salvage Rush</h1>')
     expect(noscript).toMatch(/need JavaScript and\s+WebGL/)
-    expect(noscript).toContain('href="https://openvibe.games/leaderboard.html"')
+    expect(noscript).toContain('href="https://openvibe.games/leaderboards"')
   })
 
   it('sits before the stage, inside the body', () => {

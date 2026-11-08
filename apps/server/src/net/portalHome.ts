@@ -30,7 +30,7 @@ const sharedServe = sharedRequire('openvibe-shared/serve') as SharedServe
 
 const CACHE_MS = 60_000
 const FIRST_WAIT_MS = 2_500
-const PLAY_SITE = 'https://play.openvibe.network'
+const ACHIEVEMENTS_SITE = 'https://openvibe.games'
 
 export interface BoardRow {
   rank: number
@@ -245,7 +245,7 @@ function boardsSection(d: HomeData): string {
       board: haulWeek ? 'haul points this week' : 'haul points, all time',
       rows: haulWeek ? d.boards.haulWeek : d.boards.haulAll,
       unit: (s) => `${n(s)} pts`,
-      href: '/leaderboard.html?game=scraplandia',
+      href: '/leaderboards?game=scraplandia',
       more: 'Full haul board →',
     }),
     boardCard({
@@ -253,7 +253,7 @@ function boardsSection(d: HomeData): string {
       board: rushWeek ? 'best round this week' : 'best round, all time',
       rows: rushWeek ? d.boards.rushWeek : d.boards.rushAll,
       unit: (s) => plural(s, 'scrap', 'scrap'),
-      href: '/leaderboard.html?game=salvage-rush',
+      href: '/leaderboards?game=salvage-rush',
       more: 'Full leaderboard →',
     }),
     boardCard({
@@ -301,7 +301,7 @@ function achievementsSection(d: HomeData): string {
   <p class="home-more">${d.titles
     .map(
       (t) =>
-        `<a class="card-link" href="${PLAY_SITE}/t/${encodeURIComponent(t.id)}">${esc(t.name)} on OpenVibe.Play →</a>`,
+        `<a class="card-link" href="${ACHIEVEMENTS_SITE}/achievements#game-${encodeURIComponent(t.id)}">${esc(t.name)} achievements →</a>`,
     )
     .join(' ')}</p>
 </section>`,

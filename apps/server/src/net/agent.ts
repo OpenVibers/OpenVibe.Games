@@ -48,10 +48,11 @@ const STATIC_PAGES: Record<string, { file: string; canonical: string }> = {
   '/': { file: 'index.html', canonical: `${SITE}/` },
   '/play': { file: 'play.html', canonical: `${PLAY_SITE}/` },
   '/worlds': { file: 'worlds.html', canonical: `${SITE}/worlds` },
+  '/developers': { file: 'developers.html', canonical: `${SITE}/developers` },
 }
 
 /** The client build's own files that are pages with a twin (the portal is served through portalPage). */
-export const AGENT_PAGE_FILES = new Set(['index.html', 'play.html', 'worlds.html', 'casual.html'])
+export const AGENT_PAGE_FILES = new Set(['index.html', 'play.html', 'worlds.html', 'casual.html', 'developers.html'])
 
 /** What the twin renderer needs from the server: the built client, the portal's live parts and the host. */
 export interface AgentContext {

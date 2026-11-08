@@ -135,7 +135,9 @@ const SITE_DETAILS =
 const DISALLOW = ['/auth/', '/api/', '/metrics', '/editor']
 
 /** Public pages with no Markdown twin (served by another server, or not rendered as Markdown): linked as HTML. */
-const TWINLESS = new Set([`${SITE}/steam`, `${SITE}/updates`])
+// /achievements and /leaderboards are drawn by their own script, so a Markdown twin would be an empty skeleton:
+// llms.txt names the HTML page instead. /developers is static and has a real twin.
+const TWINLESS = new Set([`${SITE}/steam`, `${SITE}/updates`, `${SITE}/achievements`, `${SITE}/leaderboards`])
 
 /** "2026-09-29" or "2026-09-29T12:00:00Z" as YYYY-MM-DD; null when the value is unusable. */
 function dayOf(ts: unknown): string | null {
@@ -211,6 +213,27 @@ function publicPageDocs(): PublicPageDoc[] {
       text: pack.tagline,
       priority: 0.8,
     })),
+    {
+      title: 'Achievements',
+      url: `${SITE}/achievements`,
+      note: 'every achievement in every OpenVibe game, and yours when you sign in',
+      text: 'Achievements on OpenVibe.Games: every achievement in every OpenVibe game, with how many players have earned each. Sign in with an OpenVibe account and the page shows the achievements you have unlocked, in every game, and when. Progress is kept by OpenVibe.Play, the game services behind every OpenVibe game, and shown here as part of Games.',
+      priority: 0.8,
+    },
+    {
+      title: 'Leaderboards',
+      url: `${SITE}/leaderboards`,
+      note: "every game's board, this week and all time",
+      text: 'Leaderboards on OpenVibe.Games: every OpenVibe game\'s board, this week (from Monday 00:00 UTC) and all time, with a name and a score and never a player id. The boards are kept by OpenVibe.Play and drawn here in the Games look; a finished round or haul reaches its board within a minute.',
+      priority: 0.8,
+    },
+    {
+      title: 'Game developers: the Play API',
+      url: `${SITE}/developers`,
+      note: 'achievements, leaderboards and cloud saves for your game',
+      text: 'The Play API for game makers: register a title with your own OpenVibe token, post scores and unlocks, read the boards, and keep cloud saves with a version check. Games\' servers use the openvibe-sdk/play client or plain HTTPS; a developer starts in the sandbox with a project on OpenVibe.Services and needs nobody\'s permission to try it.',
+      priority: 0.6,
+    },
     {
       title: 'Creator worlds',
       url: `${SITE}/worlds`,

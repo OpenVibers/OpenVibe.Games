@@ -31,7 +31,7 @@ describe('the game cards of the home page', () => {
   it('writes no round length into the pages by hand', () => {
     // The length of a round is the pack's number; a sentence that carries one by hand would
     // drift from the game the day the pack changes.
-    for (const file of ['index.html', 'play.html', 'leaderboard.html']) {
+    for (const file of ['index.html', 'play.html', 'leaderboards.html']) {
       const html = readFileSync(join(client, file), 'utf8')
       expect(html).not.toMatch(/\d+-second round/)
     }

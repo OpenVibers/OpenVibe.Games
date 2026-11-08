@@ -31,7 +31,7 @@ export function updatesHandler(req: NodeRequire = createRequire(import.meta.url)
     if (html) return html
     const links = [
       { label: 'Play', href: '/play' },
-      { label: 'Leaderboard', href: '/leaderboard.html' },
+      { label: 'Leaderboards', href: '/leaderboards' },
     ]
     html = shell.page({
       name: SITE_NAME,

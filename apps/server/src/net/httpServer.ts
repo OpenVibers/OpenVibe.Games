@@ -313,7 +313,9 @@ export function createHttpServer(
     { href: '/play', label: 'Play Scraplandia' },
     { href: '/play?game=salvage-rush', label: 'Play Salvage Rush' },
     { href: '/play/vibe-heroes', label: 'Play Vibe Heroes' },
-    { href: '/leaderboard.html', label: 'Leaderboard' },
+    { href: '/leaderboards', label: 'Leaderboards' },
+    { href: '/achievements', label: 'Achievements' },
+    { href: '/developers', label: 'Game developers' },
     { href: '/worlds', label: 'Creator worlds' },
     { href: '/steam', label: 'On Steam right now' },
     { href: '/editor', label: 'Map editor' },
@@ -993,8 +995,15 @@ export function createHttpServer(
       res.end()
       return
     }
-    if (url === '/play/' || url === '/editor/') {
+    if (url === '/play/' || url === '/editor/' || url === '/achievements/' || url === '/leaderboards/' || url === '/developers/') {
       res.writeHead(301, { location: url.slice(0, -1) })
+      res.end()
+      return
+    }
+    // The old board page became Leaderboards: a link from a round, a share or a bookmark keeps its game and period.
+    if (url === '/leaderboard.html') {
+      const tail = (req.url ?? '').slice(url.length)
+      res.writeHead(301, { location: `/leaderboards${tail}` })
       res.end()
       return
     }
@@ -1009,9 +1018,15 @@ export function createHttpServer(
             ? 'editor.html'
             : url === '/worlds'
               ? 'worlds.html'
-              : url === '/surf/embed' || surfRoute?.page
-                ? 'play.html'
-                : null
+              : url === '/achievements'
+                ? 'achievements.html'
+                : url === '/leaderboards'
+                  ? 'leaderboards.html'
+                  : url === '/developers'
+                    ? 'developers.html'
+                    : url === '/surf/embed' || surfRoute?.page
+                      ? 'play.html'
+                      : null
 
     // Static files with path traversal guard.
     const safePath = normalize(pageAlias ?? url).replace(/^(\.\.[/\\])+/, '')

@@ -29,7 +29,10 @@
     : onPlayHost
       ? '/?game=salvage-rush'
       : 'https://play.openvibe.games/?game=salvage-rush'
-  var BOARD = local || !onPlayHost ? '/leaderboard.html' : 'https://openvibe.games/leaderboard.html'
+  var BOARD = local || !onPlayHost ? '/leaderboards' : 'https://openvibe.games/leaderboards'
+  var ACHIEVEMENTS =
+    local || !onPlayHost ? '/achievements' : 'https://openvibe.games/achievements'
+  var DEVELOPERS = local || !onPlayHost ? '/developers' : 'https://openvibe.games/developers'
   var HEROES =
     local || !onPlayHost ? '/play/vibe-heroes' : 'https://openvibe.games/play/vibe-heroes'
 
@@ -53,11 +56,12 @@
   }
 
   var here = location.pathname + location.search
-  // The two places people go every visit carry an icon; each game folds into the navbar's More (Shared 4.22): the
-  // portal lists them all anyway, and five same-looking links read as clutter on a phone.
+  // The three places people go every visit carry an icon; each game folds into the navbar's More (Shared 4.22): the
+  // portal lists them all anyway, and six same-looking links read as clutter on a phone.
   var links = [
     { label: 'Games', href: PORTAL, icon: 'fa-gamepad' },
-    { label: 'Leaderboard', href: BOARD, icon: 'fa-trophy' },
+    { label: 'Achievements', href: ACHIEVEMENTS, icon: 'fa-trophy' },
+    { label: 'Leaderboards', href: BOARD, icon: 'fa-ranking-star' },
     { label: 'Scraplandia', href: PLAY, more: true },
     { label: 'Salvage Rush', href: RUSH, more: true },
     { label: 'Vibe Heroes', href: HEROES, more: true },
@@ -71,7 +75,9 @@
         { name: 'Play Scraplandia', url: PLAY },
         { name: 'Play Salvage Rush', url: RUSH },
         { name: 'Play Vibe Heroes', url: HEROES },
-        { name: 'Leaderboard', url: BOARD },
+        { name: 'Achievements', url: ACHIEVEMENTS },
+        { name: 'Leaderboards', url: BOARD },
+        { name: 'Developers', url: DEVELOPERS },
         { name: 'Map editor', url: EDITOR },
       ],
     },

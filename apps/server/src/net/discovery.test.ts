@@ -148,6 +148,7 @@ describe('crawl artifacts (plan T11)', () => {
     expect(r.body).toContain('<loc>https://openvibe.games/</loc>')
     expect(r.body).toContain('<loc>https://play.openvibe.games/</loc>')
     expect(r.body).toContain('<loc>https://openvibe.games/play/vibe-heroes</loc>')
+    for (const page of ['/achievements', '/leaderboards', '/developers']) expect(r.body).toContain(`<loc>https://openvibe.games${page}</loc>`)
     // The lastmod is the committed content-revision date, not the clock.
     const status = JSON.parse(readFileSync(join(ROOT, 'STATUS.json'), 'utf8')) as {
       updated: string
@@ -168,6 +169,10 @@ describe('crawl artifacts (plan T11)', () => {
     expect(r.body).toContain('- [Vibe Heroes](https://openvibe.games/play/vibe-heroes.md)')
     // /steam and /updates have no twin: their URL stays, marked (HTML).
     expect(r.body).toContain('- [On Steam right now](https://openvibe.games/steam) (HTML)')
+    // The two Play pages are drawn by their own script, so they are named as HTML; the developers page has a twin.
+    expect(r.body).toContain('- [Achievements](https://openvibe.games/achievements) (HTML)')
+    expect(r.body).toContain('- [Leaderboards](https://openvibe.games/leaderboards) (HTML)')
+    expect(r.body).toContain('- [Game developers: the Play API](https://openvibe.games/developers.md)')
     expect(r.body).toContain('- [What shipped](https://openvibe.games/updates) (HTML)')
     expect(r.body).toContain('\n## Optional\n')
     expect(r.body).toContain('https://openvibe.games/sitemap.xml')
