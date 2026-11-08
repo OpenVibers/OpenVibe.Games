@@ -140,7 +140,7 @@ p {
 }
 .summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
   gap: 10px;
   margin: 20px 0 4px;
   padding: 0;
@@ -481,4 +481,12 @@ pre code {
   .card {
     padding: 16px;
   }
+}
+
+/* The rank column hugs its badge (it took a third of the table on a computer); the player's name gets the room. */
+.board th:first-child,
+.board td:first-child {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: 8px;
 }
