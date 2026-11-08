@@ -484,8 +484,8 @@ pre code {
 }
 
 /* The rank column hugs its badge (it took a third of the table on a computer); the player's name gets the room. */
-th:first-child,
-td:first-child {
+.board th:first-child,
+.board td:first-child {
   width: 1%;
   white-space: nowrap;
   padding-right: 8px;
