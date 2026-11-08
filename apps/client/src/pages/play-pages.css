@@ -482,3 +482,11 @@ pre code {
     padding: 16px;
   }
 }
+
+/* The rank column hugs its badge (it took a third of the table on a computer); the player's name gets the room. */
+th:first-child,
+td:first-child {
+  width: 1%;
+  white-space: nowrap;
+  padding-right: 8px;
+}
