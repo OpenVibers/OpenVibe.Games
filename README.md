@@ -293,6 +293,6 @@ between services.
 <!-- versions:start -->
 - openvibe-contracts: v0.338.0
 - openvibe-sdk: v0.97.1
-- openvibe-shared: v4.142.0
+- openvibe-shared: v4.149.0
 - openvibe-publishing: v1.4.0
 <!-- versions:end -->
