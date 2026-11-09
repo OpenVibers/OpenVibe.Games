@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use OpenVibe.Games in research or a product, cite it as below."
+title: openvibe-games
+type: software
+authors:
+  - name: OpenVibe
+    alias: OpenVibers
+    website: https://openvibe.network
+repository-code: https://github.com/OpenVibers/OpenVibe.Games
+url: https://openvibe.games
+abstract: "Browser games and creator worlds with achievements on OpenVibe.Play, at openvibe.games."
+keywords:
+  - openvibe
+  - achievements
+  - browser-games
+  - games
+  - multiplayer

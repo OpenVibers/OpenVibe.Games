@@ -4,6 +4,9 @@
 
 **Browser games and creator worlds** — [openvibe.games](https://openvibe.games). Play in the browser, with achievements on [OpenVibe.Play](https://play.openvibe.network).
 
+**Live site:** https://openvibe.games · **API docs:** https://openvibe.services · **For AI:** https://openvibe.games/llms.txt
+**Run it:** `pnpm install && pnpm dev` (Node 22 or newer) · **Tests:** `npm test`
+
 Part of the [OpenVibe network](https://openvibe.network); [help](https://openvibe.help) and the [developer API](https://openvibe.services).
 
 ## Purpose
