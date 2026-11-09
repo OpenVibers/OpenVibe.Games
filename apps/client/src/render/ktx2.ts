@@ -8,6 +8,7 @@ import { KhronosTextureContainer2 } from '@babylonjs/core/Misc/khronosTextureCon
 import '@babylonjs/core/Materials/Textures/Loaders/ktxTextureLoader.js'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js'
 import type { Scene } from '@babylonjs/core/scene.js'
+import { updateTextureUrl } from './textureUrl.js'
 
 const BASE = '/ktx2/'
 
@@ -72,11 +73,20 @@ export function loadTexture(src: TexSource, scene: Scene): Texture {
   if (!src.fallback || !src.url.endsWith('.ktx2')) return new Texture(src.url, scene)
   configure()
   let tx: Texture | null = null
+  // A decoder can fail synchronously inside the constructor, before `tx` is
+  // assigned; remember it and apply the JPEG once there is a texture to update.
+  let failedBeforeAssign = false
   const fallBack = (): void => {
+    if (!src.fallback) return
+    if (!tx) {
+      failedBeforeAssign = true
+      return
+    }
     // KTX2 decoding can fail after a material has replaced and disposed this
-    // texture. Babylon clears its scene on dispose; updateURL needs that scene.
-    if (tx?.getScene() === scene && !scene.isDisposed && src.fallback) tx.updateURL(src.fallback)
+    // texture (or after the scene went away). updateTextureUrl needs a scene.
+    updateTextureUrl(tx, src.fallback, scene)
   }
   tx = new Texture(src.url, scene, false, true, Texture.TRILINEAR_SAMPLINGMODE, null, fallBack)
+  if (failedBeforeAssign) updateTextureUrl(tx, src.fallback, scene)
   return tx
 }
