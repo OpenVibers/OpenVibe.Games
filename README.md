@@ -1,4 +1,10 @@
+![OpenVibe.Games](https://openvibe.games/shared/social/games.jpg)
+
 # OpenVibe.Games
+
+**Browser games and creator worlds** — [openvibe.games](https://openvibe.games). Play in the browser, with achievements on [OpenVibe.Play](https://play.openvibe.network).
+
+Part of the [OpenVibe network](https://openvibe.network); [help](https://openvibe.help) and the [developer API](https://openvibe.services).
 
 ## Purpose
 
