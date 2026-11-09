@@ -12,6 +12,7 @@
 import type { AssetContainer } from '@babylonjs/core/assetContainer.js'
 import type { Scene } from '@babylonjs/core/scene.js'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode.js'
+import { guardTextureUpdates } from './textureUrl.js'
 
 export interface ModelInstance {
   /** Root of the instantiated hierarchy, ready to parent. */
@@ -32,13 +33,20 @@ export class ModelCache {
   private load(id: string, glb: string): Promise<AssetContainer | null> {
     const existing = this.containers.get(id)
     if (existing) return existing
+    if (this.scene.isDisposed) return Promise.resolve(null)
     const p = (async (): Promise<AssetContainer | null> => {
+      // The glTF loader updates each image texture when its bytes arrive, which
+      // can be after the scene went away (the model's view was deleted or the
+      // editor navigated). Guard the textures it creates during this load.
+      const unguard = guardTextureUpdates(this.scene)
       try {
         const { LoadAssetContainerAsync } = await import('@babylonjs/core/Loading/sceneLoader.js')
         await import('@babylonjs/loaders/glTF/2.0/glTFLoader.js')
         return await LoadAssetContainerAsync(glb, this.scene, { pluginExtension: '.glb' })
       } catch {
         return null
+      } finally {
+        unguard()
       }
     })()
     this.containers.set(id, p)
@@ -52,6 +60,10 @@ export class ModelCache {
   async instantiate(id: string, glb: string): Promise<ModelInstance | null> {
     const container = await this.load(id, glb)
     if (!container) return null
+    if (this.scene.isDisposed) {
+      container.dispose()
+      return null
+    }
     const entries = container.instantiateModelsToScene(undefined, false, {
       doNotInstantiate: false,
     })
