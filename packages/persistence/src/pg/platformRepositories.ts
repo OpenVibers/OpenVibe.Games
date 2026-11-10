@@ -144,43 +144,6 @@ export function createIdentityRepository(db: Db): IdentityRepository {
       })
     },
 
-    mergeSubject(from, into, mergeId, now) {
-      return db.tx(async () => {
-        const key = `merge:${mergeId}`
-        if (await adopted(key)) return { moved: 0, kept: 0, already: true }
-        const taken = await takenSlots(into)
-        const rows = await rowsFor(from)
-        let moved = 0
-        // First every character whose own slot is free there, then the rest into what is left.
-        const clashing: { id: string; slot: number }[] = []
-        for (const row of rows) {
-          if (taken.has(row.slot)) {
-            clashing.push(row)
-            continue
-          }
-          await moveToSlot(row.id, into, into, row.slot)
-          taken.add(row.slot)
-          moved++
-        }
-        let kept = 0
-        for (const row of clashing) {
-          const slot = SLOTS.find((s) => !taken.has(s))
-          if (slot === undefined) {
-            kept++
-            continue
-          }
-          await moveToSlot(row.id, into, into, slot)
-          taken.add(slot)
-          moved++
-        }
-        await moveProgress(from, into)
-        await moveCreatorWorlds(db, from, into)
-        await moveCreatorAssets(db, from, into)
-        await recordAdoption(key, into, 'merge', moved, kept, now)
-        return { moved, kept, already: false }
-      })
-    },
-
     async exportSubject(subject) {
       const characters = await db.many<Record<string, unknown>>(
         sql`SELECT * FROM characters WHERE account_key = ${subject} OR subject_id = ${subject} ORDER BY slot`,

@@ -79,7 +79,7 @@ describe('creator assets store', () => {
     expect(await db.many(sql`SELECT * FROM creator_asset_uses`)).toEqual([])
   })
 
-  it('follows the account: export, merge into the survivor (uses recounted) and erasure', async () => {
+  it('exports and erases account-owned assets and uses', async () => {
     const db = await openTestDb()
     const store = createCreatorAssetStore(db)
     const identity = createIdentityRepository(db)
@@ -105,16 +105,11 @@ describe('creator assets store', () => {
     expect(out.creatorAssets.map((a) => a.id)).toEqual([kims.id])
     expect(out.creatorAssetUses.map((u) => u.asset_id).sort()).toEqual([lees.id, zeds.id].sort())
 
-    // KIM folds into LEE: KIM's build is LEE's; KIM's use of LEE's own build no longer counts, and ZED's build
-    // counts one use by LEE, not two.
-    await identity.mergeSubject(KIM, LEE, 'merge-1', 10)
-    expect((await store.get(kims.id))?.ownerSubject).toBe(LEE)
-    expect((await store.get(lees.id))?.uses).toBe(0)
+    expect(await identity.eraseSubjects([KIM])).toMatchObject({ creator_assets: 1 })
+    expect((await store.listByOwner(KIM)).length).toBe(0)
+    expect((await store.get(lees.id))?.ownerSubject).toBe(LEE)
     expect((await store.get(zeds.id))?.uses).toBe(1)
-
-    expect(await identity.eraseSubjects([LEE])).toMatchObject({ creator_assets: 2 })
-    expect((await store.listByOwner(LEE)).length).toBe(0)
-    expect(await db.many(sql`SELECT subject FROM creator_asset_uses`)).toEqual([])
     expect((await store.get(zeds.id))?.ownerSubject).toBe(ZED)
+    expect(await db.many(sql`SELECT subject FROM creator_asset_uses`)).toEqual([{ subject: LEE }])
   })
 })

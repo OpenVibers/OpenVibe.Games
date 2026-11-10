@@ -117,7 +117,7 @@ describe('creator worlds store', () => {
     expect(await db.maybe(sql`SELECT 1 FROM world_meta WHERE place_id = ${place}`)).toBeNull()
   })
 
-  it('follows the account: export, merge and erasure (ADR-033, ADR-029)', async () => {
+  it('exports and erases the account-owned world and team places (ADR-033)', async () => {
     const db = await openTestDb()
     const store = createCreatorWorldStore(db)
     const identity = createIdentityRepository(db)
@@ -158,17 +158,12 @@ describe('creator worlds store', () => {
       (await identity.exportSubject(KIM)).creatorWorldTeams.map((t) => t.world_id).sort(),
     ).toEqual([zeds.id, lees.id].sort())
 
-    await identity.mergeSubject(KIM, LEE, 'merge-1', 10)
-    expect((await store.get(kims.id))?.ownerSubject).toBe(LEE)
-    // KIM's place on ZED's team is LEE's now; on LEE's own world it is gone (an owner needs no team place).
-    expect((await store.members(zeds.id)).map((m) => m.subject)).toEqual([LEE])
-    expect(await store.members(lees.id)).toEqual([])
-
-    const erased = await identity.eraseSubjects([LEE])
-    expect(erased.creator_worlds).toBe(2)
+    const erased = await identity.eraseSubjects([KIM])
+    expect(erased.creator_worlds).toBe(1)
     expect(await store.get(kims.id)).toBeNull()
-    // Erased from every team, and ZED's world stays ZED's.
     expect(await store.members(zeds.id)).toEqual([])
+    expect(await store.members(lees.id)).toEqual([])
     expect((await store.get(zeds.id))?.ownerSubject).toBe(ZED)
+    expect((await store.get(lees.id))?.ownerSubject).toBe(LEE)
   })
 })

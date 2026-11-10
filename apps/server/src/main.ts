@@ -937,12 +937,6 @@ async function main(): Promise<void> {
         (count, room) => count + room.game.revokeSubject(subject, validAfterMs),
         0,
       ),
-    // Account merge (ADR-029): the folded-in account's characters join the survivor's free slots.
-    onMerged: async (from, into, mergeId) => {
-      const result = await store.identity.mergeSubject(from, into, mergeId, Date.now())
-      settleRewards(into)
-      return result
-    },
     // Account export and deletion (ADR-033): the part goes to Network; a deleted account's sessions close (each
     // close saves its character) before its characters are erased.
     ...(accountData ? { onAccountEvent: (event) => accountData.apply(event as AccountEvent) } : {}),

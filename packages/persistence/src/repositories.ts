@@ -66,18 +66,6 @@ export interface IdentityRepository {
     now: number,
   ): Promise<{ moved: number; slot: number | null; full: boolean }>
   /**
-   * Account merge (roadmap WS-B task 5, ADR-029; network.subject.merged): the folded-in subject's characters
-   * move to the survivor, each into its own slot when free there, else the first free one (0..2). A character
-   * with no free slot stays under the folded-in subject (kept, never deleted). Once per merge id; `already`
-   * when that merge was applied before.
-   */
-  mergeSubject(
-    fromSubject: string,
-    intoSubject: string,
-    mergeId: string,
-    now: number,
-  ): Promise<{ moved: number; kept: number; already: boolean }>
-  /**
    * What Games keeps about a subject, for their data export (roadmap WS-B task 7, ADR-033): their characters (without
    * the account key) and the world structures those characters own.
    */

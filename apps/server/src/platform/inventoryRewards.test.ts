@@ -214,7 +214,7 @@ describe('Inventory achievement rewards', () => {
     }
   })
 
-  it('exports grant state and moves it with account achievements', async () => {
+  it('exports grant state and erases it with account deletion', async () => {
     const { store, items } = await setup()
     const from = 'usr_01JABCDEFGHJKMNPQRSTVWXYZ1'
     await recordHaul(store.db, from, 'haul-merge', 'Player', 100, 1000)
@@ -226,13 +226,8 @@ describe('Inventory achievement rewards', () => {
         item_instance: 'iti_1',
       }),
     ])
-    await store.identity.mergeSubject(from, subject, 'merge-1', 2000)
-    expect(await state(store.db, subject, 'scraplandia', 'first-haul')).toMatchObject({
-      item_state: 'granted',
-    })
+    await store.identity.eraseSubjects([from])
     expect(await state(store.db, from, 'scraplandia', 'first-haul')).toBeNull()
-    await store.identity.eraseSubjects([subject])
-    expect(await state(store.db, subject, 'scraplandia', 'first-haul')).toBeNull()
   })
 
   it('does nothing when off or the achievement has no reward', async () => {
