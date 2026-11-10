@@ -61,7 +61,6 @@ export const TOPICS = [
   'network.account.deleted',
   MOD_GRANTS_TOPIC,
 ] as const
-const SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/
 const PATH = '/internal/events'
 const MAX_BODY = 256 * 1024
 

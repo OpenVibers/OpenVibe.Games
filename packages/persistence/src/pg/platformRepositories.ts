@@ -17,9 +17,8 @@ import {
   eraseCreatorWorlds,
   exportCreatorWorlds,
   exportWorldTeams,
-  moveCreatorWorlds,
 } from './creatorWorlds.js'
-import { eraseCreatorAssets, exportCreatorAssets, moveCreatorAssets } from './creatorAssets.js'
+import { eraseCreatorAssets, exportCreatorAssets } from './creatorAssets.js'
 
 /** The character places of one account, in order (protocol MAX_CHARACTERS). */
 const SLOTS = Array.from({ length: MAX_CHARACTERS }, (_, i) => i)
