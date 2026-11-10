@@ -22,7 +22,7 @@ describe('client shells', () => {
       }
       const pcs = [...html.matchAll(/<link rel="preconnect" href="https:\/\/openvibe\.network"[^>]*>/g)]
       expect(pcs.length).toBe(1)
-      expect(pcs[0][0]).toContain('crossorigin')
+      expect(pcs[0]![0]).toContain('crossorigin')
       expect(html).toContain('<script src="/shared/theme-loader.js" defer></script>')
       expect(html).toContain('<script src="/shared/navbar.js" defer></script>')
     })
