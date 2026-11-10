@@ -108,7 +108,8 @@ describe('creator assets store', () => {
     expect(await identity.eraseSubjects([KIM])).toMatchObject({ creator_assets: 1 })
     expect((await store.listByOwner(KIM)).length).toBe(0)
     expect((await store.get(lees.id))?.ownerSubject).toBe(LEE)
-    expect((await store.get(zeds.id))?.uses).toBe(1)
+    // Erasure clears use identities but preserves the lifetime use count.
+    expect((await store.get(zeds.id))?.uses).toBe(2)
     expect((await store.get(zeds.id))?.ownerSubject).toBe(ZED)
     expect(await db.many(sql`SELECT subject FROM creator_asset_uses`)).toEqual([{ subject: LEE }])
   })
