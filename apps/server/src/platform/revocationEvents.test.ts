@@ -8,7 +8,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   createRevocationEvents,
   ensureRevocationSubscription,
-  MERGE_TOPIC,
   TOPIC,
 } from './revocationEvents.js'
 
@@ -25,7 +24,6 @@ const SECRET = 'x'.repeat(40)
 const SUBJECT = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2A3'
 const log = createConsoleLogger({ app: 'test' }, 'error')
 const closedFor: [string, number][] = []
-const mergedCalls: [string, string, string][] = []
 const accountCalls: string[] = []
 const modGrantCalls: [string, string, string][] = []
 const events = createRevocationEvents({
@@ -34,10 +32,6 @@ const events = createRevocationEvents({
   onRevoked: (s, ms) => {
     closedFor.push([s, ms])
     return 2
-  },
-  onMerged: async (from, into, id) => {
-    mergedCalls.push([from, into, id])
-    return { moved: 2, kept: 1, already: mergedCalls.length > 1 }
   },
   onModGrants: async (p) => {
     modGrantCalls.push([p.mod_id, p.status, p.approved.join(',')])
@@ -105,32 +99,6 @@ describe('revocation events', () => {
     expect((await post(envelope())).body.outcome).toBe('unchanged')
     expect((await post(envelope({ source: 'live' }))).body.outcome).toBe('ignored:source')
     expect(closedFor.length).toBe(1)
-  })
-
-  it('an account merge (ADR-029) moves characters through onMerged; foreign or malformed ones are ignored', async () => {
-    const FROM = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2B4'
-    const merged = (over: Record<string, unknown> = {}) =>
-      envelope({
-        event_id: 'evt_01J8Z3Q4R5S6T7V8W9X0Y1Z2C5',
-        event_type: MERGE_TOPIC,
-        payload: {
-          merge_id: 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2D6',
-          from: FROM,
-          into: SUBJECT,
-          merged_at: new Date(at).toISOString(),
-          initiated_by: 'person',
-        },
-        ...over,
-      })
-    expect((await post(merged({ source: 'live' }))).body.outcome).toBe('ignored:source')
-    expect(
-      (await post(merged({ payload: { merge_id: 'nope', from: FROM, into: SUBJECT } }))).body
-        .outcome,
-    ).toBe('ignored:payload')
-    expect(mergedCalls).toEqual([])
-    expect((await post(merged())).body.outcome).toBe('merged')
-    expect(mergedCalls).toEqual([[FROM, SUBJECT, 'mrg_01J8Z3Q4R5S6T7V8W9X0Y1Z2D6']])
-    expect((await post(merged())).body.outcome).toBe('unchanged')
   })
 
   it('account export and deletion (ADR-033) go to onAccountEvent, answered once it resolved (500 when it failed)', async () => {
@@ -257,7 +225,6 @@ describe('revocation events', () => {
     expect(await ensureRevocationSubscription(opts)).toBe('exists')
     expect(subs).toEqual([
       { topic_pattern: TOPIC, endpoint: opts.endpoint, secret: SECRET },
-      { topic_pattern: MERGE_TOPIC, endpoint: opts.endpoint, secret: SECRET },
       {
         topic_pattern: 'network.account.export_requested',
         endpoint: opts.endpoint,
