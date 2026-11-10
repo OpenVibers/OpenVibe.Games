@@ -127,8 +127,8 @@ importers:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.384.0
         version: https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.384.0
       openvibe-publishing:
-        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0
-        version: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.179.0)
+        specifier: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0
+        version: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.179.0)
       openvibe-sdk:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0
         version: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
@@ -1421,9 +1421,9 @@ packages:
     engines: {node: '>=20'}
     hasBin: true
 
-  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0:
-    resolution: {tarball: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0}
-    version: 1.4.0
+  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0:
+    resolution: {tarball: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0}
+    version: 1.7.0
     engines: {node: '>=20'}
     peerDependencies:
       openvibe-sdk: '>=0.15.0'
@@ -2935,7 +2935,7 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
 
-  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.4.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.179.0):
+  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0(openvibe-sdk@https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v4.179.0):
     dependencies:
       openvibe-sdk: https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.125.0(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
     optionalDependencies:
