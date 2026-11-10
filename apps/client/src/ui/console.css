@@ -29,11 +29,6 @@
     opacity: 0;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .ovg-console {
-    animation: none;
-  }
-}
 .ovg-console[hidden] {
   display: none;
 }

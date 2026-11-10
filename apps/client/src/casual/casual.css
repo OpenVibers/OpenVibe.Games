@@ -1732,10 +1732,3 @@
   opacity: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .cg *,
-  .toast {
-    animation: none !important;
-    transition: none !important;
-  }
-}
