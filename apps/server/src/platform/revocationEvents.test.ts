@@ -24,7 +24,6 @@ const SECRET = 'x'.repeat(40)
 const SUBJECT = 'usr_01J8Z3Q4R5S6T7V8W9X0Y1Z2A3'
 const log = createConsoleLogger({ app: 'test' }, 'error')
 const closedFor: [string, number][] = []
-const mergedCalls: [string, string, string][] = []
 const accountCalls: string[] = []
 const modGrantCalls: [string, string, string][] = []
 const events = createRevocationEvents({
@@ -33,10 +32,6 @@ const events = createRevocationEvents({
   onRevoked: (s, ms) => {
     closedFor.push([s, ms])
     return 2
-  },
-  onMerged: async (from, into, id) => {
-    mergedCalls.push([from, into, id])
-    return { moved: 2, kept: 1, already: mergedCalls.length > 1 }
   },
   onModGrants: async (p) => {
     modGrantCalls.push([p.mod_id, p.status, p.approved.join(',')])
