@@ -3,7 +3,8 @@
  *
  * Every page runs the shared theme loader (theme-loader.js), which paints the theme someone picked on any OpenVibe site
  * onto <html> (the HUD's CSS reads those tokens: styles.css :root --g-*) and keeps their display preferences: text size
- * (--ov-text-scale, also read by the CSS) and calm motion (html[data-ov-motion=reduced]). This module is what CSS cannot
+ * (--ov-text-scale, also read by the CSS) and motion (html[data-ov-motion=reduced|off); Calm scales the engine's
+ * motion down, only Off stops it). This module is what CSS cannot
  * reach: how much of the engine's own decorative motion to keep (the weapon's bob and sway, the hit wobble), current as
  * the person changes it in another tab or on another site, and the theme's colours for anything drawn on a canvas.
  */
@@ -14,7 +15,9 @@ const listeners = new Set<(calm: boolean) => void>()
 
 function read(): boolean {
   if (typeof document === 'undefined') return false
-  if (document.documentElement.getAttribute('data-ov-motion') === 'reduced') return true
+  const attr = document.documentElement.getAttribute('data-ov-motion')
+  if (attr === 'reduced' || attr === 'off') return true
+  if (attr === 'full') return false
   try {
     return (
       typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -22,6 +25,12 @@ function read(): boolean {
   } catch {
     return false
   }
+}
+
+/** Motion off is the only setting that stops the engine's motion. */
+function offNow(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.documentElement.getAttribute('data-ov-motion') === 'off'
 }
 
 function refresh(): void {
@@ -52,15 +61,15 @@ function start(): void {
   }
 }
 
-/** Calm motion is on (the OpenVibe setting or the system's reduced-motion setting). */
+/** Calm or Off is on (the OpenVibe setting, or the system's reduced-motion setting with Automatic). */
 export function calm(): boolean {
   start()
   return calmNow
 }
 
-/** How much of the engine's decorative motion to keep: 1, or 0.2 when calm. */
+/** How much of the engine's decorative motion to keep: 1, 0.35 under Calm (shared's --ov-move), 0 with motion off. */
 export function motionScale(): number {
-  return calm() ? 0.2 : 1
+  return offNow() ? 0 : calm() ? 0.35 : 1
 }
 
 /** Called with the new value whenever calm motion turns on or off; returns a function that stops it. */

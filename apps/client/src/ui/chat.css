@@ -106,8 +106,6 @@
   color: var(--g-team-text, #7cc4ff);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .chat:not(.is-open) .chat-line {
-    animation-timing-function: steps(1, end);
-  }
+html[data-ov-motion=reduced] .chat:not(.is-open) .chat-line {
+  animation-timing-function: steps(1, end);
 }

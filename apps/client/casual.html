@@ -106,13 +106,7 @@
           transform: translateX(250%);
         }
       }
-      @media (prefers-reduced-motion: reduce) {
-        .splash-ring::after {
-          animation: none;
-          width: 100%;
-          opacity: 0.6;
-        }
-      }
+      html[data-ov-motion=off] .splash-ring::after{width: 100%;opacity: 0.6}
     </style>
   </head>
   <body>

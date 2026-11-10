@@ -7,7 +7,7 @@
    world whatever the theme, so they read on any scene. The display
    preferences apply too: text size scales every font size here
    (calc(Npx * var(--ov-text-scale, 1))),
-   calm motion stills its animations (html[data-ov-motion=reduced]);
+   motion off stills its animations (html[data-ov-motion=off]), Calm scales them down;
    src/ui/theme.ts tells the engine the rest. */
 :root {
   --g-accent: var(--accent, #f0b040);
