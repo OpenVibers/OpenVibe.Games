@@ -437,6 +437,7 @@
       }
       /* The fold: closed on a phone, and where there is room it looks like the section it replaces. */
       .gm-fold-block { margin: 0 auto 40px; max-width: 1100px; padding: 0 20px; }
+      .gm-fold-block:last-of-type { margin-bottom: 0; }
       .gm-fold-block > summary {
         display: flex;
         align-items: center;
@@ -804,7 +805,8 @@
       }
       #ov-footer {
         max-width: 1200px;
-        margin: 0 auto;
+        margin-left: auto;
+        margin-right: auto;
       }
       /* Navigation that works without openvibe.network (roadmap WS-P task 5): shown until the shared
          navbar mounts, which fills #navbar-mount and hides this. One row exactly the navbar's 52px
