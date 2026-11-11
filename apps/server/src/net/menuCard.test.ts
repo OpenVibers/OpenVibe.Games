@@ -78,8 +78,8 @@ describe('the menu network card (frame.menu-card@1)', () => {
     })
     expect(card.more).toEqual({ label: 'All worlds', url: 'https://openvibe.games/worlds' })
     expect(card.items).toEqual([
-      { title: 'World a', meta: 'by Builder', url: 'https://openvibe.games/worlds/a' },
-      { title: 'Moon base', meta: 'by Builder', url: 'https://openvibe.games/worlds/b' },
+      { title: 'World a', meta: 'by Builder · just now', url: 'https://openvibe.games/worlds/a' },
+      { title: 'Moon base', meta: 'by Builder · just now', url: 'https://openvibe.games/worlds/b' },
     ])
     expect(card.title.length).toBeLessThanOrEqual(60)
     for (const item of card.items) {
@@ -91,6 +91,13 @@ describe('the menu network card (frame.menu-card@1)', () => {
     // invented here (a placeholder is never sent), and the file still validates against the new schema.
     expect(card.items.every((item) => !('image' in item))).toBe(true)
     expect(contracts.validate('frame.menu-cards@1', [card]).valid).toBe(true)
+  })
+
+  it('says when each world was published, in the same short shape as the other cards', () => {
+    expect(cardFrom([world('a', { publishedAt: NOW - 2 * 86_400_000 })], NOW).items[0]!.meta).toBe('by Builder · 2d ago')
+    expect(cardFrom([world('a', { publishedAt: NOW - 3 * 3_600_000 })], NOW).items[0]!.meta).toBe('by Builder · 3h ago')
+    // An old row with no published stamp still says when it was made rather than nothing.
+    expect(cardFrom([world('a', { publishedAt: null, createdAt: NOW - 5 * 86_400_000 })], NOW).items[0]!.meta).toBe('by Builder · 5d ago')
   })
 
   it('sends at most six, and never a draft or a hidden world', () => {
