@@ -66,7 +66,7 @@ reads the game's board on OpenVibe.Play (below): 25 entries per page (`rank`, `n
 bearer or `X-Guest-Token` used by the ticket endpoint. Public reads have per-address limits.
 The read-only `/leaderboard.html` page shows Salvage Rush's best round scores and Scraplandia's summed haul points, switchable in the page, all time or this week (from Monday 00:00 UTC), 25 a page.
 Network account exports include results, best scores, unlocks and hauls; account erasure removes them.
-Guest character adoption and Network subject merges move progression (including hauls) to the surviving subject.
+Guest character adoption moves progression (including hauls) to the surviving subject.
 
 ## Creator worlds
 
@@ -105,7 +105,7 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   `/worlds?join=<token>`, the token kept only as its hash, good for 7 days until stopped or replaced; migration 0015).
   Editors save the world's map and scripts and try its draft; the owner alone publishes, renames, deletes and runs the
   team (`GET /api/worlds/:id/team`, `DELETE /api/worlds/:id/team/:subject`, an editor leaves with `…/team/me`).
-  Two saves at once are still told apart by the map's revision (409). Team places follow account export, merge and
+  Two saves at once are still told apart by the map's revision (409). Team places follow account export and
   deletion. `/api/worlds/mine` lists them as `team`.
 - **Official examples:** two published worlds show what the editor can do — **Beacon Hill** (sculpted terrain, a
   beacon, a path, lights and three zones) and **The Workshop** (a walk-in shed, benches, props, resource nodes and
@@ -124,7 +124,7 @@ five (`GAMES_CREATOR_WORLDS_PER_PERSON`). A world is made at `/worlds`, built in
   script adds it to the world's scripts, renamed `…-2` when the name is taken, within the world's four. A use counts
   once per person (`POST /api/assets/:id/use`; never the creator's own). The creator renames or deletes an asset
   (worlds keep their copy); staff take one down (`asset.hidden`, `asset.restored`, `asset.deleted` as
-  `games.moderation.action`). Assets and uses follow account export, merge and deletion. Uploaded models, textures
+  `games.moderation.action`). Assets and uses follow account export and deletion. Uploaded models, textures
   and sounds wait for the Pics safety pipeline, and paid assets for the owner's prices.
 - **View (2D):** the owner shows a world in first person (`3d`, the default) or **top-down** (`top`, migration 0017;
   `PATCH /api/worlds/:id {view}`, `/worlds` → **Switch to top-down**). Top-down looks straight down on the player with an
