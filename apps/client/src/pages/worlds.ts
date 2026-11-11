@@ -208,8 +208,11 @@ function mineCard(world: World): HTMLElement {
   if (world.edit_url) actions.append(link('Edit', world.edit_url, true))
   if (status !== 'hidden')
     actions.append(link(status === 'published' ? 'Play' : 'Try it', world.play_url))
-  if (status === 'draft')
-    actions.append(button('Publish', (b) => void change(b, world.id, { status: 'published' })))
+  if (status === 'draft') {
+    const publish = button('Publish', (b) => void change(b, world.id, { status: 'published' }))
+    publish.dataset.ovGuide = 'games.world.publish'
+    actions.append(publish)
+  }
   if (status === 'published')
     actions.append(button('Unpublish', (b) => void change(b, world.id, { status: 'draft' })))
   actions.append(
