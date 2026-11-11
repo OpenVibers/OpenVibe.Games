@@ -29,16 +29,31 @@ export function plain(value: unknown, max: number): string {
     .slice(0, max)
 }
 
-/** The card itself, newest published world first (the store's order). */
+/** A short age for the card's one meta line ("2d ago"), the same shape the other sites' cards print. */
+function shortAgo(ms: number, now: number): string {
+  const min = Math.max(0, Math.round((now - ms) / 60000))
+  if (min < 1) return 'just now'
+  if (min < 60) return `${min}m ago`
+  const h = Math.round(min / 60)
+  if (h < 24) return `${h}h ago`
+  return `${Math.round(h / 24)}d ago`
+}
+
+/** The card itself, newest published world first (the store's order), each saying when it was published. */
 export function cardFrom(worlds: CreatorWorld[], at = Date.now()): MenuCard {
   const items = (Array.isArray(worlds) ? worlds : [])
     .filter((w) => w && w.id && w.status === 'published')
     .slice(0, 6)
-    .map((w) => ({
-      title: plain(w.title, 80),
-      meta: `by ${plain(w.ownerName, 110)}`,
-      url: `${BASE}/worlds/${encodeURIComponent(w.id)}`,
-    }))
+    .map((w) => {
+      // A published world's own time; an old row with no published stamp falls back to when it was made.
+      const published = w.publishedAt ?? w.createdAt
+      const when = Number.isFinite(published) ? ` · ${shortAgo(published, at)}` : ''
+      return {
+        title: plain(w.title, 80),
+        meta: `by ${plain(w.ownerName, 100)}${when}`,
+        url: `${BASE}/worlds/${encodeURIComponent(w.id)}`,
+      }
+    })
   return menuCard({
     id: CARD_ID,
     site: SITE,
