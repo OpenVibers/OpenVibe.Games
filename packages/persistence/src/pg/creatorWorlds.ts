@@ -384,25 +384,3 @@ export async function eraseCreatorWorlds(db: Db, subjects: readonly string[]): P
   await removeWorldPlaces(db, ids)
   return ids.length
 }
-
-/**
- * Account merge (ADR-029): the folded-in account's worlds belong to the survivor, and so do its team places (one per
- * world; none on a world the survivor now owns).
- */
-export async function moveCreatorWorlds(db: Db, from: string, into: string): Promise<number> {
-  if (from === into) return 0
-  const moved = await db.exec(
-    sql`UPDATE creator_worlds SET owner_subject = ${into} WHERE owner_subject = ${from}`,
-  )
-  await db.exec(sql`
-    UPDATE creator_world_members m SET subject = ${into}
-    WHERE m.subject = ${from}
-      AND NOT EXISTS (SELECT 1 FROM creator_world_members o WHERE o.world_id = m.world_id AND o.subject = ${into})
-  `)
-  await db.exec(sql`DELETE FROM creator_world_members WHERE subject = ${from}`)
-  await db.exec(sql`
-    DELETE FROM creator_world_members m USING creator_worlds w
-    WHERE m.world_id = w.id AND m.subject = w.owner_subject
-  `)
-  return moved
-}

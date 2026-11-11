@@ -194,35 +194,3 @@ export async function eraseCreatorAssets(db: Db, subjects: readonly string[]): P
   await db.exec(sql`DELETE FROM creator_asset_uses WHERE subject IN (${idList(subjects)})`)
   return db.exec(sql`DELETE FROM creator_assets WHERE owner_subject IN (${idList(subjects)})`)
 }
-
-/**
- * Account merge (ADR-029): the folded-in account's assets belong to the survivor, and so do its uses (one per asset;
- * none on the survivor's own assets, which never count their creator).
- */
-export async function moveCreatorAssets(db: Db, from: string, into: string): Promise<number> {
-  if (from === into) return 0
-  const moved = await db.exec(
-    sql`UPDATE creator_assets SET owner_subject = ${into} WHERE owner_subject = ${from}`,
-  )
-  const touched = (
-    await db.many<{ asset_id: string }>(
-      sql`SELECT asset_id FROM creator_asset_uses WHERE subject = ${from}`,
-    )
-  ).map((r) => r.asset_id)
-  await db.exec(sql`
-    UPDATE creator_asset_uses u SET subject = ${into}
-    WHERE u.subject = ${from}
-      AND NOT EXISTS (SELECT 1 FROM creator_asset_uses o WHERE o.asset_id = u.asset_id AND o.subject = ${into})
-  `)
-  await db.exec(sql`DELETE FROM creator_asset_uses WHERE subject = ${from}`)
-  await db.exec(sql`
-    DELETE FROM creator_asset_uses u USING creator_assets a
-    WHERE u.asset_id = a.id AND u.subject = a.owner_subject
-  `)
-  // Two uses that became one, or a use of what is now one's own, no longer count.
-  await db.exec(sql`
-    UPDATE creator_assets a SET uses = (SELECT count(*)::int FROM creator_asset_uses u WHERE u.asset_id = a.id)
-    WHERE a.owner_subject = ${into}${touched.length ? sql` OR a.id IN (${idList(touched)})` : sql``}
-  `)
-  return moved
-}
