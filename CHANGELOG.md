@@ -14,6 +14,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A drag at the end of the casual game's view did nothing.** The game view (`.cg-view`) is a scroll area
+  inside a page that scrolls, and it held its overscroll, so once the view reached its end a finger drag moved
+  neither the view nor the page and the footer could not be reached from the game. The view now passes the drag
+  to the page at its end (`apps/client/src/casual/casual.css`; `apps/client/src/casual/casual-scroll.test.ts`
+  swipes at the view's end and checks the page moved).
 - **A shared /worlds link had no preview.** The creator worlds page carried no Open Graph or Twitter tags, so a
   link posted in Discord or X showed a bare URL. It now has the same card as the home page, with its own title and
   description.

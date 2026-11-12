@@ -234,7 +234,10 @@
 .cg-view {
   flex: 1;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* The game view sits in a page that scrolls (the footer below it). `contain` held its overscroll, so at the
+     view's end a finger drag moved nothing and the page could not be reached from the game (2026-11-12). One
+     scroller per layer: the view scrolls first, then the page takes over. */
+  overscroll-behavior-y: auto;
   padding: 8px 12px 18px;
   display: block;
 }
