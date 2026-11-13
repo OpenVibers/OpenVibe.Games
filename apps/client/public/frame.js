@@ -59,9 +59,9 @@
   // The three places people go every visit carry an icon; each game folds into the navbar's More (Shared 4.22): the
   // portal lists them all anyway, and six same-looking links read as clutter on a phone.
   var links = [
-    { label: 'Games', href: PORTAL, icon: 'fa-gamepad' },
-    { label: 'Achievements', href: ACHIEVEMENTS, icon: 'fa-trophy' },
-    { label: 'Leaderboards', href: BOARD, icon: 'fa-ranking-star' },
+    { label: 'Games', href: PORTAL, icon: 'game' },
+    { label: 'Achievements', href: ACHIEVEMENTS, icon: 'trophy' },
+    { label: 'Leaderboards', href: BOARD, icon: 'ranking' },
     { label: 'Scraplandia', href: PLAY, more: true },
     { label: 'Salvage Rush', href: RUSH, more: true },
     { label: 'Vibe Heroes', href: HEROES, more: true },
@@ -106,7 +106,7 @@
         location.href = '/auth/logout?next=' + encodeURIComponent(location.pathname)
       },
       links: links,
-      menu: { after: [{ label: 'Map editor', href: EDITOR, icon: 'fa-map' }] },
+      menu: { after: [{ label: 'Map editor', href: EDITOR, icon: 'map' }] },
       // One prompt=none attempt per tab when the browser says it has an OpenVibe account.
       silentLogin: '/auth/login?silent=1&next={url}',
     }
