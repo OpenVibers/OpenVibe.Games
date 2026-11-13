@@ -306,6 +306,6 @@ between services.
 <!-- versions:start -->
 - openvibe-contracts: v0.422.0
 - openvibe-sdk: v0.161.0
-- openvibe-shared: v4.236.0
+- openvibe-shared: v4.237.0
 - openvibe-publishing: v1.7.0
 <!-- versions:end -->
