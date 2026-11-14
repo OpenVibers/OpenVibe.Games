@@ -254,7 +254,7 @@ function boardsSection(d: HomeData): string {
       rows: rushWeek ? d.boards.rushWeek : d.boards.rushAll,
       unit: (s) => plural(s, 'scrap', 'scrap'),
       href: '/leaderboards?game=salvage-rush',
-      more: 'Full leaderboard →',
+      more: 'Full leaderboard',
     }),
     boardCard({
       title: 'Vibe Heroes',
