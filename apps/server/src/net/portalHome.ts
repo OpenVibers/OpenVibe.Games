@@ -246,7 +246,7 @@ function boardsSection(d: HomeData): string {
       rows: haulWeek ? d.boards.haulWeek : d.boards.haulAll,
       unit: (s) => `${n(s)} pts`,
       href: '/leaderboards?game=scraplandia',
-      more: 'Full haul board →',
+      more: 'Full haul board',
     }),
     boardCard({
       title: 'Salvage Rush',
@@ -262,7 +262,7 @@ function boardsSection(d: HomeData): string {
       rows: d.heroes.map((h) => ({ rank: h.rank, name: h.name, score: h.stage })),
       unit: (s) => `stage ${n(s)}`,
       href: '/play/vibe-heroes',
-      more: 'Build your team →',
+      more: 'Build your team',
     }),
   ].filter((c): c is { label: string; html: string } => c !== null)
   if (!cards.length) return ''
@@ -301,7 +301,7 @@ function achievementsSection(d: HomeData): string {
   <p class="home-more">${d.titles
     .map(
       (t) =>
-        `<a class="card-link" href="${ACHIEVEMENTS_SITE}/achievements#game-${encodeURIComponent(t.id)}">${esc(t.name)} achievements →</a>`,
+        `<a class="card-link" href="${ACHIEVEMENTS_SITE}/achievements#game-${encodeURIComponent(t.id)}">${esc(t.name)} achievements</a>`,
     )
     .join(' ')}</p>
 </section>`,
@@ -335,7 +335,7 @@ function worldsSection(d: HomeData, now: number): string {
   <h3 class="home-sub">Newest</h3>
   <ul class="world-grid">${newest.map((w) => worldCard(w, now)).join('')}</ul>
   ${popular.length ? `<h3 class="home-sub">Most visited</h3><ul class="world-grid">${popular.map((w) => worldCard(w, now)).join('')}</ul>` : ''}
-  <p class="home-more"><a class="card-link" href="/worlds">Every creator world →</a></p>
+  <p class="home-more"><a class="card-link" href="/worlds">Every creator world</a></p>
 </section>`
 }
 
@@ -375,7 +375,7 @@ export function steamSection(d: HomeData, now: number): string {
   </div>`,
     )
     .join('')}</div>
-  <p class="home-more"><a class="card-link" href="/steam">All of Steam's lists →</a></p>
+  <p class="home-more"><a class="card-link" href="/steam">All of Steam's lists</a></p>
 </section>`
 }
 
