@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { BenchClient } from 'openvibe-sdk/bench'
+import type { CompareClient } from 'openvibe-sdk/compare'
 import { openTestDb } from '@openvibe/persistence/testing'
 import { parseMove, playMatch, type Offer } from './game.js'
 import { createAiGenerate, submitMatch } from './services.js'
@@ -54,7 +54,7 @@ describe('AI match', () => {
       rounds: { create: async (...args: unknown[]) => { calls.push({ method: 'round', args }); return { round: { id: `round-${++next}` } } } },
       entries: { submit: async (...args: unknown[]) => { calls.push({ method: 'entry', args }); return { entry: { id: `entry-${++next}` } } } },
       judgements: { cast: async (...args: unknown[]) => { calls.push({ method: 'judge', args }); return {} } },
-    } as unknown as BenchClient
+    } as unknown as CompareClient
     const match = await playMatch('match-2', offers, 2, async (_offer, prompt) => ({ text: prompt.split('Legal heroes:\n')[1]!.split(':')[0]! }), 12)
     const receipt = await submitMatch(fake, match, 'https://openvibe.games')
     expect(receipt.rounds).toHaveLength(2)
@@ -68,7 +68,7 @@ describe('AI match', () => {
 
   it('keeps the job off and enforces the UTC daily match cap', async () => {
     const db = await openTestDb()
-    const fake = {} as BenchClient
+    const fake = {} as CompareClient
     const noRun = await runMatchJob(db, fake, async () => { throw new Error('must not call AI') }, { enabled: false, dailyCap: 1, gamesPerMatch: 1, offers, publicBase: 'https://openvibe.games' })
     expect(noRun).toBeNull()
     expect(await reserveMatch(db, 1, 'cap-test-1')).toBe('cap-test-1')

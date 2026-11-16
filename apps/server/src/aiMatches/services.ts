@@ -1,12 +1,12 @@
 import { createClient } from 'openvibe-sdk/core'
-import { createBenchClient, type BenchClient } from 'openvibe-sdk/bench'
+import { createCompareClient, type CompareClient } from 'openvibe-sdk/compare'
 import type { PlatformClient } from '../platform/serviceClient.js'
 import type { AiAnswer, Generate, MatchResult, Offer } from './game.js'
 
-export function createBench(platform: PlatformClient, url: string): BenchClient {
-  return createBenchClient(createClient({
+export function createBench(platform: PlatformClient, url: string): CompareClient {
+  return createCompareClient(createClient({
     network: url,
-    baseUrls: { bench: url },
+    baseUrls: { bench: url, compare: url },
     tokenProvider: platform.tokens,
     autoDiscover: false,
     retries: 0,
@@ -60,7 +60,7 @@ export function createAiGenerate(platform: PlatformClient, url: string, fetchImp
 }
 
 /** Two model entries share one pooled games.match judgement per individual game. */
-export async function submitMatch(bench: BenchClient, match: MatchResult, publicBase: string): Promise<{ rounds: string[]; funRound: string; funEntries: [string, string] }> {
+export async function submitMatch(bench: CompareClient, match: MatchResult, publicBase: string): Promise<{ rounds: string[]; funRound: string; funEntries: [string, string] }> {
   const task = (await bench.tasks.create('games.match', {
     prompt: 'Vibe Heroes draft duel: alternate three hero picks, then resolve the auto-battle.',
     task_class: match.game,
