@@ -36,40 +36,40 @@ export interface Placeable {
  *  imported glb models, appended at runtime). No prefab world props —
  *  buildings, ramps and furniture are authored, not picked. */
 export const PLACEABLES: Placeable[] = [
-  { name: '⬛ Box', kind: 'static', shape: { type: 'box', size: [2, 2, 2] }, color: '#8a8d90' },
+  { name: 'Box', kind: 'static', shape: { type: 'box', size: [2, 2, 2] }, color: '#8a8d90' },
   {
-    name: '▬ Panel / wall',
+    name: 'Panel / wall',
     kind: 'static',
     shape: { type: 'box', size: [4, 3, 0.3] },
     color: '#9a9187',
   },
   {
-    name: '⚫ Cylinder',
+    name: 'Cylinder',
     kind: 'static',
     shape: { type: 'cylinder', radius: 1, height: 2 },
     color: '#8f8a82',
   },
-  { name: '🔘 Sphere', kind: 'static', shape: { type: 'sphere', radius: 1 }, color: '#7b7f83' },
-  { name: '⛰ Terrain patch (32m sculptable)', kind: 'patch' },
+  { name: 'Sphere', kind: 'static', shape: { type: 'sphere', radius: 1 }, color: '#7b7f83' },
+  { name: 'Terrain patch (32m sculptable)', kind: 'patch' },
 ]
 
 /** Entity tool: gameplay spawns — not geometry. */
 export const ENTITY_DEFS: Placeable[] = [
-  { name: '🚩 Spawn point', kind: 'spawn' },
-  { name: '🌳 Oak tree (chop)', kind: 'node', node: 'oak_tree' },
-  { name: '🫐 Berry bush', kind: 'node', node: 'berry_bush' },
-  { name: '🪨 Stone deposit (pick)', kind: 'node', node: 'stone_deposit' },
-  { name: '🌿 Branch pile', kind: 'node', node: 'branch_pile' },
-  { name: '🥌 Loose stones', kind: 'node', node: 'loose_stones' },
-  { name: '⚙ Scrap pile', kind: 'node', node: 'scrap_pile' },
-  { name: '🏪 Merchant stall (shop)', kind: 'prop', node: 'merchant_stall' },
-  { name: '📦 Wooden crate (prop)', kind: 'prop', node: 'wooden_crate' },
-  { name: '🛢 Metal barrel (prop)', kind: 'prop', node: 'metal_barrel' },
-  { name: '🛡 City warden (NPC)', kind: 'npc', npc: 'city_warden' },
-  { name: '🧑 Townsfolk (NPC)', kind: 'npc', npc: 'townsfolk' },
-  { name: '🐇 Dust hare (NPC)', kind: 'npc', npc: 'dust_hare' },
-  { name: '☠ Rustjaw thug (NPC, hostile)', kind: 'npc', npc: 'rustjaw_thug' },
-  { name: '🔘 Trigger volume', kind: 'trigger' },
+  { name: 'Spawn point', kind: 'spawn' },
+  { name: 'Oak tree (chop)', kind: 'node', node: 'oak_tree' },
+  { name: 'Berry bush', kind: 'node', node: 'berry_bush' },
+  { name: 'Stone deposit (pick)', kind: 'node', node: 'stone_deposit' },
+  { name: 'Branch pile', kind: 'node', node: 'branch_pile' },
+  { name: 'Loose stones', kind: 'node', node: 'loose_stones' },
+  { name: 'Scrap pile', kind: 'node', node: 'scrap_pile' },
+  { name: 'Merchant stall (shop)', kind: 'prop', node: 'merchant_stall' },
+  { name: 'Wooden crate (prop)', kind: 'prop', node: 'wooden_crate' },
+  { name: 'Metal barrel (prop)', kind: 'prop', node: 'metal_barrel' },
+  { name: 'City warden (NPC)', kind: 'npc', npc: 'city_warden' },
+  { name: 'Townsfolk (NPC)', kind: 'npc', npc: 'townsfolk' },
+  { name: 'Dust hare (NPC)', kind: 'npc', npc: 'dust_hare' },
+  { name: 'Rustjaw thug (NPC, hostile)', kind: 'npc', npc: 'rustjaw_thug' },
+  { name: 'Trigger volume', kind: 'trigger' },
 ]
 
 export const TEXTURES = [

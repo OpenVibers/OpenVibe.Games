@@ -8,6 +8,7 @@
  * stable id. Reading the document gives exactly the authored objects, in a
  * stable order, with their identity.
  */
+import { kindGlyph } from './kindGlyphs.js'
 import type { EditorDocument, EditorObjectKind } from '../document/editorDocument.js'
 import { KIND_INFO, displayName } from '../document/editorObject.js'
 
@@ -154,7 +155,7 @@ export class Outliner {
 
     const icon = document.createElement('span')
     icon.className = 'outliner-icon'
-    icon.textContent = row.icon
+    icon.appendChild(kindGlyph(row.icon))
     const label = document.createElement('span')
     label.className = 'outliner-label'
     label.textContent = row.label

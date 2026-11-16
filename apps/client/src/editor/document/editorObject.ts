@@ -19,6 +19,7 @@ export interface KindInfo {
   label: string
   /** Outliner group heading. */
   group: string
+  /** The kind's glyph in the outliner (ui/kindGlyphs.ts), never an emoji. */
   icon: string
   /** Whether the gizmo may move it. */
   transformable: boolean
@@ -32,7 +33,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   terrain: {
     label: 'Terrain',
     group: 'Terrain',
-    icon: '⛰',
+    icon: 'terrain',
     transformable: true,
     rotatable: true,
     scalable: true,
@@ -40,7 +41,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   static: {
     label: 'Geometry',
     group: 'Geometry',
-    icon: '⬛',
+    icon: 'static',
     transformable: true,
     rotatable: true,
     scalable: true,
@@ -48,7 +49,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   node: {
     label: 'Resource node',
     group: 'Gameplay',
-    icon: '🌳',
+    icon: 'node',
     transformable: true,
     rotatable: false,
     scalable: false,
@@ -56,7 +57,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   prop: {
     label: 'Prop',
     group: 'Gameplay',
-    icon: '📦',
+    icon: 'prop',
     transformable: true,
     rotatable: true,
     scalable: false,
@@ -64,7 +65,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   npc: {
     label: 'NPC',
     group: 'Gameplay',
-    icon: '🧍',
+    icon: 'npc',
     transformable: true,
     rotatable: false,
     scalable: false,
@@ -72,7 +73,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   light: {
     label: 'Light',
     group: 'Lights',
-    icon: '💡',
+    icon: 'light',
     transformable: true,
     rotatable: true,
     scalable: false,
@@ -80,7 +81,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   zone: {
     label: 'Zone',
     group: 'Zones',
-    icon: '🟦',
+    icon: 'zone',
     transformable: true,
     rotatable: false,
     scalable: true,
@@ -88,7 +89,7 @@ export const KIND_INFO: Record<EditorObjectKind, KindInfo> = {
   spawn: {
     label: 'Spawn point',
     group: 'Gameplay',
-    icon: '🚩',
+    icon: 'spawn',
     transformable: true,
     rotatable: true,
     scalable: false,
