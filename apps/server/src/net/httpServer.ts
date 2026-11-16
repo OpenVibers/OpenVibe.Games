@@ -49,7 +49,7 @@ import { applyCardFacts, type HomeParts } from './portalHome.js'
 import { legalHandler } from './legalPages.js'
 import { updatesHandler } from './updatesPage.js'
 import { indexnowHandler, type SharedIndexNow } from './indexnow.js'
-import { observeRequest } from './telemetryRoute.js'
+import { httpMetricsText, observeRequest } from './telemetryRoute.js'
 
 /** The portal page with its JSON-LD, built once per file version: the game server's event loop never reads the file
  *  per request (a new build changes the mtime and rebuilds it once). */
@@ -914,8 +914,12 @@ export function createHttpServer(
         return
       }
       if (wantsPrometheus(req)) {
-        res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' })
-        res.end(prometheusText(metrics.snapshot() as unknown as Record<string, unknown>))
+        // The game's own numbers, then the HTTP counters (requests by route and status class, durations, in flight).
+        const game = prometheusText(metrics.snapshot() as unknown as Record<string, unknown>)
+        void httpMetricsText().then((http) => {
+          res.writeHead(200, { 'content-type': 'text/plain; version=0.0.4; charset=utf-8' })
+          res.end(http ? `${game.replace(/\n*$/, '\n')}${http}` : game)
+        })
         return
       }
       // ?place=<id>: the world gauges of that place's rooms only (the process hosts several places).
