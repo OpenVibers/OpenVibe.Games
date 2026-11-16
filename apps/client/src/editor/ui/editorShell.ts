@@ -11,6 +11,7 @@
  * frame, the toolbar and the controls that belong to no panel (the brush,
  * the placement pickers).
  */
+import { kindGlyph } from './kindGlyphs.js'
 import { ACTIONS } from '../bindings.js'
 import { ENTITY_DEFS, PLACEABLES, TEXTURES, type Tool } from '../catalog.js'
 
@@ -37,15 +38,16 @@ export interface ShellElements {
   collapse: Record<'outliner' | 'inspector' | 'dock', HTMLButtonElement>
 }
 
+/** The tool rail: each tool's id, its glyph (ui/kindGlyphs.ts, never an emoji) and its name. */
 export const TOOLS: [Tool, string, string][] = [
-  ['select', '⬚', 'Select'],
-  ['mesh', '⬛', 'Geometry'],
-  ['entity', '🌳', 'Entities'],
-  ['terrain', '⛰', 'Terrain'],
-  ['paint', '🖌', 'Paint'],
-  ['face', '▦', 'Face'],
-  ['light', '💡', 'Light'],
-  ['zone', '🟦', 'Zone'],
+  ['select', 'select', 'Select'],
+  ['mesh', 'mesh', 'Geometry'],
+  ['entity', 'entity', 'Entities'],
+  ['terrain', 'terrain', 'Terrain'],
+  ['paint', 'paint', 'Paint'],
+  ['face', 'face', 'Face'],
+  ['light', 'light', 'Light'],
+  ['zone', 'zone', 'Zone'],
 ]
 
 const el = <K extends keyof HTMLElementTagNameMap>(
@@ -115,7 +117,8 @@ export function buildShell(
     const b = el('button', 'tool', `tool-${id}`)
     b.type = 'button'
     b.dataset['tool'] = id
-    b.textContent = icon
+    b.append(kindGlyph(icon))
+    b.setAttribute('aria-label', title)
     b.title = `${title} — click again to put the tool away`
     tools.append(b)
   }
