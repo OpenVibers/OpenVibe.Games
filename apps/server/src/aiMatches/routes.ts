@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Db } from 'openvibe-sdk/db'
 import { createClient } from 'openvibe-sdk/core'
-import { createBenchClient } from 'openvibe-sdk/bench'
+import { createCompareClient } from 'openvibe-sdk/compare'
 import { parseCookies, SESSION_COOKIE } from '../net/sso.js'
 import { loadMatch } from './job.js'
 
@@ -31,7 +31,7 @@ export function createAiMatchRoutes(db: Db, benchUrl: string) {
         const vote = new URLSearchParams(Buffer.concat(chunks).toString()).get('vote')
         if (vote !== 'left' && vote !== 'right' && vote !== 'tie') return send(res, 400, page('Invalid vote', ''))
         try {
-          const client = createBenchClient(createClient({ network: benchUrl, baseUrls: { bench: benchUrl }, token, autoDiscover: false, retries: 0 }), { baseUrl: benchUrl })
+          const client = createCompareClient(createClient({ network: benchUrl, baseUrls: { bench: benchUrl, compare: benchUrl }, token, autoDiscover: false, retries: 0 }), { baseUrl: benchUrl })
           await client.judgements.cast(bench.funRound, { kind_id: 'games.fun', judge: 'human_pairwise', pair: { left: bench.funEntries[0], right: bench.funEntries[1] }, outcome: vote })
           return send(res, 200, page('Vote recorded', `<p>Thanks for voting.</p><p><a href="${link}/fun">Back to replays</a></p>`))
         } catch { return send(res, 400, page('Vote refused', '<p>Bench could not record this vote. You may have voted already.</p>')) }

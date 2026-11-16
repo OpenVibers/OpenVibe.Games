@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { sql, type Db } from 'openvibe-sdk/db'
-import type { BenchClient } from 'openvibe-sdk/bench'
+import type { CompareClient } from 'openvibe-sdk/compare'
 import { playMatch, type Generate, type MatchResult, type Offer } from './game.js'
 import { submitMatch } from './services.js'
 
@@ -21,7 +21,7 @@ export async function reserveMatch(db: Db, cap: number, id: string = randomUUID(
   })
 }
 
-export async function runMatchJob(db: Db, bench: BenchClient, generate: Generate, config: MatchJobConfig): Promise<MatchResult | null> {
+export async function runMatchJob(db: Db, bench: CompareClient, generate: Generate, config: MatchJobConfig): Promise<MatchResult | null> {
   if (!config.enabled) return null
   const id = await reserveMatch(db, config.dailyCap)
   if (!id) return null
