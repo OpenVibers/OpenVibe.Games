@@ -1,5 +1,35 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { createRequire } from 'node:module'
 import { telemetry } from 'openvibe-sdk/service'
+
+interface MetricsRegistry { metrics?: () => string; metricsAsync?: () => Promise<string> }
+interface HttpCounters { middleware: (req: IncomingMessage, res: ServerResponse, next: () => void) => void }
+interface SharedMetrics {
+  createRegistry: () => MetricsRegistry
+  httpMetrics: (registry: MetricsRegistry, opts: { normalize: (req: IncomingMessage, res: ServerResponse) => string }) => HttpCounters
+}
+const sharedMetrics = createRequire(import.meta.url)('openvibe-shared/metrics') as SharedMetrics
+
+/**
+ * The HTTP counters in /metrics (2026-11-16: Games' /metrics had the game's numbers and no request counters, so Report
+ * could not show its traffic or errors): openvibe-shared/metrics' http_requests_total (method, route, status class),
+ * http_request_duration_seconds and http_requests_in_flight, on the same bounded routes as the telemetry below.
+ */
+export const httpRegistry: MetricsRegistry = sharedMetrics.createRegistry()
+const pending = new WeakMap<IncomingMessage, string>()
+const httpCounters = sharedMetrics.httpMetrics(httpRegistry, {
+  normalize: (req, res) => (res.statusCode === 404 ? 'unmatched' : pending.get(req) ?? 'unmatched'),
+})
+
+/** The HTTP counters as Prometheus text ('' when they cannot be read). */
+export async function httpMetricsText(): Promise<string> {
+  try {
+    if (typeof httpRegistry.metricsAsync === 'function') return await httpRegistry.metricsAsync()
+    return typeof httpRegistry.metrics === 'function' ? httpRegistry.metrics() : ''
+  } catch {
+    return ''
+  }
+}
 
 /**
  * Request telemetry (openvibe-sdk/service, plan T1): the HTTP server has no route table, so a request's label is a
@@ -25,6 +55,12 @@ export function telemetryRoute(path: string): string | null {
 export function observeRequest(req: IncomingMessage, res: ServerResponse, path: string): void {
   const route = telemetryRoute(path)
   if (!route) return
+  try {
+    pending.set(req, route)
+    httpCounters.middleware(req, res, () => {})
+  } catch {
+    /* the counters never break a request */
+  }
   try {
     telemetry.requestStarted()
     const t0 = process.hrtime.bigint()

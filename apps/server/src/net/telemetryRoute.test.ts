@@ -70,4 +70,21 @@ describe('request telemetry through the HTTP server', () => {
     expect(requests.some((s) => s.resource === 'unmatched')).toBe(true)
     expect(JSON.stringify(requests)).not.toContain('wp-admin')
   })
+
+  // 2026-11-16: /metrics had the game's numbers and no request counters, so Report showed no traffic or errors for Games.
+  it('/metrics, as Prometheus text, carries the request counters on the same routes; a 404 is unmatched', async () => {
+    for (let i = 0; i < 3; i++) expect((await fetch(`${base}/privacy`)).status).toBe(200)
+    expect((await fetch(`${base}/no-such-page/x`)).status).toBe(404)
+    await fetch(`${base}/release.json`)
+    const r = await fetch(`${base}/metrics`, { headers: { Accept: 'text/plain;version=0.0.4' } })
+    expect(r.status).toBe(200)
+    const text = await r.text()
+    expect(text).toMatch(/http_requests_total\{method="GET",route="\/privacy",status_class="2xx"\} 3/)
+    expect(text).toMatch(/http_requests_total\{method="GET",route="unmatched",status_class="4xx"\} \d+/)
+    expect(text).toMatch(/http_request_duration_seconds_bucket\{[^}]*route="\/privacy"/)
+    expect(text).not.toContain('no-such-page')
+    expect(text).not.toMatch(/route="\/release\.json"/)
+    // The game's own numbers are still there, first.
+    expect(text.indexOf('http_requests_total')).toBeGreaterThan(0)
+  })
 })
