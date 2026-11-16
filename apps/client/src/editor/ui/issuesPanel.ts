@@ -7,6 +7,7 @@
  * duplicate id while they can still fix it, and clicking an issue selects the
  * object it belongs to.
  */
+import { kindGlyph } from './kindGlyphs.js'
 
 export type IssueSeverity = 'error' | 'warning' | 'info'
 
@@ -24,7 +25,8 @@ export interface IssuesPanelDeps {
   focus: (objectId: string) => void
 }
 
-const ICON: Record<IssueSeverity, string> = { error: '⛔', warning: '⚠', info: 'ℹ' }
+// Each severity's glyph (kindGlyphs: error, warning, info), in the severity's colour.
+const ICON: Record<IssueSeverity, string> = { error: 'error', warning: 'warning', info: 'info' }
 const COLOR: Record<IssueSeverity, string> = {
   error: '#ff8f6e',
   warning: '#e8b54a',
@@ -44,7 +46,7 @@ export function createIssuesPanel(deps: IssuesPanelDeps): {
     issues = deps.collect()
     if (badge) {
       const errors = issues.filter((i) => i.severity === 'error').length
-      badge.textContent = issues.length === 0 ? '✓ no issues' : `${ICON.error} ${issues.length}`
+      badge.replaceChildren(kindGlyph(issues.length === 0 ? 'check' : ICON.error), document.createTextNode(issues.length === 0 ? ' no issues' : ` ${issues.length}`))
       badge.style.color = errors > 0 ? COLOR.error : issues.length > 0 ? COLOR.warning : '#78828e'
     }
     if (!list) return
@@ -60,7 +62,9 @@ export function createIssuesPanel(deps: IssuesPanelDeps): {
       const row = document.createElement('div')
       row.style.cssText = `display:flex;gap:6px;align-items:flex-start;color:${COLOR[issue.severity]}`
       const icon = document.createElement('span')
-      icon.textContent = ICON[issue.severity]
+      icon.style.cssText = 'display:inline-flex;flex:none;padding-top:1px'
+      icon.setAttribute('aria-label', issue.severity)
+      icon.appendChild(kindGlyph(ICON[issue.severity]))
       const text = document.createElement('span')
       text.style.flex = '1'
       text.textContent = issue.message
