@@ -15,6 +15,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode.js'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData.js'
 import type { Scene } from '@babylonjs/core/scene.js'
+import { kindGlyph } from '../ui/kindGlyphs.js'
 
 interface PeerAvatar {
   root: TransformNode
@@ -81,7 +82,8 @@ export class PeerAvatars {
 
   private refreshLabel(): void {
     const n = this.avatars.size
-    this.labelEl.textContent = n > 0 ? `👁 ${n} co-editor${n > 1 ? 's' : ''} online` : ''
+    if (n === 0) { this.labelEl.replaceChildren(); return }
+    this.labelEl.replaceChildren(kindGlyph('eye'), document.createTextNode(` ${n} co-editor${n > 1 ? 's' : ''} online`))
   }
 
   private create(id: number, name: string): PeerAvatar {

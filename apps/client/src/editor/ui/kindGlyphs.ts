@@ -15,6 +15,12 @@ const PATHS: Record<string, string[]> = {
   entity: ['M12 3 6 11h3l-4 6h14l-4-6h3Z', 'M12 17v4'],
   paint: ['M17.5 3.5l3 3-8.5 8.5-3-3Z', 'M9 12c-2.2 0-4 1.6-4 4 0 1.4-.8 2.5-2 3 3.3 1 7.5-.2 7.5-4.2'],
   face: ['M4 4h16v16H4z', 'M4 12h16', 'M12 4v16'],
+  // The Issues panel's severities and its all-clear, and the co-editors (2026-11-16: they were emoji).
+  error: ['M8 3h8l5 5v8l-5 5H8l-5-5V8Z', 'M9.5 9.5l5 5', 'M14.5 9.5l-5 5'],
+  warning: ['M12 4 2.5 20h19Z', 'M12 10v4.5', 'M12 17.5h.01'],
+  info: ['M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0', 'M12 11v6', 'M12 7.5h.01'],
+  check: ['M5 12.5l5 5 9-10'],
+  eye: ['M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z', 'M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0'],
 }
 
 const NS = 'http://www.w3.org/2000/svg'
