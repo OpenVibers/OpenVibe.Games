@@ -451,11 +451,15 @@ describe('games-quickjs@1 script mods on the real server', () => {
       m.t === 'inventory'
         ? m.inv.slots.reduce((n, s) => n + (s.stack.def === 'scrap_metal' ? s.stack.count : 0), 0)
         : 0
-    // A fresh character carries no scrap: all of it is the gift, through the game's inventory.
-    const inventories = p.inbox.filter((m) => m.t === 'inventory')
-    expect(inventories.length).toBeGreaterThan(0)
-    expect(scrap(inventories.at(-1)!)).toBe(3)
-    expect(p.inbox).toContainEqual({ t: 'announce', text: 'welcome not a rename' })
+    // A fresh character carries no scrap: all of it is the gift, through the game's inventory. The hook runs in the
+    // mod's sandbox after the join, so the gift may land a moment after the welcome (on a busy machine it did not
+    // within the same turn: our own CI, 2026-11-19); wait for it, with a deadline.
+    await vi.waitFor(() => {
+      const inventories = p.inbox.filter((m) => m.t === 'inventory')
+      expect(inventories.length).toBeGreaterThan(0)
+      expect(scrap(inventories.at(-1)!)).toBe(3)
+      expect(p.inbox).toContainEqual({ t: 'announce', text: 'welcome not a rename' })
+    }, { timeout: 10_000, interval: 25 })
     // The unknown item was refused by the game, not by trusting the mod.
     expect(scripts.status()[0]).toMatchObject({
       state: 'running',
