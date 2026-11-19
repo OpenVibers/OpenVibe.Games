@@ -165,9 +165,20 @@ function describe(ctx: QuickJSContext, handle: QuickJSHandle): string {
   }
 }
 
+/**
+ * A call's budget is CPU time (cpuMs). The wall clock is the cheap first check; once it is past, the process's own CPU
+ * time since the call began decides, and a call that waited for a CPU instead of using one gets the rest of its budget
+ * (2026-11-19: on a busy machine, our own CI's shared node, mods were stopped "over their cpuMs" having used a fraction
+ * of it, and a player's welcome gift never came). Never stricter than the wall clock was, and never longer than
+ * WALL_CAP times the budget in wall time.
+ */
+const WALL_CAP = 10
+
 class QuickJsSandbox implements ModSandbox {
   private deadline = Infinity
   private cpuMs = 0
+  private cpuStart: NodeJS.CpuUsage | null = null
+  private wallCap = Infinity
   /** Set by us, never by the script: the interrupt handler stops the call while it is set. */
   private breach: 'cpu' | 'memory' | null = null
   /** The engine threw into the host (an abort, the host's stack): nothing in it can be trusted. */
@@ -183,7 +194,7 @@ class QuickJsSandbox implements ModSandbox {
     runtime.setInterruptHandler(() => {
       if (this.breach === null) {
         if (heap.exceeded) this.breach = 'memory'
-        else if (performance.now() > this.deadline) this.breach = 'cpu'
+        else if (this.overBudget()) this.breach = 'cpu'
       }
       return this.breach !== null
     })
@@ -262,6 +273,18 @@ class QuickJsSandbox implements ModSandbox {
     })
   }
 
+  /** Past the wall-clock deadline: over budget when the call has used its CPU time, or reached the wall cap. */
+  private overBudget(): boolean {
+    const now = performance.now()
+    if (now <= this.deadline) return false
+    if (now > this.wallCap || !this.cpuStart) return true
+    const used = process.cpuUsage(this.cpuStart)
+    const usedMs = (used.user + used.system) / 1000
+    if (usedMs >= this.cpuMs) return true
+    this.deadline = now + Math.max(0.5, this.cpuMs - usedMs)
+    return false
+  }
+
   /**
    * Runs `body` (which returns the script's exception handle, or null) and the
    * promise jobs it queued, one at a time, all before one deadline.
@@ -269,11 +292,14 @@ class QuickJsSandbox implements ModSandbox {
   private run(cpuMs: number, body: () => QuickJSHandle | null): SandboxOutcome {
     this.breach = null
     this.cpuMs = cpuMs
-    this.deadline = performance.now() + cpuMs
+    const startedAt = performance.now()
+    this.deadline = startedAt + cpuMs
+    this.wallCap = startedAt + cpuMs * WALL_CAP
+    this.cpuStart = process.cpuUsage()
     try {
       let thrown = body()
       while (!thrown && this.breach === null && this.runtime.hasPendingJob()) {
-        if (performance.now() > this.deadline) this.breach = 'cpu'
+        if (this.overBudget()) this.breach = 'cpu'
         else {
           const jobs = this.runtime.executePendingJobs(1)
           if (jobs.error) thrown = jobs.error
@@ -293,6 +319,8 @@ class QuickJsSandbox implements ModSandbox {
       return failure(this.breach ?? 'error', `the engine failed: ${message}`, true)
     } finally {
       this.deadline = Infinity
+      this.wallCap = Infinity
+      this.cpuStart = null
     }
   }
 
