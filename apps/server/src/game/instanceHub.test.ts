@@ -143,8 +143,11 @@ it('joins, refuses a full target, transfers with inventory and per-room position
     ) / 2
   const meanTickMs = tickTimes.reduce((sum, ms) => sum + ms, 0) / tickTimes.length
   // M3 HEAD baseline: 2 clients, 400 props, 90 ticks: 2.08 ms mean, 52,278 bytes/client.
-  // The timing margin absorbs CI CPU/WASM noise; bandwidth has a tighter bound.
-  expect(meanTickMs).toBeLessThan(2.08 * 3)
+  // The timing margin absorbs CI CPU/WASM noise; bandwidth has a tighter bound. A slower or busier runner says so with
+  // OV_TEST_TIMEOUT_SCALE (our own CI on the shared node sets 2: two suites share its four cores), and the time budget
+  // stretches by it; the byte budget never does.
+  const timeScale = Math.min(10, Math.max(1, Number(process.env.OV_TEST_TIMEOUT_SCALE) || 1))
+  expect(meanTickMs).toBeLessThan(2.08 * 3 * timeScale)
   expect(bytesPerClient).toBeLessThanOrEqual(52_278 * 1.05)
 
   hub.onMessage(a.conn, { t: 'transfer', instanceId: 'm4-test:1' })
