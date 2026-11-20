@@ -129,9 +129,15 @@ it('joins, refuses a full target, transfers with inventory and per-room position
         pitchQ: 0,
         intents: 0,
       })
+    // A tick's cost: the smaller of its wall time and the process's CPU time. On a loaded machine (our CI's shared node
+    // during a pin round, 11-20: 13.01 ms against 12.48) the wall clock also counts the time the process waited for a
+    // core; the CPU time counts helper threads too. The smaller one is what the tick itself took.
+    const cpu0 = process.cpuUsage()
     const start = performance.now()
     hub.step()
-    tickTimes.push(performance.now() - start)
+    const wallMs = performance.now() - start
+    const cpu = process.cpuUsage(cpu0)
+    tickTimes.push(Math.min(wallMs, (cpu.user + cpu.system) / 1000))
   }
   const bytesPerClient =
     [a, b].reduce(
