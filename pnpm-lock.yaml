@@ -128,13 +128,13 @@ importers:
         version: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.contracts/archive/v0.454.0.tar.gz
       openvibe-publishing:
         specifier: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0
-        version: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0(openvibe-sdk@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz)
+        version: https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0(openvibe-sdk@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz)
       openvibe-sdk:
         specifier: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz
         version: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
       openvibe-shared:
-        specifier: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz
-        version: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz
+        specifier: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz
+        version: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz
       pg:
         specifier: ^8.23.0
         version: 8.23.0
@@ -1472,9 +1472,9 @@ packages:
       pg:
         optional: true
 
-  openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz:
-    resolution: {tarball: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz}
-    version: 4.339.0
+  openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz:
+    resolution: {tarball: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz}
+    version: 4.342.0
     hasBin: true
 
   optionator@0.9.4:
@@ -2995,11 +2995,11 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
 
-  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0(openvibe-sdk@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz):
+  openvibe-publishing@https://codeload.github.com/OpenVibers/OpenVibe.Publishing/tar.gz/refs/tags/v1.7.0(openvibe-sdk@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0))(openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz):
     dependencies:
       openvibe-sdk: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0)
     optionalDependencies:
-      openvibe-shared: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz
+      openvibe-shared: https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz
 
   openvibe-sdk@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.sdk/archive/v0.191.0.tar.gz(@electric-sql/pglite@0.5.8)(iovalkey@0.4.0)(pg@8.23.0):
     optionalDependencies:
@@ -3007,7 +3007,7 @@ snapshots:
       iovalkey: 0.4.0
       pg: 8.23.0
 
-  openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.339.0.tar.gz:
+  openvibe-shared@https://git.openvibe.codes/api/v1/repos/openvibers/openvibe.shared/archive/v4.342.0.tar.gz:
     dependencies:
       clean-css: 5.3.3
       jsonwebtoken: 9.0.3
